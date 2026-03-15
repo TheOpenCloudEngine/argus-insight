@@ -33,6 +33,15 @@ def _get_nested(section: str, subsection: str, key: str, default=None):
     return _raw.get(section, {}).get(subsection, {}).get(key, default)
 
 
+def _to_bool(value) -> bool:
+    """Convert a value to bool (handles string 'true'/'false')."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ("true", "1", "yes")
+    return bool(value)
+
+
 class Settings:
     """Global application settings loaded from config.yml + config.properties."""
 
@@ -82,6 +91,16 @@ class Settings:
 
         # File manager
         self.filemgr_exec_timeout: int = int(_get("filemgr", "exec_timeout", 60))
+
+        # Prometheus
+        self.prometheus_enable_push: bool = _to_bool(_get("prometheus", "enable-push", True))
+        self.prometheus_pushgateway_host: str = _get_nested(
+            "prometheus", "pushgateway", "host", "localhost"
+        )
+        self.prometheus_pushgateway_port: int = int(
+            _get_nested("prometheus", "pushgateway", "port", 9091)
+        )
+        self.prometheus_push_cron: str = _get("prometheus", "push-cron", "* * * * *")
 
 
 settings = Settings()

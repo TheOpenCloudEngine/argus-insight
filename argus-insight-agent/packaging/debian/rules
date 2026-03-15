@@ -21,6 +21,7 @@ override_dh_auto_install:
 	install -m 755 scripts/argus-insight-cert debian/argus-insight-agent/opt/argus-insight-agent/bin/argus-insight-cert
 	install -m 755 scripts/argus-insight-file debian/argus-insight-agent/opt/argus-insight-agent/bin/argus-insight-file
 	install -m 755 scripts/argus-insight-process debian/argus-insight-agent/opt/argus-insight-agent/bin/argus-insight-process
+	install -m 755 scripts/argus-insight-metric debian/argus-insight-agent/opt/argus-insight-agent/bin/argus-insight-metric
 
 	# Config
 	mkdir -p debian/argus-insight-agent/etc/argus-insight-agent

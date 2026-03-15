@@ -43,3 +43,10 @@ certificate:
 
 filemgr:
   exec_timeout: ${filemgr.exec_timeout:60}
+
+prometheus:
+  enable-push: ${prometheus.enable-push:true}
+  push-cron: ${prometheus.push-cron:* * * * *}
+  pushgateway:
+    host: ${prometheus.pushgateway.host:localhost}
+    port: ${prometheus.pushgateway.port:9091}
