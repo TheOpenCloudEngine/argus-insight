@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS argus_agents (
     version         VARCHAR(50),
     kernel_version  VARCHAR(255),
     os_version      VARCHAR(255),
+    cpu_count       INTEGER,
+    core_count      INTEGER,
+    total_memory    BIGINT,
     cpu_usage       DOUBLE PRECISION,
     memory_usage    DOUBLE PRECISION,
     status          VARCHAR(20)     NOT NULL DEFAULT 'UNREGISTERED',
@@ -38,6 +41,9 @@ COMMENT ON COLUMN argus_agents.ip_address IS 'Agent IP address (IPv4/IPv6)';
 COMMENT ON COLUMN argus_agents.version IS 'Agent software version';
 COMMENT ON COLUMN argus_agents.kernel_version IS 'OS kernel version';
 COMMENT ON COLUMN argus_agents.os_version IS 'OS distribution and version';
+COMMENT ON COLUMN argus_agents.cpu_count IS 'Logical CPU count';
+COMMENT ON COLUMN argus_agents.core_count IS 'Physical core count';
+COMMENT ON COLUMN argus_agents.total_memory IS 'Total memory in bytes';
 COMMENT ON COLUMN argus_agents.cpu_usage IS 'Total CPU usage percentage (0.0-100.0)';
 COMMENT ON COLUMN argus_agents.memory_usage IS 'Total memory usage percentage (0.0-100.0)';
 COMMENT ON COLUMN argus_agents.status IS 'UNREGISTERED | REGISTERED | DISCONNECTED';

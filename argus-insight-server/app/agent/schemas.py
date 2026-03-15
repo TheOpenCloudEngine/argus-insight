@@ -57,6 +57,9 @@ class HeartbeatRequest(BaseModel):
     version: str | None = Field(None, description="Agent software version")
     kernel_version: str | None = Field(None, description="OS kernel version")
     os_version: str | None = Field(None, description="OS distribution and version")
+    cpu_count: int | None = Field(None, description="Logical CPU count")
+    core_count: int | None = Field(None, description="Physical core count")
+    total_memory: int | None = Field(None, description="Total memory in bytes")
     cpu_usage: float | None = Field(None, description="Total CPU usage percentage")
     memory_usage: float | None = Field(None, description="Total memory usage percentage")
 

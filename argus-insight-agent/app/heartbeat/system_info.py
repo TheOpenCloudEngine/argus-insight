@@ -32,12 +32,15 @@ def _detect_os_version() -> str:
 _os_version: str = _detect_os_version()
 
 
-def get_static_info() -> dict[str, str]:
-    """Return hostname, kernel_version, os_version (cached at startup)."""
+def get_static_info() -> dict[str, str | int]:
+    """Return hostname, kernel_version, os_version, cpu/core counts, total_memory (cached)."""
     return {
         "hostname": _hostname,
         "kernel_version": _kernel_version,
         "os_version": _os_version,
+        "cpu_count": psutil.cpu_count(logical=True) or 1,
+        "core_count": psutil.cpu_count(logical=False) or 1,
+        "total_memory": psutil.virtual_memory().total,
     }
 
 

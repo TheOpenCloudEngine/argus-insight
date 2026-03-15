@@ -1,6 +1,6 @@
 """SQLAlchemy ORM models for agent management."""
 
-from sqlalchemy import Column, DateTime, Float, String, func
+from sqlalchemy import BigInteger, Column, DateTime, Float, Integer, String, func
 
 from app.core.database import Base
 
@@ -15,6 +15,9 @@ class ArgusAgent(Base):
     version = Column(String(50))
     kernel_version = Column(String(255))
     os_version = Column(String(255))
+    cpu_count = Column(Integer)
+    core_count = Column(Integer)
+    total_memory = Column(BigInteger)
     cpu_usage = Column(Float)
     memory_usage = Column(Float)
     status = Column(String(20), nullable=False, default="UNREGISTERED")

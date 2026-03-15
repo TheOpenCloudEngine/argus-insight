@@ -41,6 +41,9 @@ async def process_heartbeat(session: AsyncSession, req: HeartbeatRequest) -> Non
             version=req.version,
             kernel_version=req.kernel_version,
             os_version=req.os_version,
+            cpu_count=req.cpu_count,
+            core_count=req.core_count,
+            total_memory=req.total_memory,
             cpu_usage=req.cpu_usage,
             memory_usage=req.memory_usage,
             status="UNREGISTERED",
@@ -55,6 +58,9 @@ async def process_heartbeat(session: AsyncSession, req: HeartbeatRequest) -> Non
         agent.version = req.version
         agent.kernel_version = req.kernel_version
         agent.os_version = req.os_version
+        agent.cpu_count = req.cpu_count
+        agent.core_count = req.core_count
+        agent.total_memory = req.total_memory
         agent.cpu_usage = req.cpu_usage
         agent.memory_usage = req.memory_usage
         agent.updated_at = now
