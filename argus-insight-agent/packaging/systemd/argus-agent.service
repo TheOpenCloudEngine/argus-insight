@@ -1,0 +1,31 @@
+[Unit]
+Description=Argus Server Agent
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/bin/argus-agent
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=argus-agent
+
+# Directories
+RuntimeDirectory=argus
+StateDirectory=argus
+LogsDirectory=argus
+ConfigurationDirectory=argus
+
+# Environment
+EnvironmentFile=-/etc/argus/agent.env
+
+[Install]
+WantedBy=multi-user.target
