@@ -31,7 +31,7 @@ def load_properties(path: Path) -> dict[str, str]:
     props: dict[str, str] = {}
 
     if not path.is_file():
-        logger.warning("Properties file not found: %s", path)
+        logger.debug("Properties file not found: %s", path)
         return props
 
     with open(path, encoding="utf-8") as f:
@@ -96,7 +96,7 @@ def _resolve_dict(data: dict[str, Any], props: dict[str, str]) -> dict[str, Any]
 def load_yaml(path: Path) -> dict[str, Any]:
     """Load a YAML file and return as dict."""
     if not path.is_file():
-        logger.warning("YAML config file not found: %s", path)
+        logger.debug("YAML config file not found: %s", path)
         return {}
 
     with open(path, encoding="utf-8") as f:
