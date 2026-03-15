@@ -176,7 +176,7 @@ def update_hosts_file(content: str) -> OperationResult:
 
 
 def backup_hosts_file() -> BackupResult:
-    """Backup /etc/hosts to backup_dir as hosts_YYYYMMDD.zip."""
+    """Backup /etc/hosts to backup_dir as hosts_YYYYMMDDHHmmss.zip."""
     return _backup_file(HOSTS_FILE, "hosts")
 
 
@@ -216,7 +216,7 @@ def update_resolv_conf(content: str) -> OperationResult:
 
 
 def backup_resolv_conf() -> BackupResult:
-    """Backup /etc/resolv.conf to backup_dir as resolv_YYYYMMDD.zip."""
+    """Backup /etc/resolv.conf to backup_dir as resolv_YYYYMMDDHHmmss.zip."""
     return _backup_file(RESOLV_CONF, "resolv")
 
 

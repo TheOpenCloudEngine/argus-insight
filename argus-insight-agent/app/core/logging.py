@@ -3,7 +3,7 @@
 Provides daily rolling file logging with a structured log format:
   LEVEL yyyy-MM-dd HH:mm:ss.SSS PID program_name source_location - message
 
-Rolled log files are named with a date suffix: agent_20250101.log
+Rolled log files are named with a date suffix: agent_20260315.log
 """
 
 import logging
@@ -39,7 +39,7 @@ class _DailyFileHandler(TimedRotatingFileHandler):
 
     Default TimedRotatingFileHandler appends a suffix like .2025-01-01 to the
     base filename. This subclass overrides namer to produce:
-      agent_20250101.log  (instead of agent.log.2025-01-01)
+      agent_20260315.log  (instead of agent.log.2026-03-15)
     """
 
     def __init__(self, log_dir: Path, filename: str, backup_count: int) -> None:
@@ -58,8 +58,8 @@ class _DailyFileHandler(TimedRotatingFileHandler):
         self.namer = self._namer
 
     def _namer(self, default_name: str) -> str:
-        """Rename rolled file from agent.log.20250101 to agent_20250101.log."""
-        # default_name is like /var/log/.../agent.log.20250101
+        """Rename rolled file from agent.log.20260315 to agent_20260315.log."""
+        # default_name is like /var/log/.../agent.log.20260315
         # Extract the date suffix
         parts = default_name.rsplit(".", 1)
         if len(parts) == 2:
