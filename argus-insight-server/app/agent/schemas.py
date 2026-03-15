@@ -12,6 +12,11 @@ class AgentStatus(str, Enum):
     OFFLINE = "offline"
     UNKNOWN = "unknown"
 
+    # Heartbeat-based statuses
+    UNREGISTERED = "UNREGISTERED"
+    REGISTERED = "REGISTERED"
+    DISCONNECTED = "DISCONNECTED"
+
 
 class AgentRegisterRequest(BaseModel):
     """Request to register a new agent."""
@@ -42,6 +47,18 @@ class AgentInfo(BaseModel):
     version: str | None = Field(None, description="Agent software version")
     registered_at: str = Field(..., description="Registration timestamp (ISO 8601)")
     last_seen_at: str | None = Field(None, description="Last health check timestamp (ISO 8601)")
+
+
+class HeartbeatRequest(BaseModel):
+    """Heartbeat payload sent by agents."""
+
+    hostname: str = Field(..., description="Agent hostname")
+    ip_address: str = Field(..., description="Agent IP address")
+    version: str | None = Field(None, description="Agent software version")
+    kernel_version: str | None = Field(None, description="OS kernel version")
+    os_version: str | None = Field(None, description="OS distribution and version")
+    cpu_usage: float | None = Field(None, description="Total CPU usage percentage")
+    memory_usage: float | None = Field(None, description="Total memory usage percentage")
 
 
 class AgentHealthResponse(BaseModel):

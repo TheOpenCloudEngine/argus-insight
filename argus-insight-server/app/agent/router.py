@@ -1,16 +1,33 @@
 """Agent management API endpoints."""
 
-from fastapi import APIRouter, HTTPException
+import logging
 
-from app.agent import service
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.agent import heartbeat_service, service
 from app.agent.schemas import (
     AgentHealthResponse,
     AgentInfo,
     AgentRegisterRequest,
     AgentUpdateRequest,
+    HeartbeatRequest,
 )
+from app.core.database import get_session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agent", tags=["agent"])
+
+
+@router.post("/heartbeat")
+async def agent_heartbeat(
+    req: HeartbeatRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Receive agent heartbeat. Inserts new agents as UNREGISTERED, updates existing."""
+    await heartbeat_service.process_heartbeat(session, req)
+    return {"status": "ok"}
 
 
 @router.post("/register", response_model=AgentInfo)

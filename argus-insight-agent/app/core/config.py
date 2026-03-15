@@ -97,6 +97,11 @@ class Settings:
         # File manager
         self.filemgr_exec_timeout: int = int(_get("filemgr", "exec_timeout", 60))
 
+        # Insight Server (loaded from server.properties in config directory)
+        _server_props = self._load_server_properties()
+        self.insight_server_ip: str = _server_props.get("server.ip", "localhost")
+        self.insight_server_port: int = int(_server_props.get("server.port", 8080))
+
         # Prometheus
         self.prometheus_enable_push: bool = _to_bool(_get("prometheus", "enable-push", True))
         self.prometheus_pushgateway_host: str = _get_nested(
@@ -106,6 +111,14 @@ class Settings:
             _get_nested("prometheus", "pushgateway", "port", 9091)
         )
         self.prometheus_push_cron: str = _get("prometheus", "push-cron", "* * * * *")
+
+
+    def _load_server_properties(self) -> dict[str, str]:
+        """Load server.properties from the same directory as config.yml."""
+        from app.core.config_loader import load_properties
+
+        server_props_path = self.config_dir / "server.properties"
+        return load_properties(server_props_path)
 
 
 def init_settings(

@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.security import SecurityHeadersMiddleware
 from app.filemgr.router import router as filemgr_router
+from app.heartbeat.scheduler import heartbeat_scheduler
 from app.hostmgr.router import router as hostmgr_router
 from app.metrics.scheduler import metrics_scheduler
 from app.monitor.router import router as monitor_router
@@ -53,7 +54,9 @@ async def lifespan(app: FastAPI):
     _print_banner()
     logger.info("Argus Server Agent %s starting", __version__)
     await metrics_scheduler.start()
+    await heartbeat_scheduler.start()
     yield
+    await heartbeat_scheduler.stop()
     await metrics_scheduler.stop()
     logger.info("Argus Server Agent shutting down")
     terminal_manager.close_all()
