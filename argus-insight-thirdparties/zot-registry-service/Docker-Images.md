@@ -28,8 +28,4 @@ docker pull ${ZOT}/mariadb:10.11.16
 
 docker pull ${ZOT}/larribas/mlflow:1.9.1
 
-# PowerDNS
-docker pull ${ZOT}/postgres:15-alpine
-docker pull ${ZOT}/psitrax/powerdns:v4.4.1
-docker pull ${ZOT}/powerdnsadmin/pda-legacy:v0.4.2
 ```

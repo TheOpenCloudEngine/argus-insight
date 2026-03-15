@@ -1,0 +1,16 @@
+services:
+  zot:
+    build: .
+    container_name: zot
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - argus-zot:/var/lib/zot
+      - ./config.json:/etc/zot/config.json
+      - ./htpasswd:/etc/zot/htpasswd
+      - ./credentials.json:/etc/zot/credentials.json
+      - ./certs:/etc/zot/certs
+
+volumes:
+  argus-zot:
