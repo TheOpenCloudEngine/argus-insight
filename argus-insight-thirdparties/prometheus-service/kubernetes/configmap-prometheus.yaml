@@ -1,0 +1,119 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: argus-prometheus
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: argus-insight
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    rule_files:
+      - /etc/prometheus/rules/*.yml
+
+    scrape_configs:
+      - job_name: "prometheus"
+        static_configs:
+          - targets: ["localhost:9090"]
+
+  node_alerts.yml: |
+    groups:
+      - name: node_alerts
+        rules:
+          - alert: InstanceDown
+            expr: up == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Instance {{ $labels.instance }} down"
+              description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 1 minute."
+
+          - alert: HighCpuUsage
+            expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High CPU usage on {{ $labels.instance }}"
+              description: "CPU usage is above 80% (current: {{ $value | printf \"%.1f\" }}%) on {{ $labels.instance }}."
+
+          - alert: HighMemoryUsage
+            expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 85
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High memory usage on {{ $labels.instance }}"
+              description: "Memory usage is above 85% (current: {{ $value | printf \"%.1f\" }}%) on {{ $labels.instance }}."
+
+          - alert: DiskSpaceLow
+            expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes) * 100 < 15
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Low disk space on {{ $labels.instance }}"
+              description: "Filesystem {{ $labels.mountpoint }} has less than 15% free space (current: {{ $value | printf \"%.1f\" }}%) on {{ $labels.instance }}."
+
+          - alert: DiskSpaceCritical
+            expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes) * 100 < 5
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Critical disk space on {{ $labels.instance }}"
+              description: "Filesystem {{ $labels.mountpoint }} has less than 5% free space (current: {{ $value | printf \"%.1f\" }}%) on {{ $labels.instance }}."
+
+  prometheus_alerts.yml: |
+    groups:
+      - name: prometheus_alerts
+        rules:
+          - alert: PrometheusConfigReloadFailed
+            expr: prometheus_config_last_reload_successful == 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Prometheus config reload failed on {{ $labels.instance }}"
+              description: "Prometheus configuration reload has failed. Check the Prometheus logs for errors."
+
+          - alert: PrometheusTooManyRestarts
+            expr: changes(process_start_time_seconds{job="prometheus"}[30m]) > 2
+            for: 0m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Prometheus too many restarts on {{ $labels.instance }}"
+              description: "Prometheus has restarted more than 2 times in the last 30 minutes."
+
+          - alert: AlertmanagerConfigReloadFailed
+            expr: alertmanager_config_last_reload_successful == 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Alertmanager config reload failed on {{ $labels.instance }}"
+              description: "Alertmanager configuration reload has failed. Check the Alertmanager logs for errors."
+
+          - alert: PrometheusTargetScrapingSlow
+            expr: prometheus_target_interval_length_seconds{quantile="0.9"} > 15
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Slow target scraping on {{ $labels.instance }}"
+              description: "Prometheus is scraping targets slowly. 90th percentile scrape duration is {{ $value | printf \"%.1f\" }}s."
+
+          - alert: PrometheusTsdbCompactionsFailed
+            expr: increase(prometheus_tsdb_compactions_failed_total[1h]) > 0
+            for: 0m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Prometheus TSDB compaction failed on {{ $labels.instance }}"
+              description: "Prometheus TSDB has failed compactions in the last hour."

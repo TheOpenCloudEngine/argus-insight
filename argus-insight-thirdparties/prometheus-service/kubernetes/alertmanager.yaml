@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: argus-prometheus
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: argus-insight
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alertmanager
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: alertmanager
+        app.kubernetes.io/part-of: argus-insight
+    spec:
+      securityContext:
+        fsGroup: 65534
+        runAsUser: 65534
+        runAsNonRoot: true
+      initContainers:
+        - name: init-data-dir
+          image: alpine:3.21
+          command: ["sh", "-c", "mkdir -p /var/lib/prometheus/alertmanager && chown -R 65534:65534 /var/lib/prometheus/alertmanager"]
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/prometheus
+      containers:
+        - name: alertmanager
+          image: argus-insight/alertmanager:0.28.1
+          args:
+            - "--config.file=/etc/prometheus/alertmanager.yml"
+            - "--storage.path=/var/lib/prometheus/alertmanager"
+            - "--web.listen-address=0.0.0.0:9093"
+          ports:
+            - name: http
+              containerPort: 9093
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus/alertmanager.yml
+              subPath: alertmanager.yml
+            - name: data
+              mountPath: /var/lib/prometheus
+      volumes:
+        - name: config
+          configMap:
+            name: alertmanager-config
+            items:
+              - key: alertmanager.yml
+                path: alertmanager.yml
+        - name: data
+          persistentVolumeClaim:
+            claimName: argus-prometheus
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: argus-prometheus
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: argus-insight
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 9093
+      targetPort: http
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: alertmanager
