@@ -247,6 +247,20 @@ python -m app.hostmgr.cli resolv nameservers
 python -m app.hostmgr.cli resolv set-nameservers 8.8.8.8 8.8.4.4
 ```
 
+## Swagger / OpenAPI
+
+FastAPI가 자동으로 제공하는 API 문서입니다. 별도 설정 없이 서버 시작 시 바로 사용할 수 있습니다.
+
+| UI | URL | 설명 |
+|----|-----|------|
+| Swagger UI | `http://<host>:8600/docs` | 대화형 API 테스트 가능 (Try it out) |
+| ReDoc | `http://<host>:8600/redoc` | 읽기 전용 API 문서 |
+| OpenAPI JSON | `http://<host>:8600/openapi.json` | OpenAPI 3.x 스펙 (JSON) |
+
+개발 환경 예시:
+- Swagger UI: http://localhost:8600/docs
+- ReDoc: http://localhost:8600/redoc
+
 ## API 엔드포인트
 
 | Method    | Path                        | 설명                                        |
