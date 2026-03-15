@@ -11,11 +11,31 @@ font:
       bold: fonts/NotoSansKR-Bold.ttf
       italic: fonts/NotoSansKR-Regular.ttf
       bold_italic: fonts/NotoSansKR-Bold.ttf
+    NanumMyeonjo:
+      normal: fonts/NanumMyeongjo.ttf
+      bold: fonts/NanumMyeongjoBold.ttf
+      italic: fonts/NanumMyeongjo.ttf
+      bold_italic: fonts/NanumMyeongjoBold.ttf
     D2Coding:
       normal: fonts/D2Coding.ttf
       bold: fonts/D2CodingBold.ttf
       italic: fonts/D2Coding.ttf
       bold_italic: fonts/D2CodingBold.ttf
+    NanumGothic:
+      normal: fonts/NanumGothic.ttf
+      bold: fonts/NanumGothicBold.ttf
+      italic: fonts/NanumGothic.ttf
+      bold_italic: fonts/NanumGothicBold.ttf
+    NanumBarunGothic:
+      normal: fonts/NanumBarunGothic.ttf
+      bold: fonts/NanumBarunGothicBold.ttf
+      italic: fonts/NanumBarunGothic.ttf
+      bold_italic: fonts/NanumBarunGothicBold.ttf
+    NanumSquare:
+      normal: fonts/NanumSquare.ttf
+      bold: fonts/NanumSquareB.ttf
+      italic: fonts/NanumSquare.ttf
+      bold_italic: fonts/NanumSquareB.ttf
 
 page:
   size: A4

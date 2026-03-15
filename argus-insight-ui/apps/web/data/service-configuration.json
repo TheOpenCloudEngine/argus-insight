@@ -1,0 +1,74 @@
+{
+  "HDFS": [
+    {
+      "name": "HDFS 서비스",
+      "key": "hdfs_service",
+      "type": "checkbox",
+      "dataType": "Boolean",
+      "multipleSelection": true,
+      "description": "이 Impala 서비스 인스턴스가 종속된 HDFS 서비스의 이름입니다.",
+      "options": ["HDFS"],
+      "default": "HDFS"
+    },
+    {
+      "name": "Catalog Server 웹 서버 설정",
+      "key": "enable_webserver",
+      "type": "checkbox",
+      "dataType": "Boolean",
+      "description": "Catalog Server 웹 서버를 설정/해제합니다. 이 웹 서버에는 Catalog Server Daemon에 관한 유용한 정보가 들어 있습니다.",
+      "values": ["Impala Catalog Server Default Group"],
+      "default": "Impala Catalog Server Default Group"
+    },
+    {
+      "name": "Impala Daemon Data Cache Directories",
+      "key": "datacache_dirs",
+      "dataType": "String",
+      "type": "inputtext",
+      "appendable": true,
+      "description": "Directories Impala Daemon will use for caching of remote read data.",
+      "values": ["/disk1", "/disk2"]
+    },
+    {
+      "name": "Impala Daemon Data Cache Per Directory Capacity",
+      "key": "datacache_capacity",
+      "type": "textfield",
+      "dataType": "Integer",
+      "description": "Maximum amount of local disk space Impala will use per daemon in each of the configured directrories for caching of remote read data.",
+      "unit": ["Bytes", "KiB", "MiB", "GiB"],
+      "defaultUnit": "KiB"
+    },
+    {
+      "name": "Impala Daemon Specialization",
+      "key": "impalad_specialization",
+      "type": "radio",
+      "dataType": "Boolean",
+      "description": "Configures Impala daemons to only execute queries or perform query coordination. When this setting is in use, daemons specializing in both tasks must exist.",
+      "options": ["NO_SPECIALIZATION", "COORDINATOR_ONLY", "EXECUTOR_ONLY"],
+      "default": "NO_SPECIALIZATION"
+    },
+    {
+      "name": "Impala 명령줄 인수 고급 구성 스니펫(안전 밸브)",
+      "key": "impala_cmd_args_safety_valve",
+      "type": "textarea",
+      "dataType": "String",
+      "description": "고급 사용자 옵션으로 Impala Daemon 명령줄 플래그에 추가될(verbatim) 키-값 쌍(각 행에 하나씩)입니다. 이 서비스의 모든 역할에 적용됩니다. 키 이름은 하이픈(-)으로 시작해야 합니다. 예: -log_filename=foo.log",
+      "value": "-kudu_mutation_buffer_size=1073741847\n-kudu_error_buffer_size=1073741847"
+    },
+    {
+      "name": "ranger-impala-policymgr-ssl.xml에 대한 Impala 서비스 고급 구성 스니펫(안전 밸브)",
+      "key": "ranger_policymgr_ssl_safety_valve",
+      "type": "key-value-description",
+      "dataType": "String",
+      "appendable": true,
+      "description": "고급 사용자 옵션에만 해당되며, ranger-impala-policymgr-ssl.xml에 삽입될 문자열입니다. 클라이언트 구성을 제외한 이 서비스의 모든 역할 구성에 적용됩니다."
+    },
+    {
+      "name": "Catalog Server Hive Metastore 연결 재시도",
+      "key": "hive.metastore.connect.retries",
+      "type": "inputtext",
+      "dataType": "Integer",
+      "description": "Hive Metastore Server에 연결할 때 Catalog Server가 수행할 재시도 횟수입니다. Catalog Server는 기본적으로 재시도 사이에 1초를 대기합니다.",
+      "default": 5
+    }
+  ]
+}

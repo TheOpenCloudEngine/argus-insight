@@ -1,0 +1,82 @@
+{
+  "groups": [
+    {
+      "id": "main",
+      "label": "메인",
+      "items": [
+        {
+          "id": "dashboard",
+          "title": "대시보드",
+          "url": "/dashboard",
+          "icon": "LayoutDashboard"
+        },
+        {
+          "id": "monitoring",
+          "title": "모니터링",
+          "url": "/dashboard/monitoring",
+          "icon": "Monitor"
+        },
+        {
+          "id": "servers",
+          "title": "서버 현황",
+          "url": "/dashboard/servers",
+          "icon": "Server"
+        },
+        {
+          "id": "alerts",
+          "title": "알림",
+          "url": "/dashboard/alerts",
+          "icon": "Bell"
+        }
+      ]
+    },
+    {
+      "id": "analysis",
+      "label": "분석",
+      "items": [
+        {
+          "id": "performance",
+          "title": "성능 분석",
+          "url": "/dashboard/performance",
+          "icon": "BarChart3"
+        },
+        {
+          "id": "security",
+          "title": "보안",
+          "url": "/dashboard/security",
+          "icon": "Shield"
+        },
+        {
+          "id": "events",
+          "title": "이벤트 로그",
+          "url": "/dashboard/events",
+          "icon": "Zap"
+        }
+      ]
+    },
+    {
+      "id": "admin",
+      "label": "관리",
+      "items": [
+        {
+          "id": "users",
+          "title": "사용자 관리",
+          "url": "/dashboard/users",
+          "icon": "Users"
+        },
+        {
+          "id": "configuration",
+          "title": "서비스 설정",
+          "url": "/dashboard/configuration",
+          "icon": "SlidersHorizontal"
+        },
+        {
+          "id": "settings",
+          "title": "설정",
+          "url": "/dashboard/settings",
+          "icon": "Settings"
+        }
+      ]
+    }
+  ]
+}
