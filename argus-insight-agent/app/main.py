@@ -1,8 +1,10 @@
 """Argus Server Agent - FastAPI application entry point."""
 
+import argparse
 import logging
 from contextlib import asynccontextmanager
 
+import uvicorn
 from fastapi import FastAPI
 
 from app import __version__
@@ -82,3 +84,34 @@ app.include_router(processmgr_router, prefix="/api/v1")
 async def health():
     """Health check endpoint."""
     return {"status": "ok", "version": __version__}
+
+
+def run() -> None:
+    """CLI entry point with config file argument support."""
+    parser = argparse.ArgumentParser(description="Argus Insight Agent")
+    parser.add_argument(
+        "--config-yaml",
+        metavar="PATH",
+        help="Path to config.yml file (default: /etc/argus-insight-agent/config.yml)",
+    )
+    parser.add_argument(
+        "--config-properties",
+        metavar="PATH",
+        help="Path to config.properties file (default: /etc/argus-insight-agent/config.properties)",
+    )
+    args = parser.parse_args()
+
+    if args.config_yaml or args.config_properties:
+        from app.core.config import init_settings
+
+        init_settings(
+            yaml_path=args.config_yaml,
+            properties_path=args.config_properties,
+        )
+
+    uvicorn.run(
+        app,
+        host=settings.host,
+        port=settings.port,
+        log_level=settings.log_level.lower(),
+    )

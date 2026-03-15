@@ -12,6 +12,7 @@ Variable resolution order:
 
 Default config directory: /etc/argus-insight-server
 Override with ARGUS_SERVER_CONFIG_DIR environment variable.
+Override individual files with --config-yaml / --config-properties CLI arguments.
 """
 
 import os
@@ -20,7 +21,7 @@ from pathlib import Path
 from app.core.config_loader import load_config
 
 _CONFIG_DIR = Path(os.environ.get("ARGUS_SERVER_CONFIG_DIR", "/etc/argus-insight-server"))
-_raw = load_config(config_dir=_CONFIG_DIR)
+_raw: dict = load_config(config_dir=_CONFIG_DIR)
 
 
 def _get(section: str, key: str, default=None):
@@ -88,6 +89,28 @@ class Settings:
         self.db_pool_max_overflow: int = int(_get_nested("database", "pool", "max_overflow", 10))
         self.db_pool_recycle: int = int(_get_nested("database", "pool", "recycle", 3600))
         self.db_echo: bool = _to_bool(_get("database", "echo", False))
+
+
+def init_settings(
+    yaml_path: str | None = None,
+    properties_path: str | None = None,
+) -> None:
+    """Re-initialize settings with custom config file paths.
+
+    Call this before the application starts to override default config locations.
+    If not called, settings are loaded from the default config directory.
+
+    Args:
+        yaml_path: Absolute path to YAML config file.
+        properties_path: Absolute path to properties file.
+    """
+    global _raw, settings
+    _raw = load_config(
+        config_dir=_CONFIG_DIR,
+        yaml_path=yaml_path,
+        properties_path=properties_path,
+    )
+    settings = Settings()
 
 
 settings = Settings()

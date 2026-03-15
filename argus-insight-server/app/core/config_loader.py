@@ -109,25 +109,32 @@ def load_config(
     config_dir: Path | None = None,
     yaml_file: str = "config.yml",
     properties_file: str = "config.properties",
+    yaml_path: Path | str | None = None,
+    properties_path: Path | str | None = None,
 ) -> dict[str, Any]:
     """Load configuration by resolving YAML with properties variables.
 
-    1. Load config.properties from config_dir
-    2. Load config.yml from config_dir
+    1. Load config.properties from config_dir (or properties_path)
+    2. Load config.yml from config_dir (or yaml_path)
     3. Resolve ${variable} placeholders in YAML using properties values
 
     Args:
         config_dir: Directory containing config files. Defaults to /etc/argus-insight-server.
-        yaml_file: Name of the YAML config file.
-        properties_file: Name of the properties file.
+        yaml_file: Name of the YAML config file (used with config_dir).
+        properties_file: Name of the properties file (used with config_dir).
+        yaml_path: Absolute path to YAML config file. Overrides config_dir/yaml_file.
+        properties_path: Absolute path to properties file. Overrides config_dir/properties_file.
 
     Returns:
         Resolved configuration dict.
     """
     base_dir = config_dir or DEFAULT_CONFIG_DIR
 
-    props = load_properties(base_dir / properties_file)
-    raw_config = load_yaml(base_dir / yaml_file)
+    props_file = Path(properties_path) if properties_path else base_dir / properties_file
+    yaml_config_file = Path(yaml_path) if yaml_path else base_dir / yaml_file
+
+    props = load_properties(props_file)
+    raw_config = load_yaml(yaml_config_file)
 
     if not raw_config:
         return {}
