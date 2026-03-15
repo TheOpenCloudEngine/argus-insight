@@ -41,6 +41,9 @@ certificate:
   days: ${cert.days:825}
   key_bits: ${cert.key_bits:2048}
 
+heartbeat:
+  interval: ${heartbeat.interval:60}
+
 filemgr:
   exec_timeout: ${filemgr.exec_timeout:60}
 

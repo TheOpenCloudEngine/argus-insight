@@ -81,6 +81,12 @@ class Settings:
         # Agent communication
         self.agent_timeout: int = int(_get("agent", "timeout", 30))
         self.agent_health_interval: int = int(_get("agent", "health_interval", 60))
+        self.agent_heartbeat_check_interval: int = int(
+            _get("agent", "heartbeat_check_interval", 60)
+        )
+        self.agent_heartbeat_disconnect_timeout: int = int(
+            _get("agent", "heartbeat_disconnect_timeout", 180)
+        )
 
         # Database
         self.db_type: str = _get("database", "type", "postgresql")

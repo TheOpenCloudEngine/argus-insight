@@ -15,11 +15,8 @@ from app.heartbeat.system_info import get_dynamic_info, get_static_info
 
 logger = logging.getLogger(__name__)
 
-_HEARTBEAT_INTERVAL = 60  # seconds
-
-
 class HeartbeatScheduler:
-    """Async scheduler that sends heartbeat to the central server every 60 seconds."""
+    """Async scheduler that sends heartbeat to the central server periodically."""
 
     def __init__(self) -> None:
         self._task: asyncio.Task | None = None
@@ -31,7 +28,7 @@ class HeartbeatScheduler:
         self._task = asyncio.create_task(self._run())
         logger.info(
             "Heartbeat scheduler started (interval=%ds, server=%s:%s)",
-            _HEARTBEAT_INTERVAL,
+            settings.heartbeat_interval,
             settings.insight_server_ip,
             settings.insight_server_port,
         )
@@ -61,7 +58,7 @@ class HeartbeatScheduler:
                     settings.insight_server_port,
                 )
             try:
-                await asyncio.sleep(_HEARTBEAT_INTERVAL)
+                await asyncio.sleep(settings.heartbeat_interval)
             except asyncio.CancelledError:
                 break
 

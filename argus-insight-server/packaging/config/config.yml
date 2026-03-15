@@ -28,6 +28,8 @@ cors:
 agent:
   timeout: ${agent.timeout:30}
   health_interval: ${agent.health_interval:60}
+  heartbeat_check_interval: ${agent.heartbeat_check_interval:60}
+  heartbeat_disconnect_timeout: ${agent.heartbeat_disconnect_timeout:180}
 
 # Database
 # Supported types: postgresql, mariadb

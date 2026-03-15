@@ -11,12 +11,10 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, update
 
 from app.agent.models import ArgusAgent, ArgusAgentHeartbeat
+from app.core.config import settings
 from app.core.database import async_session
 
 logger = logging.getLogger(__name__)
-
-_CHECK_INTERVAL = 60  # seconds
-_HEARTBEAT_TIMEOUT = timedelta(minutes=3)
 
 
 class DisconnectChecker:
@@ -31,9 +29,9 @@ class DisconnectChecker:
         self._running = True
         self._task = asyncio.create_task(self._run())
         logger.info(
-            "Disconnect checker started (interval=%ds, timeout=%s)",
-            _CHECK_INTERVAL,
-            _HEARTBEAT_TIMEOUT,
+            "Disconnect checker started (interval=%ds, timeout=%ds)",
+            settings.agent_heartbeat_check_interval,
+            settings.agent_heartbeat_disconnect_timeout,
         )
 
     async def stop(self) -> None:
@@ -58,13 +56,14 @@ class DisconnectChecker:
             except Exception:
                 logger.exception("Error in disconnect checker loop")
             try:
-                await asyncio.sleep(_CHECK_INTERVAL)
+                await asyncio.sleep(settings.agent_heartbeat_check_interval)
             except asyncio.CancelledError:
                 break
 
     async def _check_disconnected(self) -> None:
         """Find agents whose last heartbeat exceeds the timeout and mark DISCONNECTED."""
-        threshold = datetime.now(timezone.utc) - _HEARTBEAT_TIMEOUT
+        timeout = timedelta(seconds=settings.agent_heartbeat_disconnect_timeout)
+        threshold = datetime.now(timezone.utc) - timeout
 
         async with async_session() as session:
             # Find hostnames with stale heartbeats
@@ -92,9 +91,9 @@ class DisconnectChecker:
 
             if result.rowcount > 0:
                 logger.warning(
-                    "Marked %d agent(s) as DISCONNECTED (no heartbeat for %s): %s",
+                    "Marked %d agent(s) as DISCONNECTED (no heartbeat for %ds): %s",
                     result.rowcount,
-                    _HEARTBEAT_TIMEOUT,
+                    settings.agent_heartbeat_disconnect_timeout,
                     stale_hostnames,
                 )
 
