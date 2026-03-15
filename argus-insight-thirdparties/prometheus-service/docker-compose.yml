@@ -9,6 +9,10 @@ services:
     image: argus-insight/prometheus:${PROMETHEUS_VERSION}
     ports:
       - "9090:9090"
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
     volumes:
       - argus-prometheus:/var/lib/prometheus
     restart: unless-stopped
