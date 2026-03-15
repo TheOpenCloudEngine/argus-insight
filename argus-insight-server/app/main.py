@@ -10,6 +10,7 @@ from app import __version__
 from app.agent.router import router as agent_router
 from app.auth.router import router as auth_router
 from app.core.config import settings
+from app.core.database import close_database, init_database
 from app.core.logging import setup_logging
 from app.core.security import SecurityHeadersMiddleware
 from app.dashboard.router import router as dashboard_router
@@ -40,7 +41,9 @@ async def lifespan(app: FastAPI):
     _print_banner()
     setup_logging()
     logger.info("Argus Insight Server %s starting", __version__)
+    await init_database()
     yield
+    await close_database()
     logger.info("Argus Insight Server shutting down")
 
 

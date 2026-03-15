@@ -28,3 +28,32 @@ cors:
 agent:
   timeout: ${agent.timeout:30}
   health_interval: ${agent.health_interval:60}
+
+# Database
+# Supported types: postgresql, mariadb
+database:
+  type: ${db.type:postgresql}
+  host: ${db.host:localhost}
+  port: ${db.port:5432}
+  name: ${db.name:argus}
+  username: ${db.username:argus}
+  password: ${db.password:argus}
+  echo: false
+  pool:
+    size: ${db.pool.size:5}
+    max_overflow: ${db.pool.max_overflow:10}
+    recycle: ${db.pool.recycle:3600}
+
+# MariaDB example:
+#database:
+#  type: mariadb
+#  host: ${db.host:localhost}
+#  port: ${db.port:3306}
+#  name: ${db.name:argus}
+#  username: ${db.username:argus}
+#  password: ${db.password:argus}
+#  echo: false
+#  pool:
+#    size: ${db.pool.size:5}
+#    max_overflow: ${db.pool.max_overflow:10}
+#    recycle: ${db.pool.recycle:3600}

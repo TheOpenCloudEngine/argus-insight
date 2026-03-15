@@ -77,5 +77,17 @@ class Settings:
         self.agent_timeout: int = int(_get("agent", "timeout", 30))
         self.agent_health_interval: int = int(_get("agent", "health_interval", 60))
 
+        # Database
+        self.db_type: str = _get("database", "type", "postgresql")
+        self.db_host: str = _get("database", "host", "localhost")
+        self.db_port: int = int(_get("database", "port", 5432))
+        self.db_name: str = _get("database", "name", "argus")
+        self.db_username: str = _get("database", "username", "argus")
+        self.db_password: str = _get("database", "password", "argus")
+        self.db_pool_size: int = int(_get_nested("database", "pool", "size", 5))
+        self.db_pool_max_overflow: int = int(_get_nested("database", "pool", "max_overflow", 10))
+        self.db_pool_recycle: int = int(_get_nested("database", "pool", "recycle", 3600))
+        self.db_echo: bool = _to_bool(_get("database", "echo", False))
+
 
 settings = Settings()
