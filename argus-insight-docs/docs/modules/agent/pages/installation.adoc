@@ -1,0 +1,89 @@
+= 설치 및 실행
+:description: Argus Insight Agent 설치 및 실행 가이드
+
+== 사전 요구사항
+
+ifdef::env-site[]
+include::ROOT:partial$_common-requirements.adoc[]
+endif::[]
+ifndef::env-site[]
+* Python 3.11 이상
+* pip (Python 패키지 관리자)
+* Git
+endif::[]
+
+NOTE: Agent는 서버 관리 작업을 위해 **root 권한**이 필요합니다.
+
+== 개발 환경
+
+=== 소스 코드에서 설치
+
+[source,bash]
+----
+cd argus-insight-agent
+
+# 개발 의존성 포함 설치
+make dev
+
+# 서버 실행 (개발 모드, --reload 포함)
+make run
+----
+
+에이전트가 `http://0.0.0.0:{agent-port}` 에서 시작됩니다.
+
+=== 주요 명령어
+
+[cols="1,2"]
+|===
+| 명령어 | 설명
+
+| `make dev` | 개발 의존성 포함 설치
+| `make run` | 에이전트 실행 (개발 모드)
+| `make test` | 테스트 실행
+| `make lint` | 린트 검사
+| `make format` | 코드 포맷팅
+| `make deb` | Debian 패키지 빌드
+| `make clean` | 빌드 아티팩트 정리
+|===
+
+== 패키지 설치 (rpm/deb)
+
+패키지 설치 시 다음 디렉토리 구조를 사용합니다.
+
+[cols="1,2"]
+|===
+| 경로 | 용도
+
+| `/etc/argus-insight-agent/` | 설정 파일
+| `/var/log/argus-insight-agent/` | 로그 파일
+| `/var/lib/argus-insight-agent/` | 데이터 디렉토리
+| `/opt/argus-insight-agent/` | 애플리케이션 코드
+| `/opt/argus-insight/agent/backups/` | 백업 디렉토리
+| `/opt/argus-insight-agent/certificates/` | 인증서 디렉토리
+|===
+
+=== systemd 서비스
+
+[source,bash]
+----
+# 서비스 시작
+sudo systemctl start argus-insight-agent
+
+# 서비스 상태 확인
+sudo systemctl status argus-insight-agent
+
+# 부팅 시 자동 시작
+sudo systemctl enable argus-insight-agent
+----
+
+== Swagger UI
+
+에이전트 시작 후 API 문서를 확인할 수 있습니다.
+
+[cols="1,2"]
+|===
+| URL | 설명
+
+| `http://localhost:{agent-port}/docs` | Swagger UI (대화형 API 테스트)
+| `http://localhost:{agent-port}/redoc` | ReDoc (읽기 전용 문서)
+|===

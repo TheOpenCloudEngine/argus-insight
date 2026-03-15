@@ -1,0 +1,156 @@
+= API 레퍼런스
+:description: Argus Insight Agent API 레퍼런스
+
+== 헬스체크
+
+[cols="1,2,3"]
+|===
+| Method | Path | 설명
+
+| GET | `/health` | 헬스체크 (status, version 반환)
+|===
+
+== 커맨드 실행
+
+[cols="1,2,3"]
+|===
+| Method | Path | 설명
+
+| POST | `/api/v1/command/execute` | 셸 명령 실행
+|===
+
+== 시스템 모니터링
+
+[cols="1,2,3"]
+|===
+| Method | Path | 설명
+
+| GET | `/api/v1/monitor/system` | 시스템 리소스 일회 조회
+| WebSocket | `/api/v1/monitor/ws` | 시스템 리소스 실시간 스트리밍
+|===
+
+== 시스템 모니터링 (고급)
+
+[cols="1,2,3"]
+|===
+| Method | Path | 설명
+
+| GET | `/api/v1/sysmon/dmesg` | dmesg 커널 로그
+| GET | `/api/v1/sysmon/cpu` | CPU 사용량 (top 스타일)
+| GET | `/api/v1/sysmon/cpu/cores` | 코어별 CPU 사용량
+| GET | `/api/v1/sysmon/network` | 네트워크 트래픽
+| GET | `/api/v1/sysmon/network/errors` | 네트워크 에러/드롭
+| GET | `/api/v1/sysmon/processes` | 프로세스별 리소스 점유율
+| GET | `/api/v1/sysmon/disk/partitions` | 디스크 파티션 현황
+|===
+
+== 패키지 관리
+
+[cols="1,2,3"]
+|===
+| Method | Path | 설명
+
+| POST | `/api/v1/package/manage` | 패키지 설치/삭제/업데이트
+| GET | `/api/v1/package/list` | 설치된 패키지 목록
+|===
+
+== 원격 터미널
+
+[cols="1,2,3"]
+|===
+| Method | Path | 설명
+
+| WebSocket | `/api/v1/terminal/ws` | PTY 기반 원격 터미널 세션
+|===
+
+== Yum 관리
+
+[cols="1,2,3"]
+|===
+| Method | Path | 설명
+
+| GET | `/api/v1/yum/repo` | yum repo 파일 목록
+| POST | `/api/v1/yum/repo` | yum repo 파일 생성
+| PUT | `/api/v1/yum/repo` | yum repo 파일 수정
+| GET | `/api/v1/yum/repo/\{filename}` | yum repo 파일 읽기
+| POST | `/api/v1/yum/repo/backup` | yum repo 전체 백업
+| POST | `/api/v1/yum/package` | yum 패키지 설치/삭제/업그레이드
+| GET | `/api/v1/yum/package` | RPM 패키지 목록
+| GET | `/api/v1/yum/package/search` | 패키지 검색
+| GET | `/api/v1/yum/package/\{name}/info` | 패키지 상세 정보
+| GET | `/api/v1/yum/package/\{name}/files` | 패키지 소유 파일 목록
+|===
+
+== 호스트 관리
+
+[cols="1,2,3"]
+|===
+| Method | Path | 설명
+
+| GET | `/api/v1/host/hostname` | hostname 조회
+| PUT | `/api/v1/host/hostname` | hostname 변경
+| GET | `/api/v1/host/hosts` | /etc/hosts 읽기
+| PUT | `/api/v1/host/hosts` | /etc/hosts 수정
+| GET | `/api/v1/host/resolv` | /etc/resolv.conf 읽기
+| PUT | `/api/v1/host/resolv` | /etc/resolv.conf 수정
+| GET | `/api/v1/host/ulimit` | ulimit 값 조회
+| PUT | `/api/v1/host/ulimit` | ulimit 값 설정
+|===
+
+== 사용자 관리
+
+[cols="1,2,3"]
+|===
+| Method | Path | 설명
+
+| GET | `/api/v1/user/users` | 사용자 목록
+| POST | `/api/v1/user/users` | 사용자 생성
+| DELETE | `/api/v1/user/users/\{username}` | 사용자 삭제
+| PUT | `/api/v1/user/sudo` | sudo 권한 부여
+| GET | `/api/v1/user/groups` | 그룹 목록
+|===
+
+== 인증서 관리
+
+[cols="1,2,3"]
+|===
+| Method | Path | 설명
+
+| POST | `/api/v1/cert/ca` | CA 인증서 업로드
+| GET | `/api/v1/cert/ca` | CA 인증서 정보
+| DELETE | `/api/v1/cert/ca` | CA 인증서 삭제
+| POST | `/api/v1/cert/host` | 호스트 인증서 생성
+| GET | `/api/v1/cert/host` | 호스트 인증서 정보
+| DELETE | `/api/v1/cert/host` | 호스트 인증서 삭제
+|===
+
+== 파일 관리
+
+[cols="1,2,3"]
+|===
+| Method | Path | 설명
+
+| POST | `/api/v1/file/directory` | 디렉토리 생성
+| DELETE | `/api/v1/file/directory` | 디렉토리 삭제
+| PUT | `/api/v1/file/chown` | 소유자 변경
+| PUT | `/api/v1/file/chmod` | 권한 변경
+| POST | `/api/v1/file/upload` | 파일 업로드
+| GET | `/api/v1/file/download` | 파일 다운로드
+| POST | `/api/v1/file/archive` | 디렉토리 압축
+| POST | `/api/v1/file/exec` | 프로그램 실행
+|===
+
+== 프로세스 관리
+
+[cols="1,2,3"]
+|===
+| Method | Path | 설명
+
+| GET | `/api/v1/process/list` | 프로세스 목록
+| GET | `/api/v1/process/detail/\{pid}` | 프로세스 상세
+| POST | `/api/v1/process/signal` | 시그널 전송
+| GET | `/api/v1/process/zombies` | 좀비 프로세스
+| POST | `/api/v1/process/kill-user` | 사용자별 프로세스 강제 종료
+| GET | `/api/v1/process/too-many-open-files` | open files 경고
+| GET | `/api/v1/process/cpu` | CPU 점유율 기준 목록
+|===

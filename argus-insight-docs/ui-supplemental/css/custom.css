@@ -1,0 +1,16 @@
+/* Argus Insight Documentation - Custom Styles */
+
+/* Adjust code block styling */
+.doc .listingblock pre {
+  font-size: 0.85em;
+  line-height: 1.6;
+}
+
+/* Table improvements */
+.doc table.tableblock {
+  font-size: 0.9em;
+}
+
+.doc table.tableblock thead th {
+  background-color: #f0f0f0;
+}

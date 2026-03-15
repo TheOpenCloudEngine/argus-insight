@@ -1,0 +1,16 @@
+{
+  "name": "argus-insight-docs",
+  "version": "0.1.0",
+  "description": "Argus Insight Platform Documentation (AsciiDoc + Antora)",
+  "private": true,
+  "scripts": {
+    "build": "antora antora-playbook.yml",
+    "build:local": "antora --fetch antora-playbook.yml",
+    "preview": "npm run build && npx http-server build/site -o -p 8888",
+    "clean": "rm -rf build .antora-cache"
+  },
+  "devDependencies": {
+    "@antora/cli": "3.1.14",
+    "@antora/site-generator": "3.1.14"
+  }
+}

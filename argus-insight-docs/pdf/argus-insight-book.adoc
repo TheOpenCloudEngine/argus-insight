@@ -1,0 +1,74 @@
+= Argus Insight Platform Guide
+:author: TheOpenCloudEngine
+:revnumber: 0.1
+:revdate: {docdate}
+:doctype: book
+:icons: font
+:toc:
+:toclevels: 3
+:sectnums:
+:sectnumlevels: 3
+:source-highlighter: rouge
+:product-name: Argus Insight
+:product-version: 0.1
+:company-name: TheOpenCloudEngine
+:server-port: 8080
+:agent-port: 8600
+
+// ============================================================
+// Part I: Overview
+// ============================================================
+
+include::../docs/modules/ROOT/pages/index.adoc[leveloffset=+1]
+
+<<<
+
+include::../docs/modules/ROOT/pages/architecture.adoc[leveloffset=+1]
+
+<<<
+
+include::../docs/modules/ROOT/pages/getting-started.adoc[leveloffset=+1]
+
+// ============================================================
+// Part II: Server
+// ============================================================
+
+<<<
+
+include::../docs/modules/server/pages/index.adoc[leveloffset=+1]
+
+<<<
+
+include::../docs/modules/server/pages/installation.adoc[leveloffset=+1]
+
+<<<
+
+include::../docs/modules/server/pages/configuration.adoc[leveloffset=+1]
+
+<<<
+
+include::../docs/modules/server/pages/api.adoc[leveloffset=+1]
+
+// ============================================================
+// Part III: Agent
+// ============================================================
+
+<<<
+
+include::../docs/modules/agent/pages/index.adoc[leveloffset=+1]
+
+<<<
+
+include::../docs/modules/agent/pages/installation.adoc[leveloffset=+1]
+
+<<<
+
+include::../docs/modules/agent/pages/configuration.adoc[leveloffset=+1]
+
+<<<
+
+include::../docs/modules/agent/pages/api.adoc[leveloffset=+1]
+
+<<<
+
+include::../docs/modules/agent/pages/cli.adoc[leveloffset=+1]

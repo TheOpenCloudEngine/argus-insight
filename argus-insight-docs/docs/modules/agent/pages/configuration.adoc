@@ -1,0 +1,100 @@
+= 설정
+:description: Argus Insight Agent 설정 가이드
+
+== 설정 시스템
+
+Spring Boot 스타일의 `$\{변수:기본값}` 문법을 사용합니다.
+
+=== config.properties (변수 정의)
+
+[source,properties]
+----
+# 서버 설정
+server.host=0.0.0.0
+server.port=8600
+
+# 로깅
+log.level=INFO
+log.dir=/var/log/argus-insight-agent
+log.filename=agent.log
+log.rolling.type=daily
+log.rolling.backup_count=30
+
+# 명령 실행
+command.timeout=300
+command.max_output=1048576
+
+# 모니터링
+monitor.interval=5
+
+# 터미널
+terminal.shell=/bin/bash
+terminal.max_sessions=10
+----
+
+=== config.yml (메인 설정)
+
+[source,yaml]
+----
+server:
+  host: ${server.host:0.0.0.0}
+  port: ${server.port:8600}
+
+logging:
+  level: ${log.level:INFO}
+  dir: ${log.dir:/var/log/argus-insight-agent}
+  filename: ${log.filename:agent.log}
+  rolling:
+    type: ${log.rolling.type:daily}
+    backup_count: ${log.rolling.backup_count:30}
+
+command:
+  timeout: ${command.timeout:300}
+  max_output: ${command.max_output:1048576}
+
+monitor:
+  interval: ${monitor.interval:5}
+
+terminal:
+  shell: ${terminal.shell:/bin/bash}
+  max_sessions: ${terminal.max_sessions:10}
+----
+
+== 설정 파일 위치
+
+[cols="1,2"]
+|===
+| 환경 | 설정 디렉토리
+
+| 패키지 설치 | `/etc/argus-insight-agent/`
+| 개발 환경 | `ARGUS_CONFIG_DIR` 환경변수로 지정
+|===
+
+== 설정 항목 전체 목록
+
+[cols="1,1,1,2"]
+|===
+| 항목 | properties 변수 | 기본값 | 설명
+
+| server.host | server.host | 0.0.0.0 | 바인드 주소
+| server.port | server.port | {agent-port} | 바인드 포트
+| logging.level | log.level | INFO | 로그 레벨
+| logging.dir | log.dir | /var/log/argus-insight-agent | 로그 디렉토리
+| command.timeout | command.timeout | 300 | 명령 실행 타임아웃 (초)
+| command.max_output | command.max_output | 1048576 | 명령 출력 최대 크기 (1MB)
+| monitor.interval | monitor.interval | 5 | 모니터링 WebSocket 전송 주기 (초)
+| terminal.shell | terminal.shell | /bin/bash | 터미널 셸
+| terminal.max_sessions | terminal.max_sessions | 10 | 최대 동시 터미널 세션 수
+| certificate.days | cert.days | 825 | 호스트 인증서 유효기간 (일)
+| certificate.key_bits | cert.key_bits | 2048 | RSA 키 크기 (비트)
+| prometheus.enable-push | prometheus.enable-push | true | Push Gateway 전송 활성화
+| prometheus.push-cron | prometheus.push-cron | * * * * * | 메트릭 전송 cron 주기
+|===
+
+== 보안 고려사항
+
+WARNING: Agent는 root 권한으로 동작합니다. 보안에 특별히 주의하세요.
+
+* **위험 명령 차단**: `rm -rf /`, `mkfs`, `dd if=/dev/zero`, fork bomb 등 치명적 명령 사전 차단
+* **출력 크기 제한**: 명령 출력은 `command.max_output`(기본 1MB)으로 제한
+* **터미널 세션 제한**: `terminal.max_sessions`으로 동시 세션 수 제한

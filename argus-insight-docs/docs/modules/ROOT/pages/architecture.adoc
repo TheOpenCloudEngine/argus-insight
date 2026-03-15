@@ -1,0 +1,67 @@
+= 아키텍처
+:description: Argus Insight 플랫폼 아키텍처
+
+== 전체 구조
+
+Argus Insight 플랫폼은 3-tier 아키텍처로 구성됩니다.
+
+[source,text]
+----
+React UI  ──HTTP/WS──>  Argus Insight Server  ──HTTP/WS──>  Argus Insight Agent(s)
+(Frontend)              (포트 {server-port})                  (포트 {agent-port})
+----
+
+=== React UI (Frontend)
+
+사용자가 직접 접근하는 웹 인터페이스입니다. Argus Insight Server의 REST API와 WebSocket을 통해 통신합니다.
+
+=== Argus Insight Server (Central)
+
+React UI와 Agent 사이의 중앙 관리 서버입니다.
+
+* **에이전트 관리**: 에이전트 등록/해제, 상태 모니터링, 헬스체크
+* **프록시**: UI 요청을 해당 에이전트로 전달하고 응답을 반환
+* **인증**: UI 사용자 인증 및 토큰 관리
+* **대시보드**: 여러 에이전트의 데이터를 집계하여 통합 뷰 제공
+
+=== Argus Insight Agent (Remote)
+
+관리 대상 서버에 설치되어 root 권한으로 동작합니다.
+
+* **커맨드 실행**: 원격 셸 명령 실행
+* **시스템 모니터링**: CPU, 메모리, 디스크, 네트워크 실시간 수집
+* **패키지 관리**: dnf/yum/apt를 통한 패키지 관리
+* **원격 터미널**: PTY 기반 WebSocket 터미널 세션
+* **파일/프로세스/인증서/호스트/사용자 관리**
+
+== 통신 흐름
+
+[source,text]
+----
+[React UI]
+    │
+    ├─ POST /api/v1/auth/login          → Server 인증
+    ├─ GET  /api/v1/agent/list          → 에이전트 목록
+    ├─ GET  /api/v1/dashboard/overview  → 대시보드
+    │
+    └─ POST /api/v1/proxy/{id}/command/execute
+           │
+           └──→ [Server] ──httpx──→ [Agent] POST /api/v1/command/execute
+                                       │
+                                       └──→ 실제 명령 실행 후 결과 반환
+----
+
+== 포트 구성
+
+[cols="1,1,2"]
+|===
+| 구성 요소 | 기본 포트 | 설명
+
+| Argus Insight Server
+| {server-port}
+| React UI 및 API 요청 수신
+
+| Argus Insight Agent
+| {agent-port}
+| Server로부터의 API 요청 수신
+|===

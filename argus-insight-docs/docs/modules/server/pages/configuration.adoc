@@ -1,0 +1,78 @@
+= 설정
+:description: Argus Insight Server 설정 가이드
+
+== 설정 시스템
+
+Spring Boot 스타일의 `$\{변수:기본값}` 문법을 사용합니다. 설정은 두 개의 파일로 구성됩니다.
+
+=== config.properties (변수 정의)
+
+Java-style `key=value` 형식으로 변수를 정의합니다.
+
+[source,properties]
+----
+# 서버 설정
+server.host=0.0.0.0
+server.port=8080
+
+# 로깅
+log.level=INFO
+log.dir=/var/log/argus-insight-server
+log.filename=server.log
+
+# CORS
+cors.origins=*
+
+# 에이전트 통신
+agent.timeout=30
+agent.health_interval=60
+----
+
+=== config.yml (메인 설정)
+
+YAML 형식의 메인 설정 파일입니다. `$\{변수명:기본값}` 문법으로 변수를 참조합니다.
+
+[source,yaml]
+----
+server:
+  host: ${server.host:0.0.0.0}
+  port: ${server.port:8080}
+
+logging:
+  level: ${log.level:INFO}
+  dir: ${log.dir:/var/log/argus-insight-server}
+  filename: ${log.filename:server.log}
+
+cors:
+  origins: ${cors.origins:*}
+
+agent:
+  timeout: ${agent.timeout:30}
+  health_interval: ${agent.health_interval:60}
+----
+
+== 설정 파일 위치
+
+[cols="1,2"]
+|===
+| 환경 | 설정 디렉토리
+
+| 패키지 설치 | `/etc/argus-insight-server/`
+| 개발 환경 | `ARGUS_SERVER_CONFIG_DIR` 환경변수로 지정
+|===
+
+== 설정 항목 전체 목록
+
+[cols="1,1,1,2"]
+|===
+| 항목 | properties 변수 | 기본값 | 설명
+
+| server.host | server.host | 0.0.0.0 | 바인드 주소
+| server.port | server.port | {server-port} | 바인드 포트
+| logging.level | log.level | INFO | 로그 레벨
+| logging.dir | log.dir | /var/log/argus-insight-server | 로그 디렉토리
+| logging.filename | log.filename | server.log | 로그 파일명
+| cors.origins | cors.origins | * | 허용할 CORS origin
+| agent.timeout | agent.timeout | 30 | 에이전트 통신 타임아웃 (초)
+| agent.health_interval | agent.health_interval | 60 | 헬스체크 주기 (초)
+|===
