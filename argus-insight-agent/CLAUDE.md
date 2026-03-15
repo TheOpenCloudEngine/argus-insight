@@ -64,7 +64,7 @@ argus-insight-agent/
 │   │   ├── router.py        # /api/v1/sysmon/* API 엔드포인트
 │   │   ├── schemas.py       # React UI용 JSON 모델 (CPU/네트워크/프로세스/디스크)
 │   │   ├── service.py       # psutil/dmesg/ethtool 기반 메트릭 수집
-│   │   └── cli.py           # 커맨드라인 인터페이스 (argus-sysmon)
+│   │   └── cli.py           # 커맨드라인 인터페이스 (argus-insight-sysmon)
 │   ├── package/             # 패키지(애플리케이션) 관리 모듈
 │   │   ├── router.py        # POST /api/v1/package/manage, GET /api/v1/package/list
 │   │   ├── schemas.py       # PackageRequest, PackageInfo, PackageActionResult
@@ -76,17 +76,17 @@ argus-insight-agent/
 │   │   ├── router.py        # /api/v1/yum/* API 엔드포인트
 │   │   ├── schemas.py       # Repo/Package 요청/응답 모델
 │   │   ├── service.py       # 리포지토리 CRUD, 백업, 패키지 관리
-│   │   └── cli.py           # 커맨드라인 인터페이스 (argus-yum)
+│   │   └── cli.py           # 커맨드라인 인터페이스 (argus-insight-yum)
 │   ├── hostmgr/             # 호스트 관리 모듈
 │   │   ├── router.py        # /api/v1/host/* API 엔드포인트
 │   │   ├── schemas.py       # Hostname/Hosts/Resolv 요청/응답 모델
 │   │   ├── service.py       # hostname 변경, /etc/hosts·resolv.conf 관리
-│   │   └── cli.py           # 커맨드라인 인터페이스 (argus-host)
+│   │   └── cli.py           # 커맨드라인 인터페이스 (argus-insight-host)
 │   └── usermgr/             # 사용자 관리 모듈
 │       ├── router.py        # /api/v1/user/* API 엔드포인트
 │       ├── schemas.py       # User/Group 요청/응답 모델
 │       ├── service.py       # 사용자/그룹 CRUD, sudo 관리, 백업
-│       └── cli.py           # 커맨드라인 인터페이스 (argus-user)
+│       └── cli.py           # 커맨드라인 인터페이스 (argus-insight-user)
 ├── tests/
 │   ├── conftest.py          # 공통 fixtures (httpx AsyncClient)
 │   ├── test_config_loader.py # config loader 테스트

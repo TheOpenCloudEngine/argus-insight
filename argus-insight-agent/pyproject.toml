@@ -27,10 +27,10 @@ dev = [
 
 [project.scripts]
 argus-insight-agent = "app.main:run"
-argus-sysmon = "app.sysmon.cli:main"
-argus-yum = "app.yum.cli:main"
-argus-host = "app.hostmgr.cli:main"
-argus-user = "app.usermgr.cli:main"
+argus-insight-sysmon = "app.sysmon.cli:main"
+argus-insight-yum = "app.yum.cli:main"
+argus-insight-host = "app.hostmgr.cli:main"
+argus-insight-user = "app.usermgr.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["app*"]

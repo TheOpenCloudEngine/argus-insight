@@ -11,9 +11,13 @@ override_dh_auto_install:
 	# Install Python dependencies
 	pip3 install --root=debian/argus-insight-agent --prefix=/opt/argus-insight-agent --no-deps .
 
-	# Entry point
+	# Entry points
 	mkdir -p debian/argus-insight-agent/opt/argus-insight-agent/bin
 	install -m 755 scripts/argus-insight-agent debian/argus-insight-agent/opt/argus-insight-agent/bin/argus-insight-agent
+	install -m 755 scripts/argus-insight-sysmon debian/argus-insight-agent/opt/argus-insight-agent/bin/argus-insight-sysmon
+	install -m 755 scripts/argus-insight-yum debian/argus-insight-agent/opt/argus-insight-agent/bin/argus-insight-yum
+	install -m 755 scripts/argus-insight-host debian/argus-insight-agent/opt/argus-insight-agent/bin/argus-insight-host
+	install -m 755 scripts/argus-insight-user debian/argus-insight-agent/opt/argus-insight-agent/bin/argus-insight-user
 
 	# Config
 	mkdir -p debian/argus-insight-agent/etc/argus-insight-agent
