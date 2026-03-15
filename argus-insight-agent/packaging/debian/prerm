@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+
+#DEBHELPER#
+
+if [ "$1" = "remove" ]; then
+    systemctl stop argus-agent.service || true
+    systemctl disable argus-agent.service || true
+fi

@@ -1,0 +1,37 @@
+# Argus Insight Agent Configuration
+# Variables use Spring Boot style: ${variable:default_value}
+# Values are resolved from config.properties. If not found, the default value is used.
+
+app:
+  name: argus-insight-agent
+  version: 0.1.0
+  debug: false
+
+server:
+  host: ${server.host:0.0.0.0}
+  port: ${server.port:8600}
+
+logging:
+  level: ${log.level:INFO}
+  dir: ${log.dir:/var/log/argus-insight-agent}
+  filename: ${log.filename:agent.log}
+  rolling:
+    type: ${log.rolling.type:daily}
+    backup_count: ${log.rolling.backup_count:30}
+
+data:
+  dir: ${data.dir:/var/lib/argus-insight-agent}
+
+backup:
+  dir: ${backup.dir:/opt/argus-insight/agent/backups}
+
+command:
+  timeout: ${command.timeout:300}
+  max_output: ${command.max_output:1048576}
+
+monitor:
+  interval: ${monitor.interval:5}
+
+terminal:
+  shell: ${terminal.shell:/bin/bash}
+  max_sessions: ${terminal.max_sessions:10}
