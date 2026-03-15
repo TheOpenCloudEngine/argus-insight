@@ -3,6 +3,20 @@
 
 extends: default
 
+font:
+  catalog:
+    merge: true
+    Noto Sans KR:
+      normal: fonts/NotoSansKR-Regular.ttf
+      bold: fonts/NotoSansKR-Bold.ttf
+      italic: fonts/NotoSansKR-Regular.ttf
+      bold_italic: fonts/NotoSansKR-Bold.ttf
+    D2Coding:
+      normal: fonts/D2Coding.ttf
+      bold: fonts/D2CodingBold.ttf
+      italic: fonts/D2Coding.ttf
+      bold_italic: fonts/D2CodingBold.ttf
+
 page:
   size: A4
   margin: [30mm, 25mm, 30mm, 25mm]
@@ -10,7 +24,7 @@ page:
 
 base:
   font_color: 333333
-  font_family: Noto Serif
+  font_family: Noto Sans KR
   font_size: 10
   line_height: 1.5
 
@@ -78,7 +92,7 @@ heading:
     margin_bottom: 4
 
 code:
-  font_family: M+ 1mn
+  font_family: D2Coding
   font_size: 9
   background_color: F5F5F5
   border_color: E0E0E0
@@ -86,7 +100,7 @@ code:
   padding: [4, 6, 4, 6]
 
 codespan:
-  font_family: M+ 1mn
+  font_family: D2Coding
   font_size: 9.5
   font_color: C7254E
   background_color: F9F2F4

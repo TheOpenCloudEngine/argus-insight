@@ -1,30 +1,35 @@
 font:
   catalog:
+    Noto Sans KR:
+      normal: fonts/NotoSansKR-Regular.ttf
+      bold: fonts/NotoSansKR-Bold.ttf
+      italic: fonts/NotoSansKR-Regular.ttf # 한글은 이탤릭이 없는 경우가 많아 보통 Regular로 대체
+      bold_italic: fonts/NotoSansKR-Bold.ttf
     NanumMyeonjo:
-      normal: NanumMyeongjo.ttf
-      bold: NanumMyeongjoBold.ttf
-      italic: NanumMyeongjo.ttf
-      bold_italic: NanumMyeongjoBold.ttf
+      normal: fonts/NanumMyeongjo.ttf
+      bold: fonts/NanumMyeongjoBold.ttf
+      italic: fonts/NanumMyeongjo.ttf
+      bold_italic: fonts/NanumMyeongjoBold.ttf
     D2Coding:
-      normal: D2Coding.ttf
-      bold: D2CodingBold.ttf
-      italic: D2Coding.ttf
-      bold_italic: D2CodingBold.ttf
+      normal: fonts/D2Coding.ttf
+      bold: fonts/D2CodingBold.ttf
+      italic: fonts/D2Coding.ttf
+      bold_italic: fonts/D2CodingBold.ttf
     NanumGothic:
-      normal: NanumGothic.ttf
-      bold: NanumGothicBold.ttf
-      italic: NanumGothic.ttf
-      bold_italic: NanumGothicBold.ttf
+      normal: fonts/NanumGothic.ttf
+      bold: fonts/NanumGothicBold.ttf
+      italic: fonts/NanumGothic.ttf
+      bold_italic: fonts/NanumGothicBold.ttf
     NanumBarunGothic:
-      normal: NanumBarunGothic.ttf
-      bold: NanumBarunGothicBold.ttf
-      italic: NanumBarunGothic.ttf
-      bold_italic: NanumBarunGothicBold.ttf
+      normal: fonts/NanumBarunGothic.ttf
+      bold: fonts/NanumBarunGothicBold.ttf
+      italic: fonts/NanumBarunGothic.ttf
+      bold_italic: fonts/NanumBarunGothicBold.ttf
     NanumSquare:
-      normal: NanumSquare.ttf
-      bold: NanumSquareB.ttf
-      italic: NanumSquare.ttf
-      bold_italic: NanumSquareB.ttf
+      normal: fonts/NanumSquare.ttf
+      bold: fonts/NanumSquareB.ttf
+      italic: fonts/NanumSquare.ttf
+      bold_italic: fonts/NanumSquareB.ttf
   fallbacks:
     # NOTE M+ 1p doesn't support all CJK characters, but it at least has some coverage
     - NanumSquare
@@ -41,7 +46,7 @@ page:
 base:
   background_color: ffffff
   font_color: 333333
-  font_family: NotoSansKorean
+  font_family: NanumSquare
   # choose one of these font_size/line_height_length combinations
   #font_size: 14
   #line_height_length: 20
@@ -99,7 +104,7 @@ heading:
 title_page:
   align: center
   # 커버 이미지
-  background_image: manual_cover.jpg
+  # background_image: manual_cover.jpg
   title:
     top: 30%
     #font_size: $base_font_size * 3
