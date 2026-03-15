@@ -10,6 +10,7 @@
 - **원격 터미널** (`terminal`): PTY 기반 WebSocket 터미널 세션으로 서버에 직접 접속하는 것과 동일한 경험 제공
 - **Yum 리포지토리 및 패키지 관리** (`yum`): yum repo 파일 CRUD, 백업, 패키지 설치/삭제/업그레이드, 패키지 정보 조회. API와 CLI 모두 지원
 - **시스템 모니터링** (`sysmon`): dmesg, CPU(top/htop 스타일), 네트워크(인터페이스별 트래픽/에러), 프로세스(VSS/RSS/PSS/USS/SWAP), 디스크 파티션. React UI용 JSON 구조화. API와 CLI 모두 지원
+- **호스트 관리** (`hostmgr`): hostname 조회/변경/검증, /etc/hosts CRUD/백업, /etc/resolv.conf CRUD/백업/네임서버 관리. API와 CLI 모두 지원
 
 ## 운영 환경
 
@@ -69,11 +70,16 @@ argus-insight-agent/
 │   ├── terminal/            # 원격 터미널 모듈
 │   │   ├── router.py        # WS /api/v1/terminal/ws
 │   │   └── service.py       # TerminalManager: PTY fork, 세션 관리, resize 지원
-│   └── yum/                 # Yum 리포지토리 & 패키지 관리 모듈
-│       ├── router.py        # /api/v1/yum/* API 엔드포인트
-│       ├── schemas.py       # Repo/Package 요청/응답 모델
-│       ├── service.py       # 리포지토리 CRUD, 백업, 패키지 관리
-│       └── cli.py           # 커맨드라인 인터페이스 (argus-yum)
+│   ├── yum/                 # Yum 리포지토리 & 패키지 관리 모듈
+│   │   ├── router.py        # /api/v1/yum/* API 엔드포인트
+│   │   ├── schemas.py       # Repo/Package 요청/응답 모델
+│   │   ├── service.py       # 리포지토리 CRUD, 백업, 패키지 관리
+│   │   └── cli.py           # 커맨드라인 인터페이스 (argus-yum)
+│   └── hostmgr/             # 호스트 관리 모듈
+│       ├── router.py        # /api/v1/host/* API 엔드포인트
+│       ├── schemas.py       # Hostname/Hosts/Resolv 요청/응답 모델
+│       ├── service.py       # hostname 변경, /etc/hosts·resolv.conf 관리
+│       └── cli.py           # 커맨드라인 인터페이스 (argus-host)
 ├── tests/
 │   ├── conftest.py          # 공통 fixtures (httpx AsyncClient)
 │   ├── test_config_loader.py # config loader 테스트
@@ -82,7 +88,8 @@ argus-insight-agent/
 │   ├── test_package/        # 패키지 관리 테스트 (미작성)
 │   ├── test_sysmon/         # 시스템 모니터링 테스트
 │   ├── test_terminal/       # 터미널 테스트 (미작성)
-│   └── test_yum/            # yum 모듈 테스트
+│   ├── test_yum/            # yum 모듈 테스트
+│   └── test_hostmgr/        # 호스트 관리 테스트
 ├── packaging/
 │   ├── config/
 │   │   ├── config.yml         # YAML 설정 파일 (${var} 변수 사용)
@@ -225,6 +232,19 @@ python -m app.yum.cli package remove nginx
 python -m app.yum.cli package upgrade nginx
 python -m app.yum.cli package info nginx
 python -m app.yum.cli package files nginx
+
+# Host CLI (커맨드라인에서 직접 실행)
+python -m app.hostmgr.cli hostname get
+python -m app.hostmgr.cli hostname set myhost
+python -m app.hostmgr.cli hostname validate
+python -m app.hostmgr.cli hosts read
+python -m app.hostmgr.cli hosts update /path/to/hosts
+python -m app.hostmgr.cli hosts backup
+python -m app.hostmgr.cli resolv read
+python -m app.hostmgr.cli resolv update /path/to/resolv.conf
+python -m app.hostmgr.cli resolv backup
+python -m app.hostmgr.cli resolv nameservers
+python -m app.hostmgr.cli resolv set-nameservers 8.8.8.8 8.8.4.4
 ```
 
 ## API 엔드포인트
@@ -255,6 +275,17 @@ python -m app.yum.cli package files nginx
 | GET       | /api/v1/yum/package/search   | 설치된 패키지 검색                                 |
 | GET       | /api/v1/yum/package/{name}/info  | 패키지 상세 메타데이터 조회                       |
 | GET       | /api/v1/yum/package/{name}/files | 패키지 소유 파일 목록                            |
+| GET       | /api/v1/host/hostname            | 현재 hostname 및 FQDN 조회                      |
+| PUT       | /api/v1/host/hostname            | hostname 변경                                   |
+| GET       | /api/v1/host/hostname/validate   | hostname 일관성 검증                              |
+| GET       | /api/v1/host/hosts               | /etc/hosts 파일 읽기                              |
+| PUT       | /api/v1/host/hosts               | /etc/hosts 파일 수정                              |
+| POST      | /api/v1/host/hosts/backup        | /etc/hosts 백업 (hosts_YYYYMMDD.zip)              |
+| GET       | /api/v1/host/resolv              | /etc/resolv.conf 파일 읽기                        |
+| PUT       | /api/v1/host/resolv              | /etc/resolv.conf 파일 수정                        |
+| POST      | /api/v1/host/resolv/backup       | /etc/resolv.conf 백업 (resolv_YYYYMMDD.zip)       |
+| GET       | /api/v1/host/resolv/nameservers  | 네임서버 목록 파싱 조회                             |
+| PUT       | /api/v1/host/resolv/nameservers  | 네임서버 엔트리 수정                                |
 
 ## 로깅
 
