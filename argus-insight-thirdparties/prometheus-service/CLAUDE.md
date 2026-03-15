@@ -1,6 +1,6 @@
 # Prometheus Packaging
 
-Prometheus, Pushgateway, Alertmanager의 공식 바이너리를 다운로드하여 RPM 및 Debian 패키지로 빌드하는 프로젝트입니다. [nfpm](https://github.com/goreleaser/nfpm)을 사용하여 단일 YAML 설정에서 두 포맷의 패키지를 동시에 생성합니다.
+Prometheus, Pushgateway, Alertmanager의 공식 바이너리를 다운로드하여 RPM/Debian 패키지 및 Docker 이미지로 빌드하는 프로젝트입니다. [nfpm](https://github.com/goreleaser/nfpm)을 사용하여 단일 YAML 설정에서 두 포맷의 패키지를 동시에 생성하고, Multi-stage Dockerfile로 Docker 이미지를 빌드합니다.
 
 ## 프로젝트 구조
 
@@ -15,7 +15,10 @@ prometheus-service/
 │   ├── postinstall-*.sh      # systemctl daemon-reload, enable, 디렉토리 생성
 │   ├── preremove-*.sh        # 서비스 stop/disable
 │   └── postremove.sh         # systemctl daemon-reload
+├── docker-compose.yml        # Docker Compose 오케스트레이션
+├── .dockerignore
 ├── prometheus/
+│   ├── Dockerfile            # Multi-stage Docker 빌드
 │   ├── nfpm.yaml             # 패키지 정의 (prometheus + promtool + consoles + rules)
 │   ├── prometheus.service    # systemd unit
 │   ├── prometheus.default    # /etc/default/prometheus (CLI 옵션)
@@ -24,10 +27,12 @@ prometheus-service/
 │       ├── node_alerts.yml       # 노드 알림 (InstanceDown, CPU, Memory, Disk)
 │       └── prometheus_alerts.yml # Prometheus 자체 알림 (ConfigReload, TSDB 등)
 ├── pushgateway/
+│   ├── Dockerfile            # Multi-stage Docker 빌드
 │   ├── nfpm.yaml
 │   ├── pushgateway.service
 │   └── pushgateway.default
 ├── alertmanager/
+│   ├── Dockerfile            # Multi-stage Docker 빌드
 │   ├── nfpm.yaml             # alertmanager + amtool
 │   ├── alertmanager.service
 │   ├── alertmanager.default
@@ -47,6 +52,16 @@ make alertmanager # Alertmanager만 빌드
 make rpm          # RPM만 빌드
 make deb          # DEB만 빌드
 make clean        # dist/ 삭제
+
+# Docker
+make docker              # 전체 Docker 이미지 빌드
+make docker-prometheus   # Prometheus 이미지만 빌드
+make docker-pushgateway  # Pushgateway 이미지만 빌드
+make docker-alertmanager # Alertmanager 이미지만 빌드
+make docker-push         # 이미지 레지스트리 push
+
+# Docker Compose
+docker compose --env-file versions.env up --build -d
 ```
 
 빌드 시 nfpm 바이너리가 자동으로 다운로드됩니다. 빌드 호스트에 `curl`, `tar`, `make`가 필요합니다. 패키지 생성 후 `rpm -qpi`/`dpkg-deb -I`로 패키지 정보와 파일 목록을 자동 출력합니다.
@@ -87,6 +102,23 @@ make clean        # dist/ 삭제
 - CLI 옵션은 `/etc/default/<서비스명>` EnvironmentFile에서 관리
 - 설정 파일은 `config|noreplace`로 마킹되어 패키지 업그레이드 시 보존
 - systemd 서비스: `systemctl start|stop|restart|status <서비스명>`
+
+## Docker 이미지
+
+Airgap 환경을 지원하기 위해 Multi-stage build로 빌드 시점에 공식 바이너리를 다운로드하여 이미지에 내장합니다. `versions.env`의 버전을 `--build-arg`로 주입합니다.
+
+- Base image: `alpine:3.21`
+- 이미지 네이밍: `argus-insight/<component>:<version>`
+- 바이너리 경로, 설정 파일 경로, 실행 사용자 등은 RPM/DEB 패키지와 동일
+
+### Docker 볼륨
+
+| 컴포넌트 | 볼륨 경로 | 용도 |
+|---|---|---|
+| Prometheus | `/etc/prometheus` | 설정 파일 (prometheus.yml, rules/) |
+| Prometheus | `/var/lib/prometheus/data` | TSDB 데이터 |
+| Alertmanager | `/etc/prometheus` | 설정 파일 (alertmanager.yml) |
+| Alertmanager | `/var/lib/prometheus/alertmanager` | 알림 데이터 |
 
 ## 코드 컨벤션
 

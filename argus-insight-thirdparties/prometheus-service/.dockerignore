@@ -1,0 +1,4 @@
+dist/
+*.rpm
+*.deb
+.git/
