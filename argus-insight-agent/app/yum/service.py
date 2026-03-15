@@ -143,7 +143,7 @@ def backup_repo_files() -> RepoBackupResult:
     backup_dir = settings.backup_dir
     backup_dir.mkdir(parents=True, exist_ok=True)
 
-    date_str = datetime.now().strftime("%Y%m%d")
+    date_str = datetime.now().strftime("%Y%m%d%H%M%S")
     zip_name = f"yum_{date_str}.zip"
     zip_path = backup_dir / zip_name
 

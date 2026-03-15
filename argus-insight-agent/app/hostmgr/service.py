@@ -44,11 +44,11 @@ async def _run(cmd: str) -> tuple[int, str, str]:
 
 
 def _backup_file(source: Path, prefix: str) -> BackupResult:
-    """Backup a single file to backup_dir as prefix_YYYYMMDD.zip."""
+    """Backup a single file to backup_dir as prefix_YYYYMMDDHHmmss.zip."""
     backup_dir = settings.backup_dir
     backup_dir.mkdir(parents=True, exist_ok=True)
 
-    date_str = datetime.now().strftime("%Y%m%d")
+    date_str = datetime.now().strftime("%Y%m%d%H%M%S")
     zip_name = f"{prefix}_{date_str}.zip"
     zip_path = backup_dir / zip_name
 

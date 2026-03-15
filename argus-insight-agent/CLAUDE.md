@@ -280,10 +280,10 @@ python -m app.hostmgr.cli resolv set-nameservers 8.8.8.8 8.8.4.4
 | GET       | /api/v1/host/hostname/validate   | hostname 일관성 검증                              |
 | GET       | /api/v1/host/hosts               | /etc/hosts 파일 읽기                              |
 | PUT       | /api/v1/host/hosts               | /etc/hosts 파일 수정                              |
-| POST      | /api/v1/host/hosts/backup        | /etc/hosts 백업 (hosts_YYYYMMDD.zip)              |
+| POST      | /api/v1/host/hosts/backup        | /etc/hosts 백업 (hosts_YYYYMMDDHHmmss.zip)              |
 | GET       | /api/v1/host/resolv              | /etc/resolv.conf 파일 읽기                        |
 | PUT       | /api/v1/host/resolv              | /etc/resolv.conf 파일 수정                        |
-| POST      | /api/v1/host/resolv/backup       | /etc/resolv.conf 백업 (resolv_YYYYMMDD.zip)       |
+| POST      | /api/v1/host/resolv/backup       | /etc/resolv.conf 백업 (resolv_YYYYMMDDHHmmss.zip)       |
 | GET       | /api/v1/host/resolv/nameservers  | 네임서버 목록 파싱 조회                             |
 | PUT       | /api/v1/host/resolv/nameservers  | 네임서버 엔트리 수정                                |
 
@@ -304,7 +304,7 @@ INFO 2025-03-15 14:30:45.123 12345 argus-insight-agent main.py:lifespan:25 - Arg
 
 - 기본 로그 파일: `agent.log`
 - 일 단위로 자동 롤링
-- 롤링된 파일명: `agent_20250101.log` (날짜 suffix)
+- 롤링된 파일명: `agent_20260315.log` (날짜 suffix)
 - 기본 보관 개수: 30일 (`log.rolling.backup_count`)
 
 ### 로그 디렉토리
