@@ -15,6 +15,7 @@
 - **인증서 관리** (`certmgr`): CA 인증서 업로드/삭제, 호스트 인증서 생성(openssl)/조회/삭제. CA 서명 기반 TLS 인증서 관리. API와 CLI 모두 지원
 - **파일 관리** (`filemgr`): 디렉토리 생성/삭제, 파일 업로드/다운로드/삭제, 소유자/권한 변경(chown/chmod), 심볼릭 링크 생성, 디렉토리 압축(zip/tar), 프로그램 실행(stdout/stderr 수집, 타임아웃). API와 CLI 모두 지원
 - **프로세스 관리** (`processmgr`): 프로세스 목록/상세정보, 시그널 전송(SIGTERM/SIGKILL/SIGHUP 등), 좀비 프로세스 조회, 사용자별 프로세스 강제 종료, open files 모니터링(limits/OOM score/90% 경고), CPU 점유율 현황. API와 CLI 모두 지원
+- **Prometheus 메트릭 수집** (`metrics`): 호스트 메트릭(CPU, 메모리, 프로세스, 좀비, 소켓, 디스크, 네트워크, open files)을 주기적으로 수집하여 Prometheus Push Gateway로 전송. cron 기반 스케줄링, POST 방식으로 다른 에이전트 데이터 보호, FQDN 기반 인스턴스 격리
 
 ## 운영 환경
 
@@ -103,11 +104,15 @@ argus-insight-agent/
 │   │   ├── schemas.py       # 파일/디렉토리 요청/응답 모델
 │   │   ├── service.py       # 파일 CRUD, chown/chmod, 압축
 │   │   └── cli.py           # 커맨드라인 인터페이스 (argus-insight-file)
-│   └── processmgr/          # 프로세스 관리 모듈
-│       ├── router.py        # /api/v1/process/* API 엔드포인트
-│       ├── schemas.py       # 프로세스 요청/응답 모델
-│       ├── service.py       # 프로세스 조회, 시그널, open files 모니터링
-│       └── cli.py           # 커맨드라인 인터페이스 (argus-insight-process)
+│   ├── processmgr/          # 프로세스 관리 모듈
+│   │   ├── router.py        # /api/v1/process/* API 엔드포인트
+│   │   ├── schemas.py       # 프로세스 요청/응답 모델
+│   │   ├── service.py       # 프로세스 조회, 시그널, open files 모니터링
+│   │   └── cli.py           # 커맨드라인 인터페이스 (argus-insight-process)
+│   └── metrics/             # Prometheus 메트릭 수집 모듈
+│       ├── collector.py     # 호스트 메트릭 수집 (CPU/메모리/디스크/네트워크 등)
+│       ├── pusher.py        # Push Gateway 전송 (POST 방식, FQDN 인스턴스)
+│       └── scheduler.py     # cron 기반 비동기 스케줄러 (MetricsScheduler)
 ├── tests/
 │   ├── conftest.py          # 공통 fixtures (httpx AsyncClient)
 │   ├── test_config_loader.py # config loader 테스트
@@ -121,7 +126,8 @@ argus-insight-agent/
 │   ├── test_usermgr/        # 사용자 관리 테스트
 │   ├── test_certmgr/        # 인증서 관리 테스트
 │   ├── test_filemgr/        # 파일 관리 테스트
-│   └── test_processmgr/     # 프로세스 관리 테스트
+│   ├── test_processmgr/     # 프로세스 관리 테스트
+│   └── test_metrics/        # Prometheus 메트릭 테스트
 ├── packaging/
 │   ├── config/
 │   │   ├── config.yml         # YAML 설정 파일 (${var} 변수 사용)
@@ -220,6 +226,10 @@ command:
 | certificate | days | cert.days | 825 | 호스트 인증서 유효기간 (일) |
 | certificate | key_bits | cert.key_bits | 2048 | 호스트 인증서 RSA 키 크기 (비트) |
 | filemgr | exec_timeout | filemgr.exec_timeout | 60 | 프로그램 실행 기본 타임아웃 (초) |
+| prometheus | enable-push | prometheus.enable-push | true | Push Gateway 전송 활성화 |
+| prometheus | push-cron | prometheus.push-cron | * * * * * | 메트릭 전송 cron 주기 |
+| prometheus | pushgateway.host | prometheus.pushgateway.host | localhost | Push Gateway 호스트 |
+| prometheus | pushgateway.port | prometheus.pushgateway.port | 9091 | Push Gateway 포트 |
 
 ## 주요 명령어
 
