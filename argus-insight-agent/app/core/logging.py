@@ -7,7 +7,6 @@ Rolled log files are named with a date suffix: agent_20260315.log
 """
 
 import logging
-import os
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
@@ -64,9 +63,7 @@ class _DailyFileHandler(TimedRotatingFileHandler):
         parts = default_name.rsplit(".", 1)
         if len(parts) == 2:
             date_suffix = parts[1]
-            return str(
-                self._log_dir / f"{self._base_stem}_{date_suffix}{self._base_ext}"
-            )
+            return str(self._log_dir / f"{self._base_stem}_{date_suffix}{self._base_ext}")
         return default_name
 
 

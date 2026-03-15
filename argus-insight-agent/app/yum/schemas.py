@@ -4,10 +4,10 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
-
 # ---------------------------------------------------------------------------
 # Repository
 # ---------------------------------------------------------------------------
+
 
 class RepoFileInfo(BaseModel):
     """Summary info of a .repo file in /etc/yum.repos.d/."""
@@ -54,6 +54,7 @@ class RepoBackupResult(BaseModel):
 # ---------------------------------------------------------------------------
 # Package
 # ---------------------------------------------------------------------------
+
 
 class YumPackageAction(str, Enum):
     """Yum package actions."""
@@ -124,6 +125,7 @@ class YumPackageSearchResult(BaseModel):
 # ---------------------------------------------------------------------------
 # Common
 # ---------------------------------------------------------------------------
+
 
 class OperationResult(BaseModel):
     """Generic success/failure result."""

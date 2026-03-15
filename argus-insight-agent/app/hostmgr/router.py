@@ -9,9 +9,14 @@ from app.hostmgr.schemas import (
     HostnameChangeRequest,
     HostnameInfo,
     HostnameValidation,
+    LimitsConfResponse,
+    LimitsConfSetRequest,
     NameserverUpdateRequest,
     OperationResult,
     ResolvConfInfo,
+    UlimitAllResponse,
+    UlimitEntry,
+    UlimitSetRequest,
 )
 from app.hostmgr.service import (
     backup_hosts_file,
@@ -19,8 +24,12 @@ from app.hostmgr.service import (
     change_hostname,
     get_hostname,
     get_nameservers,
+    get_ulimit,
+    get_ulimit_all,
     read_hosts_file,
     read_resolv_conf,
+    set_ulimit,
+    set_user_max_open_files,
     update_hosts_file,
     update_nameservers,
     update_resolv_conf,
@@ -117,3 +126,35 @@ async def resolv_nameservers_update(
 ) -> OperationResult:
     """Update nameserver entries in /etc/resolv.conf."""
     return update_nameservers(request.nameservers)
+
+
+# ---------------------------------------------------------------------------
+# Ulimit
+# ---------------------------------------------------------------------------
+
+
+@router.get("/ulimit", response_model=UlimitAllResponse)
+async def ulimit_get_all() -> UlimitAllResponse:
+    """Get all ulimit values (soft and hard)."""
+    return await get_ulimit_all()
+
+
+@router.get("/ulimit/{option}", response_model=UlimitEntry)
+async def ulimit_get(option: str) -> UlimitEntry:
+    """Get a specific ulimit value. Option: -n, -u, -v, -s, -c."""
+    try:
+        return await get_ulimit(option)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/ulimit", response_model=OperationResult)
+async def ulimit_set(request: UlimitSetRequest) -> OperationResult:
+    """Set a ulimit value (persists to /etc/security/limits.conf)."""
+    return await set_ulimit(request.option, request.value)
+
+
+@router.put("/ulimit/nofile", response_model=LimitsConfResponse)
+async def ulimit_set_nofile(request: LimitsConfSetRequest) -> LimitsConfResponse:
+    """Set max open files (nofile) for a user or all users in limits.conf."""
+    return set_user_max_open_files(request)

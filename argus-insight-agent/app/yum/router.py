@@ -36,6 +36,7 @@ router = APIRouter(prefix="/yum", tags=["yum"])
 # Repository endpoints
 # ---------------------------------------------------------------------------
 
+
 @router.get("/repo", response_model=list[RepoFileInfo])
 async def repo_list() -> list[RepoFileInfo]:
     """List all .repo files in /etc/yum.repos.d/."""
@@ -72,6 +73,7 @@ async def repo_backup() -> RepoBackupResult:
 # ---------------------------------------------------------------------------
 # Package endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.post("/package", response_model=YumPackageResult)
 async def package_manage(request: YumPackageRequest) -> YumPackageResult:

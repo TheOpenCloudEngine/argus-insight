@@ -2,10 +2,10 @@
 
 from pydantic import BaseModel, Field
 
-
 # ---------------------------------------------------------------------------
 # 1. dmesg
 # ---------------------------------------------------------------------------
+
 
 class DmesgEntry(BaseModel):
     """A single dmesg log entry."""
@@ -26,6 +26,7 @@ class DmesgResult(BaseModel):
 # ---------------------------------------------------------------------------
 # 2. CPU usage (top-style aggregate)
 # ---------------------------------------------------------------------------
+
 
 class CpuUsage(BaseModel):
     """Aggregate CPU usage breakdown (top-style)."""
@@ -48,6 +49,7 @@ class CpuUsage(BaseModel):
 # ---------------------------------------------------------------------------
 # 3. Per-core CPU usage (htop-style)
 # ---------------------------------------------------------------------------
+
 
 class CoreUsage(BaseModel):
     """CPU usage for a single core."""
@@ -74,6 +76,7 @@ class CpuCoreUsage(BaseModel):
 # ---------------------------------------------------------------------------
 # 4 & 5. Network usage & errors
 # ---------------------------------------------------------------------------
+
 
 class NetworkInterfaceUsage(BaseModel):
     """Network usage for a single interface."""
@@ -144,6 +147,7 @@ class NetworkErrorResult(BaseModel):
 # 6. Process resource usage
 # ---------------------------------------------------------------------------
 
+
 class ProcessMemoryDetail(BaseModel):
     """Detailed memory usage for a process."""
 
@@ -182,6 +186,7 @@ class ProcessListResult(BaseModel):
 # ---------------------------------------------------------------------------
 # 7. Disk partitions
 # ---------------------------------------------------------------------------
+
 
 class DiskPartitionInfo(BaseModel):
     """Disk partition information."""

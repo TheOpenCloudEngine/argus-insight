@@ -81,6 +81,7 @@ async def get_dmesg(lines: int = 200, level: str | None = None) -> DmesgResult:
 # 2. CPU usage (top-style aggregate)
 # ---------------------------------------------------------------------------
 
+
 def get_cpu_usage(interval: float = 0.5) -> CpuUsage:
     """Get aggregate CPU usage breakdown.
 
@@ -119,6 +120,7 @@ def get_cpu_usage(interval: float = 0.5) -> CpuUsage:
 # ---------------------------------------------------------------------------
 # 3. Per-core CPU usage (htop-style)
 # ---------------------------------------------------------------------------
+
 
 def get_cpu_core_usage(interval: float = 0.5) -> CpuCoreUsage:
     """Get per-core CPU usage breakdown.
@@ -160,6 +162,7 @@ def get_cpu_core_usage(interval: float = 0.5) -> CpuCoreUsage:
 # ---------------------------------------------------------------------------
 # 4. Network usage (total + per interface)
 # ---------------------------------------------------------------------------
+
 
 def _get_iface_speed(iface: str) -> int:
     """Try to read interface speed in Mbps from sysfs."""
@@ -259,6 +262,7 @@ def get_network_usage() -> NetworkUsageResult:
 # 5. Network errors per interface
 # ---------------------------------------------------------------------------
 
+
 async def get_network_errors() -> NetworkErrorResult:
     """Get detailed network error counters per interface.
 
@@ -288,15 +292,24 @@ async def get_network_errors() -> NetworkErrorResult:
             carrier_errors=ext.get("tx_carrier_errors", 0),
             collisions=ext.get("collisions", 0),
             has_errors=(
-                stats.errin + stats.errout + stats.dropin + stats.dropout
-                + ext.get("rx_over_errors", 0) + ext.get("tx_carrier_errors", 0)
+                stats.errin
+                + stats.errout
+                + stats.dropin
+                + stats.dropout
+                + ext.get("rx_over_errors", 0)
+                + ext.get("tx_carrier_errors", 0)
                 + ext.get("collisions", 0)
-            ) > 0,
+            )
+            > 0,
         )
         total_errors += (
-            entry.errors_in + entry.errors_out
-            + entry.drops_in + entry.drops_out
-            + entry.overruns_in + entry.carrier_errors + entry.collisions
+            entry.errors_in
+            + entry.errors_out
+            + entry.drops_in
+            + entry.drops_out
+            + entry.overruns_in
+            + entry.carrier_errors
+            + entry.collisions
         )
         entries.append(entry)
 
@@ -331,6 +344,7 @@ async def _get_ethtool_stats(iface: str) -> dict[str, int]:
 # 6. Process resource usage
 # ---------------------------------------------------------------------------
 
+
 def get_process_list(
     sort_by: str = "cpu_percent",
     limit: int = 50,
@@ -350,17 +364,26 @@ def get_process_list(
 
     # Brief pause for CPU measurement
     import time
+
     time.sleep(0.1)
 
     processes = []
     for proc in psutil.process_iter():
         try:
             with proc.oneshot():
-                pinfo = proc.as_dict(attrs=[
-                    "pid", "name", "username", "status",
-                    "cpu_percent", "memory_percent",
-                    "memory_info", "num_threads", "create_time",
-                ])
+                pinfo = proc.as_dict(
+                    attrs=[
+                        "pid",
+                        "name",
+                        "username",
+                        "status",
+                        "cpu_percent",
+                        "memory_percent",
+                        "memory_info",
+                        "num_threads",
+                        "create_time",
+                    ]
+                )
 
                 mem_info = pinfo.get("memory_info")
                 if mem_info is None:
@@ -438,6 +461,7 @@ def get_process_list(
 # ---------------------------------------------------------------------------
 # 7. Disk partitions
 # ---------------------------------------------------------------------------
+
 
 def _get_parent_disk(device: str) -> str:
     """Extract parent disk device from partition path.

@@ -73,9 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # dmesg
     dmesg_p = sub.add_parser("dmesg", help="Capture dmesg output")
-    dmesg_p.add_argument(
-        "--lines", type=int, default=200, help="Number of lines (default: 200)"
-    )
+    dmesg_p.add_argument("--lines", type=int, default=200, help="Number of lines (default: 200)")
     dmesg_p.add_argument(
         "--level", type=str, default=None, help="Filter by level (err, warn, info)"
     )
@@ -101,7 +99,9 @@ def build_parser() -> argparse.ArgumentParser:
     # processes
     proc_p = sub.add_parser("processes", help="Process resource usage")
     proc_p.add_argument(
-        "--sort", type=str, default="cpu_percent",
+        "--sort",
+        type=str,
+        default="cpu_percent",
         choices=["cpu_percent", "memory_percent", "rss", "pid"],
         help="Sort field (default: cpu_percent)",
     )

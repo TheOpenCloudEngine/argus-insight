@@ -86,8 +86,7 @@ def _resolve_dict(data: dict[str, Any], props: dict[str, str]) -> dict[str, Any]
             resolved[key] = _resolve_dict(value, props)
         elif isinstance(value, list):
             resolved[key] = [
-                _resolve_value(item, props) if isinstance(item, str) else item
-                for item in value
+                _resolve_value(item, props) if isinstance(item, str) else item for item in value
             ]
         else:
             resolved[key] = value

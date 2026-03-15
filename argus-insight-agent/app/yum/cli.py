@@ -26,8 +26,8 @@ import asyncio
 import json
 import sys
 
-from app.yum.schemas import YumPackageAction
 from app.yum import service
+from app.yum.schemas import YumPackageAction
 
 
 def _to_json(obj) -> str:
@@ -48,6 +48,7 @@ def _read_content(file_path: str | None) -> str:
 # ---------------------------------------------------------------------------
 # Repository commands
 # ---------------------------------------------------------------------------
+
 
 def cmd_repo_list(_args: argparse.Namespace) -> None:
     result = service.list_repo_files()
@@ -89,6 +90,7 @@ def cmd_repo_backup(_args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 # Package commands
 # ---------------------------------------------------------------------------
+
 
 def cmd_package_list(_args: argparse.Namespace) -> None:
     result = asyncio.run(service.list_installed_packages())
@@ -142,6 +144,7 @@ def cmd_package_files(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 # Argument parser
 # ---------------------------------------------------------------------------
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(

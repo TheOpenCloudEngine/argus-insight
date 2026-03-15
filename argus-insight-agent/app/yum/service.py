@@ -30,6 +30,7 @@ REPO_DIR = Path("/etc/yum.repos.d")
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 async def _run(cmd: str, timeout: int = 120) -> tuple[int, str, str]:
     """Run a shell command and return (exit_code, stdout, stderr)."""
     proc = await asyncio.create_subprocess_shell(
@@ -58,6 +59,7 @@ def _sanitize_filename(filename: str) -> str:
 # 1. Repository file list
 # ---------------------------------------------------------------------------
 
+
 def list_repo_files() -> list[RepoFileInfo]:
     """List all .repo files in /etc/yum.repos.d/."""
     if not REPO_DIR.is_dir():
@@ -78,6 +80,7 @@ def list_repo_files() -> list[RepoFileInfo]:
 # ---------------------------------------------------------------------------
 # 2. Create repo file
 # ---------------------------------------------------------------------------
+
 
 def create_repo_file(filename: str, content: str) -> OperationResult:
     """Create a new .repo file."""
@@ -100,6 +103,7 @@ def create_repo_file(filename: str, content: str) -> OperationResult:
 # 3. Update repo file
 # ---------------------------------------------------------------------------
 
+
 def update_repo_file(filename: str, content: str) -> OperationResult:
     """Update an existing .repo file."""
     safe_name = _sanitize_filename(filename)
@@ -121,6 +125,7 @@ def update_repo_file(filename: str, content: str) -> OperationResult:
 # 4. Read repo file
 # ---------------------------------------------------------------------------
 
+
 def read_repo_file(filename: str) -> RepoFileContent:
     """Read the content of a .repo file."""
     safe_name = _sanitize_filename(filename)
@@ -137,6 +142,7 @@ def read_repo_file(filename: str) -> RepoFileContent:
 # ---------------------------------------------------------------------------
 # 5. Backup repo files
 # ---------------------------------------------------------------------------
+
 
 def backup_repo_files() -> RepoBackupResult:
     """Backup all .repo files to a zip archive."""
@@ -191,6 +197,7 @@ def backup_repo_files() -> RepoBackupResult:
 # 8. Upgrade package
 # ---------------------------------------------------------------------------
 
+
 async def manage_yum_package(name: str, action: YumPackageAction) -> YumPackageResult:
     """Install, remove, or upgrade a package via yum."""
     cmd_map = {
@@ -216,6 +223,7 @@ async def manage_yum_package(name: str, action: YumPackageAction) -> YumPackageR
 # 9. Package file list (rpm -ql)
 # ---------------------------------------------------------------------------
 
+
 async def list_package_files(name: str) -> YumPackageFiles:
     """List files owned by an installed package."""
     exit_code, stdout, stderr = await _run(f"rpm -ql {name}")
@@ -228,6 +236,7 @@ async def list_package_files(name: str) -> YumPackageFiles:
 # ---------------------------------------------------------------------------
 # 10. Package metadata (yum info)
 # ---------------------------------------------------------------------------
+
 
 async def get_package_info(name: str) -> YumPackageDetail:
     """Get detailed metadata for a package."""
@@ -266,6 +275,7 @@ async def get_package_info(name: str) -> YumPackageDetail:
 # 11. Installed packages list (rpm -qa)
 # ---------------------------------------------------------------------------
 
+
 async def list_installed_packages() -> list[YumPackageInfo]:
     """List all installed RPM packages."""
     fmt = r"%{NAME}\t%{VERSION}\t%{RELEASE}\t%{ARCH}\t%{SUMMARY}\n"
@@ -294,12 +304,11 @@ async def list_installed_packages() -> list[YumPackageInfo]:
 # 12. Search packages (yum search)
 # ---------------------------------------------------------------------------
 
+
 async def search_packages(keyword: str) -> list[YumPackageSearchResult]:
     """Search installed packages by keyword."""
     fmt = r"%{NAME}\t%{VERSION}-%{RELEASE}\t%{SUMMARY}\n"
-    exit_code, stdout, _ = await _run(
-        f"rpm -qa --queryformat '{fmt}' | grep -i {keyword}"
-    )
+    exit_code, stdout, _ = await _run(f"rpm -qa --queryformat '{fmt}' | grep -i {keyword}")
     results = []
     for line in stdout.strip().splitlines():
         parts = line.split("\t", 2)

@@ -135,6 +135,42 @@ def cmd_resolv_set_nameservers(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Ulimit
+# ---------------------------------------------------------------------------
+
+
+def cmd_ulimit_get_all(_args: argparse.Namespace) -> None:
+    result = asyncio.run(service.get_ulimit_all())
+    print(_to_json(result))
+
+
+def cmd_ulimit_get(args: argparse.Namespace) -> None:
+    try:
+        result = asyncio.run(service.get_ulimit(args.option))
+        print(_to_json(result))
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_ulimit_set(args: argparse.Namespace) -> None:
+    result = asyncio.run(service.set_ulimit(args.option, args.value))
+    print(_to_json(result))
+    if not result.success:
+        sys.exit(1)
+
+
+def cmd_ulimit_nofile(args: argparse.Namespace) -> None:
+    from app.hostmgr.schemas import LimitsConfSetRequest
+
+    request = LimitsConfSetRequest(user=args.user, soft=args.soft, hard=args.hard)
+    result = service.set_user_max_open_files(request)
+    print(_to_json(result))
+    if not result.success:
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
 # Argument parser
 # ---------------------------------------------------------------------------
 
@@ -187,6 +223,30 @@ def build_parser() -> argparse.ArgumentParser:
     setns_p = resolv_sub.add_parser("set-nameservers", help="Set nameservers")
     setns_p.add_argument("nameservers", nargs="+", help="Nameserver IP addresses")
 
+    # --- ulimit ---
+    ulimit_parser = sub.add_parser("ulimit", help="Ulimit management")
+    ulimit_sub = ulimit_parser.add_subparsers(dest="action", required=True)
+
+    ulimit_sub.add_parser("get-all", help="Get all ulimit values")
+
+    ulimit_get_p = ulimit_sub.add_parser("get", help="Get a specific ulimit value")
+    ulimit_get_p.add_argument(
+        "option", choices=["-n", "-u", "-v", "-s", "-c"], help="Ulimit option"
+    )
+
+    ulimit_set_p = ulimit_sub.add_parser("set", help="Set a ulimit value (persists to limits.conf)")
+    ulimit_set_p.add_argument(
+        "option", choices=["-n", "-u", "-v", "-s", "-c"], help="Ulimit option"
+    )
+    ulimit_set_p.add_argument("value", help="New limit value (number or 'unlimited')")
+
+    ulimit_nofile_p = ulimit_sub.add_parser(
+        "nofile", help="Set max open files for a user in limits.conf"
+    )
+    ulimit_nofile_p.add_argument("user", help="Username or '*' for all users")
+    ulimit_nofile_p.add_argument("soft", help="Soft limit value")
+    ulimit_nofile_p.add_argument("hard", help="Hard limit value")
+
     return parser
 
 
@@ -202,6 +262,10 @@ _DISPATCH = {
     ("resolv", "backup"): cmd_resolv_backup,
     ("resolv", "nameservers"): cmd_resolv_nameservers,
     ("resolv", "set-nameservers"): cmd_resolv_set_nameservers,
+    ("ulimit", "get-all"): cmd_ulimit_get_all,
+    ("ulimit", "get"): cmd_ulimit_get,
+    ("ulimit", "set"): cmd_ulimit_set,
+    ("ulimit", "nofile"): cmd_ulimit_nofile,
 }
 
 

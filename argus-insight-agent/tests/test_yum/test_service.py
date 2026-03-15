@@ -1,13 +1,11 @@
 """Tests for yum service - repository file operations."""
 
 import zipfile
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from app.yum import service
-from app.yum.schemas import YumPackageAction
 
 
 @pytest.fixture
@@ -30,6 +28,7 @@ def _patch_repo_dir(repo_dir):
 # ---------------------------------------------------------------------------
 # Repo file operations
 # ---------------------------------------------------------------------------
+
 
 def test_list_repo_files(repo_dir):
     result = service.list_repo_files()
@@ -85,6 +84,7 @@ def test_read_repo_file_not_found(repo_dir):
 # ---------------------------------------------------------------------------
 # Backup
 # ---------------------------------------------------------------------------
+
 
 def test_backup_repo_files(repo_dir, tmp_path):
     backup_dir = tmp_path / "backups"

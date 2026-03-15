@@ -35,3 +35,11 @@ monitor:
 terminal:
   shell: ${terminal.shell:/bin/bash}
   max_sessions: ${terminal.max_sessions:10}
+
+certificate:
+  dir: ${cert.dir:/opt/argus-insight-agent/certificates}
+  days: ${cert.days:825}
+  key_bits: ${cert.key_bits:2048}
+
+filemgr:
+  exec_timeout: ${filemgr.exec_timeout:60}

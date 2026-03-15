@@ -1,9 +1,8 @@
 """Tests for config loader."""
 
 import pytest
-from pathlib import Path
 
-from app.core.config_loader import load_properties, load_config, _resolve_value
+from app.core.config_loader import _resolve_value, load_config, load_properties
 
 
 @pytest.fixture
@@ -94,9 +93,7 @@ def test_empty_default_value(tmp_path):
 def test_default_with_special_characters(tmp_path):
     """Test default values containing paths and special chars."""
     (tmp_path / "config.properties").write_text("")
-    (tmp_path / "config.yml").write_text(
-        "log:\n  dir: ${log.dir:/var/log/argus-insight-agent}\n"
-    )
+    (tmp_path / "config.yml").write_text("log:\n  dir: ${log.dir:/var/log/argus-insight-agent}\n")
     config = load_config(config_dir=tmp_path)
     assert config["log"]["dir"] == "/var/log/argus-insight-agent"
 

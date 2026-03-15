@@ -8,19 +8,26 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.hostmgr.schemas import (
+    ULIMIT_OPTIONS,
     BackupResult,
     FileContent,
     HostnameInfo,
     HostnameValidation,
+    LimitsConfEntry,
+    LimitsConfResponse,
+    LimitsConfSetRequest,
     NameserverInfo,
     OperationResult,
     ResolvConfInfo,
+    UlimitAllResponse,
+    UlimitEntry,
 )
 
 logger = logging.getLogger(__name__)
 
 HOSTS_FILE = Path("/etc/hosts")
 RESOLV_CONF = Path("/etc/resolv.conf")
+LIMITS_CONF = Path("/etc/security/limits.conf")
 
 
 # ---------------------------------------------------------------------------
@@ -314,3 +321,169 @@ def update_nameservers(nameservers: list[str]) -> OperationResult:
         )
     except OSError as e:
         return OperationResult(success=False, message=str(e))
+
+
+# ---------------------------------------------------------------------------
+# 12. Ulimit - get all values
+# ---------------------------------------------------------------------------
+
+# Mapping from ulimit option to limits.conf item name
+_ULIMIT_TO_LIMITS_ITEM: dict[str, str] = {
+    "-n": "nofile",
+    "-u": "nproc",
+    "-v": "as",
+    "-s": "stack",
+    "-c": "core",
+}
+
+
+async def get_ulimit_all() -> UlimitAllResponse:
+    """Get all ulimit values (soft and hard) for the supported options."""
+    entries: list[UlimitEntry] = []
+    for option, resource in ULIMIT_OPTIONS.items():
+        _, soft, _ = await _run(f"bash -c 'ulimit {option} -S'")
+        _, hard, _ = await _run(f"bash -c 'ulimit {option} -H'")
+        entries.append(UlimitEntry(option=option, resource=resource, soft=soft, hard=hard))
+    return UlimitAllResponse(entries=entries)
+
+
+# ---------------------------------------------------------------------------
+# 13. Ulimit - get specific value
+# ---------------------------------------------------------------------------
+
+
+async def get_ulimit(option: str) -> UlimitEntry:
+    """Get a specific ulimit value (soft and hard)."""
+    if option not in ULIMIT_OPTIONS:
+        raise ValueError(f"Unsupported ulimit option: {option}. Use one of {list(ULIMIT_OPTIONS)}")
+    _, soft, _ = await _run(f"bash -c 'ulimit {option} -S'")
+    _, hard, _ = await _run(f"bash -c 'ulimit {option} -H'")
+    return UlimitEntry(option=option, resource=ULIMIT_OPTIONS[option], soft=soft, hard=hard)
+
+
+# ---------------------------------------------------------------------------
+# 14. Ulimit - set specific value (runtime)
+# ---------------------------------------------------------------------------
+
+
+async def set_ulimit(option: str, value: str) -> OperationResult:
+    """Set a ulimit value at runtime and persist to /etc/security/limits.conf."""
+    if option not in ULIMIT_OPTIONS:
+        return OperationResult(
+            success=False,
+            message=f"Unsupported ulimit option: {option}. Use one of {list(ULIMIT_OPTIONS)}",
+        )
+
+    # Persist to limits.conf for * (all users), both soft and hard
+    item = _ULIMIT_TO_LIMITS_ITEM[option]
+    result = _update_limits_conf("*", item, value, value)
+    if not result.success:
+        return OperationResult(success=False, message=result.message)
+
+    logger.info("Set ulimit %s to %s (persisted to limits.conf)", option, value)
+    return OperationResult(
+        success=True,
+        message=f"Set ulimit {option} ({ULIMIT_OPTIONS[option]}) to {value} "
+        f"(persisted to {LIMITS_CONF})",
+    )
+
+
+# ---------------------------------------------------------------------------
+# 15. Limits.conf - set max open files for a user
+# ---------------------------------------------------------------------------
+
+
+def set_user_max_open_files(request: LimitsConfSetRequest) -> LimitsConfResponse:
+    """Set max open files (nofile) for a specific user or all users (*) in limits.conf."""
+    return _update_limits_conf(request.user, "nofile", request.soft, request.hard)
+
+
+# ---------------------------------------------------------------------------
+# 16. Limits.conf helpers
+# ---------------------------------------------------------------------------
+
+
+def _parse_limits_conf(content: str) -> list[LimitsConfEntry]:
+    """Parse /etc/security/limits.conf and return entries."""
+    entries: list[LimitsConfEntry] = []
+    for line in content.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        parts = stripped.split()
+        if len(parts) >= 4:
+            entries.append(
+                LimitsConfEntry(domain=parts[0], type=parts[1], item=parts[2], value=parts[3])
+            )
+    return entries
+
+
+def _update_limits_conf(
+    domain: str, item: str, soft_value: str, hard_value: str
+) -> LimitsConfResponse:
+    """Update or add entries in /etc/security/limits.conf.
+
+    If entries for the given domain+item already exist, they are updated in-place.
+    Otherwise, new entries are appended.
+    """
+    if not LIMITS_CONF.is_file():
+        return LimitsConfResponse(
+            success=False,
+            message=f"File not found: {LIMITS_CONF}",
+        )
+
+    try:
+        raw = LIMITS_CONF.read_text(encoding="utf-8")
+    except OSError as e:
+        return LimitsConfResponse(success=False, message=str(e))
+
+    lines = raw.splitlines()
+    new_lines: list[str] = []
+    updated_soft = False
+    updated_hard = False
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            parts = stripped.split()
+            if len(parts) >= 4 and parts[0] == domain and parts[2] == item:
+                if parts[1] == "soft":
+                    new_lines.append(f"{domain}\tsoft\t{item}\t{soft_value}")
+                    updated_soft = True
+                    continue
+                elif parts[1] == "hard":
+                    new_lines.append(f"{domain}\thard\t{item}\t{hard_value}")
+                    updated_hard = True
+                    continue
+        new_lines.append(line)
+
+    # Append entries that were not found/updated
+    if not updated_soft:
+        new_lines.append(f"{domain}\tsoft\t{item}\t{soft_value}")
+    if not updated_hard:
+        new_lines.append(f"{domain}\thard\t{item}\t{hard_value}")
+
+    # Ensure trailing newline
+    content = "\n".join(new_lines)
+    if not content.endswith("\n"):
+        content += "\n"
+
+    try:
+        LIMITS_CONF.write_text(content, encoding="utf-8")
+    except OSError as e:
+        return LimitsConfResponse(success=False, message=str(e))
+
+    result_entries = [
+        LimitsConfEntry(domain=domain, type="soft", item=item, value=soft_value),
+        LimitsConfEntry(domain=domain, type="hard", item=item, value=hard_value),
+    ]
+
+    action = "Updated" if (updated_soft or updated_hard) else "Added"
+    logger.info(
+        "%s %s %s soft=%s hard=%s in %s", action, domain, item, soft_value, hard_value, LIMITS_CONF
+    )
+    return LimitsConfResponse(
+        success=True,
+        message=f"{action} {domain} {item}: soft={soft_value}, hard={hard_value}",
+        entries=result_entries,
+    )

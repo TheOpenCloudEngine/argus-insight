@@ -3,9 +3,9 @@
 import asyncio
 import logging
 
+from app.command.schemas import CommandResponse
 from app.core.config import settings
 from app.core.security import is_command_blocked
-from app.command.schemas import CommandResponse
 
 logger = logging.getLogger(__name__)
 

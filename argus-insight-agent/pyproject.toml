@@ -27,10 +27,13 @@ dev = [
 
 [project.scripts]
 argus-insight-agent = "app.main:run"
-argus-sysmon = "app.sysmon.cli:main"
-argus-yum = "app.yum.cli:main"
-argus-host = "app.hostmgr.cli:main"
-argus-user = "app.usermgr.cli:main"
+argus-insight-sysmon = "app.sysmon.cli:main"
+argus-insight-yum = "app.yum.cli:main"
+argus-insight-host = "app.hostmgr.cli:main"
+argus-insight-user = "app.usermgr.cli:main"
+argus-insight-cert = "app.certmgr.cli:main"
+argus-insight-file = "app.filemgr.cli:main"
+argus-insight-process = "app.processmgr.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["app*"]
@@ -41,6 +44,9 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+"app/main.py" = ["E501"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

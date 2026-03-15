@@ -1,14 +1,14 @@
 """Remote terminal session management."""
 
 import asyncio
+import fcntl
 import logging
 import os
 import pty
 import signal
 import struct
-import fcntl
 import termios
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from app.core.config import settings
 
