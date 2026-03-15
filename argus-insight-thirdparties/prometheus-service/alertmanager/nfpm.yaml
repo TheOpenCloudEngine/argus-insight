@@ -1,0 +1,62 @@
+name: alertmanager
+arch: __ARCH__
+platform: linux
+version: __ALERTMANAGER_VERSION__
+release: "1"
+section: monitoring
+maintainer: "Open Cloud Engine <fharenheit@gmail.com>"
+description: "Prometheus Alertmanager for handling alerts"
+vendor: "Prometheus Authors"
+homepage: "https://prometheus.io/docs/alerting/latest/alertmanager/"
+license: "Apache-2.0"
+
+contents:
+  - src: ../dist/download/alertmanager-__ALERTMANAGER_VERSION__.__OS__-__ARCH__/alertmanager
+    dst: /opt/argus-insight/prometheus/alertmanager
+    file_info:
+      mode: 0755
+
+  - src: ../dist/download/alertmanager-__ALERTMANAGER_VERSION__.__OS__-__ARCH__/amtool
+    dst: /opt/argus-insight/prometheus/amtool
+    file_info:
+      mode: 0755
+
+  - src: alertmanager.service
+    dst: /usr/lib/systemd/system/alertmanager.service
+    file_info:
+      mode: 0644
+
+  - src: alertmanager.default
+    dst: /etc/default/alertmanager
+    type: config|noreplace
+    file_info:
+      mode: 0644
+
+  - src: alertmanager.yml
+    dst: /etc/prometheus/alertmanager.yml
+    type: config|noreplace
+    file_info:
+      mode: 0640
+      owner: root
+      group: prometheus
+
+  - dst: /var/lib/prometheus/alertmanager
+    type: dir
+    file_info:
+      mode: 0755
+      owner: prometheus
+      group: prometheus
+
+scripts:
+  preinstall: ../common/scripts/preinstall.sh
+  postinstall: ../common/scripts/postinstall-alertmanager.sh
+  preremove: ../common/scripts/preremove-alertmanager.sh
+  postremove: ../common/scripts/postremove.sh
+
+overrides:
+  rpm:
+    depends:
+      - /bin/sh
+  deb:
+    depends:
+      - adduser

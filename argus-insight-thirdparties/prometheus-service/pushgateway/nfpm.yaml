@@ -1,0 +1,42 @@
+name: pushgateway
+arch: __ARCH__
+platform: linux
+version: __PUSHGATEWAY_VERSION__
+release: "1"
+section: monitoring
+maintainer: "Open Cloud Engine <fharenheit@gmail.com>"
+description: "Prometheus Pushgateway for batch job metrics"
+vendor: "Prometheus Authors"
+homepage: "https://github.com/prometheus/pushgateway"
+license: "Apache-2.0"
+
+contents:
+  - src: ../dist/download/pushgateway-__PUSHGATEWAY_VERSION__.__OS__-__ARCH__/pushgateway
+    dst: /opt/argus-insight/prometheus/pushgateway
+    file_info:
+      mode: 0755
+
+  - src: pushgateway.service
+    dst: /usr/lib/systemd/system/pushgateway.service
+    file_info:
+      mode: 0644
+
+  - src: pushgateway.default
+    dst: /etc/default/pushgateway
+    type: config|noreplace
+    file_info:
+      mode: 0644
+
+scripts:
+  preinstall: ../common/scripts/preinstall.sh
+  postinstall: ../common/scripts/postinstall-pushgateway.sh
+  preremove: ../common/scripts/preremove-pushgateway.sh
+  postremove: ../common/scripts/postremove.sh
+
+overrides:
+  rpm:
+    depends:
+      - /bin/sh
+  deb:
+    depends:
+      - adduser

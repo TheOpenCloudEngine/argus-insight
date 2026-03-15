@@ -1,0 +1,52 @@
+groups:
+  - name: prometheus_alerts
+    rules:
+      # Prometheus configuration reload failure
+      - alert: PrometheusConfigReloadFailed
+        expr: prometheus_config_last_reload_successful == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus config reload failed on {{ $labels.instance }}"
+          description: "Prometheus configuration reload has failed. Check the Prometheus logs for errors."
+
+      # Prometheus too many restarts (>2 in 30 minutes)
+      - alert: PrometheusTooManyRestarts
+        expr: changes(process_start_time_seconds{job="prometheus"}[30m]) > 2
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus too many restarts on {{ $labels.instance }}"
+          description: "Prometheus has restarted more than 2 times in the last 30 minutes."
+
+      # Alertmanager configuration reload failure
+      - alert: AlertmanagerConfigReloadFailed
+        expr: alertmanager_config_last_reload_successful == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Alertmanager config reload failed on {{ $labels.instance }}"
+          description: "Alertmanager configuration reload has failed. Check the Alertmanager logs for errors."
+
+      # Prometheus target scraping slow (>5s)
+      - alert: PrometheusTargetScrapingSlow
+        expr: prometheus_target_interval_length_seconds{quantile="0.9"} > 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow target scraping on {{ $labels.instance }}"
+          description: "Prometheus is scraping targets slowly. 90th percentile scrape duration is {{ $value | printf \"%.1f\" }}s."
+
+      # Prometheus TSDB compaction failure
+      - alert: PrometheusTsdbCompactionsFailed
+        expr: increase(prometheus_tsdb_compactions_failed_total[1h]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus TSDB compaction failed on {{ $labels.instance }}"
+          description: "Prometheus TSDB has failed compactions in the last hour."

@@ -1,0 +1,84 @@
+name: prometheus
+arch: __ARCH__
+platform: linux
+version: __PROMETHEUS_VERSION__
+release: "1"
+section: monitoring
+maintainer: "Open Cloud Engine <fharenheit@gmail.com>"
+description: "Prometheus monitoring system and time series database"
+vendor: "Prometheus Authors"
+homepage: "https://prometheus.io/"
+license: "Apache-2.0"
+
+contents:
+  - src: ../dist/download/prometheus-__PROMETHEUS_VERSION__.__OS__-__ARCH__/prometheus
+    dst: /opt/argus-insight/prometheus/prometheus
+    file_info:
+      mode: 0755
+
+  - src: ../dist/download/prometheus-__PROMETHEUS_VERSION__.__OS__-__ARCH__/promtool
+    dst: /opt/argus-insight/prometheus/promtool
+    file_info:
+      mode: 0755
+
+  - src: prometheus.service
+    dst: /usr/lib/systemd/system/prometheus.service
+    file_info:
+      mode: 0644
+
+  - src: prometheus.default
+    dst: /etc/default/prometheus
+    type: config|noreplace
+    file_info:
+      mode: 0644
+
+  - src: prometheus.yml
+    dst: /etc/prometheus/prometheus.yml
+    type: config|noreplace
+    file_info:
+      mode: 0640
+      owner: root
+      group: prometheus
+
+  - src: rules/node_alerts.yml
+    dst: /etc/prometheus/rules/node_alerts.yml
+    type: config|noreplace
+    file_info:
+      mode: 0640
+      owner: root
+      group: prometheus
+
+  - src: rules/prometheus_alerts.yml
+    dst: /etc/prometheus/rules/prometheus_alerts.yml
+    type: config|noreplace
+    file_info:
+      mode: 0640
+      owner: root
+      group: prometheus
+
+  - src: ../dist/download/prometheus-__PROMETHEUS_VERSION__.__OS__-__ARCH__/consoles/
+    dst: /etc/prometheus/consoles/
+
+  - src: ../dist/download/prometheus-__PROMETHEUS_VERSION__.__OS__-__ARCH__/console_libraries/
+    dst: /etc/prometheus/console_libraries/
+
+  - dst: /var/lib/prometheus/data
+    type: dir
+    file_info:
+      mode: 0755
+      owner: prometheus
+      group: prometheus
+
+scripts:
+  preinstall: ../common/scripts/preinstall.sh
+  postinstall: ../common/scripts/postinstall-prometheus.sh
+  preremove: ../common/scripts/preremove-prometheus.sh
+  postremove: ../common/scripts/postremove.sh
+
+overrides:
+  rpm:
+    depends:
+      - /bin/sh
+  deb:
+    depends:
+      - adduser

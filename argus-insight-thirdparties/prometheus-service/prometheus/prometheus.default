@@ -1,0 +1,1 @@
+PROMETHEUS_OPTS=--config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/var/lib/prometheus/data --web.listen-address=0.0.0.0:9090 --web.enable-lifecycle
