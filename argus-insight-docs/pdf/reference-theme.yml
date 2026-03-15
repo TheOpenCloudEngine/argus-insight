@@ -1,0 +1,299 @@
+font:
+  catalog:
+    NotoSansKorean:
+      normal: NotoSansKorean.ttf
+      bold: NotoSansKorean.ttf
+      italic: NotoSansKorean.ttf
+      bold_italic: NotoSansKorean.ttf
+    NanumMyeonjo:
+      normal: NanumMyeongjo.ttf
+      bold: NanumMyeongjoBold.ttf
+      italic: NanumMyeongjo.ttf
+      bold_italic: NanumMyeongjoBold.ttf
+    D2Coding:
+      normal: D2Coding.ttf
+      bold: D2CodingBold.ttf
+      italic: D2Coding.ttf
+      bold_italic: D2CodingBold.ttf
+    NanumGothic:
+      normal: NanumGothic.ttf
+      bold: NanumGothicBold.ttf
+      italic: NanumGothic.ttf
+      bold_italic: NanumGothicBold.ttf
+    NanumBarunGothic:
+      normal: NanumBarunGothic.ttf
+      bold: NanumBarunGothicBold.ttf
+      italic: NanumBarunGothic.ttf
+      bold_italic: NanumBarunGothicBold.ttf
+    NanumSquare:
+      normal: NanumSquareRegular.ttf
+      bold: NanumSquareBold.ttf
+      italic: NanumSquareRegular.ttf
+      bold_italic: NanumSquareBold.ttf
+    RixGothic:
+      normal: RixGoM.ttf
+      bold: RixGoB.ttf
+      italic: RixGoM.ttf
+      bold_italic: RixGoB.ttf
+    NotoSerif:
+      normal: notoserif-regular-latin.ttf
+      bold: notoserif-bold-latin.ttf
+      italic: notoserif-italic-latin.ttf
+      bold_italic: notoserif-bolditalic-latin.ttf
+    # NOTE currently, callout numbers don't work with LiberationMono
+    LiberationMono:
+      normal: D2Coding.ttf
+      bold: D2CodingBold.ttf
+      italic: D2Coding.ttf
+      bold_italic: D2CodingBold.ttf
+    Mplus1mn:
+      normal: mplus1mn-regular-ascii-conums.ttf
+      bold: mplus1mn-bold-ascii.ttf
+      italic: mplus1mn-italic-ascii.ttf
+      bold_italic: mplus1mn-bolditalic-ascii.ttf
+    Mplus1pMultilingual:
+      normal: NanumMyeongjo.ttf
+      bold: NanumMyeongjo.ttf
+      italic: NanumMyeongjo.ttf
+      bold_italic: NanumMyeongjo.ttf
+  fallbacks:
+    # NOTE M+ 1p doesn't support all CJK characters, but it at least has some coverage
+    - NotoSansKorean
+brand:
+  primary_color: 005498
+page:
+  layout: portrait
+  # 페이지 워터 마크로 활용 가능
+  # background_image: watermark.png
+  background_color: ffffff
+  # multiply inches by 72 to get pt values
+  margin: [0.5 * 72, 0.67 * 72, 0.67 * 72, 0.67 * 72]
+  size: A4
+base:
+  background_color: ffffff
+  font_color: 333333
+  font_family: NotoSansKorean
+  # choose one of these font_size/line_height_length combinations
+  #font_size: 14
+  #line_height_length: 20
+  #font_size: 11.25
+  #line_height_length: 18
+  #font_size: 11.2
+  #line_height_length: 16
+  font_size: 12
+  #line_height_length: 15
+  # correct line height for NotoSerif metrics
+  line_height_length: 12
+  #font_size: 11.25
+  #line_height_length: 18
+  # line_height: $base_line_height_length / $base_font_size
+  line_height: 1.4
+  font_size_large: 14
+  font_size_small: 8
+  font_size_min: 7
+  font_style: normal
+  align: justify
+  border_radius: 4
+  border_width: 0.5
+  border_color: EEEEEE
+# FIXME vertical_rhythm is weird; we should think in terms of ems
+#vertical_rhythm: $base_line_height_length * 2 / 3
+# correct line height for NotoSerif metrics
+vertical_rhythm: $base_line_height_length
+horizontal_rhythm: $base_line_height_length
+link:
+  font_color: 428bca
+# literal is currently used for inline monospaced in prose and table cells
+literal:
+  font_color: b12146
+  font_family: D2Coding
+  font_size: 9
+  font_style: bold
+heading:
+  font_color: A94442
+  font_style: normal
+  font_family: $base_font_family
+  h1_font_size: 20
+  h2_font_size: 18
+  h3_font_size: 16
+  h4_font_size: 14
+  h5_font_size: 12
+  h6_font_size: 12
+  #line_height: 1.4
+  # correct line height for NotoSerif metrics
+  line_height: 1.3
+  margin_top: $vertical_rhythm * 0.2
+  margin_bottom: $vertical_rhythm * 0.8
+#prose:
+#  margin_top: 0
+#  margin_bottom: $vertical_rhythm
+title_page:
+  align: center
+  # 커버 이미지
+  background_image: manual_cover.jpg
+  title:
+    top: 30%
+    #font_size: $base_font_size * 3
+    font_size: 0
+    font_style: bold
+    font_color: 111111
+    line_height: 0.9
+  subtitle:
+    font_size: $base_font_size * 2.2
+    font_style: bold_italic
+    line_height: 1
+    margin_top: $base_font_size * 20
+  authors:
+    margin_top: $base_font_size * 30
+    font_size: $base_font_size * 1.4
+    font_color: 181818
+  revision:
+    margin_top: $base_font_size * 5
+    font_style: bold
+    font_size: $base_font_size * 2
+#  logo:
+#    align: center
+#    image: image:argus_logo_t_black.png[width=450]
+#    top: 20%
+#prose:
+#  margin_top: 0
+#  margin_bottom: $vertical_rhythm
+block:
+  #margin_top: 0
+  #margin_bottom: $vertical_rhythm
+  padding: [$vertical_rhythm, $vertical_rhythm * 1.25, $vertical_rhythm, $vertical_rhythm * 1.25]
+# code is used for source blocks (perhaps change to source or listing?)
+caption:
+  font_style: italic
+  font_color: A94442
+  align: left
+  margin_inside: $vertical_rhythm * 0.25
+  margin_outside: 0
+code:
+  font_color: 333333
+  #font_family: Liberation Mono
+  #font_size: floor($base_font_size * 0.9)
+  #font_size: 10
+  #padding: [9.5, 9.5, 9.5, 9.5]
+  # LiberationMono carries extra gap below line
+  #padding: [10, 10, 7.5, 10]
+  #line_height: 1.45
+  font_family: D2Coding
+  font_size: 8
+  #padding: [$base_font_size, $code_font_size, $base_font_size, $code_font_size]
+  padding: $code_font_size
+  line_height: 1.25
+  background_color: f5f5f5
+  border_color: cccccc
+  border_radius: $base_border_radius
+  border_width: 0.75
+blockquote:
+  font_color: $base_font_color
+  font_size: $base_font_size_large
+  border_width: 5
+  border_color: $base_border_color
+  cite_font_size: $base_font_size_small
+  cite_font_color: 999999
+sidebar:
+  border_color: $page_background_color
+  border_radius: $base_border_radius
+  border_width: $base_border_width
+  background_color: eeeeee
+  title_font_color: $heading_font_color
+  title_font_family: $heading_font_family
+  title_font_size: $heading_h4_font_size
+  title_font_style: $heading_font_style
+  title_align: center
+example:
+  border_color: $base_border_color
+  border_radius: $base_border_radius
+  border_width: 0.75
+  background_color: transparent
+admonition:
+  border_color: $base_border_color
+  border_width: $base_border_width
+conum:
+  font_family: $base_font_family
+  font_color: b12146
+  font_size: $base_font_size
+  line_height: 4 / 3
+image:
+  width: 100%
+  align_default: left
+  scaled_width_default: 0.5
+lead:
+  # QUESTION what about $base_font_size_large?
+  #font_size: floor($base_line_height_length * 0.8)
+  #font_size: floor($base_font_size * 1.15)
+  #line_height: 1.3
+  font_size: $base_font_size_large
+  line_height: 1.4
+abstract:
+  #font_color: 404040
+  font_color: 5c6266
+  font_size: $lead_font_size
+  line_height: $lead_line_height
+  font_style: italic
+thematic_break:
+  border_color: $base_border_color
+  margin_top: $vertical_rhythm * 0.5
+  margin_bottom: $vertical_rhythm * 1.5
+description_list:
+  term_font_style: italic
+  description_indent: $horizontal_rhythm * 1.25
+outline_list:
+  indent: $horizontal_rhythm * 1.5
+  # NOTE item_spacing applies to list items that do not have complex content
+  item_spacing: $vertical_rhythm / 2
+  #marker_font_color: 404040
+table:
+  font_color: 99ff99
+  background_color: $page_background_color
+  head_background_color: f9f9f9
+  #head_background_color: <hex value>
+  #head_font_color: $base_font_color
+  #even_row_background_color: f9f9f9
+  #odd_row_background_color: <hex value>
+  foot_background_color: f0f0f0
+  border_color: 888888
+  border_width: $base_border_width
+  # HACK accounting for line-height
+  cell_padding: [3, 3, 6, 3]
+  head:
+    font_color: 333333
+    font_style: bold
+toc:
+  font_color: 333333
+  indent: $horizontal_rhythm
+  dot_leader_color: dddddd
+  #dot_leader_content: ". "
+  line_height: 1.4
+header:
+  font_color: 333333
+footer:
+  font_size: $base_font_size
+  font_color: 333333
+  # NOTE if background_color is set, background and border will span width of page
+  border_color: dddddd
+  border_width: 0.25
+  height: $base_line_height_length * 2.5
+  padding: [$base_line_height_length / 2, 1, 0, 1]
+  valign: top
+  #image_valign: <alignment> or <number>
+  # additional attributes for content:
+  # * {page-count}
+  # * {page-number}
+  # * {document-title}
+  # * {document-subtitle}
+  # * {chapter-title}
+  # * {section-title}
+  # * {section-or-chapter-title}
+  recto_content:
+    #right: '{section-or-chapter-title} | {page-number}'
+    #right: '{document-title} | {page-number}'
+    right: '{section-or-chapter-title}'
+    center: '{page-number}'
+  verso_content:
+    #left: '{page-number} | {chapter-title}'
+    left: '{chapter-title}'
+    center: '{page-number}'
