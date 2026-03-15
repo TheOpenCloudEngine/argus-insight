@@ -5,21 +5,21 @@
 
 override_dh_auto_install:
 	# Application
-	mkdir -p debian/argus-agent/usr/lib/argus-agent
-	cp -r app debian/argus-agent/usr/lib/argus-agent/
+	mkdir -p debian/argus-insight-agent/opt/argus-insight-agent
+	cp -r app debian/argus-insight-agent/opt/argus-insight-agent/
 
 	# Install Python dependencies
-	pip3 install --root=debian/argus-agent --prefix=/usr --no-deps .
+	pip3 install --root=debian/argus-insight-agent --prefix=/opt/argus-insight-agent --no-deps .
 
 	# Entry point
-	mkdir -p debian/argus-agent/usr/bin
-	install -m 755 scripts/argus-agent debian/argus-agent/usr/bin/argus-agent
+	mkdir -p debian/argus-insight-agent/opt/argus-insight-agent/bin
+	install -m 755 scripts/argus-insight-agent debian/argus-insight-agent/opt/argus-insight-agent/bin/argus-insight-agent
 
 	# Config
-	mkdir -p debian/argus-agent/etc/argus-insight-agent
-	install -m 640 packaging/config/config.yml debian/argus-agent/etc/argus-insight-agent/config.yml
-	install -m 640 packaging/config/config.properties debian/argus-agent/etc/argus-insight-agent/config.properties
+	mkdir -p debian/argus-insight-agent/etc/argus-insight-agent
+	install -m 640 packaging/config/config.yml debian/argus-insight-agent/etc/argus-insight-agent/config.yml
+	install -m 640 packaging/config/config.properties debian/argus-insight-agent/etc/argus-insight-agent/config.properties
 
 	# Directories
-	mkdir -p debian/argus-agent/var/log/argus-insight-agent
-	mkdir -p debian/argus-agent/var/lib/argus-insight-agent
+	mkdir -p debian/argus-insight-agent/var/log/argus-insight-agent
+	mkdir -p debian/argus-insight-agent/var/lib/argus-insight-agent

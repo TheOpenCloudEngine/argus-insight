@@ -1,3 +1,3 @@
-packaging/systemd/argus-agent.service lib/systemd/system/
+packaging/systemd/argus-insight-agent.service lib/systemd/system/
 packaging/config/config.yml etc/argus-insight-agent/
 packaging/config/config.properties etc/argus-insight-agent/

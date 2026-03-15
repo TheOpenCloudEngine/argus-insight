@@ -4,6 +4,6 @@ set -e
 #DEBHELPER#
 
 if [ "$1" = "remove" ]; then
-    systemctl stop argus-agent.service || true
-    systemctl disable argus-agent.service || true
+    systemctl stop argus-insight-agent.service || true
+    systemctl disable argus-insight-agent.service || true
 fi

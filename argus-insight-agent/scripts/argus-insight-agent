@@ -4,8 +4,8 @@
 import sys
 import os
 
-# Add the package root to sys.path when running from /usr/lib/argus-agent
-lib_dir = "/usr/lib/argus-agent"
+# Add the package root to sys.path when running from /opt/argus-insight-agent
+lib_dir = "/opt/argus-insight-agent"
 if os.path.isdir(lib_dir) and lib_dir not in sys.path:
     sys.path.insert(0, lib_dir)
 

@@ -3,9 +3,9 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "argus-agent"
+name = "argus-insight-agent"
 version = "0.1.0"
-description = "Argus Server Agent - Server management agent with root privileges"
+description = "Argus Insight Agent - Server management agent with root privileges"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.11"
@@ -26,8 +26,11 @@ dev = [
 ]
 
 [project.scripts]
-argus-agent = "app.main:run"
+argus-insight-agent = "app.main:run"
+argus-sysmon = "app.sysmon.cli:main"
 argus-yum = "app.yum.cli:main"
+argus-host = "app.hostmgr.cli:main"
+argus-user = "app.usermgr.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["app*"]

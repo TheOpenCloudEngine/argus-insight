@@ -1,7 +1,7 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: argus-agent
+Upstream-Name: argus-insight-agent
 Upstream-Contact: argus@opencloudengine.org
-Source: https://github.com/TheOpenCloudEngine/argus-server-agent
+Source: https://github.com/TheOpenCloudEngine/argus-insight-agent
 
 Files: *
 Copyright: 2026 TheOpenCloudEngine

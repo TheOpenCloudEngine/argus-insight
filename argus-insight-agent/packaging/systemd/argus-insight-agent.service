@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 User=root
 Group=root
-ExecStart=/usr/bin/argus-agent
+ExecStart=/opt/argus-insight-agent/bin/argus-insight-agent
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5
@@ -16,7 +16,7 @@ LimitNOFILE=65536
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=argus-agent
+SyslogIdentifier=argus-insight-agent
 
 # Directories
 RuntimeDirectory=argus-insight-agent

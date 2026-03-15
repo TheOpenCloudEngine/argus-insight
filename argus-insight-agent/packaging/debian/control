@@ -1,16 +1,16 @@
-Source: argus-agent
+Source: argus-insight-agent
 Section: admin
 Priority: optional
 Maintainer: Argus Team <argus@opencloudengine.org>
 Build-Depends: debhelper-compat (= 13), python3, python3-pip, dh-python
 Standards-Version: 4.6.0
-Homepage: https://github.com/TheOpenCloudEngine/argus-server-agent
+Homepage: https://github.com/TheOpenCloudEngine/argus-insight-agent
 
-Package: argus-agent
+Package: argus-insight-agent
 Architecture: all
 Depends: ${python3:Depends}, ${misc:Depends}, python3 (>= 3.11), systemd
-Description: Argus Server Agent - Server management agent
- Argus Server Agent is a server management agent that provides
+Description: Argus Insight Agent - Server management agent
+ Argus Insight Agent is a server management agent that provides
  command execution, server resource monitoring, application
  installation/management, and remote terminal capabilities.
  .

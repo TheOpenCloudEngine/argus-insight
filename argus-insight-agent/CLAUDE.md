@@ -9,10 +9,13 @@
 - **애플리케이션 설치 및 관리** (`package`): dnf/yum/apt 패키지 매니저 자동 감지 후 패키지 설치, 삭제, 업데이트 수행
 - **원격 터미널** (`terminal`): PTY 기반 WebSocket 터미널 세션으로 서버에 직접 접속하는 것과 동일한 경험 제공
 - **Yum 리포지토리 및 패키지 관리** (`yum`): yum repo 파일 CRUD, 백업, 패키지 설치/삭제/업그레이드, 패키지 정보 조회. API와 CLI 모두 지원
+- **시스템 모니터링** (`sysmon`): dmesg, CPU(top/htop 스타일), 네트워크(인터페이스별 트래픽/에러), 프로세스(VSS/RSS/PSS/USS/SWAP), 디스크 파티션. React UI용 JSON 구조화. API와 CLI 모두 지원
+- **호스트 관리** (`hostmgr`): hostname 조회/변경/검증, /etc/hosts CRUD/백업, /etc/resolv.conf CRUD/백업/네임서버 관리. API와 CLI 모두 지원
+- **사용자 관리** (`usermgr`): 사용자/그룹 파일 백업, sudo 권한 부여, 사용자 CRUD, 그룹 목록, SSH 키 생성/조회/삭제, passwordless 로그인, authorized_keys 관리. API와 CLI 모두 지원
 
 ## 운영 환경
 
-- systemd 서비스로 동작 (`argus-agent.service`)
+- systemd 서비스로 동작 (`argus-insight-agent.service`)
 - **root 권한**으로 실행 (서버 관리 작업에 필요)
 - 기본 포트: **8600**
 - 디렉토리 구조:
@@ -20,7 +23,8 @@
   - `/var/log/argus-insight-agent/` - 로그 파일 (`agent.log`)
   - `/var/lib/argus-insight-agent/` - 데이터 디렉토리
   - `/opt/argus-insight/agent/backups/` - 백업 디렉토리 (yum repo 백업 등)
-  - `/usr/lib/argus-agent/` - 애플리케이션 코드
+  - `/opt/argus-insight-agent/` - 애플리케이션 코드
+  - `/opt/argus-insight-agent/bin/argus-insight-agent` - 엔트리포인트
 - 장애 시 자동 재시작 (`Restart=on-failure`, 5초 간격)
 
 ## 기술 스택
@@ -56,6 +60,11 @@ argus-insight-agent/
 │   │   ├── router.py        # GET /api/v1/monitor/system, WS /api/v1/monitor/ws
 │   │   ├── schemas.py       # SystemInfo, CpuInfo, MemoryInfo, DiskInfo, NetworkInfo
 │   │   └── service.py       # psutil 기반 CPU/메모리/디스크/네트워크 수집
+│   ├── sysmon/              # 시스템 모니터링 모듈 (고급)
+│   │   ├── router.py        # /api/v1/sysmon/* API 엔드포인트
+│   │   ├── schemas.py       # React UI용 JSON 모델 (CPU/네트워크/프로세스/디스크)
+│   │   ├── service.py       # psutil/dmesg/ethtool 기반 메트릭 수집
+│   │   └── cli.py           # 커맨드라인 인터페이스 (argus-sysmon)
 │   ├── package/             # 패키지(애플리케이션) 관리 모듈
 │   │   ├── router.py        # POST /api/v1/package/manage, GET /api/v1/package/list
 │   │   ├── schemas.py       # PackageRequest, PackageInfo, PackageActionResult
@@ -63,26 +72,40 @@ argus-insight-agent/
 │   ├── terminal/            # 원격 터미널 모듈
 │   │   ├── router.py        # WS /api/v1/terminal/ws
 │   │   └── service.py       # TerminalManager: PTY fork, 세션 관리, resize 지원
-│   └── yum/                 # Yum 리포지토리 & 패키지 관리 모듈
-│       ├── router.py        # /api/v1/yum/* API 엔드포인트
-│       ├── schemas.py       # Repo/Package 요청/응답 모델
-│       ├── service.py       # 리포지토리 CRUD, 백업, 패키지 관리
-│       └── cli.py           # 커맨드라인 인터페이스 (argus-yum)
+│   ├── yum/                 # Yum 리포지토리 & 패키지 관리 모듈
+│   │   ├── router.py        # /api/v1/yum/* API 엔드포인트
+│   │   ├── schemas.py       # Repo/Package 요청/응답 모델
+│   │   ├── service.py       # 리포지토리 CRUD, 백업, 패키지 관리
+│   │   └── cli.py           # 커맨드라인 인터페이스 (argus-yum)
+│   ├── hostmgr/             # 호스트 관리 모듈
+│   │   ├── router.py        # /api/v1/host/* API 엔드포인트
+│   │   ├── schemas.py       # Hostname/Hosts/Resolv 요청/응답 모델
+│   │   ├── service.py       # hostname 변경, /etc/hosts·resolv.conf 관리
+│   │   └── cli.py           # 커맨드라인 인터페이스 (argus-host)
+│   └── usermgr/             # 사용자 관리 모듈
+│       ├── router.py        # /api/v1/user/* API 엔드포인트
+│       ├── schemas.py       # User/Group 요청/응답 모델
+│       ├── service.py       # 사용자/그룹 CRUD, sudo 관리, 백업
+│       └── cli.py           # 커맨드라인 인터페이스 (argus-user)
 ├── tests/
 │   ├── conftest.py          # 공통 fixtures (httpx AsyncClient)
 │   ├── test_config_loader.py # config loader 테스트
 │   ├── test_command/        # 명령 실행 테스트
 │   ├── test_monitor/        # 모니터링 테스트
 │   ├── test_package/        # 패키지 관리 테스트 (미작성)
+│   ├── test_sysmon/         # 시스템 모니터링 테스트
 │   ├── test_terminal/       # 터미널 테스트 (미작성)
-│   └── test_yum/            # yum 모듈 테스트
+│   ├── test_yum/            # yum 모듈 테스트
+│   ├── test_hostmgr/        # 호스트 관리 테스트
+│   └── test_usermgr/        # 사용자 관리 테스트
 ├── packaging/
 │   ├── config/
 │   │   ├── config.yml         # YAML 설정 파일 (${var} 변수 사용)
 │   │   └── config.properties  # Java-style 변수 정의 파일
 │   ├── debian/              # Debian 패키지 빌드 설정
-│   └── systemd/             # argus-agent.service 유닛 파일
-├── scripts/argus-agent      # 시스템 설치 시 엔트리포인트 (/usr/bin/argus-agent)
+│   └── systemd/             # argus-insight-agent.service 유닛 파일
+├── requirements.txt         # Python 의존성 (pip install -r)
+├── scripts/argus-insight-agent  # 시스템 설치 시 엔트리포인트 (/opt/argus-insight-agent/bin/)
 ├── pyproject.toml           # 프로젝트 설정 및 의존성
 └── Makefile                 # 빌드/실행/테스트 명령
 ```
@@ -197,6 +220,15 @@ make deb            # dpkg-buildpackage -us -uc -b
 # 빌드 아티팩트 정리
 make clean
 
+# Sysmon CLI (커맨드라인에서 직접 실행)
+python -m app.sysmon.cli dmesg --lines 100 --level err
+python -m app.sysmon.cli cpu --interval 1.0
+python -m app.sysmon.cli cores --interval 1.0
+python -m app.sysmon.cli network
+python -m app.sysmon.cli network-errors
+python -m app.sysmon.cli processes --sort cpu_percent --limit 20
+python -m app.sysmon.cli disk
+
 # Yum CLI (커맨드라인에서 직접 실행)
 python -m app.yum.cli repo list
 python -m app.yum.cli repo read base.repo
@@ -209,7 +241,53 @@ python -m app.yum.cli package remove nginx
 python -m app.yum.cli package upgrade nginx
 python -m app.yum.cli package info nginx
 python -m app.yum.cli package files nginx
+
+# Host CLI (커맨드라인에서 직접 실행)
+python -m app.hostmgr.cli hostname get
+python -m app.hostmgr.cli hostname set myhost
+python -m app.hostmgr.cli hostname validate
+python -m app.hostmgr.cli hosts read
+python -m app.hostmgr.cli hosts update /path/to/hosts
+python -m app.hostmgr.cli hosts backup
+python -m app.hostmgr.cli resolv read
+python -m app.hostmgr.cli resolv update /path/to/resolv.conf
+python -m app.hostmgr.cli resolv backup
+python -m app.hostmgr.cli resolv nameservers
+python -m app.hostmgr.cli resolv set-nameservers 8.8.8.8 8.8.4.4
+
+# User CLI (커맨드라인에서 직접 실행)
+python -m app.usermgr.cli backup
+python -m app.usermgr.cli sudo alice
+python -m app.usermgr.cli users list
+python -m app.usermgr.cli users info alice
+python -m app.usermgr.cli users create newuser
+python -m app.usermgr.cli users create newuser -g developers -s /bin/zsh
+python -m app.usermgr.cli users create newuser --no-home
+python -m app.usermgr.cli users delete olduser
+python -m app.usermgr.cli users delete olduser --remove-home
+python -m app.usermgr.cli ssh keygen alice
+python -m app.usermgr.cli ssh keygen alice -t ed25519
+python -m app.usermgr.cli ssh read-key alice
+python -m app.usermgr.cli ssh delete-key alice
+python -m app.usermgr.cli ssh passwordless alice
+python -m app.usermgr.cli ssh read-authorized alice
+python -m app.usermgr.cli ssh add-authorized alice "ssh-rsa AAAA... user@host"
+python -m app.usermgr.cli groups list
 ```
+
+## Swagger / OpenAPI
+
+FastAPI가 자동으로 제공하는 API 문서입니다. 별도 설정 없이 서버 시작 시 바로 사용할 수 있습니다.
+
+| UI | URL | 설명 |
+|----|-----|------|
+| Swagger UI | `http://<host>:8600/docs` | 대화형 API 테스트 가능 (Try it out) |
+| ReDoc | `http://<host>:8600/redoc` | 읽기 전용 API 문서 |
+| OpenAPI JSON | `http://<host>:8600/openapi.json` | OpenAPI 3.x 스펙 (JSON) |
+
+개발 환경 예시:
+- Swagger UI: http://localhost:8600/docs
+- ReDoc: http://localhost:8600/redoc
 
 ## API 엔드포인트
 
@@ -222,6 +300,13 @@ python -m app.yum.cli package files nginx
 | POST      | /api/v1/package/manage      | 패키지 설치/삭제/업데이트 (dnf/yum/apt 자동 감지)    |
 | GET       | /api/v1/package/list        | 설치된 패키지 전체 목록 조회                        |
 | WebSocket | /api/v1/terminal/ws         | PTY 기반 원격 터미널 세션 (resize 지원)            |
+| GET       | /api/v1/sysmon/dmesg         | dmesg 커널 로그 캡처 (?lines=200&level=err)       |
+| GET       | /api/v1/sysmon/cpu           | CPU 사용량 (top 스타일, user/system/iowait 등)     |
+| GET       | /api/v1/sysmon/cpu/cores     | 코어별 CPU 사용량 (htop 스타일)                    |
+| GET       | /api/v1/sysmon/network       | 네트워크 인터페이스별 트래픽 + 전체 합산               |
+| GET       | /api/v1/sysmon/network/errors | 네트워크 인터페이스별 에러/드롭 카운터               |
+| GET       | /api/v1/sysmon/processes     | 프로세스별 리소스 점유율 (CPU/RSS/VSS/PSS/USS/SWAP)  |
+| GET       | /api/v1/sysmon/disk/partitions | 디스크 파티션 현황                                |
 | GET       | /api/v1/yum/repo             | yum repo 파일 목록 조회                          |
 | POST      | /api/v1/yum/repo             | yum repo 파일 생성                              |
 | PUT       | /api/v1/yum/repo             | yum repo 파일 수정                              |
@@ -232,6 +317,30 @@ python -m app.yum.cli package files nginx
 | GET       | /api/v1/yum/package/search   | 설치된 패키지 검색                                 |
 | GET       | /api/v1/yum/package/{name}/info  | 패키지 상세 메타데이터 조회                       |
 | GET       | /api/v1/yum/package/{name}/files | 패키지 소유 파일 목록                            |
+| GET       | /api/v1/host/hostname            | 현재 hostname 및 FQDN 조회                      |
+| PUT       | /api/v1/host/hostname            | hostname 변경                                   |
+| GET       | /api/v1/host/hostname/validate   | hostname 일관성 검증                              |
+| GET       | /api/v1/host/hosts               | /etc/hosts 파일 읽기                              |
+| PUT       | /api/v1/host/hosts               | /etc/hosts 파일 수정                              |
+| POST      | /api/v1/host/hosts/backup        | /etc/hosts 백업 (hosts_YYYYMMDDHHmmss.zip)              |
+| GET       | /api/v1/host/resolv              | /etc/resolv.conf 파일 읽기                        |
+| PUT       | /api/v1/host/resolv              | /etc/resolv.conf 파일 수정                        |
+| POST      | /api/v1/host/resolv/backup       | /etc/resolv.conf 백업 (resolv_YYYYMMDDHHmmss.zip)       |
+| GET       | /api/v1/host/resolv/nameservers  | 네임서버 목록 파싱 조회                             |
+| PUT       | /api/v1/host/resolv/nameservers  | 네임서버 엔트리 수정                                |
+| POST      | /api/v1/user/backup              | 사용자/그룹 파일 백업 (users_YYYYMMDDHHmmss.zip)    |
+| PUT       | /api/v1/user/sudo                | 사용자에게 sudo 권한 부여                            |
+| GET       | /api/v1/user/users               | 전체 사용자 목록 (/etc/passwd)                       |
+| GET       | /api/v1/user/users/{username}    | 사용자 상세 정보 (그룹, sudo 여부 포함)               |
+| POST      | /api/v1/user/users               | 사용자 생성 (useradd)                               |
+| DELETE    | /api/v1/user/users/{username}    | 사용자 삭제 (userdel)                               |
+| POST      | /api/v1/user/users/{username}/ssh-key          | SSH 키 생성 (ssh-keygen)                    |
+| GET       | /api/v1/user/users/{username}/ssh-key          | SSH 키 파일 읽기 (id_rsa, .pub)              |
+| DELETE    | /api/v1/user/users/{username}/ssh-key          | .ssh 디렉토리 삭제                            |
+| PUT       | /api/v1/user/users/{username}/passwordless     | passwordless 로그인 설정                      |
+| GET       | /api/v1/user/users/{username}/authorized-keys  | authorized_keys 읽기                         |
+| POST      | /api/v1/user/users/{username}/authorized-keys  | authorized_keys에 키 추가                     |
+| GET       | /api/v1/user/groups              | 전체 그룹 목록 (/etc/group)                          |
 
 ## 로깅
 
@@ -250,7 +359,7 @@ INFO 2025-03-15 14:30:45.123 12345 argus-insight-agent main.py:lifespan:25 - Arg
 
 - 기본 로그 파일: `agent.log`
 - 일 단위로 자동 롤링
-- 롤링된 파일명: `agent_20250101.log` (날짜 suffix)
+- 롤링된 파일명: `agent_20260315.log` (날짜 suffix)
 - 기본 보관 개수: 30일 (`log.rolling.backup_count`)
 
 ### 로그 디렉토리

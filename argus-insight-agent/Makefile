@@ -1,4 +1,4 @@
-NAME = argus-agent
+NAME = argus-insight-agent
 VERSION = 0.1.0
 
 .PHONY: help install dev run test lint clean rpm deb
