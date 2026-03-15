@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: /snap/kompose/19/kompose-linux-amd64 convert -f docker-compose.yml
+    kompose.version: 1.21.0 (992df58d8)
+  creationTimestamp: null
+  labels:
+    io.kompose.service: pdns-admin
+  name: pdns-admin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: pdns-admin
+  strategy: {}
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: /snap/kompose/19/kompose-linux-amd64 convert -f docker-compose.yml
+        kompose.version: 1.21.0 (992df58d8)
+      creationTimestamp: null
+      labels:
+        io.kompose.service: pdns-admin
+    spec:
+      containers:
+      - env:
+        - name: GUNICORN_TIMEOUT
+          value: "60"
+        - name: PDNS_API_KEY
+          value: NzR1MnpMVjlqNWhmbWlq
+        - name: PDNS_API_URL
+          value: http://pdns-server:8081/
+        - name: SQLALCHEMY_DATABASE_URI
+          value: mysql://pdns_user:pdns_password@mysql:3306/pdns?ssl=false
+        image: powerdnsadmin/pda-legacy:v0.4.2
+        imagePullPolicy: ""
+        name: pdns-admin
+        ports:
+        - containerPort: 80
+        resources: {}
+      restartPolicy: Always
+      serviceAccountName: ""
+      volumes: null
+status: {}

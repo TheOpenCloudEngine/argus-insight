@@ -12,6 +12,7 @@ Variable resolution order:
 
 Default config directory: /etc/argus-insight-server
 Override with ARGUS_SERVER_CONFIG_DIR environment variable.
+Override individual files with --config-yaml / --config-properties CLI arguments.
 """
 
 import os
@@ -20,7 +21,9 @@ from pathlib import Path
 from app.core.config_loader import load_config
 
 _CONFIG_DIR = Path(os.environ.get("ARGUS_SERVER_CONFIG_DIR", "/etc/argus-insight-server"))
-_raw = load_config(config_dir=_CONFIG_DIR)
+_yaml_path: Path = _CONFIG_DIR / "config.yml"
+_properties_path: Path = _CONFIG_DIR / "config.properties"
+_raw: dict = load_config(config_dir=_CONFIG_DIR)
 
 
 def _get(section: str, key: str, default=None):
@@ -69,6 +72,8 @@ class Settings:
 
         # Config
         self.config_dir: Path = _CONFIG_DIR
+        self.config_yaml_path: Path = _yaml_path
+        self.config_properties_path: Path = _properties_path
 
         # CORS (for React UI)
         self.cors_origins: list[str] = _get("cors", "origins", ["*"])
@@ -76,6 +81,50 @@ class Settings:
         # Agent communication
         self.agent_timeout: int = int(_get("agent", "timeout", 30))
         self.agent_health_interval: int = int(_get("agent", "health_interval", 60))
+        self.agent_heartbeat_check_interval: int = int(
+            _get("agent", "heartbeat_check_interval", 60)
+        )
+        self.agent_heartbeat_disconnect_timeout: int = int(
+            _get("agent", "heartbeat_disconnect_timeout", 180)
+        )
+
+        # Database
+        self.db_type: str = _get("database", "type", "postgresql")
+        self.db_host: str = _get("database", "host", "localhost")
+        self.db_port: int = int(_get("database", "port", 5432))
+        self.db_name: str = _get("database", "name", "argus")
+        self.db_username: str = _get("database", "username", "argus")
+        self.db_password: str = _get("database", "password", "argus")
+        self.db_pool_size: int = int(_get_nested("database", "pool", "size", 5))
+        self.db_pool_max_overflow: int = int(_get_nested("database", "pool", "max_overflow", 10))
+        self.db_pool_recycle: int = int(_get_nested("database", "pool", "recycle", 3600))
+        self.db_echo: bool = _to_bool(_get("database", "echo", False))
+
+
+def init_settings(
+    yaml_path: str | None = None,
+    properties_path: str | None = None,
+) -> None:
+    """Re-initialize settings with custom config file paths.
+
+    Call this before the application starts to override default config locations.
+    If not called, settings are loaded from the default config directory.
+
+    Args:
+        yaml_path: Absolute path to YAML config file.
+        properties_path: Absolute path to properties file.
+    """
+    global _raw, _yaml_path, _properties_path
+    if yaml_path:
+        _yaml_path = Path(yaml_path)
+    if properties_path:
+        _properties_path = Path(properties_path)
+    _raw = load_config(
+        config_dir=_CONFIG_DIR,
+        yaml_path=yaml_path,
+        properties_path=properties_path,
+    )
+    settings.__init__()
 
 
 settings = Settings()

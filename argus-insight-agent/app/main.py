@@ -1,8 +1,11 @@
 """Argus Server Agent - FastAPI application entry point."""
 
+import argparse
 import logging
+import sys
 from contextlib import asynccontextmanager
 
+import uvicorn
 from fastapi import FastAPI
 
 from app import __version__
@@ -12,6 +15,7 @@ from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.security import SecurityHeadersMiddleware
 from app.filemgr.router import router as filemgr_router
+from app.heartbeat.scheduler import heartbeat_scheduler
 from app.hostmgr.router import router as hostmgr_router
 from app.metrics.scheduler import metrics_scheduler
 from app.monitor.router import router as monitor_router
@@ -36,20 +40,23 @@ _  ___ |  /   _  /_/ // /_/ /_(__  )     __/ /  _  / / /(__  )_  / _  /_/ /_  / 
 
 
 def _print_banner() -> None:
-    """Print startup banner with version."""
-    print(BANNER)
-    print(f"Version : {settings.app_version}")
-    print()
+    """Print startup banner with version and config paths."""
+    logger.info(BANNER)
+    logger.info("Version           : %s", settings.app_version)
+    logger.info("Config YAML       : %s", settings.config_yaml_path)
+    logger.info("Config Properties : %s", settings.config_properties_path)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
-    _print_banner()
     setup_logging()
+    _print_banner()
     logger.info("Argus Server Agent %s starting", __version__)
     await metrics_scheduler.start()
+    await heartbeat_scheduler.start()
     yield
+    await heartbeat_scheduler.stop()
     await metrics_scheduler.stop()
     logger.info("Argus Server Agent shutting down")
     terminal_manager.close_all()
@@ -82,3 +89,77 @@ app.include_router(processmgr_router, prefix="/api/v1")
 async def health():
     """Health check endpoint."""
     return {"status": "ok", "version": __version__}
+
+
+def run() -> None:
+    """CLI entry point with config file argument support."""
+    parser = argparse.ArgumentParser(
+        prog="argus-insight-agent",
+        description="Argus Insight Agent - Server management agent for Argus Insight platform.",
+        epilog=(
+            "examples:\n"
+            "  argus-insight-agent\n"
+            "  argus-insight-agent --config-yaml /opt/config/config.yml\n"
+            "  argus-insight-agent --config-properties /opt/config/config.properties\n"
+            "  argus-insight-agent --config-yaml ./config.yml --config-properties ./config.properties\n"
+            "\n"
+            "If no options are specified, configuration files are loaded from\n"
+            "/etc/argus-insight-agent/ (or the ARGUS_CONFIG_DIR environment variable)."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--config-yaml",
+        metavar="PATH",
+        help=(
+            "path to the YAML configuration file (config.yml). "
+            "This file defines the main application settings using "
+            "Spring Boot style ${variable:default} placeholders. "
+            "(default: /etc/argus-insight-agent/config.yml)"
+        ),
+    )
+    parser.add_argument(
+        "--config-properties",
+        metavar="PATH",
+        help=(
+            "path to the properties variable file (config.properties). "
+            "This file defines key=value variables referenced by config.yml "
+            "for environment-specific values such as host, port, and credentials. "
+            "(default: /etc/argus-insight-agent/config.properties)"
+        ),
+    )
+    args = parser.parse_args()
+
+    if args.config_yaml or args.config_properties:
+        from app.core.config import init_settings
+
+        init_settings(
+            yaml_path=args.config_yaml,
+            properties_path=args.config_properties,
+        )
+    else:
+        yaml_exists = settings.config_yaml_path.is_file()
+        props_exists = settings.config_properties_path.is_file()
+        if not yaml_exists and not props_exists:
+            parser.print_help()
+            print()
+            print(
+                f"Error: No configuration files found at default location:\n"
+                f"  - {settings.config_yaml_path}\n"
+                f"  - {settings.config_properties_path}\n"
+                f"\n"
+                f"Specify config file paths with --config-yaml and/or "
+                f"--config-properties options."
+            )
+            sys.exit(1)
+
+    uvicorn.run(
+        app,
+        host=settings.host,
+        port=settings.port,
+        log_level=settings.log_level.lower(),
+    )
+
+
+if __name__ == "__main__":
+    run()

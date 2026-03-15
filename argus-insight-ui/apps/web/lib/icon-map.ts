@@ -8,6 +8,7 @@ import {
   Settings,
   Shield,
   SlidersHorizontal,
+  Terminal,
   Users,
   Zap,
 } from "lucide-react"
@@ -22,6 +23,7 @@ const iconMap: Record<string, LucideIcon> = {
   Settings,
   Shield,
   SlidersHorizontal,
+  Terminal,
   Users,
   Zap,
 }

@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: /snap/kompose/19/kompose-linux-amd64 convert -f docker-compose.yml
+    kompose.version: 1.21.0 (992df58d8)
+  creationTimestamp: null
+  labels:
+    io.kompose.service: pdns-server
+  name: pdns-server
+spec:
+  ports:
+  - name: "53"
+    port: 53
+    protocol: UDP
+    targetPort: 53
+  - name: 53-tcp
+    port: 53
+    targetPort: 53
+  - name: "15001"
+    port: 15001
+    targetPort: 8081
+  selector:
+    io.kompose.service: pdns-server
+status:
+  loadBalancer: {}

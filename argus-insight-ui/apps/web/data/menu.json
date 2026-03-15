@@ -27,6 +27,12 @@
           "title": "알림",
           "url": "/dashboard/alerts",
           "icon": "Bell"
+        },
+        {
+          "id": "terminal",
+          "title": "터미널",
+          "url": "/dashboard/terminal",
+          "icon": "Terminal"
         }
       ]
     },

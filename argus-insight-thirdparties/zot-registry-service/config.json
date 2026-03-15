@@ -1,0 +1,66 @@
+{
+  "distSpecVersion": "1.1.0",
+  "storage": {
+    "rootDirectory": "/var/lib/zot",
+    "gc": true
+  },
+  "http": {
+    "address": "0.0.0.0",
+    "port": "5000",
+    "tls": {
+      "cert": "/etc/zot/certs/dev-server/dev-server.crt",
+      "key": "/etc/zot/certs/dev-server/dev-server.key"
+    },
+    "auth": {
+      "htpasswd": {
+        "path": "/etc/zot/htpasswd"
+      }
+    }
+  },
+  "log": {
+    "level": "info"
+  },
+  "extensions": {
+    "sync": {
+      "enable": true,
+      "credentialsFile": "/etc/zot/credentials.json",
+      "registries": [
+        {
+          "urls": ["https://registry-1.docker.io"],
+          "onDemand": true,
+          "content": [
+            { "prefix": "**" }
+          ]
+        },
+        {
+          "urls": ["https://quay.io"],
+          "onDemand": true,
+          "content": [
+            { "prefix": "**" }
+          ]
+        },
+        {
+          "urls": ["https://gcr.io"],
+          "onDemand": true,
+          "content": [
+            { "prefix": "**" }
+          ]
+        },
+        {
+          "urls": ["https://ghcr.io"],
+          "onDemand": true,
+          "content": [
+            { "prefix": "**" }
+          ]
+        },
+        {
+          "urls": ["https://mcr.microsoft.com"],
+          "onDemand": true,
+          "content": [
+            { "prefix": "**" }
+          ]
+        }
+      ]
+    }
+  }
+}

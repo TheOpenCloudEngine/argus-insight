@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: /snap/kompose/19/kompose-linux-amd64 convert -f docker-compose.yml
+    kompose.version: 1.21.0 (992df58d8)
+  creationTimestamp: null
+  labels:
+    io.kompose.service: pdns-server
+  name: pdns-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: pdns-server
+  strategy: {}
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: /snap/kompose/19/kompose-linux-amd64 convert -f docker-compose.yml
+        kompose.version: 1.21.0 (992df58d8)
+      creationTimestamp: null
+      labels:
+        io.kompose.service: pdns-server
+    spec:
+      containers:
+      - env:
+        - name: PDNS_api
+          value: yes
+        - name: PDNS_api_key
+          value: NzR1MnpMVjlqNWhmbWlq
+        - name: PDNS_gmysql_dbname
+          value: pdns
+        - name: PDNS_gmysql_host
+          value: mysql
+        - name: PDNS_gmysql_password
+          value: pdns_root_password
+        - name: PDNS_gmysql_port
+          value: "3306"
+        - name: PDNS_gmysql_user
+          value: root
+        - name: PDNS_webserver
+          value: yes
+        - name: PDNS_webserver_address
+          value: 0.0.0.0
+        - name: PDNS_webserver_allow_from
+          value: 0.0.0.0/0
+        image: pschiffe/pdns-mysql:alpine
+        imagePullPolicy: ""
+        name: pdns-server
+        ports:
+        - containerPort: 53
+          protocol: UDP
+        - containerPort: 53
+        - containerPort: 8081
+        resources: {}
+      restartPolicy: Always
+      serviceAccountName: ""
+      volumes: null
+status: {}

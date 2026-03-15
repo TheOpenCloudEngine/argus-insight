@@ -231,6 +231,39 @@ command:
 | prometheus | pushgateway.host | prometheus.pushgateway.host | localhost | Push Gateway 호스트 |
 | prometheus | pushgateway.port | prometheus.pushgateway.port | 9091 | Push Gateway 포트 |
 
+## 에이전트 실행 및 옵션
+
+### 에이전트 실행
+
+```bash
+# 개발 모드 (uvicorn --reload)
+make run
+
+# python -m 모듈 실행
+cd argus-insight-agent
+python -m app.main
+
+# 설정 파일 경로 지정
+python -m app.main --config-yaml /path/to/config.yml --config-properties /path/to/config.properties
+
+# pip install 후 명령어 실행
+argus-insight-agent
+argus-insight-agent --config-yaml /path/to/config.yml
+argus-insight-agent --config-yaml /path/to/config.yml --config-properties /path/to/config.properties
+```
+
+### CLI 옵션
+
+| 옵션 | 설명 |
+|------|------|
+| `--help` | 도움말 출력 |
+| `--config-yaml PATH` | YAML 설정 파일(config.yml) 경로 지정. 미지정 시 `/etc/argus-insight-agent/config.yml` |
+| `--config-properties PATH` | Properties 변수 파일(config.properties) 경로 지정. 미지정 시 `/etc/argus-insight-agent/config.properties` |
+
+- 옵션을 지정하지 않으면 기본 디렉토리(`/etc/argus-insight-agent/`)에서 설정 파일을 읽습니다.
+- `ARGUS_CONFIG_DIR` 환경변수로 기본 디렉토리를 변경할 수 있습니다.
+- `--config-yaml`과 `--config-properties`는 개별적으로 지정 가능하며, 지정하지 않은 파일은 기본 디렉토리에서 읽습니다.
+
 ## 주요 명령어
 
 ```bash
