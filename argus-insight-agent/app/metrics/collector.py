@@ -15,6 +15,11 @@ def _get_fqdn() -> str:
     return socket.getfqdn()
 
 
+def _get_hostname() -> str:
+    """Get the short hostname for use as Prometheus hostname label."""
+    return socket.gethostname()
+
+
 def _get_socket_count() -> int:
     """Get the total number of socket connections."""
     try:
@@ -68,6 +73,7 @@ def collect_metrics() -> CollectorRegistry:
     registration errors across collection cycles.
     """
     registry = CollectorRegistry()
+    hostname = _get_hostname()
 
     # -----------------------------------------------------------------------
     # CPU
@@ -76,11 +82,21 @@ def collect_metrics() -> CollectorRegistry:
     load1, load5, load15 = psutil.getloadavg()
     cpu_count = psutil.cpu_count() or 1
 
-    Gauge("node_argus_cpu_usage_percent", "CPU usage percent", registry=registry).set(cpu_pct)
-    Gauge("node_argus_cpu_load1", "1-min load average", registry=registry).set(load1)
-    Gauge("node_argus_cpu_load5", "5-min load average", registry=registry).set(load5)
-    Gauge("node_argus_cpu_load15", "15-min load average", registry=registry).set(load15)
-    Gauge("node_argus_cpu_count", "CPU core count", registry=registry).set(cpu_count)
+    Gauge(
+        "node_argus_cpu_usage_percent", "CPU usage percent", ["hostname"], registry=registry
+    ).labels(hostname).set(cpu_pct)
+    Gauge(
+        "node_argus_cpu_load1", "1-min load average", ["hostname"], registry=registry
+    ).labels(hostname).set(load1)
+    Gauge(
+        "node_argus_cpu_load5", "5-min load average", ["hostname"], registry=registry
+    ).labels(hostname).set(load5)
+    Gauge(
+        "node_argus_cpu_load15", "15-min load average", ["hostname"], registry=registry
+    ).labels(hostname).set(load15)
+    Gauge(
+        "node_argus_cpu_count", "CPU core count", ["hostname"], registry=registry
+    ).labels(hostname).set(cpu_count)
 
     # -----------------------------------------------------------------------
     # Memory
@@ -88,16 +104,24 @@ def collect_metrics() -> CollectorRegistry:
     mem = psutil.virtual_memory()
     swap = psutil.swap_memory()
 
-    Gauge("node_argus_memory_total_bytes", "Total memory", registry=registry).set(mem.total)
-    Gauge("node_argus_memory_used_bytes", "Used memory", registry=registry).set(mem.used)
-    Gauge("node_argus_memory_available_bytes", "Available memory", registry=registry).set(
-        mem.available
-    )
-    Gauge("node_argus_memory_usage_percent", "Memory usage percent", registry=registry).set(
-        mem.percent
-    )
-    Gauge("node_argus_swap_total_bytes", "Total swap memory", registry=registry).set(swap.total)
-    Gauge("node_argus_swap_used_bytes", "Used swap memory", registry=registry).set(swap.used)
+    Gauge(
+        "node_argus_memory_total_bytes", "Total memory", ["hostname"], registry=registry
+    ).labels(hostname).set(mem.total)
+    Gauge(
+        "node_argus_memory_used_bytes", "Used memory", ["hostname"], registry=registry
+    ).labels(hostname).set(mem.used)
+    Gauge(
+        "node_argus_memory_available_bytes", "Available memory", ["hostname"], registry=registry
+    ).labels(hostname).set(mem.available)
+    Gauge(
+        "node_argus_memory_usage_percent", "Memory usage percent", ["hostname"], registry=registry
+    ).labels(hostname).set(mem.percent)
+    Gauge(
+        "node_argus_swap_total_bytes", "Total swap memory", ["hostname"], registry=registry
+    ).labels(hostname).set(swap.total)
+    Gauge(
+        "node_argus_swap_used_bytes", "Used swap memory", ["hostname"], registry=registry
+    ).labels(hostname).set(swap.used)
 
     # -----------------------------------------------------------------------
     # Processes
@@ -111,17 +135,19 @@ def collect_metrics() -> CollectorRegistry:
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             continue
 
-    Gauge("node_argus_process_total", "Total process count", registry=registry).set(len(pids))
-    Gauge("node_argus_process_zombie_count", "Zombie process count", registry=registry).set(
-        zombie_count
-    )
+    Gauge(
+        "node_argus_process_total", "Total process count", ["hostname"], registry=registry
+    ).labels(hostname).set(len(pids))
+    Gauge(
+        "node_argus_process_zombie_count", "Zombie process count", ["hostname"], registry=registry
+    ).labels(hostname).set(zombie_count)
 
     # -----------------------------------------------------------------------
     # Sockets
     # -----------------------------------------------------------------------
-    Gauge("node_argus_socket_count", "Total socket count", registry=registry).set(
-        _get_socket_count()
-    )
+    Gauge(
+        "node_argus_socket_count", "Total socket count", ["hostname"], registry=registry
+    ).labels(hostname).set(_get_socket_count())
 
     # -----------------------------------------------------------------------
     # Disk (per partition)
@@ -129,32 +155,32 @@ def collect_metrics() -> CollectorRegistry:
     disk_total = Gauge(
         "node_argus_disk_total_bytes",
         "Disk total bytes",
-        ["device", "mountpoint", "fstype"],
+        ["hostname", "device", "mountpoint", "fstype"],
         registry=registry,
     )
     disk_used = Gauge(
         "node_argus_disk_used_bytes",
         "Disk used bytes",
-        ["device", "mountpoint", "fstype"],
+        ["hostname", "device", "mountpoint", "fstype"],
         registry=registry,
     )
     disk_free = Gauge(
         "node_argus_disk_free_bytes",
         "Disk free bytes",
-        ["device", "mountpoint", "fstype"],
+        ["hostname", "device", "mountpoint", "fstype"],
         registry=registry,
     )
     disk_usage_pct = Gauge(
         "node_argus_disk_usage_percent",
         "Disk usage percent",
-        ["device", "mountpoint", "fstype"],
+        ["hostname", "device", "mountpoint", "fstype"],
         registry=registry,
     )
 
     for part in psutil.disk_partitions():
         try:
             usage = psutil.disk_usage(part.mountpoint)
-            labels = [part.device, part.mountpoint, part.fstype]
+            labels = [hostname, part.device, part.mountpoint, part.fstype]
             disk_total.labels(*labels).set(usage.total)
             disk_used.labels(*labels).set(usage.used)
             disk_free.labels(*labels).set(usage.free)
@@ -170,33 +196,33 @@ def collect_metrics() -> CollectorRegistry:
         dio_read = Gauge(
             "node_argus_disk_io_read_bytes",
             "Disk I/O read bytes",
-            ["device"],
+            ["hostname", "device"],
             registry=registry,
         )
         dio_write = Gauge(
             "node_argus_disk_io_write_bytes",
             "Disk I/O write bytes",
-            ["device"],
+            ["hostname", "device"],
             registry=registry,
         )
         dio_read_count = Gauge(
             "node_argus_disk_io_read_count",
             "Disk I/O read count",
-            ["device"],
+            ["hostname", "device"],
             registry=registry,
         )
         dio_write_count = Gauge(
             "node_argus_disk_io_write_count",
             "Disk I/O write count",
-            ["device"],
+            ["hostname", "device"],
             registry=registry,
         )
         if disk_io:
             for dev, counters in disk_io.items():
-                dio_read.labels(dev).set(counters.read_bytes)
-                dio_write.labels(dev).set(counters.write_bytes)
-                dio_read_count.labels(dev).set(counters.read_count)
-                dio_write_count.labels(dev).set(counters.write_count)
+                dio_read.labels(hostname, dev).set(counters.read_bytes)
+                dio_write.labels(hostname, dev).set(counters.write_bytes)
+                dio_read_count.labels(hostname, dev).set(counters.read_count)
+                dio_write_count.labels(hostname, dev).set(counters.write_count)
     except (RuntimeError, OSError):
         pass
 
@@ -208,47 +234,47 @@ def collect_metrics() -> CollectorRegistry:
         net_sent = Gauge(
             "node_argus_network_bytes_sent",
             "Network bytes sent",
-            ["interface"],
+            ["hostname", "interface"],
             registry=registry,
         )
         net_recv = Gauge(
             "node_argus_network_bytes_recv",
             "Network bytes received",
-            ["interface"],
+            ["hostname", "interface"],
             registry=registry,
         )
         net_errin = Gauge(
             "node_argus_network_errors_in",
             "Network input errors",
-            ["interface"],
+            ["hostname", "interface"],
             registry=registry,
         )
         net_errout = Gauge(
             "node_argus_network_errors_out",
             "Network output errors",
-            ["interface"],
+            ["hostname", "interface"],
             registry=registry,
         )
         net_dropin = Gauge(
             "node_argus_network_drop_in",
             "Network input drops",
-            ["interface"],
+            ["hostname", "interface"],
             registry=registry,
         )
         net_dropout = Gauge(
             "node_argus_network_drop_out",
             "Network output drops",
-            ["interface"],
+            ["hostname", "interface"],
             registry=registry,
         )
 
         for iface, counters in net_io.items():
-            net_sent.labels(iface).set(counters.bytes_sent)
-            net_recv.labels(iface).set(counters.bytes_recv)
-            net_errin.labels(iface).set(counters.errin)
-            net_errout.labels(iface).set(counters.errout)
-            net_dropin.labels(iface).set(counters.dropin)
-            net_dropout.labels(iface).set(counters.dropout)
+            net_sent.labels(hostname, iface).set(counters.bytes_sent)
+            net_recv.labels(hostname, iface).set(counters.bytes_recv)
+            net_errin.labels(hostname, iface).set(counters.errin)
+            net_errout.labels(hostname, iface).set(counters.errout)
+            net_dropin.labels(hostname, iface).set(counters.dropin)
+            net_dropout.labels(hostname, iface).set(counters.dropout)
     except (RuntimeError, OSError):
         pass
 
@@ -258,8 +284,9 @@ def collect_metrics() -> CollectorRegistry:
     Gauge(
         "node_argus_too_many_open_files_count",
         "Processes with open files >= 90% of limit",
+        ["hostname"],
         registry=registry,
-    ).set(_get_too_many_open_files_count())
+    ).labels(hostname).set(_get_too_many_open_files_count())
 
     logger.debug("Collected host metrics for Prometheus push")
     return registry
