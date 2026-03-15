@@ -10,7 +10,7 @@ page:
 
 base:
   font_color: 333333
-  font_family: Noto Sans
+  font_family: Noto Serif
   font_size: 10
   line_height: 1.5
 
@@ -78,7 +78,7 @@ heading:
     margin_bottom: 4
 
 code:
-  font_family: Noto Sans Mono
+  font_family: M+ 1mn
   font_size: 9
   background_color: F5F5F5
   border_color: E0E0E0
@@ -86,7 +86,7 @@ code:
   padding: [4, 6, 4, 6]
 
 codespan:
-  font_family: Noto Sans Mono
+  font_family: M+ 1mn
   font_size: 9.5
   font_color: C7254E
   background_color: F9F2F4
