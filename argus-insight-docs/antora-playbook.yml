@@ -8,9 +8,9 @@ site:
 
 content:
   sources:
-    - url: .
+    - url: ..
       branches: HEAD
-      start_path: docs
+      start_path: argus-insight-docs/docs
 
 asciidoc:
   attributes:
