@@ -15,8 +15,15 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-CA_DIR = Path("/opt/argus-insight-agent/certificates/ca")
-CERT_DIR = Path("/opt/argus-insight-agent/certificates")
+
+def _ca_dir() -> Path:
+    """Return the CA certificate directory, derived from settings."""
+    return settings.cert_base_dir / "ca"
+
+
+def _cert_dir() -> Path:
+    """Return the host certificate directory, derived from settings."""
+    return settings.cert_base_dir
 
 
 # ---------------------------------------------------------------------------
@@ -73,8 +80,8 @@ async def _parse_cert_info(cert_path: Path) -> dict:
 
 
 async def upload_ca(key_content: str, crt_content: str) -> OperationResult:
-    """Upload CA key and certificate files to CA_DIR."""
-    ca_dir = CA_DIR
+    """Upload CA key and certificate files."""
+    ca_dir = _ca_dir()
     ca_dir.mkdir(parents=True, exist_ok=True)
 
     ca_key = ca_dir / "ca.key"
@@ -123,8 +130,8 @@ async def upload_ca(key_content: str, crt_content: str) -> OperationResult:
 
 async def get_ca_info() -> CaInfo:
     """Get CA certificate information."""
-    ca_key = CA_DIR / "ca.key"
-    ca_crt = CA_DIR / "ca.crt"
+    ca_key = _ca_dir() / "ca.key"
+    ca_crt = _ca_dir() / "ca.crt"
 
     if not ca_crt.is_file() or not ca_key.is_file():
         return CaInfo(exists=False)
@@ -144,8 +151,8 @@ async def get_ca_info() -> CaInfo:
 
 
 def delete_ca() -> OperationResult:
-    """Delete all files in CA_DIR."""
-    ca_dir = CA_DIR
+    """Delete all files in the CA directory."""
+    ca_dir = _ca_dir()
     if not ca_dir.is_dir():
         return OperationResult(
             success=True,
@@ -177,8 +184,8 @@ async def generate_host_cert(request: HostCertRequest) -> OperationResult:
 
     Generates: host.key, host.csr, host.ext, host.crt, host.pem, host-full.pem
     """
-    ca_key = CA_DIR / "ca.key"
-    ca_crt = CA_DIR / "ca.crt"
+    ca_key = _ca_dir() / "ca.key"
+    ca_crt = _ca_dir() / "ca.crt"
 
     if not ca_key.is_file() or not ca_crt.is_file():
         return OperationResult(
@@ -186,7 +193,7 @@ async def generate_host_cert(request: HostCertRequest) -> OperationResult:
             message="CA certificate not found. Upload CA certificate first.",
         )
 
-    cert_dir = CERT_DIR
+    cert_dir = _cert_dir()
     cert_dir.mkdir(parents=True, exist_ok=True)
 
     cert_days = settings.cert_days
@@ -251,7 +258,7 @@ async def generate_host_cert(request: HostCertRequest) -> OperationResult:
         host_ext.write_text(ext_content, encoding="utf-8")
 
         # 4. Ensure CA serial file exists
-        ca_serial = CA_DIR / "ca.srl"
+        ca_serial = _ca_dir() / "ca.srl"
         if not ca_serial.is_file():
             ca_serial.write_text("01\n", encoding="utf-8")
 
@@ -300,7 +307,8 @@ async def generate_host_cert(request: HostCertRequest) -> OperationResult:
 
 async def get_host_cert_info() -> HostCertInfo:
     """Get host certificate information."""
-    host_crt = CERT_DIR / "host.crt"
+    cert_dir = _cert_dir()
+    host_crt = cert_dir / "host.crt"
 
     if not host_crt.is_file():
         return HostCertInfo(exists=False)
@@ -308,7 +316,7 @@ async def get_host_cert_info() -> HostCertInfo:
     info = await _parse_cert_info(host_crt)
 
     files = [
-        f.name for f in sorted(CERT_DIR.iterdir()) if f.is_file() and f.name.startswith("host")
+        f.name for f in sorted(cert_dir.iterdir()) if f.is_file() and f.name.startswith("host")
     ]
 
     # Extract domain from subject CN
@@ -335,7 +343,7 @@ async def get_host_cert_info() -> HostCertInfo:
 
 def list_host_cert_files() -> HostCertFiles:
     """List all host certificate files."""
-    cert_dir = CERT_DIR
+    cert_dir = _cert_dir()
     files = []
     if cert_dir.is_dir():
         files = [
@@ -351,7 +359,7 @@ def list_host_cert_files() -> HostCertFiles:
 
 def delete_host_cert() -> OperationResult:
     """Delete all host certificate files (host.*)."""
-    cert_dir = CERT_DIR
+    cert_dir = _cert_dir()
     if not cert_dir.is_dir():
         return OperationResult(
             success=True,

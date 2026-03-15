@@ -78,7 +78,7 @@ class Settings:
         # Certificate
         self.cert_days: int = int(_get("certificate", "days", 825))
         self.cert_key_bits: int = int(_get("certificate", "key_bits", 2048))
-        self.cert_base_dir: Path = Path("/opt/argus-insight-agent/certificates")
+        self.cert_base_dir: Path = Path(_get("certificate", "dir", "certificates"))
 
 
 settings = Settings()

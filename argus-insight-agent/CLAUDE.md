@@ -26,8 +26,9 @@
   - `/opt/argus-insight/agent/backups/` - 백업 디렉토리 (yum repo 백업 등)
   - `/opt/argus-insight-agent/` - 애플리케이션 코드
   - `/opt/argus-insight-agent/bin/argus-insight-agent` - 엔트리포인트
-  - `/opt/argus-insight-agent/certificates/` - 호스트 인증서 디렉토리
+  - `/opt/argus-insight-agent/certificates/` - 인증서 디렉토리 (호스트 인증서)
   - `/opt/argus-insight-agent/certificates/ca/` - CA 인증서 디렉토리
+  - 개발 환경: `argus-insight-agent/certificates/` (작업 디렉토리 기준)
 - 장애 시 자동 재시작 (`Restart=on-failure`, 5초 간격)
 
 ## 기술 스택
@@ -201,6 +202,7 @@ command:
 | monitor | interval | monitor.interval | 5 | 모니터링 WebSocket 전송 주기 (초) |
 | terminal | shell | terminal.shell | /bin/bash | 터미널 셸 |
 | terminal | max_sessions | terminal.max_sessions | 10 | 최대 동시 터미널 세션 수 |
+| certificate | dir | cert.dir | /opt/argus-insight-agent/certificates (패키지), certificates (직접 실행) | 인증서 디렉토리 |
 | certificate | days | cert.days | 825 | 호스트 인증서 유효기간 (일) |
 | certificate | key_bits | cert.key_bits | 2048 | 호스트 인증서 RSA 키 크기 (비트) |
 
