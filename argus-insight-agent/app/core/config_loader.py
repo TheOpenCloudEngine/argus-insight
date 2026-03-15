@@ -13,7 +13,8 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
+# Matches ${variable} or ${variable:default_value}
+_VAR_PATTERN = re.compile(r"\$\{([^}:]+)(?::([^}]*))?\}")
 
 DEFAULT_CONFIG_DIR = Path("/etc/argus-insight-agent")
 
@@ -52,12 +53,23 @@ def load_properties(path: Path) -> dict[str, str]:
 
 
 def _resolve_value(value: str, props: dict[str, str]) -> str:
-    """Replace ${variable} placeholders in a string with properties values."""
+    """Replace ${variable} or ${variable:default} placeholders.
+
+    Spring Boot style resolution:
+    - ${variable} : resolved from properties, left as-is if not found
+    - ${variable:default} : resolved from properties, uses default if not found
+    """
 
     def replacer(match: re.Match) -> str:
         var_name = match.group(1)
+        default_value = match.group(2)  # None if no default specified
+
         if var_name in props:
             return props[var_name]
+
+        if default_value is not None:
+            return default_value
+
         logger.warning("Unresolved variable: ${%s}", var_name)
         return match.group(0)
 

@@ -3,7 +3,12 @@
 Configuration is loaded from two files in the config directory:
 
 1. config.properties - Java-style key=value variable definitions
-2. config.yml - Main YAML config that references properties via ${variable}
+2. config.yml - Main YAML config using Spring Boot style ${variable:default}
+
+Variable resolution order:
+  1. Lookup variable in config.properties
+  2. If not found, use the default value specified after ':'
+  3. If no default, the placeholder is left as-is
 
 Default config directory: /etc/argus-insight-agent
 Override with ARGUS_CONFIG_DIR environment variable.
@@ -54,14 +59,18 @@ class Settings:
         )
 
         # Data
-        self.data_dir: Path = Path(_get("data", "dir", "/var/lib/argus-insight-agent"))
+        self.data_dir: Path = Path(
+            _get("data", "dir", "/var/lib/argus-insight-agent")
+        )
 
         # Config
         self.config_dir: Path = _CONFIG_DIR
 
         # Command execution
         self.command_timeout: int = int(_get("command", "timeout", 300))
-        self.command_max_output: int = int(_get("command", "max_output", 1024 * 1024))
+        self.command_max_output: int = int(
+            _get("command", "max_output", 1024 * 1024)
+        )
 
         # Monitor
         self.monitor_interval: int = int(_get("monitor", "interval", 5))
@@ -70,7 +79,9 @@ class Settings:
         self.terminal_shell: str = _get(
             "terminal", "shell", os.environ.get("SHELL", "/bin/bash")
         )
-        self.terminal_max_sessions: int = int(_get("terminal", "max_sessions", 10))
+        self.terminal_max_sessions: int = int(
+            _get("terminal", "max_sessions", 10)
+        )
 
 
 settings = Settings()

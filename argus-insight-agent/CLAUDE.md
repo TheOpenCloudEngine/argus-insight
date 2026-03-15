@@ -81,11 +81,11 @@ argus-insight-agent/
 
 ## 설정 시스템
 
-설정은 두 개의 파일로 구성됩니다:
+Spring Boot 스타일의 `${변수:기본값}` 문법을 사용합니다. 설정은 두 개의 파일로 구성됩니다:
 
 ### config.properties (변수 정의)
 
-Java-style `key=value` 형식으로 변수를 정의합니다. `#`으로 시작하는 줄은 주석입니다.
+Java-style `key=value` 형식으로 변수를 정의합니다. `#`으로 시작하는 줄은 주석입니다. 이 파일의 값은 `config.yml`에서 참조됩니다.
 
 ```properties
 # 서버 설정
@@ -105,30 +105,34 @@ command.timeout=300
 
 ### config.yml (메인 설정)
 
-YAML 형식의 메인 설정 파일입니다. `${변수명}` 문법으로 `config.properties`에 정의된 변수를 참조할 수 있습니다.
+YAML 형식의 메인 설정 파일입니다. `${변수명:기본값}` 문법으로 변수를 참조합니다.
+
+변수 해석 규칙 (Spring Boot 스타일):
+- `${변수명:기본값}` : `config.properties`에서 변수를 찾고, 없으면 기본값 사용
+- `${변수명}` : `config.properties`에서 변수를 찾고, 없으면 placeholder 그대로 유지
 
 ```yaml
 server:
-  host: ${server.host}
-  port: ${server.port}
+  host: ${server.host:0.0.0.0}
+  port: ${server.port:8600}
 
 logging:
-  level: ${log.level}
-  dir: ${log.dir}
-  filename: ${log.filename}
+  level: ${log.level:INFO}
+  dir: ${log.dir:/var/log/argus-insight-agent}
+  filename: ${log.filename:agent.log}
   rolling:
-    type: ${log.rolling.type}
-    backup_count: ${log.rolling.backup_count}
+    type: ${log.rolling.type:daily}
+    backup_count: ${log.rolling.backup_count:30}
 
 command:
-  timeout: ${command.timeout}
+  timeout: ${command.timeout:300}
 ```
 
 ### 설정 로드 흐름
 
 1. `config.properties` 파일을 파싱하여 변수 맵 생성
 2. `config.yml` 파일을 로드
-3. YAML 값 중 `${변수명}` 패턴을 properties 변수 값으로 치환
+3. `${변수:기본값}` 패턴을 해석: properties에 값이 있으면 사용, 없으면 기본값 사용
 4. 치환된 결과를 `Settings` 클래스로 매핑
 
 ### 설정 파일 위치
