@@ -18,8 +18,8 @@ class ArgusAgent(Base):
     cpu_usage = Column(Float)
     memory_usage = Column(Float)
     status = Column(String(20), nullable=False, default="UNREGISTERED")
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class ArgusAgentHeartbeat(Base):
@@ -28,4 +28,4 @@ class ArgusAgentHeartbeat(Base):
     __tablename__ = "argus_agents_heartbeat"
 
     hostname = Column(String(255), primary_key=True)
-    last_heartbeat_at = Column(DateTime, server_default=func.now())
+    last_heartbeat_at = Column(DateTime(timezone=True), server_default=func.now())
