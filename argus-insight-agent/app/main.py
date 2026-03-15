@@ -88,16 +88,40 @@ async def health():
 
 def run() -> None:
     """CLI entry point with config file argument support."""
-    parser = argparse.ArgumentParser(description="Argus Insight Agent")
+    parser = argparse.ArgumentParser(
+        prog="argus-insight-agent",
+        description="Argus Insight Agent - Server management agent for Argus Insight platform.",
+        epilog=(
+            "examples:\n"
+            "  argus-insight-agent\n"
+            "  argus-insight-agent --config-yaml /opt/config/config.yml\n"
+            "  argus-insight-agent --config-properties /opt/config/config.properties\n"
+            "  argus-insight-agent --config-yaml ./config.yml --config-properties ./config.properties\n"
+            "\n"
+            "If no options are specified, configuration files are loaded from\n"
+            "/etc/argus-insight-agent/ (or the ARGUS_CONFIG_DIR environment variable)."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument(
         "--config-yaml",
         metavar="PATH",
-        help="Path to config.yml file (default: /etc/argus-insight-agent/config.yml)",
+        help=(
+            "path to the YAML configuration file (config.yml). "
+            "This file defines the main application settings using "
+            "Spring Boot style ${variable:default} placeholders. "
+            "(default: /etc/argus-insight-agent/config.yml)"
+        ),
     )
     parser.add_argument(
         "--config-properties",
         metavar="PATH",
-        help="Path to config.properties file (default: /etc/argus-insight-agent/config.properties)",
+        help=(
+            "path to the properties variable file (config.properties). "
+            "This file defines key=value variables referenced by config.yml "
+            "for environment-specific values such as host, port, and credentials. "
+            "(default: /etc/argus-insight-agent/config.properties)"
+        ),
     )
     args = parser.parse_args()
 
