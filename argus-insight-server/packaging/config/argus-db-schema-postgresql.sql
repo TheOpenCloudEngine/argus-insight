@@ -1,26 +1,34 @@
--- Argus Insight Server - PostgreSQL Database and User Setup
--- Run this script as a PostgreSQL superuser (e.g., postgres)
---
--- Usage:
---   sudo -u postgres psql -f argus-db-schema-postgresql.sql
+-- Argus Insight Server - Database Schema (PostgreSQL)
+-- Run this script to create the required tables.
 
--- Create user
-CREATE USER argus WITH PASSWORD 'argus';
+CREATE TABLE IF NOT EXISTS argus_agents (
+    hostname        VARCHAR(255)    PRIMARY KEY,
+    ip_address      VARCHAR(45)     NOT NULL,
+    version         VARCHAR(50),
+    kernel_version  VARCHAR(255),
+    os_version      VARCHAR(255),
+    cpu_usage       DOUBLE PRECISION,
+    memory_usage    DOUBLE PRECISION,
+    status          VARCHAR(20)     NOT NULL DEFAULT 'UNREGISTERED',
+    created_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
--- Create database
-CREATE DATABASE argus
-    OWNER = argus
-    ENCODING = 'UTF8'
-    LC_COLLATE = 'en_US.UTF-8'
-    LC_CTYPE = 'en_US.UTF-8'
-    TEMPLATE = template0;
+COMMENT ON TABLE argus_agents IS 'Agent master table storing identity and latest resource usage';
+COMMENT ON COLUMN argus_agents.hostname IS 'Agent hostname (unique identifier)';
+COMMENT ON COLUMN argus_agents.ip_address IS 'Agent IP address (IPv4/IPv6)';
+COMMENT ON COLUMN argus_agents.version IS 'Agent software version';
+COMMENT ON COLUMN argus_agents.kernel_version IS 'OS kernel version';
+COMMENT ON COLUMN argus_agents.os_version IS 'OS distribution and version';
+COMMENT ON COLUMN argus_agents.cpu_usage IS 'Total CPU usage percentage (0.0-100.0)';
+COMMENT ON COLUMN argus_agents.memory_usage IS 'Total memory usage percentage (0.0-100.0)';
+COMMENT ON COLUMN argus_agents.status IS 'UNREGISTERED | REGISTERED | DISCONNECTED';
 
--- Grant privileges
-GRANT ALL PRIVILEGES ON DATABASE argus TO argus;
+CREATE TABLE IF NOT EXISTS argus_agents_heartbeat (
+    hostname            VARCHAR(255)    PRIMARY KEY,
+    last_heartbeat_at   TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
--- Connect to the argus database and set up schema permissions
-\c argus
-
-GRANT ALL PRIVILEGES ON SCHEMA public TO argus;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO argus;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON SEQUENCES TO argus;
+COMMENT ON TABLE argus_agents_heartbeat IS 'Tracks the last heartbeat timestamp per agent';
+COMMENT ON COLUMN argus_agents_heartbeat.hostname IS 'Agent hostname (references argus_agents)';
+COMMENT ON COLUMN argus_agents_heartbeat.last_heartbeat_at IS 'Timestamp of the last heartbeat received';
