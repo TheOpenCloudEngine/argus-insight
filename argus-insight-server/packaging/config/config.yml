@@ -1,0 +1,30 @@
+# Argus Insight Server Configuration
+# Variables use Spring Boot style: ${variable:default_value}
+# Values are resolved from config.properties. If not found, the default value is used.
+
+app:
+  name: argus-insight-server
+  version: 0.1.0
+  debug: false
+
+server:
+  host: ${server.host:0.0.0.0}
+  port: ${server.port:8080}
+
+logging:
+  level: ${log.level:INFO}
+  dir: ${log.dir:/var/log/argus-insight-server}
+  filename: ${log.filename:server.log}
+  rolling:
+    type: ${log.rolling.type:daily}
+    backup_count: ${log.rolling.backup_count:30}
+
+data:
+  dir: ${data.dir:/var/lib/argus-insight-server}
+
+cors:
+  origins: ${cors.origins:*}
+
+agent:
+  timeout: ${agent.timeout:30}
+  health_interval: ${agent.health_interval:60}

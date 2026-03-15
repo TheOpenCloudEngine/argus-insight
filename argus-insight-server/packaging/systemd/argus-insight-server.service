@@ -1,0 +1,28 @@
+[Unit]
+Description=Argus Insight Server
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=argus
+Group=argus
+ExecStart=/opt/argus-insight-server/bin/argus-insight-server
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=argus-insight-server
+
+# Directories
+RuntimeDirectory=argus-insight-server
+StateDirectory=argus-insight-server
+LogsDirectory=argus-insight-server
+ConfigurationDirectory=argus-insight-server
+
+[Install]
+WantedBy=multi-user.target
