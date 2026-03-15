@@ -269,3 +269,163 @@ def test_update_nameservers_creates_file(tmp_path):
 
     assert result.success is True
     assert "nameserver 1.1.1.1" in missing.read_text()
+
+
+# ---------------------------------------------------------------------------
+# Ulimit tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def limits_file(tmp_path):
+    """Create a temporary /etc/security/limits.conf file."""
+    f = tmp_path / "limits.conf"
+    f.write_text(
+        "# /etc/security/limits.conf\n"
+        "#\n"
+        "# <domain> <type> <item> <value>\n"
+        "#\n"
+        "*\tsoft\tnofile\t1024\n"
+        "*\thard\tnofile\t4096\n"
+        "alice\tsoft\tnofile\t2048\n"
+        "alice\thard\tnofile\t8192\n"
+    )
+    return f
+
+
+async def test_get_ulimit_all():
+    with patch.object(service, "_run", new_callable=AsyncMock) as mock_run:
+        mock_run.side_effect = [
+            (0, "1024", ""),  # -n soft
+            (0, "4096", ""),  # -n hard
+            (0, "63328", ""),  # -u soft
+            (0, "63328", ""),  # -u hard
+            (0, "unlimited", ""),  # -v soft
+            (0, "unlimited", ""),  # -v hard
+            (0, "8192", ""),  # -s soft
+            (0, "unlimited", ""),  # -s hard
+            (0, "0", ""),  # -c soft
+            (0, "unlimited", ""),  # -c hard
+        ]
+        result = await service.get_ulimit_all()
+
+    assert len(result.entries) == 5
+    nofile = result.entries[0]
+    assert nofile.option == "-n"
+    assert nofile.resource == "open files"
+    assert nofile.soft == "1024"
+    assert nofile.hard == "4096"
+
+
+async def test_get_ulimit_specific():
+    with patch.object(service, "_run", new_callable=AsyncMock) as mock_run:
+        mock_run.side_effect = [
+            (0, "1024", ""),
+            (0, "4096", ""),
+        ]
+        result = await service.get_ulimit("-n")
+
+    assert result.option == "-n"
+    assert result.resource == "open files"
+    assert result.soft == "1024"
+    assert result.hard == "4096"
+
+
+async def test_get_ulimit_invalid_option():
+    with pytest.raises(ValueError, match="Unsupported"):
+        await service.get_ulimit("-x")
+
+
+async def test_set_ulimit(limits_file):
+    with (
+        patch.object(service, "LIMITS_CONF", limits_file),
+    ):
+        result = await service.set_ulimit("-n", "65536")
+
+    assert result.success is True
+    content = limits_file.read_text()
+    assert "*\tsoft\tnofile\t65536" in content
+    assert "*\thard\tnofile\t65536" in content
+
+
+async def test_set_ulimit_invalid_option():
+    result = await service.set_ulimit("-x", "100")
+    assert result.success is False
+    assert "Unsupported" in result.message
+
+
+def test_set_user_max_open_files_new_user(limits_file):
+    from app.hostmgr.schemas import LimitsConfSetRequest
+
+    request = LimitsConfSetRequest(user="bob", soft="4096", hard="8192")
+    with patch.object(service, "LIMITS_CONF", limits_file):
+        result = service.set_user_max_open_files(request)
+
+    assert result.success is True
+    content = limits_file.read_text()
+    assert "bob\tsoft\tnofile\t4096" in content
+    assert "bob\thard\tnofile\t8192" in content
+    # Existing entries should be preserved
+    assert "alice\tsoft\tnofile\t2048" in content
+
+
+def test_set_user_max_open_files_update_existing(limits_file):
+    from app.hostmgr.schemas import LimitsConfSetRequest
+
+    request = LimitsConfSetRequest(user="alice", soft="10000", hard="20000")
+    with patch.object(service, "LIMITS_CONF", limits_file):
+        result = service.set_user_max_open_files(request)
+
+    assert result.success is True
+    content = limits_file.read_text()
+    assert "alice\tsoft\tnofile\t10000" in content
+    assert "alice\thard\tnofile\t20000" in content
+    # Old values should be gone
+    assert "alice\tsoft\tnofile\t2048" not in content
+    assert "alice\thard\tnofile\t8192" not in content
+
+
+def test_set_user_max_open_files_all_users(limits_file):
+    from app.hostmgr.schemas import LimitsConfSetRequest
+
+    request = LimitsConfSetRequest(user="*", soft="65536", hard="65536")
+    with patch.object(service, "LIMITS_CONF", limits_file):
+        result = service.set_user_max_open_files(request)
+
+    assert result.success is True
+    content = limits_file.read_text()
+    assert "*\tsoft\tnofile\t65536" in content
+    assert "*\thard\tnofile\t65536" in content
+    # Old * entries should be gone
+    assert "*\tsoft\tnofile\t1024" not in content
+
+
+def test_set_user_max_open_files_missing_file(tmp_path):
+    from app.hostmgr.schemas import LimitsConfSetRequest
+
+    missing = tmp_path / "nonexistent"
+    request = LimitsConfSetRequest(user="bob", soft="1024", hard="2048")
+    with patch.object(service, "LIMITS_CONF", missing):
+        result = service.set_user_max_open_files(request)
+
+    assert result.success is False
+    assert "not found" in result.message.lower()
+
+
+def test_parse_limits_conf(limits_file):
+    content = limits_file.read_text()
+    entries = service._parse_limits_conf(content)
+    assert len(entries) == 4
+    assert entries[0].domain == "*"
+    assert entries[0].type == "soft"
+    assert entries[0].item == "nofile"
+    assert entries[0].value == "1024"
+
+
+def test_update_limits_conf_preserves_comments(limits_file):
+    with patch.object(service, "LIMITS_CONF", limits_file):
+        service._update_limits_conf("bob", "nofile", "1000", "2000")
+
+    content = limits_file.read_text()
+    assert "# /etc/security/limits.conf" in content
+    assert "bob\tsoft\tnofile\t1000" in content
