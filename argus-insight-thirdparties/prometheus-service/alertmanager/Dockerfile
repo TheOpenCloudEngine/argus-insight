@@ -23,7 +23,7 @@ RUN chown -R prometheus:prometheus /etc/prometheus
 
 USER prometheus
 EXPOSE 9093
-VOLUME ["/etc/prometheus", "/var/lib/prometheus/alertmanager"]
+VOLUME ["/var/lib/prometheus"]
 ENTRYPOINT ["/opt/argus-insight/prometheus/alertmanager"]
 CMD ["--config.file=/etc/prometheus/alertmanager.yml", \
      "--storage.path=/var/lib/prometheus/alertmanager", \

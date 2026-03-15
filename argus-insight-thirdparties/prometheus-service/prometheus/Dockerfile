@@ -27,7 +27,7 @@ RUN chown -R prometheus:prometheus /etc/prometheus
 
 USER prometheus
 EXPOSE 9090
-VOLUME ["/etc/prometheus", "/var/lib/prometheus/data"]
+VOLUME ["/var/lib/prometheus"]
 ENTRYPOINT ["/opt/argus-insight/prometheus/prometheus"]
 CMD ["--config.file=/etc/prometheus/prometheus.yml", \
      "--storage.tsdb.path=/var/lib/prometheus/data", \
