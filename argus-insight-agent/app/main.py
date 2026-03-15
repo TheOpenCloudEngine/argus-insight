@@ -11,6 +11,7 @@ from app.command.router import router as command_router
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.security import SecurityHeadersMiddleware
+from app.filemgr.router import router as filemgr_router
 from app.hostmgr.router import router as hostmgr_router
 from app.monitor.router import router as monitor_router
 from app.package.router import router as package_router
@@ -52,6 +53,7 @@ app.include_router(yum_router, prefix="/api/v1")
 app.include_router(hostmgr_router, prefix="/api/v1")
 app.include_router(usermgr_router, prefix="/api/v1")
 app.include_router(certmgr_router, prefix="/api/v1")
+app.include_router(filemgr_router, prefix="/api/v1")
 
 
 @app.get("/health")

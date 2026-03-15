@@ -32,6 +32,7 @@ argus-insight-yum = "app.yum.cli:main"
 argus-insight-host = "app.hostmgr.cli:main"
 argus-insight-user = "app.usermgr.cli:main"
 argus-insight-cert = "app.certmgr.cli:main"
+argus-insight-file = "app.filemgr.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["app*"]

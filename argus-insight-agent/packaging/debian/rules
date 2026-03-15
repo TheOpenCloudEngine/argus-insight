@@ -19,6 +19,7 @@ override_dh_auto_install:
 	install -m 755 scripts/argus-insight-host debian/argus-insight-agent/opt/argus-insight-agent/bin/argus-insight-host
 	install -m 755 scripts/argus-insight-user debian/argus-insight-agent/opt/argus-insight-agent/bin/argus-insight-user
 	install -m 755 scripts/argus-insight-cert debian/argus-insight-agent/opt/argus-insight-agent/bin/argus-insight-cert
+	install -m 755 scripts/argus-insight-file debian/argus-insight-agent/opt/argus-insight-agent/bin/argus-insight-file
 
 	# Config
 	mkdir -p debian/argus-insight-agent/etc/argus-insight-agent
