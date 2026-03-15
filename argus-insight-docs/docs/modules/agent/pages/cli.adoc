@@ -1,0 +1,125 @@
+= CLI 레퍼런스
+:description: Argus Insight Agent CLI 레퍼런스
+
+== CLI 실행 방법
+
+CLI는 실행 환경에 따라 3가지 방식으로 호출할 수 있습니다.
+
+=== 1. python -m 모듈 실행 (개발 환경)
+
+[source,bash]
+----
+cd argus-insight-agent
+python -m app.sysmon.cli dmesg --lines 100 --level err
+----
+
+=== 2. 설치 후 명령어 (make dev)
+
+[source,bash]
+----
+argus-insight-sysmon dmesg --lines 100 --level err
+----
+
+=== 3. 패키지 설치 환경
+
+[source,bash]
+----
+/opt/argus-insight-agent/bin/argus-insight-sysmon dmesg --lines 100
+----
+
+== CLI 명령어 목록
+
+[cols="1,1,2"]
+|===
+| 명령어 | 모듈 | 설명
+
+| `argus-insight-sysmon` | sysmon | 시스템 모니터링
+| `argus-insight-yum` | yum | Yum 관리
+| `argus-insight-host` | hostmgr | 호스트 관리
+| `argus-insight-user` | usermgr | 사용자 관리
+| `argus-insight-cert` | certmgr | 인증서 관리
+| `argus-insight-file` | filemgr | 파일 관리
+| `argus-insight-process` | processmgr | 프로세스 관리
+| `argus-insight-metric` | metrics | Prometheus 메트릭
+|===
+
+== 주요 사용 예시
+
+=== 시스템 모니터링
+
+[source,bash]
+----
+# dmesg 로그 조회
+argus-insight-sysmon dmesg --lines 100 --level err
+
+# CPU 사용량
+argus-insight-sysmon cpu --interval 1.0
+
+# 네트워크 현황
+argus-insight-sysmon network
+
+# 프로세스 정보
+argus-insight-sysmon processes --sort cpu_percent --limit 20
+
+# 디스크 현황
+argus-insight-sysmon disk
+----
+
+=== Yum 관리
+
+[source,bash]
+----
+# 리포지토리 목록
+argus-insight-yum repo list
+
+# 패키지 검색
+argus-insight-yum package search nginx
+
+# 패키지 설치
+argus-insight-yum package install nginx
+
+# 패키지 정보
+argus-insight-yum package info nginx
+----
+
+=== 호스트 관리
+
+[source,bash]
+----
+# hostname 조회
+argus-insight-host hostname get
+
+# ulimit 조회
+argus-insight-host ulimit get-all
+
+# max open files 설정
+argus-insight-host ulimit nofile '*' 65536 65536
+----
+
+=== 사용자 관리
+
+[source,bash]
+----
+# 사용자 목록
+argus-insight-user users list
+
+# SSH 키 생성
+argus-insight-user ssh keygen alice
+
+# sudo 권한 부여
+argus-insight-user sudo alice
+----
+
+=== 프로세스 관리
+
+[source,bash]
+----
+# 프로세스 목록 (CPU 순)
+argus-insight-process list --sort cpu_percent --limit 20
+
+# 좀비 프로세스 확인
+argus-insight-process zombies
+
+# open files 경고
+argus-insight-process too-many-open-files --threshold 80
+----

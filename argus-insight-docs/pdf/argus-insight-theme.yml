@@ -1,0 +1,133 @@
+# Argus Insight - PDF Theme for asciidoctor-pdf
+# Reference: https://docs.asciidoctor.org/pdf-converter/latest/theme/
+
+extends: default
+
+page:
+  size: A4
+  margin: [30mm, 25mm, 30mm, 25mm]
+  background_color: FFFFFF
+
+base:
+  font_color: 333333
+  font_family: Noto Sans
+  font_size: 10
+  line_height: 1.5
+
+header:
+  height: 20mm
+  border_width: 0.5
+  border_color: DDDDDD
+  recto:
+    center:
+      content: '{document-title}'
+  verso:
+    center:
+      content: '{document-title}'
+
+footer:
+  height: 15mm
+  border_width: 0.5
+  border_color: DDDDDD
+  recto:
+    right:
+      content: '{page-number} / {page-count}'
+  verso:
+    left:
+      content: '{page-number} / {page-count}'
+
+title_page:
+  align: center
+  title:
+    top: 40%
+    font_size: 36
+    font_color: 2C3E50
+    font_style: bold
+    line_height: 1.2
+  subtitle:
+    font_size: 18
+    font_color: 7F8C8D
+    line_height: 1.5
+  revision:
+    margin_top: 30
+    font_size: 12
+    font_color: 95A5A6
+  authors:
+    margin_top: 15
+    font_size: 14
+    font_color: 555555
+
+heading:
+  font_color: 2C3E50
+  font_style: bold
+  h1:
+    font_size: 24
+    margin_top: 20
+    margin_bottom: 10
+  h2:
+    font_size: 20
+    margin_top: 18
+    margin_bottom: 8
+  h3:
+    font_size: 16
+    margin_top: 14
+    margin_bottom: 6
+  h4:
+    font_size: 13
+    margin_top: 10
+    margin_bottom: 4
+
+code:
+  font_family: Noto Sans Mono
+  font_size: 9
+  background_color: F5F5F5
+  border_color: E0E0E0
+  border_radius: 3
+  padding: [4, 6, 4, 6]
+
+codespan:
+  font_family: Noto Sans Mono
+  font_size: 9.5
+  font_color: C7254E
+  background_color: F9F2F4
+  border_radius: 2
+
+table:
+  border_color: DDDDDD
+  border_width: 0.5
+  head:
+    font_style: bold
+    background_color: F0F0F0
+    border_bottom_width: 1.5
+  body:
+    stripe_background_color: FAFAFA
+  cell:
+    padding: [4, 6, 4, 6]
+
+admonition:
+  column_rule_color: DDDDDD
+  column_rule_width: 0.5
+  icon:
+    note:
+      name: fa-info-circle
+      stroke_color: 3498DB
+    tip:
+      name: fa-lightbulb
+      stroke_color: 27AE60
+    warning:
+      name: fa-exclamation-triangle
+      stroke_color: F39C12
+    caution:
+      name: fa-fire
+      stroke_color: E74C3C
+    important:
+      name: fa-exclamation-circle
+      stroke_color: E67E22
+
+toc:
+  font_size: 10
+  line_height: 1.8
+  indent: 15
+  dot_leader:
+    content: '. '
+    font_color: AAAAAA

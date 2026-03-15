@@ -1,0 +1,19 @@
+{
+  "name": "argus-insight-docs",
+  "version": "0.1.0",
+  "description": "Argus Insight Platform Documentation (AsciiDoc + Antora)",
+  "private": true,
+  "scripts": {
+    "build": "antora antora-playbook.yml",
+    "build:local": "antora --fetch antora-playbook.yml",
+    "build:pdf": "antora antora-playbook-pdf.yml",
+    "preview": "npm run build && npx http-server build/site -o -p 8888",
+    "clean": "rm -rf build .antora-cache",
+    "pdf:asciidoctor": "asciidoctor-pdf docs/modules/ROOT/pages/index.adoc -a pdf-themesdir=pdf -a pdf-theme=argus-insight -o build/pdf/argus-insight.pdf"
+  },
+  "devDependencies": {
+    "@antora/cli": "3.1.14",
+    "@antora/site-generator": "3.1.14",
+    "@antora/pdf-extension": "^1.0.0-alpha.7"
+  }
+}

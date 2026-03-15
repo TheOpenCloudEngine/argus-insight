@@ -1,0 +1,36 @@
+# Argus Insight Documentation - PDF Generation Playbook
+# Generates a single merged PDF document using asciidoctor-pdf
+
+site:
+  title: Argus Insight Documentation
+  url: https://docs.argus-insight.io
+  start_page: argus-insight::index.adoc
+
+content:
+  sources:
+    - url: .
+      branches: HEAD
+      start_path: docs
+
+asciidoc:
+  attributes:
+    allow-uri-read: ''
+    source-highlighter: rouge
+    icons: font
+    sectnums: ''
+    toc: ''
+    pdf-themesdir: ./pdf
+    pdf-theme: argus-insight
+    pdf-fontsdir: ./pdf/fonts
+
+antora:
+  extensions:
+    - '@antora/pdf-extension'
+
+ui:
+  bundle:
+    url: https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable
+    snapshot: true
+
+output:
+  dir: ./build/pdf

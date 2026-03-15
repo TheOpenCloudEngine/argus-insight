@@ -1,0 +1,20 @@
+name: argus-insight
+version: '0.1'
+title: Argus Insight
+start_page: ROOT:index.adoc
+asciidoc:
+  attributes:
+    product-name: Argus Insight
+    product-version: '0.1'
+    company-name: TheOpenCloudEngine
+    server-port: '8080'
+    agent-port: '8600'
+    source-highlighter: highlight.js
+    icons: font
+    toc: left
+    sectnums: ''
+    sectnumlevels: '3'
+nav:
+  - modules/ROOT/nav.adoc
+  - modules/server/nav.adoc
+  - modules/agent/nav.adoc

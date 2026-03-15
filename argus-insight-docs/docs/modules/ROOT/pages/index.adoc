@@ -1,0 +1,32 @@
+= Argus Insight
+:description: Argus Insight 플랫폼 소개
+:keywords: argus, insight, data, ai, platform
+
+== 개요
+
+**Argus Insight**는 '백 개의 눈'을 가진 신화 속 수호자처럼, 방대한 데이터를 빈틈없이 관측하여 숨겨진 가치를 찾아내는 지능형 Data + AI Platform입니다.
+
+데이터의 전 생명주기 동안 활용할 수 있는 소프트웨어 스택과 관리 방법을 제공합니다.
+
+== 주요 구성 요소
+
+[cols="1,3"]
+|===
+| 구성 요소 | 설명
+
+| xref:server:index.adoc[Argus Insight Server]
+| 중앙 관리 서버. React UI와 통신하며 에이전트를 통해 원격 서버를 제어합니다.
+
+| xref:agent:index.adoc[Argus Insight Agent]
+| 관리 대상 서버에 설치되어 root 권한으로 동작하는 서버 관리 에이전트입니다.
+|===
+
+== 기술 스택
+
+* **언어**: Python 3.11+
+* **웹 프레임워크**: FastAPI + Uvicorn
+* **스키마 검증**: Pydantic v2
+* **빌드**: setuptools
+* **린터**: ruff
+* **테스트**: pytest + pytest-asyncio + httpx
+* **라이선스**: Apache License 2.0
