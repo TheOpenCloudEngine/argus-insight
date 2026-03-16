@@ -71,6 +71,12 @@
           "icon": "Users"
         },
         {
+          "id": "server-management",
+          "title": "Server Management",
+          "url": "/dashboard/server-management",
+          "icon": "ServerCog"
+        },
+        {
           "id": "configuration",
           "title": "Service Configuration",
           "url": "/dashboard/configuration",

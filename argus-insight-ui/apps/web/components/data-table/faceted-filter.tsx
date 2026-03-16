@@ -26,6 +26,7 @@ type DataTableFacetedFilterProps<TData, TValue> = {
     label: string
     value: string
     icon?: React.ComponentType<{ className?: string }>
+    badgeClassName?: string
   }[]
 }
 
@@ -114,7 +115,13 @@ export function DataTableFacetedFilter<TData, TValue>({
                     {option.icon && (
                       <option.icon className="size-4 text-muted-foreground" />
                     )}
-                    <span>{option.label}</span>
+                    {option.badgeClassName ? (
+                      <Badge variant="outline" className={cn("capitalize", option.badgeClassName)}>
+                        {option.label}
+                      </Badge>
+                    ) : (
+                      <span>{option.label}</span>
+                    )}
                     {facets?.get(option.value) && (
                       <span className="ms-auto flex h-4 w-4 items-center justify-center font-mono text-xs">
                         {facets.get(option.value)}
