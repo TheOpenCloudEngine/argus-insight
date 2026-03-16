@@ -86,12 +86,12 @@ const COLUMNS: {
 }[] = [
   { key: "pid", label: "PID", align: "right", width: "w-20" },
   { key: "username", label: "USER", align: "left", width: "w-24" },
-  { key: "cpu_percent", label: "CPU%", align: "right", width: "w-20" },
-  { key: "memory_percent" as SortField, label: "MEM%", align: "right", width: "w-20" },
-  { key: "memory_rss", label: "RSS", align: "right", width: "w-24" },
-  { key: "memory_vms", label: "VIRT", align: "right", width: "w-24" },
+  { key: "cpu_percent", label: "CPU%", align: "right", width: "w-16" },
+  { key: "memory_percent" as SortField, label: "MEM%", align: "right", width: "w-16" },
+  { key: "memory_rss", label: "RSS", align: "right", width: "w-20" },
+  { key: "memory_vms", label: "VIRT", align: "right", width: "w-20" },
   { key: "status", label: "S", align: "center", width: "w-14" },
-  { key: "num_threads", label: "THR", align: "right", width: "w-16" },
+  { key: "num_threads", label: "THR", align: "right", width: "w-14" },
 ]
 
 export function ServersProcessesDialog({
@@ -227,11 +227,13 @@ export function ServersProcessesDialog({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={onOpenChange} modal>
         <DialogContent
           className="max-w-6xl p-0 overflow-hidden flex flex-col"
           style={{ maxHeight: "85vh" }}
           showCloseButton={false}
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
         >
           {/* Header */}
           <div className="flex items-center justify-between px-4 pt-4 pb-2 border-b shrink-0">
@@ -240,7 +242,7 @@ export function ServersProcessesDialog({
                 <List className="h-4 w-4" />
                 Processes - {currentRow.hostname}
               </DialogTitle>
-              <DialogDescription className="text-xs text-muted-foreground">
+              <DialogDescription className="text-sm text-muted-foreground">
                 {currentRow.ipAddress} · {filtered.length} processes
                 {filter && ` (filtered)`} · refreshing every 5s
               </DialogDescription>
@@ -259,7 +261,7 @@ export function ServersProcessesDialog({
                 placeholder="Filter by command..."
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
-                className="pl-8 h-8 text-xs"
+                className="pl-8 h-8 text-sm"
               />
               {filter && (
                 <button
@@ -273,7 +275,7 @@ export function ServersProcessesDialog({
             <Button
               variant="destructive"
               size="sm"
-              className="h-8 text-xs gap-1.5"
+              className="h-8 text-sm gap-1.5"
               disabled={selected.size === 0 || killing}
               onClick={() => setKillConfirm(true)}
             >
@@ -303,7 +305,7 @@ export function ServersProcessesDialog({
           {processes.length > 0 && (
             <div className="flex-1 min-h-0 overflow-auto px-4 pb-3">
               {/* Grid header */}
-              <div className="grid grid-cols-[32px_80px_96px_80px_80px_96px_96px_56px_64px_1fr] gap-0 sticky top-0 bg-background z-10 border-b text-xs font-medium text-muted-foreground">
+              <div className="grid grid-cols-[32px_80px_96px_64px_64px_80px_80px_56px_56px_1fr] gap-0 sticky top-0 bg-background z-10 border-b text-sm font-medium text-muted-foreground">
                 <div className="px-1 py-2 flex items-center justify-center">
                   <input
                     type="checkbox"
@@ -332,13 +334,13 @@ export function ServersProcessesDialog({
               </div>
 
               {/* Grid rows */}
-              <div className="text-xs">
+              <div className="text-sm">
                 {filtered.map((p) => {
                   const isSelected = selected.has(p.pid)
                   return (
                     <div
                       key={p.pid}
-                      className={`grid grid-cols-[32px_80px_96px_80px_80px_96px_96px_56px_64px_1fr] gap-0 border-b border-border/50 hover:bg-muted/50 transition-colors ${
+                      className={`grid grid-cols-[32px_80px_96px_64px_64px_80px_80px_56px_56px_1fr] gap-0 border-b border-border/50 hover:bg-muted/50 transition-colors ${
                         isSelected ? "bg-muted/80" : ""
                       }`}
                     >
