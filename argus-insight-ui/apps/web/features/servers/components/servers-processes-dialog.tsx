@@ -23,6 +23,13 @@ import {
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -105,6 +112,7 @@ export function ServersProcessesDialog({
   const [sortField, setSortField] = useState<SortField>("pid")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
   const [filter, setFilter] = useState("")
+  const [userFilter, setUserFilter] = useState<string>("__all__")
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [killConfirm, setKillConfirm] = useState(false)
   const [killing, setKilling] = useState(false)
@@ -129,6 +137,7 @@ export function ServersProcessesDialog({
       setProcesses([])
       setSelected(new Set())
       setFilter("")
+      setUserFilter("__all__")
       setSortField("pid")
       setSortDir("asc")
       loadProcesses()
@@ -158,8 +167,16 @@ export function ServersProcessesDialog({
     }
   }
 
+  const userList = useMemo(() => {
+    const users = new Set(processes.map((p) => p.username))
+    return Array.from(users).sort((a, b) => a.localeCompare(b))
+  }, [processes])
+
   const filtered = useMemo(() => {
     let list = processes
+    if (userFilter !== "__all__") {
+      list = list.filter((p) => p.username === userFilter)
+    }
     if (filter.trim()) {
       const q = filter.toLowerCase()
       list = list.filter(
@@ -255,6 +272,19 @@ export function ServersProcessesDialog({
 
           {/* Toolbar */}
           <div className="flex items-center gap-2 px-4 py-2 border-b shrink-0">
+            <Select value={userFilter} onValueChange={setUserFilter}>
+              <SelectTrigger className="h-8 w-40 text-sm">
+                <SelectValue placeholder="All Users" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All Users</SelectItem>
+                {userList.map((user) => (
+                  <SelectItem key={user} value={user}>
+                    {user}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <div className="relative flex-1 max-w-sm">
               <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
@@ -275,7 +305,7 @@ export function ServersProcessesDialog({
             <Button
               variant="destructive"
               size="sm"
-              className="h-8 text-sm gap-1.5"
+              className="ml-auto h-8 text-sm gap-1.5"
               disabled={selected.size === 0 || killing}
               onClick={() => setKillConfirm(true)}
             >
