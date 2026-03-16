@@ -90,6 +90,7 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
           brightMagenta: "#bb9af7",
           brightCyan: "#0db9d7",
           brightWhite: "#acb0d0",
+          scrollbarThumb: "#555555",
         },
         scrollback: 5000,
         convertEol: true,
