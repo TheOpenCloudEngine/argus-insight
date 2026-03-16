@@ -19,6 +19,7 @@ from app.core.logging import setup_logging
 from app.core.security import SecurityHeadersMiddleware
 from app.dashboard.router import router as dashboard_router
 from app.proxy.router import router as proxy_router
+from app.usermgr.router import router as usermgr_router
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +50,19 @@ async def lifespan(app: FastAPI):
     await init_database()
     # Ensure ORM tables exist (import models so they are registered with Base)
     import app.agent.models  # noqa: F401
+    import app.usermgr.models  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables verified")
+
+    # Seed default roles
+    from app.core.database import async_session
+    from app.usermgr.service import seed_roles
+
+    async with async_session() as session:
+        await seed_roles(session)
+
     await disconnect_checker.start()
     yield
     await disconnect_checker.stop()
@@ -81,6 +91,7 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(agent_router, prefix="/api/v1")
 app.include_router(proxy_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
+app.include_router(usermgr_router, prefix="/api/v1")
 
 
 @app.get("/health")

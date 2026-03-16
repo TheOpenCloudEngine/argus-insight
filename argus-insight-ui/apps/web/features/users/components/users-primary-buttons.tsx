@@ -1,7 +1,5 @@
 "use client"
 
-import { UserCheck, UserMinus, UserPlus } from "lucide-react"
-
 import { Button } from "@workspace/ui/components/button"
 import { useUsers } from "./users-provider"
 
@@ -10,14 +8,14 @@ export function UsersPrimaryButtons() {
 
   return (
     <div className="flex gap-2">
-      <Button className="space-x-1" onClick={() => setOpen("activate")}>
-        <span>Active User</span> <UserCheck size={18} />
+      <Button onClick={() => setOpen("activate")}>
+        Activate
       </Button>
-      <Button className="space-x-1" onClick={() => setOpen("deactivate")}>
-        <span>Inactive User</span> <UserMinus size={18} />
+      <Button onClick={() => setOpen("deactivate")}>
+        Deactivate
       </Button>
-      <Button className="space-x-1" onClick={() => setOpen("add")}>
-        <span>Add User</span> <UserPlus size={18} />
+      <Button onClick={() => setOpen("add")}>
+        Add
       </Button>
     </div>
   )
