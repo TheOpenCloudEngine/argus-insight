@@ -44,6 +44,11 @@ export function DataTableToolbar<TData>({
             onChange={(event) =>
               table.getColumn(searchKey)?.setFilterValue(event.target.value)
             }
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && onSearch) {
+                onSearch()
+              }
+            }}
             className="h-8 w-[150px] lg:w-[250px]"
           />
         ) : (
