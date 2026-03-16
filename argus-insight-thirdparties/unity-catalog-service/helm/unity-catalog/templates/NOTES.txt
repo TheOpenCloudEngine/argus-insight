@@ -1,0 +1,15 @@
+Unity Catalog has been deployed.
+
+1. Get the application URL:
+{{- if eq .Values.service.type "ClusterIP" }}
+  kubectl port-forward svc/{{ include "unity-catalog.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }} -n {{ .Release.Namespace }}
+  Open: http://localhost:{{ .Values.service.port }}/api/2.1/unity-catalog/catalogs
+{{- else if eq .Values.service.type "NodePort" }}
+  export NODE_PORT=$(kubectl get svc {{ include "unity-catalog.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}")
+  export NODE_IP=$(kubectl get nodes -o jsonpath="{.items[0].status.addresses[0].address}")
+  Open: http://$NODE_IP:$NODE_PORT/api/2.1/unity-catalog/catalogs
+{{- end }}
+
+2. API Documentation:
+  Swagger UI: https://docs.unitycatalog.io/swagger-docs/
+  API Base Path: /api/2.1/unity-catalog

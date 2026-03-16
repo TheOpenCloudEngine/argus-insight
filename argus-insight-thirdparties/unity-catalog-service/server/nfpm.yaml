@@ -1,0 +1,90 @@
+name: unitycatalog-server
+arch: __ARCH__
+platform: linux
+version: __UNITY_CATALOG_VERSION__
+release: "1"
+section: database
+maintainer: "Open Cloud Engine <fharenheit@gmail.com>"
+description: "Unity Catalog - Open, Multi-modal Catalog for Data & AI"
+vendor: "Unity Catalog Authors"
+homepage: "https://www.unitycatalog.io/"
+license: "Apache-2.0"
+
+depends:
+  - java-17-openjdk-headless
+
+contents:
+  # Server binaries and libraries (built tarball contents)
+  - src: ../dist/build/unitycatalog-__UNITY_CATALOG_VERSION__/bin/
+    dst: /opt/argus-insight/unity-catalog/bin/
+    file_info:
+      mode: 0755
+
+  - src: ../dist/build/unitycatalog-__UNITY_CATALOG_VERSION__/jars/
+    dst: /opt/argus-insight/unity-catalog/jars/
+
+  # Bundled JRE (extracted from build)
+  - src: ../dist/build/unitycatalog-__UNITY_CATALOG_VERSION__/jre/
+    dst: /opt/argus-insight/unity-catalog/jre/
+
+  # Default data directory (will be populated at runtime)
+  - dst: /opt/argus-insight/unity-catalog/etc/data
+    type: dir
+    file_info:
+      mode: 0755
+      owner: unitycatalog
+      group: unitycatalog
+
+  # Systemd service
+  - src: unitycatalog-server.service
+    dst: /usr/lib/systemd/system/unitycatalog-server.service
+    file_info:
+      mode: 0644
+
+  # Environment file
+  - src: unitycatalog-server.default
+    dst: /etc/default/unitycatalog-server
+    type: config|noreplace
+    file_info:
+      mode: 0644
+
+  # Server configuration
+  - src: server.properties
+    dst: /etc/unity-catalog/server.properties
+    type: config|noreplace
+    file_info:
+      mode: 0640
+      owner: root
+      group: unitycatalog
+
+  # Data directory
+  - dst: /var/lib/unity-catalog/data
+    type: dir
+    file_info:
+      mode: 0755
+      owner: unitycatalog
+      group: unitycatalog
+
+  # Log directory
+  - dst: /var/log/unity-catalog
+    type: dir
+    file_info:
+      mode: 0755
+      owner: unitycatalog
+      group: unitycatalog
+
+scripts:
+  preinstall: ../common/scripts/preinstall.sh
+  postinstall: ../common/scripts/postinstall.sh
+  preremove: ../common/scripts/preremove.sh
+  postremove: ../common/scripts/postremove.sh
+
+overrides:
+  rpm:
+    depends:
+      - /bin/sh
+      - java-17-openjdk-headless
+  deb:
+    depends:
+      - adduser
+      - openjdk-17-jre-headless
