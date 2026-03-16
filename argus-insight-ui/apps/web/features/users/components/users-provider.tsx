@@ -8,13 +8,17 @@ import { type User } from "../data/schema"
 
 type UsersDialogType = "add" | "edit" | "delete" | "activate" | "deactivate"
 
+type SearchParams = {
+  status: string | null
+  role: string
+  search: string
+}
+
 type UsersContextType = {
   open: UsersDialogType | null
   setOpen: (str: UsersDialogType | null) => void
   currentRow: User | null
   setCurrentRow: React.Dispatch<React.SetStateAction<User | null>>
-  statusFilter: string | null
-  setStatusFilter: React.Dispatch<React.SetStateAction<string | null>>
   selectedUsers: User[]
   setSelectedUsers: React.Dispatch<React.SetStateAction<User[]>>
   users: User[]
@@ -24,8 +28,7 @@ type UsersContextType = {
   isLoading: boolean
   setPage: (page: number) => void
   setPageSize: (size: number) => void
-  setSearchFilter: (search: string) => void
-  setRoleFilter: (role: string) => void
+  searchUsers: (params: SearchParams) => void
   refreshUsers: () => Promise<void>
 }
 
@@ -34,18 +37,15 @@ const UsersContext = React.createContext<UsersContextType | null>(null)
 export function UsersProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useDialogState<UsersDialogType>(null)
   const [currentRow, setCurrentRow] = useState<User | null>(null)
-  const [statusFilter, setStatusFilter] = useState<string | null>(null)
   const [selectedUsers, setSelectedUsers] = useState<User[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
-  const [searchFilter, setSearchFilter] = useState("")
-  const [roleFilter, setRoleFilter] = useState("")
   const [isLoading, setIsLoading] = useState(true)
 
-  // Debounce timer for search
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Applied filters (last searched values)
+  const appliedFiltersRef = useRef<SearchParams>({ status: null, role: "", search: "" })
 
   const loadUsers = useCallback(async (params: {
     page: number
@@ -72,53 +72,45 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  const refreshUsers = useCallback(async () => {
-    await loadUsers({ page, pageSize, status: statusFilter, role: roleFilter, search: searchFilter })
-  }, [loadUsers, page, pageSize, statusFilter, roleFilter, searchFilter])
-
-  // Reload when pagination or filters change
+  // Initial load
   useEffect(() => {
-    loadUsers({ page, pageSize, status: statusFilter, role: roleFilter, search: searchFilter })
-  }, [loadUsers, page, pageSize, statusFilter, roleFilter, searchFilter])
+    loadUsers({ page: 1, pageSize, status: null, role: "", search: "" })
+  }, [loadUsers, pageSize])
 
-  // Wrap setSearchFilter with debounce
-  const handleSetSearchFilter = useCallback((search: string) => {
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
-    searchTimerRef.current = setTimeout(() => {
-      setSearchFilter(search)
-      setPage(1)
-    }, 3000)
-  }, [])
-
-  // Reset to page 1 when filters change
-  const handleSetStatusFilter: React.Dispatch<React.SetStateAction<string | null>> = useCallback(
-    (action: React.SetStateAction<string | null>) => {
-      setStatusFilter(action)
-      setPage(1)
-    },
-    []
-  )
-
-  const handleSetRoleFilter = useCallback((role: string) => {
-    setRoleFilter(role)
-    setPage(1)
-  }, [])
+  // Reload when pagination changes (using last applied filters)
+  const handleSetPage = useCallback((newPage: number) => {
+    setPage(newPage)
+    const f = appliedFiltersRef.current
+    loadUsers({ page: newPage, pageSize, status: f.status, role: f.role, search: f.search })
+  }, [loadUsers, pageSize])
 
   const handleSetPageSize = useCallback((size: number) => {
     setPageSize(size)
     setPage(1)
-  }, [])
+    const f = appliedFiltersRef.current
+    loadUsers({ page: 1, pageSize: size, status: f.status, role: f.role, search: f.search })
+  }, [loadUsers])
+
+  // Manual search triggered by Search button
+  const searchUsers = useCallback((params: SearchParams) => {
+    appliedFiltersRef.current = params
+    setPage(1)
+    loadUsers({ page: 1, pageSize, status: params.status, role: params.role, search: params.search })
+  }, [loadUsers, pageSize])
+
+  const refreshUsers = useCallback(async () => {
+    const f = appliedFiltersRef.current
+    await loadUsers({ page, pageSize, status: f.status, role: f.role, search: f.search })
+  }, [loadUsers, page, pageSize])
 
   return (
     <UsersContext value={{
       open, setOpen,
       currentRow, setCurrentRow,
-      statusFilter, setStatusFilter: handleSetStatusFilter,
       selectedUsers, setSelectedUsers,
       users, total, page, pageSize, isLoading,
-      setPage, setPageSize: handleSetPageSize,
-      setSearchFilter: handleSetSearchFilter,
-      setRoleFilter: handleSetRoleFilter,
+      setPage: handleSetPage, setPageSize: handleSetPageSize,
+      searchUsers,
       refreshUsers,
     }}>
       {children}
