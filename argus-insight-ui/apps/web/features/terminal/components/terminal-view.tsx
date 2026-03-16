@@ -35,7 +35,7 @@ export function TerminalView({ wsUrl, onConnectionChange }: TerminalViewProps) {
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
-      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
+      fontFamily: "'D2Coding', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
       theme: {
         background: "#1a1b26",
         foreground: "#a9b1d6",
