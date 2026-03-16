@@ -1,0 +1,19 @@
+services:
+  unity-catalog-server:
+    build:
+      context: server
+      args:
+        UNITY_CATALOG_VERSION: ${UNITY_CATALOG_VERSION}
+    image: argus-insight/unity-catalog:${UNITY_CATALOG_VERSION}
+    ports:
+      - "8080:8080"
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    volumes:
+      - unity-catalog-data:/var/lib/unity-catalog
+    restart: unless-stopped
+
+volumes:
+  unity-catalog-data:

@@ -1,0 +1,17 @@
+apiVersion: v2
+name: unity-catalog
+description: Unity Catalog - Open, Multi-modal Catalog for Data & AI
+type: application
+version: 1.0.0
+appVersion: "0.4.0"
+home: https://www.unitycatalog.io/
+sources:
+  - https://github.com/unitycatalog/unitycatalog
+maintainers:
+  - name: Open Cloud Engine
+    email: fharenheit@gmail.com
+keywords:
+  - unity-catalog
+  - data-catalog
+  - metadata
+  - governance
