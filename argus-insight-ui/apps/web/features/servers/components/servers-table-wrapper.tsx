@@ -1,6 +1,6 @@
 "use client"
 
-import { ServersApproveDialog } from "./servers-approve-dialog"
+import { ServersRegisterDialog } from "./servers-register-dialog"
 import { ServersUnregisterDialog } from "./servers-unregister-dialog"
 import { ServersTable } from "./servers-table"
 import { useServers } from "./servers-provider"
@@ -11,9 +11,9 @@ export function ServersTableWrapper() {
   return (
     <>
       <ServersTable data={servers} isLoading={isLoading} />
-      <ServersApproveDialog
-        open={open === "approve"}
-        onOpenChange={(v) => setOpen(v ? "approve" : null)}
+      <ServersRegisterDialog
+        open={open === "register"}
+        onOpenChange={(v) => setOpen(v ? "register" : null)}
         currentRow={currentRow}
         selectedServers={selectedServers}
       />

@@ -33,13 +33,13 @@ function mapServer(s: Record<string, unknown>): Server {
   }
 }
 
-export async function approveServers(hostnames: string[]): Promise<{ updated: number }> {
-  const res = await fetch(`${BASE}/servers/approve`, {
+export async function registerServers(hostnames: string[]): Promise<{ updated: number }> {
+  const res = await fetch(`${BASE}/servers/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ hostnames }),
   })
-  if (!res.ok) throw new Error(`Failed to approve servers: ${res.status}`)
+  if (!res.ok) throw new Error(`Failed to register servers: ${res.status}`)
   return res.json()
 }
 

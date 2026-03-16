@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_session
 from app.servermgr import service
 from app.servermgr.schemas import (
-    ApproveRequest,
-    ApproveResponse,
     PaginatedServerResponse,
+    RegisterRequest,
+    RegisterResponse,
     UnregisterRequest,
     UnregisterResponse,
 )
@@ -34,13 +34,13 @@ async def list_servers(
     )
 
 
-@router.post("/servers/approve", response_model=ApproveResponse)
-async def approve_servers(
-    body: ApproveRequest,
+@router.post("/servers/register", response_model=RegisterResponse)
+async def register_servers(
+    body: RegisterRequest,
     session: AsyncSession = Depends(get_session),
 ):
-    """Approve servers by changing their status from UNREGISTERED to REGISTERED."""
-    return await service.approve_servers(session, hostnames=body.hostnames)
+    """Register servers by changing their status from UNREGISTERED to REGISTERED."""
+    return await service.register_servers(session, hostnames=body.hostnames)
 
 
 @router.post("/servers/unregister", response_model=UnregisterResponse)

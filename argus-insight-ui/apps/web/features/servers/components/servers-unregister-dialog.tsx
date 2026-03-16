@@ -55,7 +55,7 @@ export function ServersUnregisterDialog({
       <AlertDialog open={open} onOpenChange={onOpenChange}>
         <AlertDialogContent>
           <AlertDialogHeader className="text-start">
-            <AlertDialogTitle>Remove From Manager</AlertDialogTitle>
+            <AlertDialogTitle>Unregister Servers</AlertDialogTitle>
             <AlertDialogDescription>
               Please select servers to unregister.
             </AlertDialogDescription>
@@ -73,7 +73,7 @@ export function ServersUnregisterDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader className="text-start">
-          <AlertDialogTitle>Remove From Manager</AlertDialogTitle>
+          <AlertDialogTitle>Unregister Servers</AlertDialogTitle>
           <AlertDialogDescription>
             {registered.length > 0
               ? `Are you sure you want to unregister ${registered.length} server(s)?`

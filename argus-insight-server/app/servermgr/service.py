@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.models import ArgusAgent, ArgusAgentHeartbeat
 from app.servermgr.schemas import (
-    ApproveResponse,
     PaginatedServerResponse,
+    RegisterResponse,
     ServerResponse,
     UnregisterResponse,
 )
@@ -86,11 +86,11 @@ async def list_servers(
     )
 
 
-async def approve_servers(
+async def register_servers(
     session: AsyncSession,
     hostnames: list[str],
-) -> ApproveResponse:
-    """Approve servers by changing status from UNREGISTERED to REGISTERED."""
+) -> RegisterResponse:
+    """Register servers by changing status from UNREGISTERED to REGISTERED."""
     stmt = (
         update(ArgusAgent)
         .where(ArgusAgent.hostname.in_(hostnames))
@@ -99,7 +99,7 @@ async def approve_servers(
     )
     result = await session.execute(stmt)
     await session.commit()
-    return ApproveResponse(updated=result.rowcount)
+    return RegisterResponse(updated=result.rowcount)
 
 
 async def unregister_servers(

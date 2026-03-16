@@ -9,11 +9,11 @@ import {
   AlertDialogTitle,
 } from "@workspace/ui/components/alert-dialog"
 import { Button } from "@workspace/ui/components/button"
-import { approveServers } from "../api"
+import { registerServers } from "../api"
 import { type Server } from "../data/schema"
 import { useServers } from "./servers-provider"
 
-type ServersApproveDialogProps = {
+type ServersRegisterDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   /** Single server from row action, or null for bulk action */
@@ -21,12 +21,12 @@ type ServersApproveDialogProps = {
   selectedServers: Server[]
 }
 
-export function ServersApproveDialog({
+export function ServersRegisterDialog({
   open,
   onOpenChange,
   currentRow,
   selectedServers,
-}: ServersApproveDialogProps) {
+}: ServersRegisterDialogProps) {
   const { refreshServers } = useServers()
 
   // Determine targets: single row action vs bulk action
@@ -41,10 +41,10 @@ export function ServersApproveDialog({
       return
     }
     try {
-      await approveServers(unregistered.map((s) => s.hostname))
+      await registerServers(unregistered.map((s) => s.hostname))
       await refreshServers()
     } catch (err) {
-      console.error("Failed to approve servers:", err)
+      console.error("Failed to register servers:", err)
     }
     onOpenChange(false)
   }
@@ -55,7 +55,7 @@ export function ServersApproveDialog({
       <AlertDialog open={open} onOpenChange={onOpenChange}>
         <AlertDialogContent>
           <AlertDialogHeader className="text-start">
-            <AlertDialogTitle>Approve Servers</AlertDialogTitle>
+            <AlertDialogTitle>Register Servers</AlertDialogTitle>
             <AlertDialogDescription>
               Please select servers to register.
             </AlertDialogDescription>
@@ -73,7 +73,7 @@ export function ServersApproveDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader className="text-start">
-          <AlertDialogTitle>Approve Servers</AlertDialogTitle>
+          <AlertDialogTitle>Register Servers</AlertDialogTitle>
           <AlertDialogDescription>
             {unregistered.length > 0
               ? `Are you sure you want to register ${unregistered.length} server(s)?`

@@ -36,10 +36,10 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         <DropdownMenuItem
           onClick={() => {
             setCurrentRow(row.original)
-            setOpen("approve")
+            setOpen("register")
           }}
         >
-          Approve
+          Register
           <span className="ml-auto">
             <CheckCircle size={16} />
           </span>
@@ -50,7 +50,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
             setOpen("unregister")
           }}
         >
-          Remove From Manager
+          Unregister
           <span className="ml-auto">
             <UserMinus size={16} />
           </span>

@@ -152,10 +152,10 @@ export function ServersTable({ data, isLoading }: ServersTableProps) {
               <DropdownMenuItem
                 onClick={() => {
                   setCurrentRow(null)
-                  setOpen("approve")
+                  setOpen("register")
                 }}
               >
-                Approve
+                Register
                 <span className="ml-auto">
                   <CheckCircle size={16} />
                 </span>
@@ -166,7 +166,7 @@ export function ServersTable({ data, isLoading }: ServersTableProps) {
                   setOpen("unregister")
                 }}
               >
-                Remove From Manager
+                Unregister
                 <span className="ml-auto">
                   <UserMinus size={16} />
                 </span>
