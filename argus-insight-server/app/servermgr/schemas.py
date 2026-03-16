@@ -41,3 +41,15 @@ class ApproveResponse(BaseModel):
     """Response after approving servers."""
 
     updated: int
+
+
+class UnregisterRequest(BaseModel):
+    """Request to unregister servers by hostname."""
+
+    hostnames: list[str]
+
+
+class UnregisterResponse(BaseModel):
+    """Response after unregistering servers."""
+
+    updated: int

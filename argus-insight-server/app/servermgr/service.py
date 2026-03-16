@@ -9,7 +9,12 @@ from sqlalchemy import Integer, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.models import ArgusAgent, ArgusAgentHeartbeat
-from app.servermgr.schemas import ApproveResponse, PaginatedServerResponse, ServerResponse
+from app.servermgr.schemas import (
+    ApproveResponse,
+    PaginatedServerResponse,
+    ServerResponse,
+    UnregisterResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,3 +100,19 @@ async def approve_servers(
     result = await session.execute(stmt)
     await session.commit()
     return ApproveResponse(updated=result.rowcount)
+
+
+async def unregister_servers(
+    session: AsyncSession,
+    hostnames: list[str],
+) -> UnregisterResponse:
+    """Unregister servers by changing status from REGISTERED to UNREGISTERED."""
+    stmt = (
+        update(ArgusAgent)
+        .where(ArgusAgent.hostname.in_(hostnames))
+        .where(ArgusAgent.status == "REGISTERED")
+        .values(status="UNREGISTERED")
+    )
+    result = await session.execute(stmt)
+    await session.commit()
+    return UnregisterResponse(updated=result.rowcount)

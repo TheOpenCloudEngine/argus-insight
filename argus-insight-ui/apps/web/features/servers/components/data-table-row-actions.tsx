@@ -1,7 +1,7 @@
 "use client"
 
 import { type Row } from "@tanstack/react-table"
-import { CheckCircle, MoreHorizontal, Search, Terminal } from "lucide-react"
+import { CheckCircle, MoreHorizontal, Search, Terminal, UserMinus } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -42,6 +42,17 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           Approve
           <span className="ml-auto">
             <CheckCircle size={16} />
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => {
+            setCurrentRow(row.original)
+            setOpen("unregister")
+          }}
+        >
+          Remove From Manager
+          <span className="ml-auto">
+            <UserMinus size={16} />
           </span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />

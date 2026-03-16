@@ -6,7 +6,7 @@ import useDialogState from "@/hooks/use-dialog-state"
 import { fetchServers, type PaginatedServers } from "../api"
 import { type Server } from "../data/schema"
 
-type ServersDialogType = "delete" | "approve"
+type ServersDialogType = "delete" | "approve" | "unregister"
 
 type SearchParams = {
   status: string[]

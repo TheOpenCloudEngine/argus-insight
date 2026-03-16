@@ -162,7 +162,8 @@ export function ServersTable({ data, isLoading }: ServersTableProps) {
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => {
-                  console.log("Remove from manager")
+                  setCurrentRow(null)
+                  setOpen("unregister")
                 }}
               >
                 Remove From Manager

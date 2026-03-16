@@ -43,6 +43,16 @@ export async function approveServers(hostnames: string[]): Promise<{ updated: nu
   return res.json()
 }
 
+export async function unregisterServers(hostnames: string[]): Promise<{ updated: number }> {
+  const res = await fetch(`${BASE}/servers/unregister`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ hostnames }),
+  })
+  if (!res.ok) throw new Error(`Failed to unregister servers: ${res.status}`)
+  return res.json()
+}
+
 export async function fetchServers(params?: ServerListParams): Promise<PaginatedServers> {
   const query = new URLSearchParams()
   if (params?.status && params.status.length > 0) query.set("status", params.status.join(","))
