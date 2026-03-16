@@ -1,9 +1,10 @@
+"use client"
+
 import { DashboardHeader } from "@/components/dashboard-header"
 import { UsersDialogs } from "@/features/users/components/users-dialogs"
 import { UsersPrimaryButtons } from "@/features/users/components/users-primary-buttons"
 import { UsersProvider } from "@/features/users/components/users-provider"
-import { UsersTable } from "@/features/users/components/users-table"
-import { users } from "@/features/users/data/users"
+import { UsersTableWrapper } from "@/features/users/components/users-table-wrapper"
 
 export default function UsersPage() {
   return (
@@ -22,7 +23,7 @@ export default function UsersPage() {
           </div>
           <UsersPrimaryButtons />
         </div>
-        <UsersTable data={users} />
+        <UsersTableWrapper />
       </div>
 
       <UsersDialogs />

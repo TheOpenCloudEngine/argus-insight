@@ -7,7 +7,9 @@ import { Alert, AlertDescription, AlertTitle } from "@workspace/ui/components/al
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { ConfirmDialog } from "@/components/confirm-dialog"
+import { deleteUser } from "../api"
 import { type User } from "../data/schema"
+import { useUsers } from "./users-provider"
 
 type UsersDeleteDialogProps = {
   open: boolean
@@ -21,12 +23,17 @@ export function UsersDeleteDialog({
   currentRow,
 }: UsersDeleteDialogProps) {
   const [value, setValue] = useState("")
+  const { refreshUsers } = useUsers()
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (value.trim() !== currentRow.username) return
 
-    // TODO: API 연동 시 여기서 사용자 삭제 API를 호출하세요.
-    console.log("Delete user:", currentRow)
+    try {
+      await deleteUser(currentRow.id)
+      await refreshUsers()
+    } catch (err) {
+      console.error("Failed to delete user:", err)
+    }
     onOpenChange(false)
   }
 

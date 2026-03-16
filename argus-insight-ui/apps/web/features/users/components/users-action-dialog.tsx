@@ -24,8 +24,10 @@ import {
 import { Input } from "@workspace/ui/components/input"
 import { PasswordInput } from "@/components/password-input"
 import { SelectDropdown } from "@/components/select-dropdown"
+import { createUser, modifyUser } from "../api"
 import { roles } from "../data/data"
 import { type User } from "../data/schema"
+import { useUsers } from "./users-provider"
 
 const formSchema = z
   .object({
@@ -97,6 +99,7 @@ export function UsersActionDialog({
   onOpenChange,
 }: UsersActionDialogProps) {
   const isEdit = !!currentRow
+  const { refreshUsers } = useUsers()
   const form = useForm<UserForm>({
     resolver: zodResolver(formSchema),
     defaultValues: isEdit
@@ -119,11 +122,33 @@ export function UsersActionDialog({
         },
   })
 
-  const onSubmit = (values: UserForm) => {
-    form.reset()
-    // TODO: API 연동 시 여기서 사용자 생성/수정 API를 호출하세요.
-    console.log("Submitted:", values)
-    onOpenChange(false)
+  const onSubmit = async (values: UserForm) => {
+    try {
+      if (isEdit && currentRow) {
+        await modifyUser(currentRow.id, {
+          first_name: values.firstName,
+          last_name: values.lastName,
+          email: values.email,
+          phone_number: values.phoneNumber,
+        })
+      } else {
+        const roleMap: Record<string, "Admin" | "User"> = { admin: "Admin", user: "User" }
+        await createUser({
+          username: values.username,
+          email: values.email,
+          first_name: values.firstName,
+          last_name: values.lastName,
+          phone_number: values.phoneNumber,
+          password: values.password,
+          role: roleMap[values.role] || "User",
+        })
+      }
+      await refreshUsers()
+      form.reset()
+      onOpenChange(false)
+    } catch (err) {
+      console.error("Failed to save user:", err)
+    }
   }
 
   const isPasswordTouched = !!form.formState.dirtyFields.password

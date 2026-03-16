@@ -9,7 +9,9 @@ import {
   AlertDialogTitle,
 } from "@workspace/ui/components/alert-dialog"
 import { Button } from "@workspace/ui/components/button"
+import { activateUser, deactivateUser } from "../api"
 import { type User } from "../data/schema"
+import { useUsers } from "./users-provider"
 
 type UsersStatusDialogProps = {
   open: boolean
@@ -25,11 +27,16 @@ export function UsersStatusDialog({
   type,
 }: UsersStatusDialogProps) {
   const isActivate = type === "activate"
+  const { refreshUsers } = useUsers()
 
-  const handleConfirm = () => {
-    // TODO: API 연동 시 여기서 사용자 상태 변경 API를 호출하세요.
-    // 예: await updateUsersStatus(selectedUsers.map(u => u.id), isActivate ? "active" : "inactive")
-    console.log(`${isActivate ? "Activate" : "Deactivate"} users:`, selectedUsers)
+  const handleConfirm = async () => {
+    try {
+      const fn = isActivate ? activateUser : deactivateUser
+      await Promise.all(selectedUsers.map((u) => fn(u.id)))
+      await refreshUsers()
+    } catch (err) {
+      console.error(`Failed to ${type} users:`, err)
+    }
     onOpenChange(false)
   }
 
@@ -38,24 +45,24 @@ export function UsersStatusDialog({
       <AlertDialogContent>
         <AlertDialogHeader className="text-start">
           <AlertDialogTitle>
-            {isActivate ? "Active User" : "Inactive User"}
+            {isActivate ? "Activate User" : "Deactivate User"}
           </AlertDialogTitle>
           <AlertDialogDescription>
             {isActivate
-              ? "선택한 사용자를 활성 사용자로 전환하시겠습니까?"
-              : "선택한 사용자를 비활성 사용자로 전환하시겠습니까?"}
+              ? `Are you sure you want to activate ${selectedUsers.length} selected user(s)?`
+              : `Are you sure you want to deactivate ${selectedUsers.length} selected user(s)?`}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter className="flex-row justify-end gap-2 sm:flex-row">
           <Button className="flex-1 sm:flex-none" onClick={handleConfirm}>
-            예
+            Confirm
           </Button>
           <Button
             variant="outline"
             className="flex-1 sm:flex-none"
             onClick={() => onOpenChange(false)}
           >
-            아니오
+            Cancel
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
