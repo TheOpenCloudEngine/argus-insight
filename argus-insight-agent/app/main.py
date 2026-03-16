@@ -56,6 +56,7 @@ async def lifespan(app: FastAPI):
     logger.info("Argus Server Agent %s starting", __version__)
     await metrics_scheduler.start()
     await heartbeat_scheduler.start()
+    terminal_manager.start_reaper()
     yield
     await heartbeat_scheduler.stop()
     await metrics_scheduler.stop()

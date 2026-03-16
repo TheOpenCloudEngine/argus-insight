@@ -8,11 +8,15 @@ import pty
 import signal
 import struct
 import termios
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Seconds without any WebSocket activity before a session is considered stale.
+SESSION_IDLE_TIMEOUT = 120
 
 
 @dataclass
@@ -23,6 +27,15 @@ class TerminalSession:
     pid: int
     fd: int
     active: bool = True
+    last_activity: float = field(default_factory=time.monotonic)
+
+    def touch(self) -> None:
+        """Update last activity timestamp."""
+        self.last_activity = time.monotonic()
+
+    @property
+    def idle_seconds(self) -> float:
+        return time.monotonic() - self.last_activity
 
 
 class TerminalManager:
@@ -30,10 +43,30 @@ class TerminalManager:
 
     def __init__(self) -> None:
         self._sessions: dict[str, TerminalSession] = {}
+        self._reaper_task: asyncio.Task | None = None
 
     @property
     def session_count(self) -> int:
         return len(self._sessions)
+
+    def start_reaper(self) -> None:
+        """Start background task that cleans up stale sessions."""
+        if self._reaper_task is None or self._reaper_task.done():
+            self._reaper_task = asyncio.create_task(self._reap_stale_sessions())
+
+    async def _reap_stale_sessions(self) -> None:
+        """Periodically check for and close stale sessions."""
+        while True:
+            await asyncio.sleep(30)
+            stale = [
+                sid
+                for sid, s in self._sessions.items()
+                if s.idle_seconds > SESSION_IDLE_TIMEOUT
+            ]
+            for sid in stale:
+                logger.warning("Closing stale terminal session: %s (idle %.0fs)", sid,
+                               self._sessions[sid].idle_seconds)
+                self.close_session(sid)
 
     def create_session(self, session_id: str) -> TerminalSession:
         """Create a new PTY-based terminal session."""
@@ -73,6 +106,7 @@ class TerminalManager:
         loop = asyncio.get_event_loop()
         try:
             data = await loop.run_in_executor(None, os.read, session.fd, size)
+            session.touch()
             return data
         except OSError:
             session.active = False
@@ -82,12 +116,14 @@ class TerminalManager:
         """Write input to a terminal session."""
         session = self._get_session(session_id)
         os.write(session.fd, data)
+        session.touch()
 
     def resize(self, session_id: str, rows: int, cols: int) -> None:
         """Resize a terminal session."""
         session = self._get_session(session_id)
         winsize = struct.pack("HHHH", rows, cols, 0, 0)
         fcntl.ioctl(session.fd, termios.TIOCSWINSZ, winsize)
+        session.touch()
 
     def close_session(self, session_id: str) -> None:
         """Close and clean up a terminal session."""
@@ -110,6 +146,8 @@ class TerminalManager:
 
     def close_all(self) -> None:
         """Close all terminal sessions."""
+        if self._reaper_task and not self._reaper_task.done():
+            self._reaper_task.cancel()
         for session_id in list(self._sessions.keys()):
             self.close_session(session_id)
 
