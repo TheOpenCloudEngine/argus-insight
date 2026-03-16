@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ["@workspace/ui"],
+  logging: {
+    fetches: {
+      fullUrl: true,
+    },
+  },
   allowedDevOrigins: process.env.ALLOWED_DEV_ORIGINS
     ? process.env.ALLOWED_DEV_ORIGINS.split(",")
     : [],
