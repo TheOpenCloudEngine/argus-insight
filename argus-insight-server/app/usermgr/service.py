@@ -14,7 +14,6 @@ from app.usermgr.schemas import (
     RoleName,
     RoleResponse,
     UserAddRequest,
-    UserChangeGroupRequest,
     UserChangeRoleRequest,
     UserModifyRequest,
     UserResponse,
@@ -48,7 +47,6 @@ async def _build_user_response(session: AsyncSession, user: ArgusUser) -> UserRe
         phone_number=user.phone_number,
         status=UserStatus(user.status),
         role=role.name if role else "Unknown",
-        group_name=user.group_name,
         created_at=user.created_at,
         updated_at=user.updated_at,
     )
@@ -73,7 +71,6 @@ async def add_user(session: AsyncSession, req: UserAddRequest) -> UserResponse:
         password_hash=_hash_password(req.password),
         status=UserStatus.ACTIVE.value,
         role_id=role.id,
-        group_name=req.group_name,
     )
     session.add(user)
     await session.commit()
@@ -163,22 +160,6 @@ async def deactivate_user(session: AsyncSession, user_id: int) -> UserResponse |
     await session.commit()
     await session.refresh(user)
     logger.info("User deactivated: %s (id=%d)", user.username, user.id)
-    return await _build_user_response(session, user)
-
-
-async def change_group(
-    session: AsyncSession, user_id: int, req: UserChangeGroupRequest
-) -> UserResponse | None:
-    """Change a user's group."""
-    result = await session.execute(select(ArgusUser).where(ArgusUser.id == user_id))
-    user = result.scalars().first()
-    if not user:
-        return None
-
-    user.group_name = req.group_name
-    await session.commit()
-    await session.refresh(user)
-    logger.info("User group changed: %s -> %s (id=%d)", user.username, req.group_name, user.id)
     return await _build_user_response(session, user)
 
 

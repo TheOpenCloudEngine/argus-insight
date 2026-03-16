@@ -18,7 +18,6 @@ CREATE TABLE IF NOT EXISTS argus_users (
     password_hash VARCHAR(255) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     role_id INTEGER NOT NULL REFERENCES argus_roles(id),
-    group_name VARCHAR(100),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

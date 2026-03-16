@@ -50,7 +50,6 @@ class UserAddRequest(BaseModel):
     phone_number: str | None = Field(None, max_length=30)
     password: str = Field(..., min_length=4, max_length=128)
     role: RoleName = Field(RoleName.USER, description="Role name (Admin or User)")
-    group_name: str | None = Field(None, max_length=100)
 
 
 class UserModifyRequest(BaseModel):
@@ -68,12 +67,6 @@ class UserChangeRoleRequest(BaseModel):
     role: RoleName
 
 
-class UserChangeGroupRequest(BaseModel):
-    """Request to change a user's group."""
-
-    group_name: str | None = Field(None, max_length=100)
-
-
 # ---------------------------------------------------------------------------
 # User response schemas
 # ---------------------------------------------------------------------------
@@ -89,6 +82,5 @@ class UserResponse(BaseModel):
     phone_number: str | None = None
     status: UserStatus
     role: str
-    group_name: str | None = None
     created_at: datetime
     updated_at: datetime

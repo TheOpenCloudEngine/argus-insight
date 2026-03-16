@@ -10,7 +10,6 @@ from app.usermgr import service
 from app.usermgr.schemas import (
     RoleResponse,
     UserAddRequest,
-    UserChangeGroupRequest,
     UserChangeRoleRequest,
     UserModifyRequest,
     UserResponse,
@@ -95,17 +94,6 @@ async def activate_user(user_id: int, session: AsyncSession = Depends(get_sessio
 async def deactivate_user(user_id: int, session: AsyncSession = Depends(get_session)):
     """Deactivate a user account."""
     user = await service.deactivate_user(session, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
-
-
-@router.put("/users/{user_id}/group", response_model=UserResponse)
-async def change_group(
-    user_id: int, req: UserChangeGroupRequest, session: AsyncSession = Depends(get_session)
-):
-    """Change a user's group."""
-    user = await service.change_group(session, user_id, req)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
