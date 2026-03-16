@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback } from "react"
 import { z } from "zod"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -88,6 +88,14 @@ const formSchema = z
   )
 type UserForm = z.infer<typeof formSchema>
 
+function RequiredLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <FormLabel>
+      {children} <span className="text-destructive">*</span>
+    </FormLabel>
+  )
+}
+
 type UsersActionDialogProps = {
   currentRow?: User
   open: boolean
@@ -101,13 +109,10 @@ export function UsersActionDialog({
 }: UsersActionDialogProps) {
   const isEdit = !!currentRow
   const { refreshUsers } = useUsers()
-  const [duplicateErrors, setDuplicateErrors] = useState<{
-    username?: string
-    email?: string
-  }>({})
 
   const form = useForm<UserForm>({
     resolver: zodResolver(formSchema),
+    mode: "onTouched",
     defaultValues: isEdit
       ? {
           ...currentRow,
@@ -133,17 +138,17 @@ export function UsersActionDialog({
       if (!value || isEdit) return
       try {
         const result = await checkUserExists({ username: value })
-        setDuplicateErrors((prev) => ({
-          ...prev,
-          username: result.username_exists
-            ? "This username is already taken."
-            : undefined,
-        }))
+        if (result.username_exists) {
+          form.setError("username", {
+            type: "validate",
+            message: "This username is already taken.",
+          })
+        }
       } catch {
         // ignore network errors for validation
       }
     },
-    [isEdit]
+    [isEdit, form]
   )
 
   const handleCheckEmail = useCallback(
@@ -151,21 +156,20 @@ export function UsersActionDialog({
       if (!value || isEdit) return
       try {
         const result = await checkUserExists({ email: value })
-        setDuplicateErrors((prev) => ({
-          ...prev,
-          email: result.email_exists
-            ? "This email is already registered."
-            : undefined,
-        }))
+        if (result.email_exists) {
+          form.setError("email", {
+            type: "validate",
+            message: "This email is already registered.",
+          })
+        }
       } catch {
         // ignore network errors for validation
       }
     },
-    [isEdit]
+    [isEdit, form]
   )
 
   const onSubmit = async (values: UserForm) => {
-    if (duplicateErrors.username || duplicateErrors.email) return
     try {
       if (isEdit && currentRow) {
         await modifyUser(currentRow.id, {
@@ -188,7 +192,6 @@ export function UsersActionDialog({
       }
       await refreshUsers()
       form.reset()
-      setDuplicateErrors({})
       onOpenChange(false)
     } catch (err) {
       console.error("Failed to save user:", err)
@@ -199,7 +202,7 @@ export function UsersActionDialog({
 
   // Compute whether Save button should be enabled
   const watched = form.watch()
-  const hasDuplicateError = !!duplicateErrors.username || !!duplicateErrors.email
+  const hasErrors = Object.keys(form.formState.errors).length > 0
   const requiredFilled = isEdit
     ? !!(watched.firstName && watched.lastName && watched.email)
     : !!(
@@ -211,14 +214,13 @@ export function UsersActionDialog({
         watched.password &&
         watched.confirmPassword
       )
-  const isSaveDisabled = !requiredFilled || hasDuplicateError
+  const isSaveDisabled = !requiredFilled || hasErrors
 
   return (
     <Dialog
       open={open}
       onOpenChange={(state) => {
         form.reset()
-        setDuplicateErrors({})
         onOpenChange(state)
       }}
     >
@@ -243,7 +245,7 @@ export function UsersActionDialog({
                   name="firstName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>First Name</FormLabel>
+                      <RequiredLabel>First Name</RequiredLabel>
                       <FormControl>
                         <Input placeholder="John" autoComplete="off" {...field} />
                       </FormControl>
@@ -256,7 +258,7 @@ export function UsersActionDialog({
                   name="lastName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Last Name</FormLabel>
+                      <RequiredLabel>Last Name</RequiredLabel>
                       <FormControl>
                         <Input placeholder="Doe" autoComplete="off" {...field} />
                       </FormControl>
@@ -270,7 +272,7 @@ export function UsersActionDialog({
                 name="username"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Username</FormLabel>
+                    <RequiredLabel>Username</RequiredLabel>
                     <FormControl>
                       <Input
                         placeholder="john_doe"
@@ -280,23 +282,9 @@ export function UsersActionDialog({
                           field.onBlur()
                           handleCheckUsername(e.target.value)
                         }}
-                        onChange={(e) => {
-                          field.onChange(e)
-                          if (duplicateErrors.username) {
-                            setDuplicateErrors((prev) => ({
-                              ...prev,
-                              username: undefined,
-                            }))
-                          }
-                        }}
                       />
                     </FormControl>
                     <FormMessage />
-                    {duplicateErrors.username && (
-                      <p className="text-sm font-medium text-destructive">
-                        {duplicateErrors.username}
-                      </p>
-                    )}
                   </FormItem>
                 )}
               />
@@ -305,7 +293,7 @@ export function UsersActionDialog({
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <RequiredLabel>Email</RequiredLabel>
                     <FormControl>
                       <Input
                         placeholder="john.doe@gmail.com"
@@ -314,23 +302,9 @@ export function UsersActionDialog({
                           field.onBlur()
                           handleCheckEmail(e.target.value)
                         }}
-                        onChange={(e) => {
-                          field.onChange(e)
-                          if (duplicateErrors.email) {
-                            setDuplicateErrors((prev) => ({
-                              ...prev,
-                              email: undefined,
-                            }))
-                          }
-                        }}
                       />
                     </FormControl>
                     <FormMessage />
-                    {duplicateErrors.email && (
-                      <p className="text-sm font-medium text-destructive">
-                        {duplicateErrors.email}
-                      </p>
-                    )}
                   </FormItem>
                 )}
               />
@@ -353,7 +327,7 @@ export function UsersActionDialog({
                   name="role"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Role</FormLabel>
+                      <RequiredLabel>Role</RequiredLabel>
                       <SelectDropdown
                         defaultValue={field.value}
                         onValueChange={field.onChange}
@@ -371,7 +345,7 @@ export function UsersActionDialog({
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Password</FormLabel>
+                    <RequiredLabel>Password</RequiredLabel>
                     <FormControl>
                       <PasswordInput placeholder="e.g., S3cur3P@ssw0rd" {...field} />
                     </FormControl>
@@ -384,7 +358,7 @@ export function UsersActionDialog({
                 name="confirmPassword"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Confirm Password</FormLabel>
+                    <RequiredLabel>Confirm Password</RequiredLabel>
                     <FormControl>
                       <PasswordInput
                         disabled={!isPasswordTouched}

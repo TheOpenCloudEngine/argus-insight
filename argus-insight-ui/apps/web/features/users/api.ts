@@ -38,7 +38,7 @@ export async function checkUserExists(params: {
   const query = new URLSearchParams()
   if (params.username) query.set("username", params.username)
   if (params.email) query.set("email", params.email)
-  const res = await fetch(`${BASE}/users/check?${query.toString()}`)
+  const res = await fetch(`${BASE}/check-user?${query.toString()}`)
   if (!res.ok) throw new Error(`Failed to check user: ${res.status}`)
   return res.json()
 }

@@ -24,7 +24,7 @@ router = APIRouter(prefix="/usermgr", tags=["usermgr"])
 # User endpoints
 # ---------------------------------------------------------------------------
 
-@router.get("/users/check")
+@router.get("/check-user")
 async def check_user_exists(
     username: str | None = Query(None, description="Username to check"),
     email: str | None = Query(None, description="Email to check"),
