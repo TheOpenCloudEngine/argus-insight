@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   type ColumnFiltersState,
   type SortingState,
@@ -38,34 +38,19 @@ type UsersTableProps = {
 
 export function UsersTable({ data }: UsersTableProps) {
   const {
-    statusFilter,
-    setStatusFilter,
     setSelectedUsers,
     total,
     page,
     pageSize,
     setPage,
     setPageSize,
-    setSearchFilter,
-    setRoleFilter,
+    searchUsers,
   } = useUsers()
 
   const [rowSelection, setRowSelection] = useState({})
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-
-  // Track whether columnFilter change came from external statusFilter sync
-  const skipPropagation = useRef(false)
-
-  // Sync statusFilter from context → columnFilters (for display in toolbar)
-  useEffect(() => {
-    skipPropagation.current = true
-    setColumnFilters((prev) => {
-      const without = prev.filter((f) => f.id !== "status")
-      return statusFilter ? [...without, { id: "status", value: [statusFilter] }] : without
-    })
-  }, [statusFilter])
 
   const pageCount = useMemo(() => Math.ceil(total / pageSize), [total, pageSize])
 
@@ -93,43 +78,7 @@ export function UsersTable({ data }: UsersTableProps) {
         setPage(next.pageIndex + 1)
       }
     },
-    onColumnFiltersChange: (updater) => {
-      const next = typeof updater === "function" ? updater(columnFilters) : updater
-      setColumnFilters(next)
-
-      // Skip server call if this change came from statusFilter context sync
-      if (skipPropagation.current) {
-        skipPropagation.current = false
-        return
-      }
-
-      // Propagate filter changes to server-side query params
-      const statusVal = next.find((f) => f.id === "status")?.value
-      const roleVal = next.find((f) => f.id === "role")?.value
-      const searchVal = next.find((f) => f.id === "username")?.value
-
-      // Status: faceted filter returns string[], extract single value for API
-      if (Array.isArray(statusVal) && statusVal.length === 1) {
-        setStatusFilter(statusVal[0])
-      } else {
-        setStatusFilter(null)
-      }
-
-      // Role: faceted filter returns string[], capitalize for backend (admin→Admin)
-      if (Array.isArray(roleVal) && roleVal.length === 1) {
-        const r = roleVal[0] as string
-        setRoleFilter(r.charAt(0).toUpperCase() + r.slice(1))
-      } else {
-        setRoleFilter("")
-      }
-
-      // Search: string from input
-      if (typeof searchVal === "string") {
-        setSearchFilter(searchVal)
-      } else {
-        setSearchFilter("")
-      }
-    },
+    onColumnFiltersChange: setColumnFilters,
     onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,
     onColumnVisibilityChange: setColumnVisibility,
@@ -143,6 +92,28 @@ export function UsersTable({ data }: UsersTableProps) {
   useEffect(() => {
     setSelectedUsers(table.getSelectedRowModel().rows.map((row) => row.original))
   }, [rowSelection])
+
+  // Gather current filters and trigger search
+  const handleSearch = useCallback(() => {
+    const statusVal = columnFilters.find((f) => f.id === "status")?.value
+    const roleVal = columnFilters.find((f) => f.id === "role")?.value
+    const searchVal = columnFilters.find((f) => f.id === "username")?.value
+
+    let status: string | null = null
+    if (Array.isArray(statusVal) && statusVal.length === 1) {
+      status = statusVal[0]
+    }
+
+    let role = ""
+    if (Array.isArray(roleVal) && roleVal.length === 1) {
+      const r = roleVal[0] as string
+      role = r.charAt(0).toUpperCase() + r.slice(1)
+    }
+
+    const search = typeof searchVal === "string" ? searchVal : ""
+
+    searchUsers({ status, role, search })
+  }, [columnFilters, searchUsers])
 
   return (
     <div className={cn("flex flex-1 flex-col gap-4")}>
@@ -165,6 +136,7 @@ export function UsersTable({ data }: UsersTableProps) {
             options: roles.map((role) => ({ ...role })),
           },
         ]}
+        onSearch={handleSearch}
       />
       <div className="overflow-hidden rounded-md border">
         <Table>

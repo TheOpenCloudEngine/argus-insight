@@ -1,7 +1,7 @@
 "use client"
 
 import { type Table } from "@tanstack/react-table"
-import { X } from "lucide-react"
+import { Search, X } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
@@ -20,6 +20,7 @@ type DataTableToolbarProps<TData> = {
       icon?: React.ComponentType<{ className?: string }>
     }[]
   }[]
+  onSearch?: () => void
 }
 
 export function DataTableToolbar<TData>({
@@ -27,6 +28,7 @@ export function DataTableToolbar<TData>({
   searchPlaceholder = "Filter...",
   searchKey,
   filters = [],
+  onSearch,
 }: DataTableToolbarProps<TData>) {
   const isFiltered = table.getState().columnFilters.length > 0
 
@@ -66,6 +68,17 @@ export function DataTableToolbar<TData>({
             )
           })}
         </div>
+        {onSearch && (
+          <Button
+            variant="default"
+            size="sm"
+            onClick={onSearch}
+            className="h-8 px-3"
+          >
+            <Search className="mr-1 h-4 w-4" />
+            Search
+          </Button>
+        )}
         {isFiltered && (
           <Button
             variant="ghost"
