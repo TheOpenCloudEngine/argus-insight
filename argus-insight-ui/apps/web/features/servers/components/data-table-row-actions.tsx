@@ -1,7 +1,7 @@
 "use client"
 
 import { type Row } from "@tanstack/react-table"
-import { CheckCircle, MoreHorizontal, Search, Terminal, UserMinus } from "lucide-react"
+import { Minus, MoreHorizontal, Plus, Search, Terminal } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -41,7 +41,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         >
           Register
           <span className="ml-auto">
-            <CheckCircle size={16} />
+            <Plus size={16} />
           </span>
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -52,7 +52,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         >
           Unregister
           <span className="ml-auto">
-            <UserMinus size={16} />
+            <Minus size={16} />
           </span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
