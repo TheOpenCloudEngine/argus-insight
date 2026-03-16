@@ -208,3 +208,51 @@ class DiskPartitionResult(BaseModel):
 
     partitions: list[DiskPartitionInfo]
     total_count: int
+
+
+# ---------------------------------------------------------------------------
+# 8. Top (htop-style combined view)
+# ---------------------------------------------------------------------------
+
+
+class TopMemoryInfo(BaseModel):
+    """Memory and swap summary for top view."""
+
+    total_bytes: int
+    used_bytes: int
+    free_bytes: int
+    available_bytes: int
+    usage_percent: float
+    swap_total_bytes: int
+    swap_used_bytes: int
+    swap_free_bytes: int
+    swap_usage_percent: float
+
+
+class TopProcess(BaseModel):
+    """Simplified process entry for top view."""
+
+    pid: int
+    username: str = ""
+    cpu_percent: float
+    memory_percent: float
+    rss_bytes: int
+    vms_bytes: int
+    status: str = ""
+    num_threads: int = 0
+    cmdline: str = ""
+
+
+class TopResult(BaseModel):
+    """Combined top/htop-style system overview."""
+
+    uptime_seconds: float
+    cpu: CpuUsage
+    cores: list[CoreUsage]
+    memory: TopMemoryInfo
+    tasks_total: int
+    tasks_running: int
+    tasks_sleeping: int
+    tasks_stopped: int
+    tasks_zombie: int
+    processes: list[TopProcess]

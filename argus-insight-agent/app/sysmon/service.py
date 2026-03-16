@@ -25,6 +25,9 @@ from app.sysmon.schemas import (
     ProcessInfo,
     ProcessListResult,
     ProcessMemoryDetail,
+    TopMemoryInfo,
+    TopProcess,
+    TopResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -506,4 +509,158 @@ def get_disk_partitions() -> DiskPartitionResult:
     return DiskPartitionResult(
         partitions=partitions,
         total_count=len(partitions),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 8. Top (htop-style combined view)
+# ---------------------------------------------------------------------------
+
+
+def get_top(limit: int = 50) -> TopResult:
+    """Get combined htop-style system overview in a single call.
+
+    Collects CPU (aggregate + per-core), memory, swap, uptime, task counts,
+    and top processes sorted by CPU usage.
+    """
+    import time as _time
+
+    # CPU measurement (aggregate + per-core in one interval)
+    # Pre-call for meaningful cpu_percent on processes
+    for proc in psutil.process_iter():
+        try:
+            proc.cpu_percent()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+
+    # Brief pause then collect CPU times
+    _time.sleep(0.1)
+
+    times = psutil.cpu_times_percent(interval=0.3)
+    per_cpu = psutil.cpu_times_percent(interval=0, percpu=True)
+    load = os.getloadavg()
+
+    user = getattr(times, "user", 0.0)
+    system = getattr(times, "system", 0.0)
+    iowait = getattr(times, "iowait", 0.0)
+    idle = getattr(times, "idle", 0.0)
+    nice = getattr(times, "nice", 0.0)
+    irq = getattr(times, "irq", 0.0)
+    softirq = getattr(times, "softirq", 0.0)
+    steal = getattr(times, "steal", 0.0)
+
+    cpu = CpuUsage(
+        user_percent=user,
+        system_percent=system,
+        iowait_percent=iowait,
+        idle_percent=idle,
+        nice_percent=nice,
+        irq_percent=irq,
+        softirq_percent=softirq,
+        steal_percent=steal,
+        total_percent=round(100.0 - idle, 2),
+        core_count=psutil.cpu_count() or 1,
+        load_avg_1m=load[0],
+        load_avg_5m=load[1],
+        load_avg_15m=load[2],
+    )
+
+    cores = []
+    for i, ct in enumerate(per_cpu):
+        c_idle = getattr(ct, "idle", 0.0)
+        cores.append(
+            CoreUsage(
+                core_id=i,
+                user_percent=getattr(ct, "user", 0.0),
+                system_percent=getattr(ct, "system", 0.0),
+                iowait_percent=getattr(ct, "iowait", 0.0),
+                idle_percent=c_idle,
+                nice_percent=getattr(ct, "nice", 0.0),
+                irq_percent=getattr(ct, "irq", 0.0),
+                softirq_percent=getattr(ct, "softirq", 0.0),
+                steal_percent=getattr(ct, "steal", 0.0),
+                total_percent=round(100.0 - c_idle, 2),
+            )
+        )
+
+    # Memory
+    mem = psutil.virtual_memory()
+    swap = psutil.swap_memory()
+    memory = TopMemoryInfo(
+        total_bytes=mem.total,
+        used_bytes=mem.used,
+        free_bytes=mem.free,
+        available_bytes=mem.available,
+        usage_percent=mem.percent,
+        swap_total_bytes=swap.total,
+        swap_used_bytes=swap.used,
+        swap_free_bytes=swap.free,
+        swap_usage_percent=swap.percent,
+    )
+
+    # Uptime
+    uptime = _time.time() - psutil.boot_time()
+
+    # Processes
+    task_counts = {"running": 0, "sleeping": 0, "stopped": 0, "zombie": 0}
+    processes: list[TopProcess] = []
+    for proc in psutil.process_iter():
+        try:
+            with proc.oneshot():
+                pinfo = proc.as_dict(
+                    attrs=[
+                        "pid", "username", "status", "cpu_percent",
+                        "memory_percent", "memory_info", "num_threads",
+                    ]
+                )
+                status = pinfo.get("status", "")
+                if status == psutil.STATUS_RUNNING:
+                    task_counts["running"] += 1
+                elif status in (psutil.STATUS_SLEEPING, psutil.STATUS_IDLE):
+                    task_counts["sleeping"] += 1
+                elif status == psutil.STATUS_STOPPED:
+                    task_counts["stopped"] += 1
+                elif status == psutil.STATUS_ZOMBIE:
+                    task_counts["zombie"] += 1
+
+                mem_info = pinfo.get("memory_info")
+                if mem_info is None:
+                    continue
+
+                cmdline = ""
+                try:
+                    cmdline = " ".join(proc.cmdline())
+                except (psutil.AccessDenied, psutil.NoSuchProcess):
+                    pass
+
+                processes.append(
+                    TopProcess(
+                        pid=pinfo["pid"],
+                        username=pinfo.get("username", "") or "",
+                        cpu_percent=pinfo.get("cpu_percent", 0.0) or 0.0,
+                        memory_percent=pinfo.get("memory_percent", 0.0) or 0.0,
+                        rss_bytes=mem_info.rss,
+                        vms_bytes=mem_info.vms,
+                        status=status,
+                        num_threads=pinfo.get("num_threads", 0) or 0,
+                        cmdline=cmdline[:512],
+                    )
+                )
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+    total_count = len(processes)
+    processes.sort(key=lambda p: p.cpu_percent, reverse=True)
+
+    return TopResult(
+        uptime_seconds=uptime,
+        cpu=cpu,
+        cores=cores,
+        memory=memory,
+        tasks_total=total_count,
+        tasks_running=task_counts["running"],
+        tasks_sleeping=task_counts["sleeping"],
+        tasks_stopped=task_counts["stopped"],
+        tasks_zombie=task_counts["zombie"],
+        processes=processes[:limit],
     )
