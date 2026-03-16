@@ -36,7 +36,7 @@ export function DashboardHeader({ title }: DashboardHeaderProps) {
             3
           </Badge>
         </Button>
-        <ThemeToggle />
+        {/* <ThemeToggle /> */}
       </div>
     </header>
   )
