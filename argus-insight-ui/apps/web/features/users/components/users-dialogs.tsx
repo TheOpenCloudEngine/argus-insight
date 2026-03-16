@@ -1,3 +1,24 @@
+/**
+ * Users Dialogs Orchestrator component.
+ *
+ * Centrally manages all dialog instances for the user management feature.
+ * Reads the current dialog state (`open`) and the associated data (`currentRow`,
+ * `selectedUsers`) from the UsersProvider context, then conditionally renders
+ * the appropriate dialog component:
+ *
+ * - **"add"**: UsersActionDialog in add mode (no currentRow).
+ * - **"edit"**: UsersActionDialog in edit mode (with currentRow). Only rendered
+ *   when a currentRow is set. Uses a dynamic key to force re-mount when
+ *   switching between different users.
+ * - **"delete"**: UsersDeleteDialog. Only rendered when a currentRow is set.
+ *   Requires username confirmation before deletion.
+ * - **"activate"**: UsersStatusDialog for bulk activation of selected users.
+ * - **"deactivate"**: UsersStatusDialog for bulk deactivation of selected users.
+ *
+ * When the edit or delete dialog closes, a 500ms timeout clears `currentRow`
+ * to allow the closing animation to complete before resetting the data.
+ */
+
 "use client"
 
 import { UsersActionDialog } from "./users-action-dialog"
@@ -9,12 +30,14 @@ export function UsersDialogs() {
   const { open, setOpen, currentRow, setCurrentRow, selectedUsers } = useUsers()
   return (
     <>
+      {/* Add new user dialog (always available, no currentRow needed) */}
       <UsersActionDialog
         key="user-add"
         open={open === "add"}
         onOpenChange={() => setOpen("add")}
       />
 
+      {/* Bulk activate dialog — operates on selectedUsers from table checkboxes */}
       <UsersStatusDialog
         key="user-activate"
         open={open === "activate"}
@@ -23,6 +46,7 @@ export function UsersDialogs() {
         type="activate"
       />
 
+      {/* Bulk deactivate dialog — operates on selectedUsers from table checkboxes */}
       <UsersStatusDialog
         key="user-deactivate"
         open={open === "deactivate"}
@@ -31,6 +55,7 @@ export function UsersDialogs() {
         type="deactivate"
       />
 
+      {/* Edit and Delete dialogs — only rendered when a specific row is selected */}
       {currentRow && (
         <>
           <UsersActionDialog
@@ -38,6 +63,7 @@ export function UsersDialogs() {
             open={open === "edit"}
             onOpenChange={() => {
               setOpen("edit")
+              // Delay clearing currentRow to allow the dialog close animation to finish
               setTimeout(() => {
                 setCurrentRow(null)
               }, 500)
@@ -50,6 +76,7 @@ export function UsersDialogs() {
             open={open === "delete"}
             onOpenChange={() => {
               setOpen("delete")
+              // Delay clearing currentRow to allow the dialog close animation to finish
               setTimeout(() => {
                 setCurrentRow(null)
               }, 500)

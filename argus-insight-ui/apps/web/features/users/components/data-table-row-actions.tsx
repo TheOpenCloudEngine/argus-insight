@@ -1,3 +1,21 @@
+/**
+ * Data Table Row Actions component (Users).
+ *
+ * Renders a "..." (more) dropdown menu button in each row of the users table.
+ * The menu provides per-row actions that open the corresponding dialog:
+ *
+ * - **Edit**: Opens the UsersActionDialog in edit mode for this user.
+ *   Sets the current row in the provider context so the dialog can
+ *   pre-populate the form with the user's existing data.
+ *
+ * - **Delete**: Opens the UsersDeleteDialog for this user.
+ *   Styled with red text to indicate a destructive action.
+ *   Sets the current row so the dialog knows which user to delete.
+ *
+ * The dropdown uses `modal={false}` to prevent focus trapping issues when
+ * a dialog is subsequently opened from within the menu.
+ */
+
 "use client"
 
 import { type Row } from "@tanstack/react-table"
@@ -15,6 +33,7 @@ import { type User } from "../data/schema"
 import { useUsers } from "./users-provider"
 
 type DataTableRowActionsProps = {
+  /** The TanStack Table row instance containing the User data. */
   row: Row<User>
 }
 
@@ -32,6 +51,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[160px]">
+        {/* Edit action: opens the user edit dialog */}
         <DropdownMenuItem
           onClick={() => {
             setCurrentRow(row.original)
@@ -44,6 +64,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           </span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
+        {/* Delete action: opens the user delete confirmation dialog */}
         <DropdownMenuItem
           onClick={() => {
             setCurrentRow(row.original)

@@ -1,3 +1,14 @@
+/**
+ * TanStack Table column definitions for the Users table.
+ *
+ * Defines how each column in the users data table is rendered, sorted, and filtered.
+ * Columns include: selection checkbox, username, full name, email, phone number,
+ * status badge, creation date, role with icon, and row actions.
+ *
+ * This array is passed to `useReactTable()` in `users-table.tsx` and controls
+ * the entire table layout and behavior.
+ */
+
 "use client"
 
 import { type ColumnDef } from "@tanstack/react-table"
@@ -12,6 +23,15 @@ import { type User } from "../data/schema"
 import { DataTableRowActions } from "./data-table-row-actions"
 
 export const usersColumns: ColumnDef<User>[] = [
+  /**
+   * Row selection checkbox column.
+   *
+   * Header: "Select all" checkbox that toggles selection for all rows on the page.
+   *         Shows an indeterminate state when only some rows are selected.
+   * Cell:   Individual row checkbox. Click events are stopped from propagating
+   *         to prevent the row click handler from interfering.
+   * Fixed width (48px), always visible (cannot be hidden), not sortable.
+   */
   {
     id: "select",
     header: ({ table }) => (
@@ -41,6 +61,13 @@ export const usersColumns: ColumnDef<User>[] = [
     enableSorting: false,
     enableHiding: false,
   },
+  /**
+   * Username column.
+   *
+   * Displays the user's unique login identifier. Sortable via column header.
+   * Uses LongText component to truncate long usernames with ellipsis.
+   * Always visible (cannot be hidden).
+   */
   {
     accessorKey: "username",
     header: ({ column }) => (
@@ -51,6 +78,13 @@ export const usersColumns: ColumnDef<User>[] = [
     ),
     enableHiding: false,
   },
+  /**
+   * Full Name column (computed from firstName + lastName).
+   *
+   * This is a virtual column (no direct accessorKey) that combines the user's
+   * first and last names. Custom sorting function compares the concatenated
+   * full names alphabetically using locale-aware comparison.
+   */
   {
     id: "fullName",
     header: ({ column }) => (
@@ -68,6 +102,12 @@ export const usersColumns: ColumnDef<User>[] = [
     },
     meta: { className: "w-36" },
   },
+  /**
+   * Email column.
+   *
+   * Displays the user's email address. Sortable and always visible.
+   * Uses text-nowrap to prevent the email from wrapping to multiple lines.
+   */
   {
     accessorKey: "email",
     header: ({ column }) => (
@@ -78,6 +118,12 @@ export const usersColumns: ColumnDef<User>[] = [
     ),
     enableHiding: false,
   },
+  /**
+   * Phone Number column.
+   *
+   * Displays the user's contact phone number. Not sortable since phone number
+   * sorting is rarely meaningful. Can be hidden via column visibility options.
+   */
   {
     accessorKey: "phoneNumber",
     header: ({ column }) => (
@@ -86,6 +132,18 @@ export const usersColumns: ColumnDef<User>[] = [
     cell: ({ row }) => <div className="text-center">{row.getValue("phoneNumber")}</div>,
     enableSorting: false,
   },
+  /**
+   * Status column.
+   *
+   * Renders a colored Badge component showing "active" or "inactive".
+   * Badge color is determined by the `callTypes` map from `data.ts`:
+   *   - active   → primary color (blue/brand)
+   *   - inactive → destructive color (red)
+   *
+   * Supports faceted filtering: the toolbar can filter by selected status values.
+   * Custom filterFn checks if the row's status is included in the selected values.
+   * Always visible, not sortable.
+   */
   {
     accessorKey: "status",
     header: ({ column }) => (
@@ -108,6 +166,13 @@ export const usersColumns: ColumnDef<User>[] = [
     enableHiding: false,
     enableSorting: false,
   },
+  /**
+   * Created At column.
+   *
+   * Displays the account creation date in ISO format (YYYY-MM-DD).
+   * Sortable to allow ordering users by registration date.
+   * Always visible.
+   */
   {
     accessorKey: "createdAt",
     header: ({ column }) => (
@@ -120,6 +185,17 @@ export const usersColumns: ColumnDef<User>[] = [
     },
     enableHiding: false,
   },
+  /**
+   * Role column.
+   *
+   * Displays the user's role with an associated Lucide icon:
+   *   - Admin → UserCheck icon
+   *   - User  → Users icon
+   *
+   * The role definition is looked up from the `roles` array in `data.ts`.
+   * Supports faceted filtering to show only admins or only regular users.
+   * Not sortable, always visible.
+   */
   {
     accessorKey: "role",
     header: ({ column }) => (
@@ -148,6 +224,13 @@ export const usersColumns: ColumnDef<User>[] = [
     enableSorting: false,
     enableHiding: false,
   },
+  /**
+   * Row Actions column.
+   *
+   * Renders a dropdown menu with per-row actions (Edit, Delete).
+   * The DataTableRowActions component handles opening the appropriate dialog
+   * and setting the current row context in the provider.
+   */
   {
     id: "actions",
     cell: DataTableRowActions,

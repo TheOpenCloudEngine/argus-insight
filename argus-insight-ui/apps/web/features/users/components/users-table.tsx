@@ -1,3 +1,24 @@
+/**
+ * Users Data Table component.
+ *
+ * Renders the main users table with server-side pagination and filtering.
+ * Built on TanStack React Table v8, this component integrates:
+ *
+ * - **Server-side pagination**: Page changes trigger backend API calls via the
+ *   UsersProvider context. The `manualPagination` flag tells TanStack Table
+ *   that pagination is handled externally.
+ * - **Server-side filtering**: Filters (status, role, search text) are collected
+ *   from the toolbar and sent to the backend when the Search button is clicked.
+ *   The `manualFiltering` flag prevents client-side filtering.
+ * - **Client-side sorting**: Column sorting is handled locally on the current
+ *   page's data using TanStack Table's built-in sort models.
+ * - **Row selection**: Checkbox-based multi-select with "select all" support.
+ *   Selected rows are synced to the UsersProvider context for bulk actions.
+ * - **Toolbar**: Search input, faceted filters (Status, Role), and action buttons.
+ * - **Bulk actions bar**: Appears when rows are selected, showing available
+ *   bulk operations (activate, deactivate, etc.).
+ */
+
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
@@ -33,7 +54,9 @@ import { usersColumns as columns } from "./users-columns"
 import { useUsers } from "./users-provider"
 
 type UsersTableProps = {
+  /** Array of User objects to display (current page from the backend). */
   data: User[]
+  /** Whether the data is currently being fetched from the backend. */
   isLoading?: boolean
 }
 
@@ -48,13 +71,27 @@ export function UsersTable({ data, isLoading }: UsersTableProps) {
     searchUsers,
   } = useUsers()
 
+  // Local table state managed by TanStack Table.
   const [rowSelection, setRowSelection] = useState({})
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
 
+  /** Compute total page count from the backend's total record count. */
   const pageCount = useMemo(() => Math.ceil(total / pageSize), [total, pageSize])
 
+  /**
+   * TanStack Table instance configuration.
+   *
+   * Key settings:
+   * - manualPagination: Pagination is handled by the backend; TanStack Table
+   *   only tracks the current page index and size.
+   * - manualFiltering: Filtering is handled by the backend; column filter state
+   *   is used only to build the query parameters for the API call.
+   * - onPaginationChange: Bridges TanStack Table's pagination updater with our
+   *   provider's setPage/setPageSize. Detects whether the page or page size
+   *   changed and calls the appropriate handler.
+   */
   const table = useReactTable({
     data,
     columns,
@@ -89,12 +126,28 @@ export function UsersTable({ data, isLoading }: UsersTableProps) {
     getFacetedUniqueValues: getFacetedUniqueValues(),
   })
 
-  // Sync selected rows to context
+  /**
+   * Sync table row selection state to the provider's selectedUsers.
+   *
+   * Whenever the local rowSelection changes, extract the original User objects
+   * from the selected rows and push them to the provider context. This allows
+   * bulk action dialogs to know which users are selected.
+   */
   useEffect(() => {
     setSelectedUsers(table.getSelectedRowModel().rows.map((row) => row.original))
   }, [rowSelection])
 
-  // Gather current filters and trigger search
+  /**
+   * Gather current filter values from column filters and trigger a server-side search.
+   *
+   * Extracts the status, role, and search text from TanStack Table's column filter
+   * state, formats them for the backend API, and calls searchUsers() on the provider.
+   *
+   * Special handling:
+   * - Status: Only sends a single value (not multi-select for backend compatibility).
+   * - Role: Capitalizes the first letter to match the backend enum ("admin" -> "Admin").
+   * - Search: Taken from the "username" column filter (used as a general search field).
+   */
   const handleSearch = useCallback(() => {
     const statusVal = columnFilters.find((f) => f.id === "status")?.value
     const roleVal = columnFilters.find((f) => f.id === "role")?.value
@@ -116,7 +169,7 @@ export function UsersTable({ data, isLoading }: UsersTableProps) {
     searchUsers({ status, role, search })
   }, [columnFilters, searchUsers])
 
-  // Clear all filters
+  /** Reset all column filters and the global filter to their default (empty) state. */
   const handleClear = useCallback(() => {
     table.resetColumnFilters()
     table.setGlobalFilter("")
@@ -124,6 +177,7 @@ export function UsersTable({ data, isLoading }: UsersTableProps) {
 
   return (
     <div className={cn("flex flex-1 flex-col gap-4")}>
+      {/* Toolbar: search input, faceted filters (Status, Role), view options */}
       <DataTableToolbar
         table={table}
         searchPlaceholder="Filter users..."
@@ -146,6 +200,8 @@ export function UsersTable({ data, isLoading }: UsersTableProps) {
         onSearch={handleSearch}
         onClear={handleClear}
       />
+
+      {/* Main table with header and body */}
       <div className="overflow-hidden rounded-md border">
         <Table>
           <TableHeader>
@@ -180,6 +236,7 @@ export function UsersTable({ data, isLoading }: UsersTableProps) {
             ))}
           </TableHeader>
           <TableBody>
+            {/* Loading state: show a centered loading message */}
             {isLoading ? (
               <TableRow>
                 <TableCell
@@ -190,6 +247,7 @@ export function UsersTable({ data, isLoading }: UsersTableProps) {
                 </TableCell>
               </TableRow>
             ) : table.getRowModel().rows?.length ? (
+              /* Data rows: render each row with selection state and hover styles */
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
@@ -220,6 +278,7 @@ export function UsersTable({ data, isLoading }: UsersTableProps) {
                 </TableRow>
               ))
             ) : (
+              /* Empty state: no matching results */
               <TableRow>
                 <TableCell
                   colSpan={columns.length}
@@ -232,7 +291,11 @@ export function UsersTable({ data, isLoading }: UsersTableProps) {
           </TableBody>
         </Table>
       </div>
+
+      {/* Pagination controls: page navigation and page size selector */}
       <DataTablePagination table={table} className="mt-auto" />
+
+      {/* Bulk actions bar: appears when one or more rows are selected */}
       <DataTableBulkActions table={table} entityName="user" />
     </div>
   )

@@ -1,5 +1,16 @@
 import { type User } from "./schema"
 
+/**
+ * Mock user data for development and testing.
+ *
+ * This static dataset contains 15 sample users with varying roles (admin/user)
+ * and statuses (active/inactive). It is used as a fallback data source when the
+ * backend API is not available, and serves as reference data for UI development.
+ *
+ * NOTE: In production, user data is fetched from the backend via the
+ * `fetchUsers()` API function in `../api.ts`. This mock data is not used
+ * in production builds.
+ */
 export const users: User[] = [
   {
     id: "1",
