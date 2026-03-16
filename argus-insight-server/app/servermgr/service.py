@@ -4,9 +4,8 @@ Provides read operations for the argus_agents table.
 """
 
 import logging
-from datetime import datetime, timezone
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import Integer, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.models import ArgusAgent, ArgusAgentHeartbeat
@@ -23,8 +22,12 @@ async def list_servers(
     page_size: int = 10,
 ) -> PaginatedServerResponse:
     """List servers with optional filtering and pagination."""
+    heartbeat_seconds = func.extract(
+        "epoch", func.now() - ArgusAgentHeartbeat.last_heartbeat_at
+    ).cast(Integer).label("last_heartbeat_seconds")
+
     base = (
-        select(ArgusAgent, ArgusAgentHeartbeat.last_heartbeat_at)
+        select(ArgusAgent, heartbeat_seconds)
         .outerjoin(ArgusAgentHeartbeat, ArgusAgent.hostname == ArgusAgentHeartbeat.hostname)
     )
 
@@ -52,30 +55,23 @@ async def list_servers(
     result = await session.execute(query)
     rows = result.all()
 
-    now = datetime.now(timezone.utc)
-    items = []
-    for agent, last_heartbeat_at in rows:
-        last_heartbeat_seconds = None
-        if last_heartbeat_at is not None:
-            delta = now - last_heartbeat_at.replace(tzinfo=timezone.utc)
-            last_heartbeat_seconds = int(delta.total_seconds())
-
-        items.append(
-            ServerResponse(
-                hostname=agent.hostname,
-                ip_address=agent.ip_address,
-                version=agent.version,
-                os_version=agent.os_version,
-                core_count=agent.core_count,
-                total_memory=agent.total_memory,
-                cpu_usage=agent.cpu_usage,
-                memory_usage=agent.memory_usage,
-                status=agent.status,
-                last_heartbeat_seconds=last_heartbeat_seconds,
-                created_at=agent.created_at,
-                updated_at=agent.updated_at,
-            )
+    items = [
+        ServerResponse(
+            hostname=agent.hostname,
+            ip_address=agent.ip_address,
+            version=agent.version,
+            os_version=agent.os_version,
+            core_count=agent.core_count,
+            total_memory=agent.total_memory,
+            cpu_usage=agent.cpu_usage,
+            memory_usage=agent.memory_usage,
+            status=agent.status,
+            last_heartbeat_seconds=hb_seconds,
+            created_at=agent.created_at,
+            updated_at=agent.updated_at,
         )
+        for agent, hb_seconds in rows
+    ]
 
     return PaginatedServerResponse(
         items=items,
