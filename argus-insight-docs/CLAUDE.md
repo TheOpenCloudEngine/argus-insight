@@ -105,8 +105,8 @@ make clean          # rm -rf build .antora-cache
 주요 속성:
 - `product-name`: 제품명 (Argus Insight)
 - `product-version`: 제품 버전
-- `server-port`: Server 기본 포트 (8080)
-- `agent-port`: Agent 기본 포트 (8600)
+- `server-port`: Server 기본 포트 (4500)
+- `agent-port`: Agent 기본 포트 (4501)
 
 ### antora-playbook.yml (HTML 사이트)
 

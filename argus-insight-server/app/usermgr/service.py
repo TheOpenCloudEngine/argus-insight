@@ -6,7 +6,7 @@ Provides CRUD operations for users and roles against the database.
 import hashlib
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.usermgr.models import ArgusRole, ArgusUser
@@ -172,9 +172,41 @@ async def get_user(session: AsyncSession, user_id: int) -> UserResponse | None:
     return await _build_user_response(session, user)
 
 
-async def list_users(session: AsyncSession) -> list[UserResponse]:
-    """List all users."""
-    result = await session.execute(select(ArgusUser).order_by(ArgusUser.id))
+async def list_users(
+    session: AsyncSession,
+    status: str | None = None,
+    role: str | None = None,
+    search: str | None = None,
+) -> list[UserResponse]:
+    """List users with optional filtering.
+
+    Args:
+        status: Filter by user status ('active' or 'inactive').
+        role: Filter by role name ('Admin' or 'User'). Joins with argus_roles.
+        search: LIKE search across username, first_name, last_name, email, phone_number.
+    """
+    query = select(ArgusUser).join(ArgusRole, ArgusUser.role_id == ArgusRole.id)
+
+    if status:
+        query = query.where(ArgusUser.status == status)
+
+    if role:
+        query = query.where(ArgusRole.name == role)
+
+    if search:
+        pattern = f"%{search}%"
+        query = query.where(
+            or_(
+                ArgusUser.username.ilike(pattern),
+                ArgusUser.first_name.ilike(pattern),
+                ArgusUser.last_name.ilike(pattern),
+                ArgusUser.email.ilike(pattern),
+                ArgusUser.phone_number.ilike(pattern),
+            )
+        )
+
+    query = query.order_by(ArgusUser.created_at.desc())
+    result = await session.execute(query)
     users = result.scalars().all()
     return [await _build_user_response(session, u) for u in users]
 

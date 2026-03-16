@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
@@ -34,9 +34,14 @@ async def add_user(req: UserAddRequest, session: AsyncSession = Depends(get_sess
 
 
 @router.get("/users", response_model=list[UserResponse])
-async def list_users(session: AsyncSession = Depends(get_session)):
-    """List all users."""
-    return await service.list_users(session)
+async def list_users(
+    status: str | None = Query(None, description="Filter by status (active/inactive)"),
+    role: str | None = Query(None, description="Filter by role name (Admin/User)"),
+    search: str | None = Query(None, description="Search username, name, email, phone"),
+    session: AsyncSession = Depends(get_session),
+):
+    """List users with optional filters."""
+    return await service.list_users(session, status=status, role=role, search=search)
 
 
 @router.get("/users/{user_id}", response_model=UserResponse)

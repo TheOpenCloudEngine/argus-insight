@@ -16,14 +16,14 @@ React UI  <──HTTP/WS──>  Argus Insight Server  <──HTTP/WS──>  Ar
 (Frontend)                (이 프로젝트)                         (원격 서버)
 ```
 
-- **React UI → Server**: REST API + WebSocket (포트 8080)
-- **Server → Agent**: HTTP 클라이언트 (httpx)로 Agent API 호출 (포트 8600)
+- **React UI → Server**: REST API + WebSocket (포트 4500)
+- **Server → Agent**: HTTP 클라이언트 (httpx)로 Agent API 호출 (포트 4501)
 
 ## 운영 환경
 
 - systemd 서비스로 동작 (`argus-insight-server.service`)
 - 일반 사용자 권한으로 실행 (argus 계정)
-- 기본 포트: **8080**
+- 기본 포트: **4500**
 - 디렉토리 구조:
   - `/etc/argus-insight-server/` - 설정 파일 (`config.yml`, `config.properties`)
   - `/var/log/argus-insight-server/` - 로그 파일 (`server.log`)
@@ -98,7 +98,7 @@ Spring Boot 스타일의 `${변수:기본값}` 문법을 사용합니다. argus-
 ```properties
 # 서버 설정
 server.host=0.0.0.0
-server.port=8080
+server.port=4500
 
 # 로깅
 log.level=INFO
@@ -118,7 +118,7 @@ agent.health_interval=60
 ```yaml
 server:
   host: ${server.host:0.0.0.0}
-  port: ${server.port:8080}
+  port: ${server.port:4500}
 
 logging:
   level: ${log.level:INFO}
@@ -145,7 +145,7 @@ agent:
 | 섹션 | YAML 키 | properties 변수 | 기본값 | 설명 |
 |------|---------|----------------|--------|------|
 | server | host | server.host | 0.0.0.0 | 바인드 주소 |
-| server | port | server.port | 8080 | 바인드 포트 |
+| server | port | server.port | 4500 | 바인드 포트 |
 | app | debug | - | false | 디버그 모드 |
 | logging | level | log.level | INFO | 로그 레벨 |
 | logging | dir | log.dir | /var/log/argus-insight-server (패키지), logs (직접 실행) | 로그 디렉토리 |
@@ -200,7 +200,7 @@ cd argus-insight-server
 make dev            # pip install -e ".[dev]"
 
 # 서버 실행 (개발 모드, --reload 포함)
-make run            # uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
+make run            # uvicorn app.main:app --host 0.0.0.0 --port 4500 --reload
 
 # 테스트
 make test           # pytest tests/ -v
@@ -222,9 +222,9 @@ make clean
 
 | UI | URL | 설명 |
 |----|-----|------|
-| Swagger UI | `http://<host>:8080/docs` | 대화형 API 테스트 가능 (Try it out) |
-| ReDoc | `http://<host>:8080/redoc` | 읽기 전용 API 문서 |
-| OpenAPI JSON | `http://<host>:8080/openapi.json` | OpenAPI 3.x 스펙 (JSON) |
+| Swagger UI | `http://<host>:4500/docs` | 대화형 API 테스트 가능 (Try it out) |
+| ReDoc | `http://<host>:4500/redoc` | 읽기 전용 API 문서 |
+| OpenAPI JSON | `http://<host>:4500/openapi.json` | OpenAPI 3.x 스펙 (JSON) |
 
 ## API 엔드포인트
 

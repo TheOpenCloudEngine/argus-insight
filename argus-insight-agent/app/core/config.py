@@ -57,7 +57,7 @@ class Settings:
 
         # Server
         self.host: str = _get("server", "host", "0.0.0.0")
-        self.port: int = int(_get("server", "port", 8600))
+        self.port: int = int(_get("server", "port", 4501))
 
         # Logging
         self.log_level: str = _get("logging", "level", "INFO")
@@ -105,7 +105,7 @@ class Settings:
         # Insight Server (loaded from server.properties in config directory)
         _server_props = self._load_server_properties()
         self.insight_server_ip: str = _server_props.get("server.ip", "localhost")
-        self.insight_server_port: int = int(_server_props.get("server.port", 8080))
+        self.insight_server_port: int = int(_server_props.get("server.port", 4500))
 
         # Prometheus
         self.prometheus_enable_push: bool = _to_bool(_get("prometheus", "enable-push", True))
