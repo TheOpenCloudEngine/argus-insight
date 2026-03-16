@@ -23,6 +23,7 @@ function mapServer(s: Record<string, unknown>): Server {
     version: s.version as string | null,
     osVersion: s.os_version as string | null,
     coreCount: s.core_count as number | null,
+    totalMemory: s.total_memory as number | null,
     cpuUsage: s.cpu_usage as number | null,
     memoryUsage: s.memory_usage as number | null,
     status: s.status as Server["status"],

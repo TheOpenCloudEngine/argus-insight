@@ -55,6 +55,7 @@ async def list_servers(
             version=agent.version,
             os_version=agent.os_version,
             core_count=agent.core_count,
+            total_memory=agent.total_memory,
             cpu_usage=agent.cpu_usage,
             memory_usage=agent.memory_usage,
             status=agent.status,

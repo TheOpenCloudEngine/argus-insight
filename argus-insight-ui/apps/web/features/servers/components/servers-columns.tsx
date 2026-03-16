@@ -96,6 +96,21 @@ export const serversColumns: ColumnDef<Server>[] = [
     enableSorting: false,
   },
   {
+    accessorKey: "totalMemory",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Total Memory" />
+    ),
+    cell: ({ row }) => {
+      const bytes = row.getValue("totalMemory") as number | null
+      if (bytes == null) return <div className="text-sm text-center">-</div>
+      const mib = (bytes / (1024 * 1024)).toFixed(0)
+      return (
+        <div className="text-sm text-right text-nowrap">{Number(mib).toLocaleString()} MiB</div>
+      )
+    },
+    enableSorting: false,
+  },
+  {
     accessorKey: "cpuUsage",
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="CPU Usage" />

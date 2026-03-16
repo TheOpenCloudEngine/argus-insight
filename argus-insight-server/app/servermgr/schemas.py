@@ -13,6 +13,7 @@ class ServerResponse(BaseModel):
     version: str | None = None
     os_version: str | None = None
     core_count: int | None = None
+    total_memory: int | None = None
     cpu_usage: float | None = None
     memory_usage: float | None = None
     status: str

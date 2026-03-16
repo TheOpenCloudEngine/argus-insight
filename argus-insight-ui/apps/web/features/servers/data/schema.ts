@@ -13,6 +13,7 @@ const serverSchema = z.object({
   version: z.string().nullable(),
   osVersion: z.string().nullable(),
   coreCount: z.number().nullable(),
+  totalMemory: z.number().nullable(),
   cpuUsage: z.number().nullable(),
   memoryUsage: z.number().nullable(),
   status: serverStatusSchema,
