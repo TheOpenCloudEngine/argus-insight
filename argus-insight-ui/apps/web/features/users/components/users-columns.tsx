@@ -26,7 +26,7 @@ export const usersColumns: ColumnDef<User>[] = [
       />
     ),
     meta: {
-      className: cn("max-md:sticky start-0 z-10 rounded-tl-[inherit]"),
+      className: cn("w-12 max-w-12 max-md:sticky start-0 z-10 rounded-tl-[inherit]"),
     },
     cell: ({ row }) => (
       <div onClick={(e) => e.stopPropagation()}>
@@ -44,28 +44,22 @@ export const usersColumns: ColumnDef<User>[] = [
   {
     accessorKey: "username",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Username" />
+      <DataTableColumnHeader column={column} title="Username" className="justify-center" />
     ),
     cell: ({ row }) => (
-      <LongText className="max-w-36 ps-3">{row.getValue("username")}</LongText>
+      <LongText className="max-w-36 text-center">{row.getValue("username")}</LongText>
     ),
-    meta: {
-      className: cn(
-        "drop-shadow-[0_1px_2px_rgb(0_0_0_/_0.1)] dark:drop-shadow-[0_1px_2px_rgb(255_255_255_/_0.1)]",
-        "ps-0.5"
-      ),
-    },
     enableHiding: false,
   },
   {
     id: "fullName",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Name" />
+      <DataTableColumnHeader column={column} title="Name" className="justify-center" />
     ),
     cell: ({ row }) => {
       const { firstName, lastName } = row.original
       const fullName = `${firstName} ${lastName}`
-      return <LongText className="max-w-36">{fullName}</LongText>
+      return <LongText className="max-w-36 text-center">{fullName}</LongText>
     },
     sortingFn: (rowA, rowB) => {
       const a = `${rowA.original.firstName} ${rowA.original.lastName}`
@@ -77,31 +71,31 @@ export const usersColumns: ColumnDef<User>[] = [
   {
     accessorKey: "email",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Email" />
+      <DataTableColumnHeader column={column} title="Email" className="justify-center" />
     ),
     cell: ({ row }) => (
-      <div className="w-fit ps-2 text-nowrap">{row.getValue("email")}</div>
+      <div className="text-center text-nowrap">{row.getValue("email")}</div>
     ),
     enableHiding: false,
   },
   {
     accessorKey: "phoneNumber",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Phone Number" />
+      <DataTableColumnHeader column={column} title="Phone Number" className="justify-center" />
     ),
-    cell: ({ row }) => <div>{row.getValue("phoneNumber")}</div>,
+    cell: ({ row }) => <div className="text-center">{row.getValue("phoneNumber")}</div>,
     enableSorting: false,
   },
   {
     accessorKey: "status",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Status" />
+      <DataTableColumnHeader column={column} title="Status" className="justify-center" />
     ),
     cell: ({ row }) => {
       const { status } = row.original
       const badgeColor = callTypes.get(status)
       return (
-        <div className="flex space-x-2">
+        <div className="flex justify-center">
           <Badge variant="outline" className={cn("capitalize", badgeColor)}>
             {row.getValue("status")}
           </Badge>
@@ -117,19 +111,19 @@ export const usersColumns: ColumnDef<User>[] = [
   {
     accessorKey: "createdAt",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Created At" />
+      <DataTableColumnHeader column={column} title="Created At" className="justify-center" />
     ),
     cell: ({ row }) => {
       const date = row.getValue("createdAt") as Date
       const formatted = date.toISOString().slice(0, 10)
-      return <div className="text-sm text-nowrap">{formatted}</div>
+      return <div className="text-center text-sm text-nowrap">{formatted}</div>
     },
     enableHiding: false,
   },
   {
     accessorKey: "role",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Role" />
+      <DataTableColumnHeader column={column} title="Role" className="justify-center" />
     ),
     cell: ({ row }) => {
       const { role } = row.original
@@ -140,7 +134,7 @@ export const usersColumns: ColumnDef<User>[] = [
       }
 
       return (
-        <div className="flex items-center gap-x-2">
+        <div className="flex items-center justify-center gap-x-2">
           {userType.icon && (
             <userType.icon size={16} className="text-muted-foreground" />
           )}
