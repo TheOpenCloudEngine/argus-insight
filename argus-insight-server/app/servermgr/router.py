@@ -77,6 +77,29 @@ async def server_inspect(hostname: str):
         raise HTTPException(status_code=502, detail=f"Agent communication failed: {e}")
 
 
+@router.get("/servers/{hostname}/top")
+async def server_top(hostname: str, limit: int = Query(50, ge=1, le=500)):
+    """Proxy top (htop-style) request to the agent identified by hostname."""
+    from app.core.database import async_session
+
+    async with async_session() as session:
+        agent = await service.get_agent_by_hostname(session, hostname)
+
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent not found: {hostname}")
+
+    agent_url = f"http://{agent.ip_address}:4501/api/v1/sysmon/top?limit={limit}"
+    logger.info("Top proxy: hostname=%s url=%s", hostname, agent_url)
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(agent_url)
+            return resp.json()
+    except httpx.RequestError as e:
+        logger.error("Top proxy error: hostname=%s err=%s", hostname, e)
+        raise HTTPException(status_code=502, detail=f"Agent communication failed: {e}")
+
+
 @router.websocket("/servers/{hostname}/terminal/ws")
 async def server_terminal_ws(
     websocket: WebSocket,

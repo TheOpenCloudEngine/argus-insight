@@ -4,6 +4,7 @@ import { ServersInspectDialog } from "./servers-inspect-dialog"
 import { ServersRegisterDialog } from "./servers-register-dialog"
 import { ServersTerminalDialog } from "./servers-terminal-dialog"
 import { ServersTerminalWarningDialog } from "./servers-terminal-warning-dialog"
+import { ServersTopDialog } from "./servers-top-dialog"
 import { ServersUnregisterDialog } from "./servers-unregister-dialog"
 import { ServersTable } from "./servers-table"
 import { useServers } from "./servers-provider"
@@ -45,6 +46,14 @@ export function ServersTableWrapper() {
             open={open === "inspect"}
             onOpenChange={(v) => {
               setOpen(v ? "inspect" : null)
+              if (!v) setTimeout(() => setCurrentRow(null), 300)
+            }}
+            currentRow={currentRow}
+          />
+          <ServersTopDialog
+            open={open === "top"}
+            onOpenChange={(v) => {
+              setOpen(v ? "top" : null)
               if (!v) setTimeout(() => setCurrentRow(null), 300)
             }}
             currentRow={currentRow}

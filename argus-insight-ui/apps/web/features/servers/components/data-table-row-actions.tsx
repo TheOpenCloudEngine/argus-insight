@@ -1,7 +1,7 @@
 "use client"
 
 import { type Row } from "@tanstack/react-table"
-import { Minus, MoreHorizontal, Plus, Search, Terminal } from "lucide-react"
+import { Activity, Minus, MoreHorizontal, Plus, Search, Terminal } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -65,6 +65,17 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           Inspect
           <span className="ml-auto">
             <Search size={16} />
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => {
+            setCurrentRow(row.original)
+            setOpen("top")
+          }}
+        >
+          Top
+          <span className="ml-auto">
+            <Activity size={16} />
           </span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />

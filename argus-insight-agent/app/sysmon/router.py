@@ -10,6 +10,7 @@ from app.sysmon.schemas import (
     NetworkErrorResult,
     NetworkUsageResult,
     ProcessListResult,
+    TopResult,
 )
 from app.sysmon.service import (
     get_cpu_core_usage,
@@ -19,6 +20,7 @@ from app.sysmon.service import (
     get_network_errors,
     get_network_usage,
     get_process_list,
+    get_top,
 )
 
 router = APIRouter(prefix="/sysmon", tags=["sysmon"])
@@ -77,3 +79,11 @@ async def process_list(
 async def disk_partitions() -> DiskPartitionResult:
     """Get disk partition information with usage stats."""
     return get_disk_partitions()
+
+
+@router.get("/top", response_model=TopResult)
+async def top(
+    limit: int = Query(50, ge=1, le=500, description="Maximum processes to return"),
+) -> TopResult:
+    """Get combined htop-style system overview (CPU, memory, swap, processes)."""
+    return get_top(limit=limit)

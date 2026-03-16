@@ -60,6 +60,12 @@ export async function fetchInspect(hostname: string): Promise<Record<string, unk
   return res.json()
 }
 
+export async function fetchTop(hostname: string): Promise<Record<string, unknown>> {
+  const res = await fetch(`${BASE}/servers/${encodeURIComponent(hostname)}/top?limit=80`)
+  if (!res.ok) throw new Error(`Failed to fetch top data: ${res.status}`)
+  return res.json()
+}
+
 export async function fetchServers(params?: ServerListParams): Promise<PaginatedServers> {
   const query = new URLSearchParams()
   if (params?.status && params.status.length > 0) query.set("status", params.status.join(","))
