@@ -67,6 +67,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
             <Search size={16} />
           </span>
         </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => {
             setCurrentRow(row.original)
