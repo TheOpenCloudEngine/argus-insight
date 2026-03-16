@@ -1,17 +1,14 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   type ColumnFiltersState,
-  type PaginationState,
   type SortingState,
   type VisibilityState,
   flexRender,
   getCoreRowModel,
   getFacetedRowModel,
   getFacetedUniqueValues,
-  getFilteredRowModel,
-  getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table"
@@ -40,48 +37,109 @@ type UsersTableProps = {
 }
 
 export function UsersTable({ data }: UsersTableProps) {
-  const { statusFilter, setSelectedUsers } = useUsers()
+  const {
+    statusFilter,
+    setStatusFilter,
+    setSelectedUsers,
+    total,
+    page,
+    pageSize,
+    setPage,
+    setPageSize,
+    setSearchFilter,
+    setRoleFilter,
+  } = useUsers()
+
   const [rowSelection, setRowSelection] = useState({})
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
 
+  // Track whether columnFilter change came from external statusFilter sync
+  const skipPropagation = useRef(false)
+
+  // Sync statusFilter from context → columnFilters (for display in toolbar)
   useEffect(() => {
+    skipPropagation.current = true
     setColumnFilters((prev) => {
       const without = prev.filter((f) => f.id !== "status")
-      return statusFilter ? [...without, { id: "status", value: statusFilter }] : without
+      return statusFilter ? [...without, { id: "status", value: [statusFilter] }] : without
     })
   }, [statusFilter])
-  const [pagination, setPagination] = useState<PaginationState>({
-    pageIndex: 0,
-    pageSize: 10,
-  })
+
+  const pageCount = useMemo(() => Math.ceil(total / pageSize), [total, pageSize])
 
   const table = useReactTable({
     data,
     columns,
+    pageCount,
     state: {
       sorting,
-      pagination,
+      pagination: { pageIndex: page - 1, pageSize },
       rowSelection,
       columnFilters,
       columnVisibility,
     },
     enableRowSelection: true,
-    onPaginationChange: setPagination,
-    onColumnFiltersChange: setColumnFilters,
+    manualPagination: true,
+    manualFiltering: true,
+    onPaginationChange: (updater) => {
+      const next = typeof updater === "function"
+        ? updater({ pageIndex: page - 1, pageSize })
+        : updater
+      if (next.pageSize !== pageSize) {
+        setPageSize(next.pageSize)
+      } else {
+        setPage(next.pageIndex + 1)
+      }
+    },
+    onColumnFiltersChange: (updater) => {
+      const next = typeof updater === "function" ? updater(columnFilters) : updater
+      setColumnFilters(next)
+
+      // Skip server call if this change came from statusFilter context sync
+      if (skipPropagation.current) {
+        skipPropagation.current = false
+        return
+      }
+
+      // Propagate filter changes to server-side query params
+      const statusVal = next.find((f) => f.id === "status")?.value
+      const roleVal = next.find((f) => f.id === "role")?.value
+      const searchVal = next.find((f) => f.id === "username")?.value
+
+      // Status: faceted filter returns string[], extract single value for API
+      if (Array.isArray(statusVal) && statusVal.length === 1) {
+        setStatusFilter(statusVal[0])
+      } else {
+        setStatusFilter(null)
+      }
+
+      // Role: faceted filter returns string[], capitalize for backend (admin→Admin)
+      if (Array.isArray(roleVal) && roleVal.length === 1) {
+        const r = roleVal[0] as string
+        setRoleFilter(r.charAt(0).toUpperCase() + r.slice(1))
+      } else {
+        setRoleFilter("")
+      }
+
+      // Search: string from input
+      if (typeof searchVal === "string") {
+        setSearchFilter(searchVal)
+      } else {
+        setSearchFilter("")
+      }
+    },
     onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,
     onColumnVisibilityChange: setColumnVisibility,
-    getPaginationRowModel: getPaginationRowModel(),
     getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFacetedRowModel: getFacetedRowModel(),
     getFacetedUniqueValues: getFacetedUniqueValues(),
   })
 
-  // rowSelection이 변경될 때마다 선택된 사용자 목록을 context에 동기화
+  // Sync selected rows to context
   useEffect(() => {
     setSelectedUsers(table.getSelectedRowModel().rows.map((row) => row.original))
   }, [rowSelection])

@@ -11,28 +11,22 @@ import { ThemeToggle } from "@/components/theme-toggle"
 
 interface DashboardHeaderProps {
   title: string
-  description?: string
 }
 
-export function DashboardHeader({ title, description }: DashboardHeaderProps) {
+export function DashboardHeader({ title }: DashboardHeaderProps) {
   return (
     <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
       <SidebarTrigger className="-ml-1" />
       <Separator orientation="vertical" className="mr-2 h-4" />
       <div className="flex flex-1 items-center gap-2">
-        <div className="flex flex-col">
-          <h1 className="text-sm font-semibold leading-none">{title}</h1>
-          {description && (
-            <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
-          )}
-        </div>
+        <h1 className="text-xl font-semibold leading-none">{title}</h1>
       </div>
       <div className="flex items-center gap-2 ml-auto">
         <div className="relative hidden md:block">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="검색..."
+            placeholder="Search..."
             className="pl-8 w-64 h-9 text-sm"
           />
         </div>
@@ -42,7 +36,7 @@ export function DashboardHeader({ title, description }: DashboardHeaderProps) {
             3
           </Badge>
         </Button>
-        <ThemeToggle />
+        {/* <ThemeToggle /> */}
       </div>
     </header>
   )

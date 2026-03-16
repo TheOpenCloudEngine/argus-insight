@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_session
 from app.usermgr import service
 from app.usermgr.schemas import (
+    PaginatedUserResponse,
     RoleResponse,
     UserAddRequest,
     UserChangeRoleRequest,
@@ -24,6 +25,18 @@ router = APIRouter(prefix="/usermgr", tags=["usermgr"])
 # User endpoints
 # ---------------------------------------------------------------------------
 
+@router.get("/check-user")
+async def check_user_exists(
+    username: str | None = Query(None, description="Username to check"),
+    email: str | None = Query(None, description="Email to check"),
+    session: AsyncSession = Depends(get_session),
+):
+    """Check if a username or email already exists."""
+    if not username and not email:
+        raise HTTPException(status_code=400, detail="Provide username or email")
+    return await service.check_user_exists(session, username=username, email=email)
+
+
 @router.post("/users", response_model=UserResponse)
 async def add_user(req: UserAddRequest, session: AsyncSession = Depends(get_session)):
     """Create a new user."""
@@ -33,15 +46,19 @@ async def add_user(req: UserAddRequest, session: AsyncSession = Depends(get_sess
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/users", response_model=list[UserResponse])
+@router.get("/users", response_model=PaginatedUserResponse)
 async def list_users(
     status: str | None = Query(None, description="Filter by status (active/inactive)"),
     role: str | None = Query(None, description="Filter by role name (Admin/User)"),
     search: str | None = Query(None, description="Search username, name, email, phone"),
+    page: int = Query(1, ge=1, description="Page number (1-based)"),
+    page_size: int = Query(10, ge=1, le=100, description="Items per page"),
     session: AsyncSession = Depends(get_session),
 ):
-    """List users with optional filters."""
-    return await service.list_users(session, status=status, role=role, search=search)
+    """List users with optional filters and pagination."""
+    return await service.list_users(
+        session, status=status, role=role, search=search, page=page, page_size=page_size
+    )
 
 
 @router.get("/users/{user_id}", response_model=UserResponse)

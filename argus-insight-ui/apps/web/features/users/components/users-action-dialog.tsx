@@ -1,5 +1,6 @@
 "use client"
 
+import { useCallback } from "react"
 import { z } from "zod"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -24,7 +25,7 @@ import {
 import { Input } from "@workspace/ui/components/input"
 import { PasswordInput } from "@/components/password-input"
 import { SelectDropdown } from "@/components/select-dropdown"
-import { createUser, modifyUser } from "../api"
+import { checkUserExists, createUser, modifyUser } from "../api"
 import { roles } from "../data/data"
 import { type User } from "../data/schema"
 import { useUsers } from "./users-provider"
@@ -34,8 +35,8 @@ const formSchema = z
     firstName: z.string().min(1, "First Name is required."),
     lastName: z.string().min(1, "Last Name is required."),
     username: z.string().min(1, "Username is required."),
-    phoneNumber: z.string().min(1, "Phone number is required."),
-    email: z.string().email("Invalid email address.").min(1, "Email is required."),
+    phoneNumber: z.string().optional().default(""),
+    email: z.string().min(1, "Email is required.").email("Invalid email address."),
     password: z.string().transform((pwd) => pwd.trim()),
     role: z.string().min(1, "Role is required."),
     confirmPassword: z.string().transform((pwd) => pwd.trim()),
@@ -87,6 +88,14 @@ const formSchema = z
   )
 type UserForm = z.infer<typeof formSchema>
 
+function RequiredLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <FormLabel>
+      {children} <span className="text-destructive">*</span>
+    </FormLabel>
+  )
+}
+
 type UsersActionDialogProps = {
   currentRow?: User
   open: boolean
@@ -100,8 +109,10 @@ export function UsersActionDialog({
 }: UsersActionDialogProps) {
   const isEdit = !!currentRow
   const { refreshUsers } = useUsers()
+
   const form = useForm<UserForm>({
     resolver: zodResolver(formSchema),
+    mode: "onTouched",
     defaultValues: isEdit
       ? {
           ...currentRow,
@@ -114,13 +125,49 @@ export function UsersActionDialog({
           lastName: "",
           username: "",
           email: "",
-          role: "",
+          role: "user",
           phoneNumber: "",
           password: "",
           confirmPassword: "",
           isEdit,
         },
   })
+
+  const handleCheckUsername = useCallback(
+    async (value: string) => {
+      if (!value || isEdit) return
+      try {
+        const result = await checkUserExists({ username: value })
+        if (result.username_exists) {
+          form.setError("username", {
+            type: "validate",
+            message: "This username is already taken.",
+          })
+        }
+      } catch {
+        // ignore network errors for validation
+      }
+    },
+    [isEdit, form]
+  )
+
+  const handleCheckEmail = useCallback(
+    async (value: string) => {
+      if (!value || isEdit) return
+      try {
+        const result = await checkUserExists({ email: value })
+        if (result.email_exists) {
+          form.setError("email", {
+            type: "validate",
+            message: "This email is already registered.",
+          })
+        }
+      } catch {
+        // ignore network errors for validation
+      }
+    },
+    [isEdit, form]
+  )
 
   const onSubmit = async (values: UserForm) => {
     try {
@@ -153,6 +200,22 @@ export function UsersActionDialog({
 
   const isPasswordTouched = !!form.formState.dirtyFields.password
 
+  // Compute whether Save button should be enabled
+  const watched = form.watch()
+  const hasErrors = Object.keys(form.formState.errors).length > 0
+  const requiredFilled = isEdit
+    ? !!(watched.firstName && watched.lastName && watched.email)
+    : !!(
+        watched.firstName &&
+        watched.lastName &&
+        watched.username &&
+        watched.email &&
+        watched.role &&
+        watched.password &&
+        watched.confirmPassword
+      )
+  const isSaveDisabled = !requiredFilled || hasErrors
+
   return (
     <Dialog
       open={open}
@@ -182,7 +245,7 @@ export function UsersActionDialog({
                   name="firstName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>First Name</FormLabel>
+                      <RequiredLabel>First Name</RequiredLabel>
                       <FormControl>
                         <Input placeholder="John" autoComplete="off" {...field} />
                       </FormControl>
@@ -195,7 +258,7 @@ export function UsersActionDialog({
                   name="lastName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Last Name</FormLabel>
+                      <RequiredLabel>Last Name</RequiredLabel>
                       <FormControl>
                         <Input placeholder="Doe" autoComplete="off" {...field} />
                       </FormControl>
@@ -209,9 +272,17 @@ export function UsersActionDialog({
                 name="username"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Username</FormLabel>
+                    <RequiredLabel>Username</RequiredLabel>
                     <FormControl>
-                      <Input placeholder="john_doe" {...field} />
+                      <Input
+                        placeholder="john_doe"
+                        disabled={isEdit}
+                        {...field}
+                        onBlur={(e) => {
+                          field.onBlur()
+                          handleCheckUsername(e.target.value)
+                        }}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -222,9 +293,16 @@ export function UsersActionDialog({
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <RequiredLabel>Email</RequiredLabel>
                     <FormControl>
-                      <Input placeholder="john.doe@gmail.com" {...field} />
+                      <Input
+                        placeholder="john.doe@gmail.com"
+                        {...field}
+                        onBlur={(e) => {
+                          field.onBlur()
+                          handleCheckEmail(e.target.value)
+                        }}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -249,7 +327,7 @@ export function UsersActionDialog({
                   name="role"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Role</FormLabel>
+                      <RequiredLabel>Role</RequiredLabel>
                       <SelectDropdown
                         defaultValue={field.value}
                         onValueChange={field.onChange}
@@ -267,7 +345,7 @@ export function UsersActionDialog({
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Password</FormLabel>
+                    <RequiredLabel>Password</RequiredLabel>
                     <FormControl>
                       <PasswordInput placeholder="e.g., S3cur3P@ssw0rd" {...field} />
                     </FormControl>
@@ -280,7 +358,7 @@ export function UsersActionDialog({
                 name="confirmPassword"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Confirm Password</FormLabel>
+                    <RequiredLabel>Confirm Password</RequiredLabel>
                     <FormControl>
                       <PasswordInput
                         disabled={!isPasswordTouched}
@@ -296,8 +374,8 @@ export function UsersActionDialog({
           </Form>
         </div>
         <DialogFooter>
-          <Button type="submit" form="user-form">
-            Save changes
+          <Button type="submit" form="user-form" disabled={isSaveDisabled}>
+            Save
           </Button>
         </DialogFooter>
       </DialogContent>

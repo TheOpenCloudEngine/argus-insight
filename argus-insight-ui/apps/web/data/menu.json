@@ -2,35 +2,35 @@
   "groups": [
     {
       "id": "main",
-      "label": "메인",
+      "label": "Main",
       "items": [
         {
           "id": "dashboard",
-          "title": "대시보드",
+          "title": "Dashboard",
           "url": "/dashboard",
           "icon": "LayoutDashboard"
         },
         {
           "id": "monitoring",
-          "title": "모니터링",
+          "title": "Monitoring",
           "url": "/dashboard/monitoring",
           "icon": "Monitor"
         },
         {
           "id": "servers",
-          "title": "서버 현황",
+          "title": "Servers",
           "url": "/dashboard/servers",
           "icon": "Server"
         },
         {
           "id": "alerts",
-          "title": "알림",
+          "title": "Alerts",
           "url": "/dashboard/alerts",
           "icon": "Bell"
         },
         {
           "id": "terminal",
-          "title": "터미널",
+          "title": "Terminal",
           "url": "/dashboard/terminal",
           "icon": "Terminal"
         }
@@ -38,23 +38,23 @@
     },
     {
       "id": "analysis",
-      "label": "분석",
+      "label": "Analysis",
       "items": [
         {
           "id": "performance",
-          "title": "성능 분석",
+          "title": "Performance",
           "url": "/dashboard/performance",
           "icon": "BarChart3"
         },
         {
           "id": "security",
-          "title": "보안",
+          "title": "Security",
           "url": "/dashboard/security",
           "icon": "Shield"
         },
         {
           "id": "events",
-          "title": "이벤트 로그",
+          "title": "Event Logs",
           "url": "/dashboard/events",
           "icon": "Zap"
         }
@@ -62,23 +62,23 @@
     },
     {
       "id": "admin",
-      "label": "관리",
+      "label": "Administration",
       "items": [
         {
           "id": "users",
-          "title": "사용자 관리",
+          "title": "User Management",
           "url": "/dashboard/users",
           "icon": "Users"
         },
         {
           "id": "configuration",
-          "title": "서비스 설정",
+          "title": "Service Configuration",
           "url": "/dashboard/configuration",
           "icon": "SlidersHorizontal"
         },
         {
           "id": "settings",
-          "title": "설정",
+          "title": "Settings",
           "url": "/dashboard/settings",
           "icon": "Settings"
         }

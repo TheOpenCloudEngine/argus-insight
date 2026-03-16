@@ -67,6 +67,11 @@ export const usersColumns: ColumnDef<User>[] = [
       const fullName = `${firstName} ${lastName}`
       return <LongText className="max-w-36">{fullName}</LongText>
     },
+    sortingFn: (rowA, rowB) => {
+      const a = `${rowA.original.firstName} ${rowA.original.lastName}`
+      const b = `${rowB.original.firstName} ${rowB.original.lastName}`
+      return a.localeCompare(b)
+    },
     meta: { className: "w-36" },
   },
   {
@@ -77,6 +82,7 @@ export const usersColumns: ColumnDef<User>[] = [
     cell: ({ row }) => (
       <div className="w-fit ps-2 text-nowrap">{row.getValue("email")}</div>
     ),
+    enableHiding: false,
   },
   {
     accessorKey: "phoneNumber",
@@ -107,6 +113,18 @@ export const usersColumns: ColumnDef<User>[] = [
     },
     enableHiding: false,
     enableSorting: false,
+  },
+  {
+    accessorKey: "createdAt",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Created At" />
+    ),
+    cell: ({ row }) => {
+      const date = row.getValue("createdAt") as Date
+      const formatted = date.toISOString().slice(0, 10)
+      return <div className="text-sm text-nowrap">{formatted}</div>
+    },
+    enableHiding: false,
   },
   {
     accessorKey: "role",

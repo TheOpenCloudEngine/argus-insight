@@ -18,7 +18,7 @@ function buildWsUrl(agentId: string): string {
   // Use NEXT_PUBLIC_API_URL if set, otherwise derive from window.location
   const base =
     process.env.NEXT_PUBLIC_API_URL ??
-    `${window.location.protocol}//${window.location.hostname}:8080`
+    `${window.location.protocol}//${window.location.hostname}:4500`
   const wsBase = base.replace(/^http/, "ws")
   return `${wsBase}/api/v1/proxy/${agentId}/terminal/ws`
 }

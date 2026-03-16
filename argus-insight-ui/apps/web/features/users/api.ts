@@ -6,28 +6,60 @@ type UserListParams = {
   status?: string
   role?: string
   search?: string
+  page?: number
+  pageSize?: number
 }
 
-export async function fetchUsers(params?: UserListParams): Promise<User[]> {
-  const query = new URLSearchParams()
-  if (params?.status) query.set("status", params.status)
-  if (params?.role) query.set("role", params.role)
-  if (params?.search) query.set("search", params.search)
+export type PaginatedUsers = {
+  items: User[]
+  total: number
+  page: number
+  pageSize: number
+}
 
-  const qs = query.toString()
-  const url = `${BASE}/users${qs ? `?${qs}` : ""}`
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`Failed to fetch users: ${res.status}`)
-  const data = await res.json()
-  return data.map((u: Record<string, unknown>) => ({
+function mapUser(u: Record<string, unknown>): User {
+  return {
     ...u,
     id: String(u.id),
     firstName: u.first_name,
     lastName: u.last_name,
     phoneNumber: u.phone_number ?? "",
+    role: typeof u.role === "string" ? u.role.toLowerCase() : u.role,
     createdAt: new Date(u.created_at as string),
     updatedAt: new Date(u.updated_at as string),
-  }))
+  } as User
+}
+
+export async function fetchUsers(params?: UserListParams): Promise<PaginatedUsers> {
+  const query = new URLSearchParams()
+  if (params?.status) query.set("status", params.status)
+  if (params?.role) query.set("role", params.role)
+  if (params?.search) query.set("search", params.search)
+  query.set("page", String(params?.page ?? 1))
+  query.set("page_size", String(params?.pageSize ?? 10))
+
+  const url = `${BASE}/users?${query.toString()}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Failed to fetch users: ${res.status}`)
+  const data = await res.json()
+  return {
+    items: (data.items as Record<string, unknown>[]).map(mapUser),
+    total: data.total,
+    page: data.page,
+    pageSize: data.page_size,
+  }
+}
+
+export async function checkUserExists(params: {
+  username?: string
+  email?: string
+}): Promise<{ username_exists?: boolean; email_exists?: boolean }> {
+  const query = new URLSearchParams()
+  if (params.username) query.set("username", params.username)
+  if (params.email) query.set("email", params.email)
+  const res = await fetch(`${BASE}/check-user?${query.toString()}`)
+  if (!res.ok) throw new Error(`Failed to check user: ${res.status}`)
+  return res.json()
 }
 
 type CreateUserPayload = {

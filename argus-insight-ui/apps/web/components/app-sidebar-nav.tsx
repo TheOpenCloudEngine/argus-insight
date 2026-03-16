@@ -34,6 +34,7 @@ export function AppSidebarNav({ groups }: AppSidebarNavProps) {
                     asChild
                     isActive={pathname === item.url}
                     tooltip={item.title}
+                    className="text-sm"
                   >
                     <Link href={item.url}>
                       <Icon />

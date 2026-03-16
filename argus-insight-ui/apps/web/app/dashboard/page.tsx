@@ -128,10 +128,7 @@ const statusConfig = {
 export default function DashboardPage() {
   return (
     <>
-      <DashboardHeader
-        title="대시보드"
-        description="시스템 현황 및 모니터링 개요"
-      />
+      <DashboardHeader title="Dashboard" />
       <div className="flex flex-1 flex-col gap-4 p-4">
         {/* 통계 카드 */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

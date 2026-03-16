@@ -1,7 +1,7 @@
 "use client"
 
 import { type Row } from "@tanstack/react-table"
-import { Eye, MoreHorizontal, Trash2, UserPen } from "lucide-react"
+import { MoreHorizontal, Trash2, UserPen } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -32,17 +32,6 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[160px]">
-        <DropdownMenuItem
-          onClick={() => {
-            setCurrentRow(row.original)
-            setOpen("view")
-          }}
-        >
-          View
-          <span className="ml-auto">
-            <Eye size={16} />
-          </span>
-        </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => {
             setCurrentRow(row.original)

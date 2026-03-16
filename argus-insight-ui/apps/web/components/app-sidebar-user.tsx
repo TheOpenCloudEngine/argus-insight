@@ -57,16 +57,16 @@ export function AppSidebarUser({ user }: AppSidebarUserProps) {
             >
               <DropdownMenuItem onSelect={() => setProfileOpen(true)}>
                 <User2 className="mr-2 size-4" />
-                프로필
+                Profile
               </DropdownMenuItem>
               <DropdownMenuItem>
                 <Settings className="mr-2 size-4" />
-                계정 설정
+                Account Settings
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem>
                 <LogOut className="mr-2 size-4" />
-                로그아웃
+                Log out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -76,7 +76,7 @@ export function AppSidebarUser({ user }: AppSidebarUserProps) {
       <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>프로필</DialogTitle>
+            <DialogTitle>Profile</DialogTitle>
           </DialogHeader>
 
           <div className="flex flex-col items-center gap-4 py-2">
@@ -95,25 +95,25 @@ export function AppSidebarUser({ user }: AppSidebarUserProps) {
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm pt-2">
             <dt className="flex items-center gap-1.5 text-muted-foreground">
               <User className="size-3.5" />
-              이름
+              Name
             </dt>
             <dd className="font-medium">{user.name}</dd>
 
             <dt className="flex items-center gap-1.5 text-muted-foreground">
               <User2 className="size-3.5" />
-              사용자명
+              Username
             </dt>
             <dd className="font-medium">@{user.username}</dd>
 
             <dt className="flex items-center gap-1.5 text-muted-foreground">
               <Mail className="size-3.5" />
-              이메일
+              Email
             </dt>
             <dd className="font-medium">{user.email}</dd>
 
             <dt className="flex items-center gap-1.5 text-muted-foreground">
               <Phone className="size-3.5" />
-              전화번호
+              Phone
             </dt>
             <dd className="font-medium">{user.phone}</dd>
           </dl>

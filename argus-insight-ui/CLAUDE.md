@@ -178,6 +178,54 @@ pnpm lint
 pnpm format
 ```
 
+## API 프록시 및 환경 설정
+
+UI에서 argus-insight-server로의 API 호출은 Next.js middleware(`apps/web/middleware.ts`)를 통해 프록시됩니다. `/api/v1/*` 요청이 `API_BASE_URL` 환경변수에 지정된 서버로 전달됩니다.
+
+### 환경별 설정 파일
+
+Next.js는 실행 모드에 따라 자동으로 환경 파일을 로드합니다:
+
+| 파일 | 로드 시점 | 용도 |
+|------|-----------|------|
+| `.env.development` | `next dev` | 개발 환경 (localhost) |
+| `.env.staging` | 수동 로드 필요 | 스테이징 환경 |
+| `.env.production` | `next start` | 운영 환경 |
+| `.env.local` | 항상 (최우선) | 개인 로컬 오버라이드 (gitignored) |
+
+### 환경변수
+
+| 변수 | 설명 | 기본값 |
+|------|------|--------|
+| `API_BASE_URL` | argus-insight-server 주소 | `http://localhost:4500` |
+| `ALLOWED_DEV_ORIGINS` | dev 모드 cross-origin 허용 목록 (쉼표 구분) | (없음) |
+
+### 환경별 구성 예시
+
+| 환경 | UI 호스트 | Server 호스트 | API_BASE_URL |
+|------|-----------|---------------|--------------|
+| 개발 | localhost:3000 | localhost:4500 | `http://localhost:4500` |
+| 스테이징 | 10.0.1.50:3000 | 10.0.1.50:4500 | `http://10.0.1.50:4500` |
+| 운영 | 10.0.1.80:3000 | 10.0.1.50:4500 | `http://10.0.1.50:4500` |
+
+### 로드 우선순위 (높은 순)
+
+1. `.env.local` — 개인 로컬 오버라이드 (gitignored)
+2. `.env.development` / `.env.production` — 환경별 설정 (커밋됨)
+3. `.env` — 공통 설정 (gitignored)
+
+### 스테이징 환경 실행
+
+`.env.staging`은 Next.js가 자동 로드하지 않으므로 아래 방법 중 하나를 사용합니다:
+
+```bash
+# 방법 1: .env.local로 복사
+cp .env.staging .env.local && pnpm dev
+
+# 방법 2: env-cmd 사용
+npx env-cmd -f .env.staging next dev
+```
+
 ## 설정 파일
 
 ### turbo.json

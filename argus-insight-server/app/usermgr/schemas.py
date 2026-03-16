@@ -84,3 +84,12 @@ class UserResponse(BaseModel):
     role: str
     created_at: datetime
     updated_at: datetime
+
+
+class PaginatedUserResponse(BaseModel):
+    """Paginated list of users."""
+
+    items: list[UserResponse]
+    total: int
+    page: int
+    page_size: int

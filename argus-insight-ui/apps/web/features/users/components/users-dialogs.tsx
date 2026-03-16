@@ -3,7 +3,6 @@
 import { UsersActionDialog } from "./users-action-dialog"
 import { UsersDeleteDialog } from "./users-delete-dialog"
 import { UsersStatusDialog } from "./users-status-dialog"
-import { UsersViewDialog } from "./users-view-dialog"
 import { useUsers } from "./users-provider"
 
 export function UsersDialogs() {
@@ -34,18 +33,6 @@ export function UsersDialogs() {
 
       {currentRow && (
         <>
-          <UsersViewDialog
-            key={`user-view-${currentRow.id}`}
-            open={open === "view"}
-            onOpenChange={() => {
-              setOpen("view")
-              setTimeout(() => {
-                setCurrentRow(null)
-              }, 500)
-            }}
-            currentRow={currentRow}
-          />
-
           <UsersActionDialog
             key={`user-edit-${currentRow.id}`}
             open={open === "edit"}

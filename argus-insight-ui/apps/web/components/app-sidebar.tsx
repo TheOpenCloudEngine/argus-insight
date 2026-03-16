@@ -1,4 +1,4 @@
-import { Shield } from "lucide-react"
+// import { Shield } from "lucide-react"
 import Link from "next/link"
 
 import {
@@ -26,12 +26,13 @@ export async function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
               <Link href="/dashboard">
+                {/* TODO: Replace with actual logo image
                 <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
                   <Shield className="size-4" />
                 </div>
+                */}
                 <div className="grid flex-1 text-left leading-tight">
-                  <span className="truncate text-base font-bold">Argus</span>
-                  <span className="truncate text-xs text-muted-foreground">Data + AI Platform</span>
+                  <span className="truncate text-lg font-bold">Argus Insight</span>
                 </div>
               </Link>
             </SidebarMenuButton>

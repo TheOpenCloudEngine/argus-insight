@@ -12,8 +12,8 @@
 :product-name: Argus Insight
 :product-version: 0.1
 :company-name: TheOpenCloudEngine
-:server-port: 8080
-:agent-port: 8600
+:server-port: 4500
+:agent-port: 4501
 
 // ============================================================
 // Part I: Overview
