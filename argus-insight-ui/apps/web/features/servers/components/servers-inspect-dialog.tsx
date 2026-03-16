@@ -23,6 +23,7 @@ import {
 } from "@workspace/ui/components/sheet"
 import { Badge } from "@workspace/ui/components/badge"
 import { Separator } from "@workspace/ui/components/separator"
+import { CodeViewer } from "@/components/code-viewer"
 import { fetchInspect } from "../api"
 import { type Server as ServerType } from "../data/schema"
 
@@ -68,17 +69,6 @@ function Field({ label, value, mono }: { label: string; value: React.ReactNode; 
       <span className="text-muted-foreground shrink-0">{label}</span>
       <span className={`text-right break-all ${mono ? "font-mono text-xs" : ""}`}>{value}</span>
     </div>
-  )
-}
-
-function PreBlock({ content, maxHeight = "200px" }: { content: string; maxHeight?: string }) {
-  return (
-    <pre
-      className="overflow-auto rounded-md bg-muted p-3 text-xs font-mono leading-relaxed"
-      style={{ maxHeight }}
-    >
-      {content || "(empty)"}
-    </pre>
   )
 }
 
@@ -159,10 +149,13 @@ export function ServersInspectDialog({
               <Field label="Hostname" value={hostname?.hostname} mono />
               <Field label="FQDN" value={hostname?.fqdn} mono />
               <Field
-                label="Consistent"
+                label="Hostname == FQDN"
                 value={
-                  <Badge variant={hostname?.is_consistent ? "default" : "destructive"}>
-                    {hostname?.hostname} == {hostname?.fqdn}
+                  <Badge
+                    variant={hostname?.is_consistent ? "default" : "destructive"}
+                    className={hostname?.is_consistent ? "bg-blue-500 hover:bg-blue-600 text-white" : ""}
+                  >
+                    {hostname?.is_consistent ? "YES" : "NO"}
                   </Badge>
                 }
               />
@@ -252,14 +245,14 @@ export function ServersInspectDialog({
             {/* 7. uname -a */}
             <Section icon={Info} title="System Info (uname -a)">
               <div className="p-3">
-                <PreBlock content={data.uname as string} maxHeight="80px" />
+                <CodeViewer content={data.uname as string} maxHeight="80px" />
               </div>
             </Section>
 
             {/* 8. Process List */}
             <Section icon={Terminal} title={`Processes (${processes.length})`}>
               <div className="p-3">
-                <PreBlock
+                <CodeViewer
                   content={
                     "UID        PID  PPID  C STIME TTY      TIME     CMD\n" +
                     processes
@@ -277,28 +270,28 @@ export function ServersInspectDialog({
             {/* 9. Environment Variables */}
             <Section icon={ScrollText} title="Environment Variables (set)">
               <div className="p-3">
-                <PreBlock content={data.env_variables as string} maxHeight="300px" />
+                <CodeViewer content={data.env_variables as string} maxHeight="300px" />
               </div>
             </Section>
 
             {/* 10. sysctl.conf */}
             <Section icon={Shield} title="/etc/sysctl.conf">
               <div className="p-3">
-                <PreBlock content={data.sysctl_conf as string} maxHeight="300px" />
+                <CodeViewer content={data.sysctl_conf as string} maxHeight="300px" />
               </div>
             </Section>
 
             {/* 11. /etc/passwd */}
             <Section icon={Users} title="/etc/passwd">
               <div className="p-3">
-                <PreBlock content={data.etc_passwd as string} maxHeight="300px" />
+                <CodeViewer content={data.etc_passwd as string} maxHeight="300px" />
               </div>
             </Section>
 
             {/* 12. /etc/hosts */}
             <Section icon={Server} title="/etc/hosts">
               <div className="p-3">
-                <PreBlock content={data.etc_hosts as string} maxHeight="200px" />
+                <CodeViewer content={data.etc_hosts as string} maxHeight="200px" />
               </div>
             </Section>
 
