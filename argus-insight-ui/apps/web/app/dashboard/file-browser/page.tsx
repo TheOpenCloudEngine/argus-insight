@@ -1,21 +1,22 @@
 "use client"
 
 import { DashboardHeader } from "@/components/dashboard-header"
+import { ObjectStorageBrowser } from "@/components/object-storage-browser"
+import type { BrowserDataSource } from "@/components/object-storage-browser"
 import {
-  ObjectStorageBrowser,
-  mockListObjects,
-  mockDeleteObjects,
-  mockCreateFolder,
-  mockUploadFiles,
-  mockGetDownloadUrl,
-} from "@/components/object-storage-browser"
+  listObjects,
+  deleteObjects,
+  createFolder,
+  uploadFiles,
+  getDownloadUrl,
+} from "@/features/object-storage/api"
 
-const mockDataSource = {
-  listObjects: mockListObjects,
-  deleteObjects: mockDeleteObjects,
-  createFolder: mockCreateFolder,
-  uploadFiles: mockUploadFiles,
-  getDownloadUrl: mockGetDownloadUrl,
+const dataSource: BrowserDataSource = {
+  listObjects,
+  deleteObjects,
+  createFolder,
+  uploadFiles,
+  getDownloadUrl,
 }
 
 export default function FileBrowserPage() {
@@ -24,8 +25,8 @@ export default function FileBrowserPage() {
       <DashboardHeader title="File Browser" />
       <div className="flex flex-1 flex-col gap-4 p-4">
         <ObjectStorageBrowser
-          bucket="argus-data"
-          dataSource={mockDataSource}
+          bucket="test"
+          dataSource={dataSource}
         />
       </div>
     </>
