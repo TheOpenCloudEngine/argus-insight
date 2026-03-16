@@ -46,6 +46,7 @@ async def process_heartbeat(session: AsyncSession, req: HeartbeatRequest) -> Non
             total_memory=req.total_memory,
             cpu_usage=req.cpu_usage,
             memory_usage=req.memory_usage,
+            disk_swap_percent=req.disk_swap_percent,
             status="UNREGISTERED",
             created_at=now,
             updated_at=now,
@@ -63,6 +64,7 @@ async def process_heartbeat(session: AsyncSession, req: HeartbeatRequest) -> Non
         agent.total_memory = req.total_memory
         agent.cpu_usage = req.cpu_usage
         agent.memory_usage = req.memory_usage
+        agent.disk_swap_percent = req.disk_swap_percent
         agent.updated_at = now
 
     # --- argus_agents_heartbeat ---

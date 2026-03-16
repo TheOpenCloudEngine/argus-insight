@@ -70,6 +70,7 @@ async def list_servers(
             total_memory=agent.total_memory,
             cpu_usage=agent.cpu_usage,
             memory_usage=agent.memory_usage,
+            disk_swap_percent=agent.disk_swap_percent,
             status=agent.status,
             last_heartbeat_seconds=hb_seconds,
             created_at=agent.created_at,

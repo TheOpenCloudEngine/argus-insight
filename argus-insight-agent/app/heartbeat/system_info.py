@@ -45,12 +45,15 @@ def get_static_info() -> dict[str, str | int]:
 
 
 def get_dynamic_info() -> dict[str, str | float]:
-    """Return ip_address, cpu_usage, memory_usage (collected each call)."""
+    """Return ip_address, cpu_usage, memory_usage, disk_swap_percent (collected each call)."""
     ip = _detect_ip_address()
+    swap = psutil.swap_memory()
+    disk_swap_percent = (swap.used / swap.total * 100) if swap.total > 0 else 0.0
     return {
         "ip_address": ip,
         "cpu_usage": psutil.cpu_percent(interval=0),
         "memory_usage": psutil.virtual_memory().percent,
+        "disk_swap_percent": round(disk_swap_percent, 1),
     }
 
 

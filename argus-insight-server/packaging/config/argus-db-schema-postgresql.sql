@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS argus_agents (
     total_memory    BIGINT,
     cpu_usage       DOUBLE PRECISION,
     memory_usage    DOUBLE PRECISION,
+    disk_swap_percent DOUBLE PRECISION,
     status          VARCHAR(20)     NOT NULL DEFAULT 'UNREGISTERED',
     created_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -47,6 +48,7 @@ COMMENT ON COLUMN argus_agents.core_count IS 'Physical core count';
 COMMENT ON COLUMN argus_agents.total_memory IS 'Total memory in bytes';
 COMMENT ON COLUMN argus_agents.cpu_usage IS 'Total CPU usage percentage (0.0-100.0)';
 COMMENT ON COLUMN argus_agents.memory_usage IS 'Total memory usage percentage (0.0-100.0)';
+COMMENT ON COLUMN argus_agents.disk_swap_percent IS 'Disk swap usage percentage (0.0-100.0)';
 COMMENT ON COLUMN argus_agents.status IS 'UNREGISTERED | REGISTERED | DISCONNECTED';
 
 CREATE TABLE IF NOT EXISTS argus_agents_heartbeat (

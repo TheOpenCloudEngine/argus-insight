@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS argus_agents (
     total_memory    BIGINT                                             COMMENT 'Total memory in bytes',
     cpu_usage       DOUBLE                                             COMMENT 'Total CPU usage percentage (0.0-100.0)',
     memory_usage    DOUBLE                                             COMMENT 'Total memory usage percentage (0.0-100.0)',
+    disk_swap_percent DOUBLE                                           COMMENT 'Disk swap usage percentage (0.0-100.0)',
     status          VARCHAR(20)     NOT NULL DEFAULT 'UNREGISTERED'    COMMENT 'UNREGISTERED | REGISTERED | DISCONNECTED',
     created_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Record creation timestamp',
     updated_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Record last update timestamp'

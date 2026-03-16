@@ -26,6 +26,7 @@ function mapServer(s: Record<string, unknown>): Server {
     totalMemory: s.total_memory as number | null,
     cpuUsage: s.cpu_usage as number | null,
     memoryUsage: s.memory_usage as number | null,
+    diskSwapPercent: s.disk_swap_percent as number | null,
     status: s.status as Server["status"],
     lastHeartbeatSeconds: s.last_heartbeat_seconds as number | null,
     createdAt: new Date(s.created_at as string),

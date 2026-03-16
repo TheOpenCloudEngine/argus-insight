@@ -62,6 +62,7 @@ class HeartbeatRequest(BaseModel):
     total_memory: int | None = Field(None, description="Total memory in bytes")
     cpu_usage: float | None = Field(None, description="Total CPU usage percentage")
     memory_usage: float | None = Field(None, description="Total memory usage percentage")
+    disk_swap_percent: float | None = Field(None, description="Disk swap usage percentage")
 
 
 class AgentHealthResponse(BaseModel):

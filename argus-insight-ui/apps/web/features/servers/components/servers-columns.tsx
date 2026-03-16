@@ -152,6 +152,29 @@ export const serversColumns: ColumnDef<Server>[] = [
     enableSorting: false,
   },
   {
+    accessorKey: "diskSwapPercent",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Disk Swapping" className="justify-center" />
+    ),
+    cell: ({ row }) => {
+      const value = row.getValue("diskSwapPercent") as number | null
+      if (value == null) return <div className="text-center text-sm">-</div>
+      const color = value > 90 ? "bg-red-500" : "bg-green-500"
+      return (
+        <div className="flex items-center justify-center gap-2 min-w-24 px-2">
+          <div className="h-2 w-full rounded-full bg-muted">
+            <div
+              className={cn("h-full rounded-full", color)}
+              style={{ width: `${Math.min(value, 100)}%` }}
+            />
+          </div>
+          <span className="text-xs text-muted-foreground w-10 text-right">{value.toFixed(1)}%</span>
+        </div>
+      )
+    },
+    enableSorting: false,
+  },
+  {
     accessorKey: "status",
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Status" className="justify-center" />

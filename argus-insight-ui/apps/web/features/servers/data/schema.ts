@@ -43,6 +43,8 @@ const serverSchema = z.object({
   cpuUsage: z.number().nullable(),
   /** Current memory usage as a percentage (0-100). Null if not yet reported. */
   memoryUsage: z.number().nullable(),
+  /** Current disk swap usage as a percentage (0-100). Null if not yet reported. */
+  diskSwapPercent: z.number().nullable(),
   /** Current lifecycle status of the server. */
   status: serverStatusSchema,
   /** Seconds elapsed since the last heartbeat was received. Null if no heartbeat recorded. */

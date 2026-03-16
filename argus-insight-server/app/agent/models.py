@@ -20,6 +20,7 @@ class ArgusAgent(Base):
     total_memory = Column(BigInteger)
     cpu_usage = Column(Float)
     memory_usage = Column(Float)
+    disk_swap_percent = Column(Float)
     status = Column(String(20), nullable=False, default="UNREGISTERED")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
