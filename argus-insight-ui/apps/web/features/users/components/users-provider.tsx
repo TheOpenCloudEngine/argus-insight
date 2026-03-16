@@ -87,7 +87,7 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
     searchTimerRef.current = setTimeout(() => {
       setSearchFilter(search)
       setPage(1)
-    }, 300)
+    }, 3000)
   }, [])
 
   // Reset to page 1 when filters change

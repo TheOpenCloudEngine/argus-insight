@@ -208,13 +208,16 @@ async def list_users(
         page: Page number (1-based).
         page_size: Number of items per page.
     """
-    base = select(ArgusUser).join(ArgusRole, ArgusUser.role_id == ArgusRole.id)
+    base = (
+        select(ArgusUser, ArgusRole.name.label("role_name"))
+        .join(ArgusRole, ArgusUser.role_id == ArgusRole.id)
+    )
 
     if status:
-        base = base.where(ArgusUser.status == status)
+        base = base.where(ArgusUser.status.in_([status]))
 
     if role:
-        base = base.where(ArgusRole.name == role)
+        base = base.where(ArgusRole.name.in_([role]))
 
     if search:
         pattern = f"%{search}%"
@@ -236,10 +239,26 @@ async def list_users(
     offset = (page - 1) * page_size
     query = base.order_by(ArgusUser.created_at.desc()).offset(offset).limit(page_size)
     result = await session.execute(query)
-    users = result.scalars().all()
+    rows = result.all()
+
+    items = [
+        UserResponse(
+            id=user.id,
+            username=user.username,
+            email=user.email,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            phone_number=user.phone_number,
+            status=UserStatus(user.status),
+            role=role_name or "Unknown",
+            created_at=user.created_at,
+            updated_at=user.updated_at,
+        )
+        for user, role_name in rows
+    ]
 
     return PaginatedUserResponse(
-        items=[await _build_user_response(session, u) for u in users],
+        items=items,
         total=total,
         page=page,
         page_size=page_size,
