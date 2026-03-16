@@ -14,36 +14,33 @@ import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { TerminalView } from "./terminal-view"
 
-function buildWsUrl(agentId: string): string {
-  // Use NEXT_PUBLIC_API_URL if set, otherwise derive from window.location
+export function buildTerminalWsUrl(hostname: string): string {
   const base =
     process.env.NEXT_PUBLIC_API_URL ??
     `${window.location.protocol}//${window.location.hostname}:4500`
   const wsBase = base.replace(/^http/, "ws")
-  return `${wsBase}/api/v1/proxy/${agentId}/terminal/ws`
+  return `${wsBase}/api/v1/servermgr/servers/${encodeURIComponent(hostname)}/terminal/ws`
 }
 
 export function TerminalPanel() {
-  const [agentId, setAgentId] = useState("")
-  const [activeAgent, setActiveAgent] = useState<string | null>(null)
+  const [hostname, setHostname] = useState("")
+  const [activeHost, setActiveHost] = useState<string | null>(null)
   const [connected, setConnected] = useState(false)
 
   const handleConnect = useCallback(() => {
-    const id = agentId.trim()
-    if (!id) return
-    // Force remount by clearing first
-    setActiveAgent(null)
-    setTimeout(() => setActiveAgent(id), 0)
-  }, [agentId])
+    const h = hostname.trim()
+    if (!h) return
+    setActiveHost(null)
+    setTimeout(() => setActiveHost(h), 0)
+  }, [hostname])
 
   const handleDisconnect = useCallback(() => {
-    setActiveAgent(null)
+    setActiveHost(null)
     setConnected(false)
   }, [])
 
   return (
     <div className="flex flex-col h-full gap-4">
-      {/* Connection bar */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -57,24 +54,24 @@ export function TerminalPanel() {
         <CardContent>
           <div className="flex items-end gap-3">
             <div className="flex-1">
-              <Label htmlFor="agent-id" className="text-xs mb-1.5 block">
-                에이전트 ID
+              <Label htmlFor="hostname" className="text-xs mb-1.5 block">
+                호스트명
               </Label>
               <Input
-                id="agent-id"
-                placeholder="에이전트 ID를 입력하세요"
-                value={agentId}
-                onChange={(e) => setAgentId(e.target.value)}
+                id="hostname"
+                placeholder="호스트명을 입력하세요"
+                value={hostname}
+                onChange={(e) => setHostname(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleConnect()
                 }}
                 className="h-9 text-sm font-mono"
               />
             </div>
-            {!activeAgent ? (
+            {!activeHost ? (
               <Button
                 onClick={handleConnect}
-                disabled={!agentId.trim()}
+                disabled={!hostname.trim()}
                 size="sm"
                 className="h-9"
               >
@@ -94,11 +91,10 @@ export function TerminalPanel() {
         </CardContent>
       </Card>
 
-      {/* Terminal area */}
-      {activeAgent ? (
+      {activeHost ? (
         <div className="flex-1 min-h-0">
           <TerminalView
-            wsUrl={buildWsUrl(activeAgent)}
+            wsUrl={buildTerminalWsUrl(activeHost)}
             onConnectionChange={setConnected}
           />
         </div>

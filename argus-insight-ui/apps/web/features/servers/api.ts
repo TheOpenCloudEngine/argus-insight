@@ -54,6 +54,12 @@ export async function unregisterServers(hostnames: string[]): Promise<{ updated:
   return res.json()
 }
 
+export async function fetchInspect(hostname: string): Promise<Record<string, unknown>> {
+  const res = await fetch(`${BASE}/servers/${encodeURIComponent(hostname)}/inspect`)
+  if (!res.ok) throw new Error(`Failed to inspect server: ${res.status}`)
+  return res.json()
+}
+
 export async function fetchServers(params?: ServerListParams): Promise<PaginatedServers> {
   const query = new URLSearchParams()
   if (params?.status && params.status.length > 0) query.set("status", params.status.join(","))

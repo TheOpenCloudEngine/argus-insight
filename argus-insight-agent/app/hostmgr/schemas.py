@@ -147,3 +147,134 @@ class LimitsConfResponse(BaseModel):
     success: bool
     message: str
     entries: list[LimitsConfEntry] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Host Inspection
+# ---------------------------------------------------------------------------
+
+
+class InspectHostname(BaseModel):
+    """Hostname inspection result."""
+
+    hostname: str = Field(description="Short hostname (hostname)")
+    fqdn: str = Field(description="Fully qualified domain name (hostname -f)")
+    is_consistent: bool = Field(
+        description="True if hostname and FQDN match or FQDN starts with hostname"
+    )
+
+
+class InspectIpAddress(BaseModel):
+    """IP address information."""
+
+    interface: str = Field(description="Network interface name")
+    address: str = Field(description="IPv4 or IPv6 address")
+
+
+class InspectNameserver(BaseModel):
+    """Nameserver entry."""
+
+    address: str
+
+
+class InspectDiskPartition(BaseModel):
+    """Disk partition info."""
+
+    device: str
+    mount_point: str
+    fs_type: str
+    total_bytes: int
+    used_bytes: int
+    free_bytes: int
+    usage_percent: float
+
+
+class InspectResourceUsage(BaseModel):
+    """CPU, memory, and disk swap resource usage."""
+
+    cpu_cores: int
+    total_memory_bytes: int
+    cpu_usage_percent: float
+    memory_usage_percent: float
+    swap_usage_percent: float
+
+
+class InspectProcess(BaseModel):
+    """Process entry (ps -ef style)."""
+
+    uid: str
+    pid: int
+    ppid: int
+    c: str = Field(description="CPU utilization")
+    stime: str = Field(description="Start time")
+    tty: str
+    time: str = Field(description="Cumulative CPU time")
+    cmd: str
+
+
+class InspectUlimitEntry(BaseModel):
+    """Ulimit resource entry."""
+
+    option: str
+    resource: str
+    soft: str
+    hard: str
+
+
+class InspectNetworkInterface(BaseModel):
+    """ifconfig-style network interface info."""
+
+    name: str
+    flags: str = ""
+    mtu: str = ""
+    inet: str = ""
+    netmask: str = ""
+    broadcast: str = ""
+    inet6: str = ""
+    ether: str = ""
+    rx_packets: str = ""
+    tx_packets: str = ""
+    rx_bytes: str = ""
+    tx_bytes: str = ""
+    raw: str = Field(description="Raw ifconfig output for this interface")
+
+
+class InspectResult(BaseModel):
+    """Complete host inspection result."""
+
+    # 1. Hostname & IP addresses
+    hostname: InspectHostname
+    ip_addresses: list[InspectIpAddress]
+
+    # 2. Nameservers
+    nameservers: list[InspectNameserver]
+
+    # 3. Shell environment variables (set command output)
+    env_variables: str = Field(description="Output of 'set' command")
+
+    # 4. Disk partitions
+    disk_partitions: list[InspectDiskPartition]
+
+    # 5. Resource usage (CPU, Memory, Swap)
+    resource_usage: InspectResourceUsage
+
+    # 6. Process list (ps -ef)
+    processes: list[InspectProcess]
+
+    # 7. Ulimit values
+    ulimits: list[InspectUlimitEntry]
+
+    # 8. sysctl.conf
+    sysctl_conf: str = Field(description="Content of /etc/sysctl.conf")
+
+    # 9. Network interfaces (ifconfig)
+    network_interfaces: list[InspectNetworkInterface]
+
+    # 10. uname -a
+    uname: str
+
+    # 11. /etc/passwd
+    etc_passwd: str
+
+    # 12. /etc/hosts
+    etc_hosts: str

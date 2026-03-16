@@ -9,6 +9,7 @@ from app.hostmgr.schemas import (
     HostnameChangeRequest,
     HostnameInfo,
     HostnameValidation,
+    InspectResult,
     LimitsConfResponse,
     LimitsConfSetRequest,
     NameserverUpdateRequest,
@@ -26,6 +27,7 @@ from app.hostmgr.service import (
     get_nameservers,
     get_ulimit,
     get_ulimit_all,
+    inspect_host,
     read_hosts_file,
     read_resolv_conf,
     set_ulimit,
@@ -158,3 +160,19 @@ async def ulimit_set(request: UlimitSetRequest) -> OperationResult:
 async def ulimit_set_nofile(request: LimitsConfSetRequest) -> LimitsConfResponse:
     """Set max open files (nofile) for a user or all users in limits.conf."""
     return set_user_max_open_files(request)
+
+
+# ---------------------------------------------------------------------------
+# Host Inspection
+# ---------------------------------------------------------------------------
+
+
+@router.get("/inspect", response_model=InspectResult)
+async def host_inspect() -> InspectResult:
+    """Perform a comprehensive host inspection.
+
+    Collects hostname, IP addresses, nameservers, environment variables,
+    disk partitions, resource usage, process list, ulimits, sysctl.conf,
+    network interfaces, uname, /etc/passwd, and /etc/hosts.
+    """
+    return await inspect_host()

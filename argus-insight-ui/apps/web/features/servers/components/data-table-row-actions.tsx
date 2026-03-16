@@ -58,7 +58,8 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => {
-            console.log("Inspect server:", row.original.hostname)
+            setCurrentRow(row.original)
+            setOpen("inspect")
           }}
         >
           Inspect
@@ -68,7 +69,12 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => {
-            console.log("Terminal server:", row.original.hostname)
+            setCurrentRow(row.original)
+            if (row.original.status === "REGISTERED") {
+              setOpen("terminal")
+            } else {
+              setOpen("terminal-warning")
+            }
           }}
         >
           Terminal

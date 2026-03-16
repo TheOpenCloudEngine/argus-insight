@@ -87,6 +87,14 @@ async def list_servers(
     )
 
 
+async def get_agent_by_hostname(session: AsyncSession, hostname: str) -> ArgusAgent | None:
+    """Look up an agent by hostname. Returns the ORM object or None."""
+    result = await session.execute(
+        select(ArgusAgent).where(ArgusAgent.hostname == hostname)
+    )
+    return result.scalar_one_or_none()
+
+
 async def register_servers(
     session: AsyncSession,
     hostnames: list[str],

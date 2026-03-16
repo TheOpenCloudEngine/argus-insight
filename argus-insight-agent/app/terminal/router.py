@@ -1,6 +1,7 @@
 """Remote terminal API routes."""
 
 import asyncio
+import json
 import logging
 import uuid
 
@@ -25,6 +26,9 @@ async def terminal_ws(websocket: WebSocket) -> None:
     """
     await websocket.accept()
     session_id = str(uuid.uuid4())
+
+    # Ensure the stale-session reaper is running.
+    terminal_manager.start_reaper()
 
     try:
         session = terminal_manager.create_session(session_id)
@@ -56,8 +60,6 @@ async def terminal_ws(websocket: WebSocket) -> None:
                 text = message["text"]
                 # Check for resize command
                 try:
-                    import json
-
                     payload = json.loads(text)
                     if payload.get("type") == "resize":
                         terminal_manager.resize(
@@ -66,15 +68,23 @@ async def terminal_ws(websocket: WebSocket) -> None:
                             cols=payload["cols"],
                         )
                         continue
-                except (json.JSONDecodeError, KeyError):
+                except (json.JSONDecodeError, KeyError, OSError):
                     pass
-                terminal_manager.write_input(session_id, text.encode())
+                try:
+                    terminal_manager.write_input(session_id, text.encode())
+                except (KeyError, OSError):
+                    break
 
             elif "bytes" in message:
-                terminal_manager.write_input(session_id, message["bytes"])
+                try:
+                    terminal_manager.write_input(session_id, message["bytes"])
+                except (KeyError, OSError):
+                    break
 
     except WebSocketDisconnect:
         logger.info("Terminal WebSocket disconnected: %s", session_id)
+    except Exception as e:
+        logger.warning("Terminal WebSocket error: %s err=%s", session_id, e)
     finally:
         read_task.cancel()
         terminal_manager.close_session(session_id)

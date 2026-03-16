@@ -2,9 +2,12 @@
 
 import asyncio
 import logging
+import re
 import zipfile
 from datetime import datetime
 from pathlib import Path
+
+import psutil
 
 from app.core.config import settings
 from app.hostmgr.schemas import (
@@ -13,6 +16,15 @@ from app.hostmgr.schemas import (
     FileContent,
     HostnameInfo,
     HostnameValidation,
+    InspectDiskPartition,
+    InspectHostname,
+    InspectIpAddress,
+    InspectNameserver,
+    InspectNetworkInterface,
+    InspectProcess,
+    InspectResourceUsage,
+    InspectResult,
+    InspectUlimitEntry,
     LimitsConfEntry,
     LimitsConfResponse,
     LimitsConfSetRequest,
@@ -487,3 +499,278 @@ def _update_limits_conf(
         message=f"{action} {domain} {item}: soft={soft_value}, hard={hard_value}",
         entries=result_entries,
     )
+
+
+# ---------------------------------------------------------------------------
+# 17. Host Inspection
+# ---------------------------------------------------------------------------
+
+SYSCTL_CONF = Path("/etc/sysctl.conf")
+PASSWD_FILE = Path("/etc/passwd")
+
+
+async def inspect_host() -> InspectResult:
+    """Collect comprehensive host inspection data.
+
+    Gathers hostname, IP addresses, nameservers, environment variables,
+    disk partitions, resource usage, processes, ulimits, sysctl.conf,
+    network interfaces, uname, /etc/passwd, and /etc/hosts in a single call.
+    """
+    logger.info("Starting host inspection")
+
+    # Run all async commands concurrently for performance
+    (
+        hostname_result,
+        fqdn_result,
+        set_result,
+        ps_result,
+        ifconfig_result,
+        uname_result,
+    ) = await asyncio.gather(
+        _run("hostname"),
+        _run("hostname -f"),
+        _run("bash -lc set"),
+        _run("ps -ef"),
+        _run("ifconfig -a 2>/dev/null || ip addr show"),
+        _run("uname -a"),
+    )
+
+    # 1. Hostname & IP addresses
+    short = hostname_result[1]
+    fqdn = fqdn_result[1] or short
+    is_consistent = bool(short and fqdn and (fqdn == short or fqdn.startswith(short + ".")))
+    inspect_hostname = InspectHostname(
+        hostname=short,
+        fqdn=fqdn,
+        is_consistent=is_consistent,
+    )
+
+    ip_addresses = _collect_ip_addresses()
+
+    # 2. Nameservers
+    resolv_info = get_nameservers()
+    nameservers = [InspectNameserver(address=ns.address) for ns in resolv_info.nameservers]
+
+    # 3. Environment variables (set command)
+    env_variables = set_result[1]
+
+    # 4. Disk partitions
+    disk_partitions = _collect_disk_partitions()
+
+    # 5. Resource usage
+    resource_usage = _collect_resource_usage()
+
+    # 6. Process list (ps -ef)
+    processes = _parse_ps_ef(ps_result[1])
+
+    # 7. Ulimit
+    ulimits = await _collect_ulimits()
+
+    # 8. sysctl.conf
+    sysctl_conf = _read_file_safe(SYSCTL_CONF)
+
+    # 9. Network interfaces (ifconfig)
+    network_interfaces = _parse_ifconfig(ifconfig_result[1])
+
+    # 10. uname -a
+    uname = uname_result[1]
+
+    # 11. /etc/passwd
+    etc_passwd = _read_file_safe(PASSWD_FILE)
+
+    # 12. /etc/hosts
+    etc_hosts = _read_file_safe(HOSTS_FILE)
+
+    logger.info("Host inspection completed")
+
+    return InspectResult(
+        hostname=inspect_hostname,
+        ip_addresses=ip_addresses,
+        nameservers=nameservers,
+        env_variables=env_variables,
+        disk_partitions=disk_partitions,
+        resource_usage=resource_usage,
+        processes=processes,
+        ulimits=ulimits,
+        sysctl_conf=sysctl_conf,
+        network_interfaces=network_interfaces,
+        uname=uname,
+        etc_passwd=etc_passwd,
+        etc_hosts=etc_hosts,
+    )
+
+
+def _read_file_safe(path: Path) -> str:
+    """Read file content or return empty string if not found."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def _collect_ip_addresses() -> list[InspectIpAddress]:
+    """Collect IP addresses from all network interfaces using psutil."""
+    result: list[InspectIpAddress] = []
+    for iface, addrs in psutil.net_if_addrs().items():
+        for addr in addrs:
+            # AF_INET (IPv4) = 2, AF_INET6 (IPv6) = 10
+            if addr.family in (2, 10):
+                result.append(InspectIpAddress(interface=iface, address=addr.address))
+    return result
+
+
+def _collect_disk_partitions() -> list[InspectDiskPartition]:
+    """Collect disk partition information using psutil."""
+    partitions: list[InspectDiskPartition] = []
+    for part in psutil.disk_partitions():
+        try:
+            usage = psutil.disk_usage(part.mountpoint)
+            partitions.append(
+                InspectDiskPartition(
+                    device=part.device,
+                    mount_point=part.mountpoint,
+                    fs_type=part.fstype,
+                    total_bytes=usage.total,
+                    used_bytes=usage.used,
+                    free_bytes=usage.free,
+                    usage_percent=usage.percent,
+                )
+            )
+        except PermissionError:
+            continue
+    return partitions
+
+
+def _collect_resource_usage() -> InspectResourceUsage:
+    """Collect CPU, memory, and swap usage."""
+    mem = psutil.virtual_memory()
+    swap = psutil.swap_memory()
+    return InspectResourceUsage(
+        cpu_cores=psutil.cpu_count() or 1,
+        total_memory_bytes=mem.total,
+        cpu_usage_percent=psutil.cpu_percent(interval=0.1),
+        memory_usage_percent=mem.percent,
+        swap_usage_percent=swap.percent,
+    )
+
+
+def _parse_ps_ef(output: str) -> list[InspectProcess]:
+    """Parse ps -ef output into structured process list."""
+    processes: list[InspectProcess] = []
+    lines = output.splitlines()
+    if not lines:
+        return processes
+
+    # Skip the header line
+    for line in lines[1:]:
+        parts = line.split(None, 7)
+        if len(parts) < 8:
+            continue
+        try:
+            processes.append(
+                InspectProcess(
+                    uid=parts[0],
+                    pid=int(parts[1]),
+                    ppid=int(parts[2]),
+                    c=parts[3],
+                    stime=parts[4],
+                    tty=parts[5],
+                    time=parts[6],
+                    cmd=parts[7],
+                )
+            )
+        except (ValueError, IndexError):
+            continue
+    return processes
+
+
+async def _collect_ulimits() -> list[InspectUlimitEntry]:
+    """Collect all ulimit values."""
+    entries: list[InspectUlimitEntry] = []
+    for option, resource in ULIMIT_OPTIONS.items():
+        _, soft, _ = await _run(f"bash -c 'ulimit {option} -S'")
+        _, hard, _ = await _run(f"bash -c 'ulimit {option} -H'")
+        entries.append(InspectUlimitEntry(option=option, resource=resource, soft=soft, hard=hard))
+    return entries
+
+
+def _parse_ifconfig(output: str) -> list[InspectNetworkInterface]:
+    """Parse ifconfig -a (or ip addr show) output into structured entries."""
+    interfaces: list[InspectNetworkInterface] = []
+    if not output.strip():
+        return interfaces
+
+    # Split by interface blocks. ifconfig separates blocks by empty lines or
+    # lines that start without whitespace.
+    blocks: list[str] = []
+    current: list[str] = []
+    for line in output.splitlines():
+        if line and not line[0].isspace() and current:
+            blocks.append("\n".join(current))
+            current = [line]
+        else:
+            current.append(line)
+    if current:
+        blocks.append("\n".join(current))
+
+    for block in blocks:
+        lines = block.splitlines()
+        if not lines:
+            continue
+
+        # First line: "eth0: flags=4163<UP,BROADCAST,...>  mtu 1500" or "eth0  Link encap:..."
+        first = lines[0]
+        name = first.split(":")[0].split()[0] if first else ""
+        if not name:
+            continue
+
+        iface = InspectNetworkInterface(name=name, raw=block)
+
+        # Extract flags and mtu from first line
+        flags_match = re.search(r"flags=\d+<([^>]*)>", first)
+        if flags_match:
+            iface.flags = flags_match.group(1)
+        mtu_match = re.search(r"mtu\s+(\d+)", first)
+        if mtu_match:
+            iface.mtu = mtu_match.group(1)
+
+        # Parse remaining lines
+        for line in lines[1:]:
+            stripped = line.strip()
+            if stripped.startswith("inet "):
+                parts = stripped.split()
+                if len(parts) >= 2:
+                    iface.inet = parts[1]
+                for i, p in enumerate(parts):
+                    if p == "netmask" and i + 1 < len(parts):
+                        iface.netmask = parts[i + 1]
+                    if p == "broadcast" and i + 1 < len(parts):
+                        iface.broadcast = parts[i + 1]
+            elif stripped.startswith("inet6 "):
+                parts = stripped.split()
+                if len(parts) >= 2:
+                    iface.inet6 = parts[1]
+            elif stripped.startswith("ether "):
+                parts = stripped.split()
+                if len(parts) >= 2:
+                    iface.ether = parts[1]
+            elif "RX packets" in stripped:
+                rx_match = re.search(r"RX packets\s+(\S+)", stripped)
+                if rx_match:
+                    iface.rx_packets = rx_match.group(1)
+            elif "TX packets" in stripped:
+                tx_match = re.search(r"TX packets\s+(\S+)", stripped)
+                if tx_match:
+                    iface.tx_packets = tx_match.group(1)
+            elif "RX bytes" in stripped or ("RX" in stripped and "bytes" in stripped):
+                rx_bytes_match = re.search(r"(\d+)\s+bytes", stripped)
+                if rx_bytes_match:
+                    iface.rx_bytes = rx_bytes_match.group(1)
+            elif "TX bytes" in stripped or ("TX" in stripped and "bytes" in stripped):
+                tx_bytes_match = re.search(r"(\d+)\s+bytes", stripped)
+                if tx_bytes_match:
+                    iface.tx_bytes = tx_bytes_match.group(1)
+
+        interfaces.append(iface)
+
+    return interfaces

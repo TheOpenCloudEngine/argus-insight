@@ -105,47 +105,56 @@ async def proxy_terminal_ws(websocket: WebSocket, agent_id: str) -> None:
     agent_ws_url = f"ws://{agent.host}:{agent.port}/api/v1/terminal/ws"
     logger.info("Terminal proxy opening: agent=%s url=%s", agent_id, agent_ws_url)
 
+    agent_ws = None
     try:
         import websockets
 
-        async with websockets.connect(agent_ws_url) as agent_ws:
+        agent_ws = await websockets.connect(
+            agent_ws_url,
+            close_timeout=5,
+        )
 
-            async def ui_to_agent() -> None:
-                """Forward messages from UI WebSocket to agent WebSocket."""
-                try:
-                    while True:
-                        message = await websocket.receive()
-                        if "text" in message:
-                            await agent_ws.send(message["text"])
-                        elif "bytes" in message:
-                            await agent_ws.send(message["bytes"])
-                except WebSocketDisconnect:
-                    pass
+        async def ui_to_agent() -> None:
+            """Forward messages from UI WebSocket to agent WebSocket."""
+            try:
+                while True:
+                    message = await websocket.receive()
+                    if "text" in message:
+                        await agent_ws.send(message["text"])
+                    elif "bytes" in message:
+                        await agent_ws.send(message["bytes"])
+            except WebSocketDisconnect:
+                pass
 
-            async def agent_to_ui() -> None:
-                """Forward messages from agent WebSocket to UI WebSocket."""
-                try:
-                    async for data in agent_ws:
-                        if isinstance(data, bytes):
-                            await websocket.send_bytes(data)
-                        else:
-                            await websocket.send_text(data)
-                except websockets.ConnectionClosed:
-                    pass
+        async def agent_to_ui() -> None:
+            """Forward messages from agent WebSocket to UI WebSocket."""
+            try:
+                async for data in agent_ws:
+                    if isinstance(data, bytes):
+                        await websocket.send_bytes(data)
+                    else:
+                        await websocket.send_text(data)
+            except websockets.ConnectionClosed:
+                pass
 
-            ui_task = asyncio.create_task(ui_to_agent())
-            agent_task = asyncio.create_task(agent_to_ui())
+        ui_task = asyncio.create_task(ui_to_agent())
+        agent_task = asyncio.create_task(agent_to_ui())
 
-            done, pending = await asyncio.wait(
-                [ui_task, agent_task],
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-            for task in pending:
-                task.cancel()
+        done, pending = await asyncio.wait(
+            [ui_task, agent_task],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in pending:
+            task.cancel()
 
     except Exception as e:
         logger.error("Terminal proxy error: agent=%s err=%s", agent_id, e)
     finally:
+        if agent_ws is not None:
+            try:
+                await agent_ws.close()
+            except Exception:
+                pass
         try:
             await websocket.close()
         except Exception:

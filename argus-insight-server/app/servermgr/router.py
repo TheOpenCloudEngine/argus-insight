@@ -1,8 +1,10 @@
 """Server management API endpoints."""
 
+import asyncio
 import logging
 
-from fastapi import APIRouter, Depends, Query
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
@@ -50,3 +52,112 @@ async def unregister_servers(
 ):
     """Unregister servers by changing their status from REGISTERED to UNREGISTERED."""
     return await service.unregister_servers(session, hostnames=body.hostnames)
+
+
+@router.get("/servers/{hostname}/inspect")
+async def server_inspect(hostname: str):
+    """Proxy host inspection request to the agent identified by hostname."""
+    from app.core.database import async_session
+
+    async with async_session() as session:
+        agent = await service.get_agent_by_hostname(session, hostname)
+
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent not found: {hostname}")
+
+    agent_url = f"http://{agent.ip_address}:4501/api/v1/host/inspect"
+    logger.info("Inspect proxy: hostname=%s url=%s", hostname, agent_url)
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(agent_url)
+            return resp.json()
+    except httpx.RequestError as e:
+        logger.error("Inspect proxy error: hostname=%s err=%s", hostname, e)
+        raise HTTPException(status_code=502, detail=f"Agent communication failed: {e}")
+
+
+@router.websocket("/servers/{hostname}/terminal/ws")
+async def server_terminal_ws(
+    websocket: WebSocket,
+    hostname: str,
+) -> None:
+    """Relay a WebSocket terminal session between UI and an agent identified by hostname.
+
+    Looks up the agent's IP address from the argus_agents table, then opens
+    a WebSocket to the agent's terminal endpoint and relays messages bidirectionally.
+
+    The DB session is opened briefly for the lookup and closed before the
+    long-lived WebSocket relay to avoid holding a connection pool slot.
+    """
+    from app.core.database import async_session
+
+    async with async_session() as session:
+        agent = await service.get_agent_by_hostname(session, hostname)
+
+    if not agent:
+        await websocket.close(code=4004, reason=f"Agent not found: {hostname}")
+        return
+
+    await websocket.accept()
+    agent_ws_url = f"ws://{agent.ip_address}:4501/api/v1/terminal/ws"
+    logger.info("Terminal proxy opening: hostname=%s url=%s", hostname, agent_ws_url)
+
+    agent_ws = None
+    try:
+        import websockets
+
+        agent_ws = await websockets.connect(
+            agent_ws_url,
+            close_timeout=5,
+        )
+
+        async def ui_to_agent() -> None:
+            """Forward messages from UI WebSocket to agent WebSocket."""
+            try:
+                while True:
+                    message = await websocket.receive()
+                    if "text" in message:
+                        await agent_ws.send(message["text"])
+                    elif "bytes" in message:
+                        await agent_ws.send(message["bytes"])
+            except WebSocketDisconnect:
+                pass
+
+        async def agent_to_ui() -> None:
+            """Forward messages from agent WebSocket to UI WebSocket."""
+            try:
+                async for data in agent_ws:
+                    if isinstance(data, bytes):
+                        await websocket.send_bytes(data)
+                    else:
+                        await websocket.send_text(data)
+            except websockets.ConnectionClosed:
+                pass
+
+        ui_task = asyncio.create_task(ui_to_agent())
+        agent_task = asyncio.create_task(agent_to_ui())
+
+        done, pending = await asyncio.wait(
+            [ui_task, agent_task],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in pending:
+            task.cancel()
+
+    except Exception as e:
+        logger.error("Terminal proxy error: hostname=%s err=%s", hostname, e)
+    finally:
+        # Ensure the agent-side WebSocket is always closed so the agent
+        # can clean up the PTY session promptly (important when the
+        # browser refreshes or is force-closed).
+        if agent_ws is not None:
+            try:
+                await agent_ws.close()
+            except Exception:
+                pass
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+        logger.info("Terminal proxy closed: hostname=%s", hostname)
