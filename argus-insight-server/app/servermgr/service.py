@@ -5,11 +5,16 @@ Provides read operations for the argus_agents table.
 
 import logging
 
-from sqlalchemy import Integer, func, or_, select
+from sqlalchemy import Integer, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.models import ArgusAgent, ArgusAgentHeartbeat
-from app.servermgr.schemas import PaginatedServerResponse, ServerResponse
+from app.servermgr.schemas import (
+    PaginatedServerResponse,
+    RegisterResponse,
+    ServerResponse,
+    UnregisterResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,3 +84,35 @@ async def list_servers(
         page=page,
         page_size=page_size,
     )
+
+
+async def register_servers(
+    session: AsyncSession,
+    hostnames: list[str],
+) -> RegisterResponse:
+    """Register servers by changing status from UNREGISTERED to REGISTERED."""
+    stmt = (
+        update(ArgusAgent)
+        .where(ArgusAgent.hostname.in_(hostnames))
+        .where(ArgusAgent.status == "UNREGISTERED")
+        .values(status="REGISTERED")
+    )
+    result = await session.execute(stmt)
+    await session.commit()
+    return RegisterResponse(updated=result.rowcount)
+
+
+async def unregister_servers(
+    session: AsyncSession,
+    hostnames: list[str],
+) -> UnregisterResponse:
+    """Unregister servers by changing status from REGISTERED to UNREGISTERED."""
+    stmt = (
+        update(ArgusAgent)
+        .where(ArgusAgent.hostname.in_(hostnames))
+        .where(ArgusAgent.status == "REGISTERED")
+        .values(status="UNREGISTERED")
+    )
+    result = await session.execute(stmt)
+    await session.commit()
+    return UnregisterResponse(updated=result.rowcount)

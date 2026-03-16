@@ -29,3 +29,27 @@ class PaginatedServerResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class RegisterRequest(BaseModel):
+    """Request to register servers by hostname."""
+
+    hostnames: list[str]
+
+
+class RegisterResponse(BaseModel):
+    """Response after registering servers."""
+
+    updated: int
+
+
+class UnregisterRequest(BaseModel):
+    """Request to unregister servers by hostname."""
+
+    hostnames: list[str]
+
+
+class UnregisterResponse(BaseModel):
+    """Response after unregistering servers."""
+
+    updated: int

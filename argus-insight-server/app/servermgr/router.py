@@ -7,7 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.servermgr import service
-from app.servermgr.schemas import PaginatedServerResponse
+from app.servermgr.schemas import (
+    PaginatedServerResponse,
+    RegisterRequest,
+    RegisterResponse,
+    UnregisterRequest,
+    UnregisterResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,3 +32,21 @@ async def list_servers(
     return await service.list_servers(
         session, status=status, search=search, page=page, page_size=page_size
     )
+
+
+@router.post("/servers/register", response_model=RegisterResponse)
+async def register_servers(
+    body: RegisterRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Register servers by changing their status from UNREGISTERED to REGISTERED."""
+    return await service.register_servers(session, hostnames=body.hostnames)
+
+
+@router.post("/servers/unregister", response_model=UnregisterResponse)
+async def unregister_servers(
+    body: UnregisterRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Unregister servers by changing their status from REGISTERED to UNREGISTERED."""
+    return await service.unregister_servers(session, hostnames=body.hostnames)

@@ -13,7 +13,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table"
 
-import { ChevronDown, UserMinus } from "lucide-react"
+import { ChevronDown, Minus, Plus } from "lucide-react"
 
 import { cn } from "@workspace/ui/lib/utils"
 import { Button } from "@workspace/ui/components/button"
@@ -48,6 +48,8 @@ type ServersTableProps = {
 export function ServersTable({ data, isLoading }: ServersTableProps) {
   const {
     setSelectedServers,
+    setCurrentRow,
+    setOpen,
     total,
     page,
     pageSize,
@@ -149,12 +151,24 @@ export function ServersTable({ data, isLoading }: ServersTableProps) {
             <DropdownMenuContent align="end" className="w-[200px]">
               <DropdownMenuItem
                 onClick={() => {
-                  console.log("Remove from manager")
+                  setCurrentRow(null)
+                  setOpen("register")
                 }}
               >
-                Remove From Manager
+                Register
                 <span className="ml-auto">
-                  <UserMinus size={16} />
+                  <Plus size={16} />
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  setCurrentRow(null)
+                  setOpen("unregister")
+                }}
+              >
+                Unregister
+                <span className="ml-auto">
+                  <Minus size={16} />
                 </span>
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -209,8 +223,7 @@ export function ServersTable({ data, isLoading }: ServersTableProps) {
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
-                  className="group/row cursor-pointer"
-                  onClick={() => row.toggleSelected()}
+                  className="group/row"
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell
