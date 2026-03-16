@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import {
   Cpu,
   HardDrive,
@@ -122,12 +122,59 @@ export function ServersInspectDialog({
   const ulimits = (data?.ulimits ?? []) as any[]
   const networkInterfaces = (data?.network_interfaces ?? []) as any[]
 
+  const [width, setWidth] = useState(800)
+  const dragging = useRef(false)
+  const startX = useRef(0)
+  const startWidth = useRef(0)
+
+  useEffect(() => {
+    if (!open) {
+      setWidth(800)
+      return
+    }
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!dragging.current) return
+      const delta = startX.current - e.clientX
+      const newWidth = Math.max(400, Math.min(startWidth.current + delta, window.innerWidth - 40))
+      setWidth(newWidth)
+    }
+
+    const onMouseUp = () => {
+      dragging.current = false
+      document.body.style.cursor = ""
+      document.body.style.userSelect = ""
+    }
+
+    document.addEventListener("mousemove", onMouseMove)
+    document.addEventListener("mouseup", onMouseUp)
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove)
+      document.removeEventListener("mouseup", onMouseUp)
+    }
+  }, [open])
+
+  const handleDragStart = (e: React.MouseEvent) => {
+    dragging.current = true
+    startX.current = e.clientX
+    startWidth.current = width
+    document.body.style.cursor = "col-resize"
+    document.body.style.userSelect = "none"
+    e.preventDefault()
+  }
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="w-full sm:max-w-5xl overflow-y-auto px-5"
+        className="overflow-y-auto px-5 sm:max-w-none"
+        style={{ width }}
       >
+        {/* Drag handle on the left edge */}
+        <div
+          className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/20 active:bg-primary/30 transition-colors"
+          onMouseDown={handleDragStart}
+        />
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <Monitor className="h-5 w-5" />
