@@ -23,6 +23,7 @@ from app.core.config_loader import load_config
 _CONFIG_DIR = Path(os.environ.get("ARGUS_CONFIG_DIR", "/etc/argus-insight-agent"))
 _yaml_path: Path = _CONFIG_DIR / "config.yml"
 _properties_path: Path = _CONFIG_DIR / "config.properties"
+_server_properties_path: Path = _CONFIG_DIR / "server.properties"
 _raw: dict = load_config(config_dir=_CONFIG_DIR)
 
 
@@ -74,6 +75,7 @@ class Settings:
         self.config_dir: Path = _CONFIG_DIR
         self.config_yaml_path: Path = _yaml_path
         self.config_properties_path: Path = _properties_path
+        self.config_server_properties_path: Path = _server_properties_path
 
         # Backup
         self.backup_dir: Path = Path(_get("backup", "dir", "backups"))
@@ -117,16 +119,16 @@ class Settings:
 
 
     def _load_server_properties(self) -> dict[str, str]:
-        """Load server.properties from the same directory as config.yml."""
+        """Load server.properties from the configured path."""
         from app.core.config_loader import load_properties
 
-        server_props_path = self.config_dir / "server.properties"
-        return load_properties(server_props_path)
+        return load_properties(self.config_server_properties_path)
 
 
 def init_settings(
     yaml_path: str | None = None,
     properties_path: str | None = None,
+    server_properties_path: str | None = None,
 ) -> None:
     """Re-initialize settings with custom config file paths.
 
@@ -136,12 +138,15 @@ def init_settings(
     Args:
         yaml_path: Absolute path to YAML config file.
         properties_path: Absolute path to properties file.
+        server_properties_path: Absolute path to server properties file.
     """
-    global _raw, _yaml_path, _properties_path
+    global _raw, _yaml_path, _properties_path, _server_properties_path
     if yaml_path:
         _yaml_path = Path(yaml_path)
     if properties_path:
         _properties_path = Path(properties_path)
+    if server_properties_path:
+        _server_properties_path = Path(server_properties_path)
     _raw = load_config(
         config_dir=_CONFIG_DIR,
         yaml_path=yaml_path,

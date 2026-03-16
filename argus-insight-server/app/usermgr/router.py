@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
@@ -10,7 +10,6 @@ from app.usermgr import service
 from app.usermgr.schemas import (
     RoleResponse,
     UserAddRequest,
-    UserChangeGroupRequest,
     UserChangeRoleRequest,
     UserModifyRequest,
     UserResponse,
@@ -35,9 +34,14 @@ async def add_user(req: UserAddRequest, session: AsyncSession = Depends(get_sess
 
 
 @router.get("/users", response_model=list[UserResponse])
-async def list_users(session: AsyncSession = Depends(get_session)):
-    """List all users."""
-    return await service.list_users(session)
+async def list_users(
+    status: str | None = Query(None, description="Filter by status (active/inactive)"),
+    role: str | None = Query(None, description="Filter by role name (Admin/User)"),
+    search: str | None = Query(None, description="Search username, name, email, phone"),
+    session: AsyncSession = Depends(get_session),
+):
+    """List users with optional filters."""
+    return await service.list_users(session, status=status, role=role, search=search)
 
 
 @router.get("/users/{user_id}", response_model=UserResponse)
@@ -95,17 +99,6 @@ async def activate_user(user_id: int, session: AsyncSession = Depends(get_sessio
 async def deactivate_user(user_id: int, session: AsyncSession = Depends(get_session)):
     """Deactivate a user account."""
     user = await service.deactivate_user(session, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
-
-
-@router.put("/users/{user_id}/group", response_model=UserResponse)
-async def change_group(
-    user_id: int, req: UserChangeGroupRequest, session: AsyncSession = Depends(get_session)
-):
-    """Change a user's group."""
-    user = await service.change_group(session, user_id, req)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user

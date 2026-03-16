@@ -63,7 +63,10 @@ PROMETHEUS_URL   := $(GITHUB_URL)/prometheus/releases/download/v$(PROMETHEUS_VER
 PUSHGATEWAY_URL  := $(GITHUB_URL)/pushgateway/releases/download/v$(PUSHGATEWAY_VERSION)/$(PUSHGATEWAY_TARBALL)
 ALERTMANAGER_URL := $(GITHUB_URL)/alertmanager/releases/download/v$(ALERTMANAGER_VERSION)/$(ALERTMANAGER_TARBALL)
 
-.PHONY: all clean download nfpm prometheus pushgateway alertmanager rpm deb
+DOCKER_REGISTRY ?= argus-insight
+
+.PHONY: all clean download nfpm prometheus pushgateway alertmanager rpm deb \
+        docker docker-prometheus docker-pushgateway docker-alertmanager docker-push
 
 all: prometheus pushgateway alertmanager
 
@@ -158,6 +161,33 @@ deb: $(NFPM_BIN) download
 	$(call print-deb,$(PUSHGATEWAY_DEB))
 	cd alertmanager && ../$(NFPM_BIN) pkg --config ../$(DIST_DIR)/alertmanager-nfpm.yaml --packager deb --target ../$(PACKAGE_DIR)/
 	$(call print-deb,$(ALERTMANAGER_DEB))
+
+# ─── Docker ──────────────────────────────────────────────────────────────────
+
+docker: docker-prometheus docker-pushgateway docker-alertmanager
+
+docker-prometheus:
+	docker build -t $(DOCKER_REGISTRY)/prometheus:$(PROMETHEUS_VERSION) \
+		--build-arg PROMETHEUS_VERSION=$(PROMETHEUS_VERSION) \
+		--build-arg OS=$(OS) --build-arg ARCH=$(ARCH) \
+		prometheus/
+
+docker-pushgateway:
+	docker build -t $(DOCKER_REGISTRY)/pushgateway:$(PUSHGATEWAY_VERSION) \
+		--build-arg PUSHGATEWAY_VERSION=$(PUSHGATEWAY_VERSION) \
+		--build-arg OS=$(OS) --build-arg ARCH=$(ARCH) \
+		pushgateway/
+
+docker-alertmanager:
+	docker build -t $(DOCKER_REGISTRY)/alertmanager:$(ALERTMANAGER_VERSION) \
+		--build-arg ALERTMANAGER_VERSION=$(ALERTMANAGER_VERSION) \
+		--build-arg OS=$(OS) --build-arg ARCH=$(ARCH) \
+		alertmanager/
+
+docker-push:
+	docker push $(DOCKER_REGISTRY)/prometheus:$(PROMETHEUS_VERSION)
+	docker push $(DOCKER_REGISTRY)/pushgateway:$(PUSHGATEWAY_VERSION)
+	docker push $(DOCKER_REGISTRY)/alertmanager:$(ALERTMANAGER_VERSION)
 
 # ─── Clean ───────────────────────────────────────────────────────────────────
 

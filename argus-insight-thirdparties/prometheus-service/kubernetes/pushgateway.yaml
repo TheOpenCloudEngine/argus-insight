@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pushgateway
+  namespace: argus-insight
+  labels:
+    app.kubernetes.io/name: pushgateway
+    app.kubernetes.io/part-of: argus-insight
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pushgateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pushgateway
+        app.kubernetes.io/part-of: argus-insight
+    spec:
+      securityContext:
+        runAsUser: 65534
+        runAsNonRoot: true
+      containers:
+        - name: pushgateway
+          image: argus-insight/pushgateway:1.11.0
+          args:
+            - "--web.listen-address=0.0.0.0:9091"
+          ports:
+            - name: http
+              containerPort: 9091
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pushgateway
+  namespace: argus-insight
+  labels:
+    app.kubernetes.io/name: pushgateway
+    app.kubernetes.io/part-of: argus-insight
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 9091
+      targetPort: http
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: pushgateway

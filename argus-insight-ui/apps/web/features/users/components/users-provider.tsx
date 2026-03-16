@@ -1,11 +1,12 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useCallback, useEffect, useState } from "react"
 
 import useDialogState from "@/hooks/use-dialog-state"
+import { fetchUsers } from "../api"
 import { type User } from "../data/schema"
 
-type UsersDialogType = "add" | "edit" | "delete" | "activate" | "deactivate"
+type UsersDialogType = "add" | "edit" | "delete" | "activate" | "deactivate" | "view"
 
 type UsersContextType = {
   open: UsersDialogType | null
@@ -16,6 +17,9 @@ type UsersContextType = {
   setStatusFilter: React.Dispatch<React.SetStateAction<string | null>>
   selectedUsers: User[]
   setSelectedUsers: React.Dispatch<React.SetStateAction<User[]>>
+  users: User[]
+  isLoading: boolean
+  refreshUsers: () => Promise<void>
 }
 
 const UsersContext = React.createContext<UsersContextType | null>(null)
@@ -25,9 +29,33 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
   const [currentRow, setCurrentRow] = useState<User | null>(null)
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
   const [selectedUsers, setSelectedUsers] = useState<User[]>([])
+  const [users, setUsers] = useState<User[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  const refreshUsers = useCallback(async () => {
+    try {
+      setIsLoading(true)
+      const data = await fetchUsers()
+      setUsers(data)
+    } catch (err) {
+      console.error("Failed to fetch users:", err)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshUsers()
+  }, [refreshUsers])
 
   return (
-    <UsersContext value={{ open, setOpen, currentRow, setCurrentRow, statusFilter, setStatusFilter, selectedUsers, setSelectedUsers }}>
+    <UsersContext value={{
+      open, setOpen,
+      currentRow, setCurrentRow,
+      statusFilter, setStatusFilter,
+      selectedUsers, setSelectedUsers,
+      users, isLoading, refreshUsers,
+    }}>
       {children}
     </UsersContext>
   )

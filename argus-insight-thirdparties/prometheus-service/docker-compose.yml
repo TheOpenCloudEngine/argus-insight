@@ -1,0 +1,47 @@
+services:
+  prometheus:
+    build:
+      context: prometheus
+      args:
+        PROMETHEUS_VERSION: ${PROMETHEUS_VERSION}
+        OS: ${OS}
+        ARCH: ${ARCH}
+    image: argus-insight/prometheus:${PROMETHEUS_VERSION}
+    ports:
+      - "9090:9090"
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    volumes:
+      - argus-prometheus:/var/lib/prometheus
+    restart: unless-stopped
+
+  pushgateway:
+    build:
+      context: pushgateway
+      args:
+        PUSHGATEWAY_VERSION: ${PUSHGATEWAY_VERSION}
+        OS: ${OS}
+        ARCH: ${ARCH}
+    image: argus-insight/pushgateway:${PUSHGATEWAY_VERSION}
+    ports:
+      - "9091:9091"
+    restart: unless-stopped
+
+  alertmanager:
+    build:
+      context: alertmanager
+      args:
+        ALERTMANAGER_VERSION: ${ALERTMANAGER_VERSION}
+        OS: ${OS}
+        ARCH: ${ARCH}
+    image: argus-insight/alertmanager:${ALERTMANAGER_VERSION}
+    ports:
+      - "9093:9093"
+    volumes:
+      - argus-prometheus:/var/lib/prometheus
+    restart: unless-stopped
+
+volumes:
+  argus-prometheus:

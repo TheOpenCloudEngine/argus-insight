@@ -45,6 +45,7 @@ def _print_banner() -> None:
     logger.info("Version           : %s", settings.app_version)
     logger.info("Config YAML       : %s", settings.config_yaml_path)
     logger.info("Config Properties : %s", settings.config_properties_path)
+    logger.info("Config Server Properties : %s", settings.config_server_properties_path)
 
 
 @asynccontextmanager
@@ -101,7 +102,9 @@ def run() -> None:
             "  argus-insight-agent\n"
             "  argus-insight-agent --config-yaml /opt/config/config.yml\n"
             "  argus-insight-agent --config-properties /opt/config/config.properties\n"
-            "  argus-insight-agent --config-yaml ./config.yml --config-properties ./config.properties\n"
+            "  argus-insight-agent --config-server-properties /opt/config/server.properties\n"
+            "  argus-insight-agent --config-yaml ./config.yml --config-properties ./config.properties"
+            " --config-server-properties ./server.properties\n"
             "\n"
             "If no options are specified, configuration files are loaded from\n"
             "/etc/argus-insight-agent/ (or the ARGUS_CONFIG_DIR environment variable)."
@@ -128,28 +131,42 @@ def run() -> None:
             "(default: /etc/argus-insight-agent/config.properties)"
         ),
     )
+    parser.add_argument(
+        "--config-server-properties",
+        metavar="PATH",
+        help=(
+            "path to the server properties file (server.properties). "
+            "This file defines the central server address that this agent reports to "
+            "for heartbeat and management. "
+            "(default: /etc/argus-insight-agent/server.properties)"
+        ),
+    )
     args = parser.parse_args()
 
-    if args.config_yaml or args.config_properties:
+    if args.config_yaml or args.config_properties or args.config_server_properties:
         from app.core.config import init_settings
 
         init_settings(
             yaml_path=args.config_yaml,
             properties_path=args.config_properties,
+            server_properties_path=args.config_server_properties,
         )
     else:
         yaml_exists = settings.config_yaml_path.is_file()
         props_exists = settings.config_properties_path.is_file()
-        if not yaml_exists and not props_exists:
+        server_props_exists = settings.config_server_properties_path.is_file()
+        if not yaml_exists and not props_exists and not server_props_exists:
             parser.print_help()
             print()
             print(
                 f"Error: No configuration files found at default location:\n"
                 f"  - {settings.config_yaml_path}\n"
                 f"  - {settings.config_properties_path}\n"
+                f"  - {settings.config_server_properties_path}\n"
                 f"\n"
-                f"Specify config file paths with --config-yaml and/or "
-                f"--config-properties options."
+                f"Specify config file paths with --config-yaml, "
+                f"--config-properties, and/or "
+                f"--config-server-properties options."
             )
             sys.exit(1)
 
