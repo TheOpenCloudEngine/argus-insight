@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useState } from "react"
 import {
   Cpu,
+  Download,
+  FileText,
+  Globe,
   HardDrive,
   Info,
   Loader2,
@@ -22,6 +25,13 @@ import {
   SheetDescription,
 } from "@workspace/ui/components/sheet"
 import { Badge } from "@workspace/ui/components/badge"
+import { Button } from "@workspace/ui/components/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@workspace/ui/components/dropdown-menu"
 import { Separator } from "@workspace/ui/components/separator"
 import { CodeViewer } from "@/components/code-viewer"
 import { fetchInspect } from "../api"
@@ -103,6 +113,151 @@ export function ServersInspectDialog({
     }
   }, [open, loadInspect])
 
+  const esc = (s: string) => s?.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") ?? ""
+
+  const buildInspectHtml = useCallback(() => {
+    if (!data) return ""
+    const now = new Date().toLocaleString()
+    const hn = data.hostname as any
+    const ru = data.resource_usage as any
+    const ips = (data.ip_addresses ?? []) as any[]
+    const nss = (data.nameservers ?? []) as any[]
+    const dps = (data.disk_partitions ?? []) as any[]
+    const procs = (data.processes ?? []) as any[]
+    const uls = (data.ulimits ?? []) as any[]
+    const nifs = (data.network_interfaces ?? []) as any[]
+
+    const field = (label: string, value: string) =>
+      `<tr><td class="lbl">${esc(label)}</td><td class="val">${esc(String(value ?? ""))}</td></tr>`
+
+    const sectionStart = (title: string) =>
+      `<h2>${esc(title)}</h2><table class="kv">`
+    const sectionEnd = `</table>`
+
+    const codeBlock = (title: string, content: string) =>
+      `<h2>${esc(title)}</h2><pre>${esc(content ?? "")}</pre>`
+
+    let html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Inspect - ${esc(currentRow.hostname)}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1a1a1a; max-width: 900px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .meta { font-size: 13px; color: #666; margin-bottom: 20px; }
+  h2 { font-size: 15px; margin: 20px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #e5e5e5; }
+  table.kv { border-collapse: collapse; width: 100%; font-size: 13px; margin-bottom: 8px; }
+  table.kv td { border: 1px solid #ddd; padding: 6px 10px; }
+  table.kv td.lbl { background: #f8f8f8; font-weight: 500; width: 220px; white-space: nowrap; }
+  table.kv td.val { font-family: monospace; font-size: 12px; word-break: break-all; }
+  table.proc { border-collapse: collapse; width: 100%; font-size: 12px; }
+  table.proc th, table.proc td { border: 1px solid #ddd; padding: 4px 8px; white-space: nowrap; }
+  table.proc th { background: #f5f5f5; font-weight: 600; text-align: left; }
+  table.proc td.r { text-align: right; }
+  pre { background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; padding: 12px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; max-height: 400px; }
+  @media print { body { margin: 10px; } h1 { font-size: 16px; } pre { max-height: none; } }
+</style>
+</head>
+<body>
+<h1>Host Inspection - ${esc(currentRow.hostname)}</h1>
+<div class="meta">${esc(currentRow.ipAddress)} &middot; ${now}</div>`
+
+    // Hostname
+    html += sectionStart("Hostname")
+    html += field("Hostname", hn?.hostname)
+    html += field("FQDN", hn?.fqdn)
+    html += field("Hostname == FQDN", hn?.is_consistent ? "YES" : "NO")
+    html += sectionEnd
+
+    // Network
+    html += sectionStart("Network")
+    for (const ip of ips) html += field(ip.interface, ip.address)
+    for (let i = 0; i < nss.length; i++) html += field(`Nameserver ${i + 1}`, nss[i].address)
+    html += sectionEnd
+
+    // Resource Usage
+    html += sectionStart("Resource Usage")
+    html += field("CPU Cores", String(ru?.cpu_cores ?? ""))
+    html += field("Total Memory", formatBytes(ru?.total_memory_bytes ?? 0))
+    html += field("CPU Usage", `${ru?.cpu_usage_percent?.toFixed(1)}%`)
+    html += field("Memory Usage", `${ru?.memory_usage_percent?.toFixed(1)}%`)
+    html += field("Swap Usage", `${ru?.swap_usage_percent?.toFixed(1)}%`)
+    html += sectionEnd
+
+    // Disk Partitions
+    html += sectionStart("Disk Partitions")
+    for (const dp of dps) {
+      html += `<tr><td class="lbl">${esc(dp.device)} (${esc(dp.fs_type)})</td>`
+      html += `<td class="val">Mount: ${esc(dp.mount_point)} &middot; Total: ${formatBytes(dp.total_bytes)} &middot; Used: ${dp.usage_percent?.toFixed(1)}%</td></tr>`
+    }
+    html += sectionEnd
+
+    // Ulimit
+    html += sectionStart("Ulimit")
+    for (const ul of uls) html += field(`${ul.resource} (${ul.option})`, `soft=${ul.soft} / hard=${ul.hard}`)
+    html += sectionEnd
+
+    // Network Interfaces
+    html += sectionStart("Network Interfaces (ifconfig)")
+    for (const iface of nifs) {
+      const parts = [iface.inet && `inet ${iface.inet}`, iface.netmask && `netmask ${iface.netmask}`, iface.ether && `ether ${iface.ether}`, iface.mtu && `mtu ${iface.mtu}`].filter(Boolean).join(" · ")
+      html += `<tr><td class="lbl">${esc(iface.name)}${iface.flags ? ` <small>${esc(iface.flags)}</small>` : ""}</td><td class="val">${esc(parts)}</td></tr>`
+    }
+    html += sectionEnd
+
+    // uname
+    html += codeBlock("System Info (uname -a)", data.uname as string)
+
+    // Process List
+    html += `<h2>Processes (${procs.length})</h2>`
+    html += `<table class="proc"><thead><tr><th>UID</th><th class="r">PID</th><th class="r">PPID</th><th>C</th><th>STIME</th><th>TTY</th><th>TIME</th><th>CMD</th></tr></thead><tbody>`
+    for (const p of procs) {
+      html += `<tr><td>${esc(p.uid)}</td><td class="r">${p.pid}</td><td class="r">${p.ppid}</td><td>${esc(p.c)}</td><td>${esc(p.stime)}</td><td>${esc(p.tty)}</td><td>${esc(p.time)}</td><td>${esc(p.cmd)}</td></tr>`
+    }
+    html += `</tbody></table>`
+
+    // Environment Variables
+    html += codeBlock("Environment Variables (set)", data.env_variables as string)
+
+    // sysctl.conf
+    html += codeBlock("/etc/sysctl.conf", data.sysctl_conf as string)
+
+    // /etc/passwd
+    html += codeBlock("/etc/passwd", data.etc_passwd as string)
+
+    // /etc/hosts
+    html += codeBlock("/etc/hosts", data.etc_hosts as string)
+
+    html += `</body></html>`
+    return html
+  }, [data, currentRow])
+
+  const downloadHtml = useCallback(() => {
+    const html = buildInspectHtml()
+    if (!html) return
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `inspect-${currentRow.hostname}-${new Date().toISOString().slice(0, 19).replace(/:/g, "")}.html`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [buildInspectHtml, currentRow])
+
+  const downloadPdf = useCallback(() => {
+    const html = buildInspectHtml()
+    if (!html) return
+    const win = window.open("", "_blank")
+    if (!win) return
+    win.document.write(html)
+    win.document.close()
+    win.onload = () => {
+      win.onafterprint = () => win.close()
+      win.print()
+    }
+  }, [buildInspectHtml])
+
   const hostname = data?.hostname as any
   const resourceUsage = data?.resource_usage as any
   const ipAddresses = (data?.ip_addresses ?? []) as any[]
@@ -120,10 +275,32 @@ export function ServersInspectDialog({
         style={{ width: 600, maxWidth: "none" }}
       >
         <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <Monitor className="h-5 w-5" />
-            Host Inspection
-          </SheetTitle>
+          <div className="flex items-center justify-between">
+            <SheetTitle className="flex items-center gap-2">
+              <Monitor className="h-5 w-5" />
+              Host Inspection
+            </SheetTitle>
+            {data && !loading && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 text-sm gap-1.5">
+                    <Download className="h-3.5 w-3.5" />
+                    Export
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={downloadHtml}>
+                    <Globe className="h-4 w-4 mr-2" />
+                    Download HTML
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={downloadPdf}>
+                    <FileText className="h-4 w-4 mr-2" />
+                    Download PDF
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
           <SheetDescription>
             {currentRow.hostname} ({currentRow.ipAddress})
           </SheetDescription>
