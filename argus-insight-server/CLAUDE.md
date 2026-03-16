@@ -17,7 +17,7 @@ React UI  <──HTTP/WS──>  Argus Insight Server  <──HTTP/WS──>  Ar
 ```
 
 - **React UI → Server**: REST API + WebSocket (포트 4500)
-- **Server → Agent**: HTTP 클라이언트 (httpx)로 Agent API 호출 (포트 8600)
+- **Server → Agent**: HTTP 클라이언트 (httpx)로 Agent API 호출 (포트 4501)
 
 ## 운영 환경
 

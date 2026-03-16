@@ -13,7 +13,7 @@ dev: ## Install with dev dependencies
 	pip install -e ".[dev]"
 
 run: ## Run the server
-	uvicorn app.main:app --host 0.0.0.0 --port 8600 --reload
+	uvicorn app.main:app --host 0.0.0.0 --port 4501 --reload
 
 test: ## Run tests
 	pytest tests/ -v

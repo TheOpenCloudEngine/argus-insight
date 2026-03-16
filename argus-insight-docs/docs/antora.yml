@@ -8,7 +8,7 @@ asciidoc:
     product-version: '0.1'
     company-name: TheOpenCloudEngine
     server-port: '4500'
-    agent-port: '8600'
+    agent-port: '4501'
     source-highlighter: highlight.js
     icons: font
     toc: left

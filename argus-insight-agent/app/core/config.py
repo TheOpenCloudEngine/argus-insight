@@ -57,7 +57,7 @@ class Settings:
 
         # Server
         self.host: str = _get("server", "host", "0.0.0.0")
-        self.port: int = int(_get("server", "port", 8600))
+        self.port: int = int(_get("server", "port", 4501))
 
         # Logging
         self.log_level: str = _get("logging", "level", "INFO")

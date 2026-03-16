@@ -22,7 +22,7 @@ class AgentRegisterRequest(BaseModel):
     """Request to register a new agent."""
 
     host: str = Field(..., description="Agent hostname or IP address")
-    port: int = Field(8600, description="Agent port number")
+    port: int = Field(4501, description="Agent port number")
     name: str | None = Field(None, description="Display name for the agent")
     tags: list[str] = Field(default_factory=list, description="Tags for grouping agents")
 

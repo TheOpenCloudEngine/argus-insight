@@ -15,7 +15,7 @@ log.level=DEBUG
 """
     yml_content = """server:
   host: ${server.host:0.0.0.0}
-  port: ${server.port:8600}
+  port: ${server.port:4501}
 logging:
   level: ${log.level:INFO}
 app:
@@ -59,11 +59,11 @@ def test_default_value_used_when_property_missing(tmp_path):
     """Test that ${var:default} uses default when property is not defined."""
     (tmp_path / "config.properties").write_text("")
     (tmp_path / "config.yml").write_text(
-        "server:\n  host: ${server.host:0.0.0.0}\n  port: ${server.port:8600}\n"
+        "server:\n  host: ${server.host:0.0.0.0}\n  port: ${server.port:4501}\n"
     )
     config = load_config(config_dir=tmp_path)
     assert config["server"]["host"] == "0.0.0.0"
-    assert config["server"]["port"] == "8600"
+    assert config["server"]["port"] == "4501"
 
 
 def test_property_overrides_default(tmp_path):
@@ -120,8 +120,8 @@ def test_resolve_value_directly():
 def test_no_properties_file_uses_defaults(tmp_path):
     """Test that config works with only config.yml (no properties file)."""
     (tmp_path / "config.yml").write_text(
-        "server:\n  host: ${server.host:0.0.0.0}\n  port: ${server.port:8600}\n"
+        "server:\n  host: ${server.host:0.0.0.0}\n  port: ${server.port:4501}\n"
     )
     config = load_config(config_dir=tmp_path)
     assert config["server"]["host"] == "0.0.0.0"
-    assert config["server"]["port"] == "8600"
+    assert config["server"]["port"] == "4501"
