@@ -283,7 +283,7 @@ export function ServersInspectDialog({
             {data && !loading && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 text-sm gap-1.5">
+                  <Button variant="outline" size="sm" className="h-8 text-sm gap-1.5 mr-8">
                     <Download className="h-3.5 w-3.5" />
                     Export
                   </Button>
