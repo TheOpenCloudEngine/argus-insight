@@ -17,6 +17,7 @@ const serverSchema = z.object({
   cpuUsage: z.number().nullable(),
   memoryUsage: z.number().nullable(),
   status: serverStatusSchema,
+  lastHeartbeatSeconds: z.number().nullable(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 })

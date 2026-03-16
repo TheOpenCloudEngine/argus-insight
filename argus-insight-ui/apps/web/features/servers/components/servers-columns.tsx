@@ -172,4 +172,18 @@ export const serversColumns: ColumnDef<Server>[] = [
     enableHiding: false,
     enableSorting: false,
   },
+  {
+    accessorKey: "lastHeartbeatSeconds",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Last Heartbeat" className="justify-center" />
+    ),
+    cell: ({ row }) => {
+      const seconds = row.getValue("lastHeartbeatSeconds") as number | null
+      if (seconds == null) return <div className="text-center text-sm">-</div>
+      return (
+        <div className="text-center text-sm text-nowrap">{seconds.toLocaleString()}s ago</div>
+      )
+    },
+    enableSorting: false,
+  },
 ]

@@ -17,6 +17,7 @@ class ServerResponse(BaseModel):
     cpu_usage: float | None = None
     memory_usage: float | None = None
     status: str
+    last_heartbeat_seconds: int | None = None
     created_at: datetime
     updated_at: datetime
 
