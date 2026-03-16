@@ -21,6 +21,7 @@ type DataTableToolbarProps<TData> = {
     }[]
   }[]
   onSearch?: () => void
+  onClear?: () => void
 }
 
 export function DataTableToolbar<TData>({
@@ -29,9 +30,8 @@ export function DataTableToolbar<TData>({
   searchKey,
   filters = [],
   onSearch,
+  onClear,
 }: DataTableToolbarProps<TData>) {
-  const isFiltered = table.getState().columnFilters.length > 0
-
   return (
     <div className="flex items-center justify-between">
       <div className="flex flex-1 flex-col-reverse items-start gap-y-2 sm:flex-row sm:items-center sm:space-x-2">
@@ -68,31 +68,33 @@ export function DataTableToolbar<TData>({
             )
           })}
         </div>
-        {onSearch && (
-          <Button
-            variant="default"
-            size="sm"
-            onClick={onSearch}
-            className="h-8 px-3"
-          >
-            <Search className="mr-1 h-4 w-4" />
-            Search
-          </Button>
-        )}
-        {isFiltered && (
-          <Button
-            variant="ghost"
-            onClick={() => {
-              table.resetColumnFilters()
-              table.setGlobalFilter("")
-            }}
-            className="h-8 px-2 lg:px-3"
-          >
-            Reset
-            <X className="ms-2 h-4 w-4" />
-          </Button>
-        )}
       </div>
+      {(onSearch || onClear) && (
+        <div className="flex items-center gap-x-2">
+          {onSearch && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onSearch}
+              className="h-8 px-3"
+            >
+              <Search className="mr-1 h-4 w-4" />
+              Search
+            </Button>
+          )}
+          {onClear && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onClear}
+              className="h-8 px-3"
+            >
+              <X className="mr-1 h-4 w-4" />
+              Clear
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

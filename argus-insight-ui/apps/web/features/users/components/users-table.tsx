@@ -34,9 +34,10 @@ import { useUsers } from "./users-provider"
 
 type UsersTableProps = {
   data: User[]
+  isLoading?: boolean
 }
 
-export function UsersTable({ data }: UsersTableProps) {
+export function UsersTable({ data, isLoading }: UsersTableProps) {
   const {
     setSelectedUsers,
     total,
@@ -115,6 +116,12 @@ export function UsersTable({ data }: UsersTableProps) {
     searchUsers({ status, role, search })
   }, [columnFilters, searchUsers])
 
+  // Clear all filters
+  const handleClear = useCallback(() => {
+    table.resetColumnFilters()
+    table.setGlobalFilter("")
+  }, [table])
+
   return (
     <div className={cn("flex flex-1 flex-col gap-4")}>
       <DataTableToolbar
@@ -137,6 +144,7 @@ export function UsersTable({ data }: UsersTableProps) {
           },
         ]}
         onSearch={handleSearch}
+        onClear={handleClear}
       />
       <div className="overflow-hidden rounded-md border">
         <Table>
@@ -172,7 +180,16 @@ export function UsersTable({ data }: UsersTableProps) {
             ))}
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows?.length ? (
+            {isLoading ? (
+              <TableRow>
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-24 text-center"
+                >
+                  <p className="text-muted-foreground">Loading users...</p>
+                </TableCell>
+              </TableRow>
+            ) : table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
