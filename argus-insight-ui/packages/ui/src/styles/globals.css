@@ -130,9 +130,16 @@
 /* BlockNote editor styles */
 .bn-editor {
   font-family: 'D2Coding', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875rem;
 }
 .bn-editor code {
   font-family: 'D2Coding', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.bn-editor [data-content-type="codeBlock"] pre {
+  background: #CCCCCC !important;
+}
+.bn-editor [data-content-type="codeBlock"] code {
+  background: #CCCCCC;
 }
 
 /* Markdown preview styles */
