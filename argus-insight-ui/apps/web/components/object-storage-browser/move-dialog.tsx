@@ -37,11 +37,13 @@ export function MoveDialog({
 }: MoveDialogProps) {
   const [destination, setDestination] = useState(currentKey)
   const [error, setError] = useState("")
+  const [checked, setChecked] = useState(false)
 
   function handleOpenChange(v: boolean) {
     if (v) {
       setDestination(currentKey)
       setError("")
+      setChecked(false)
     }
     onOpenChange(v)
   }
@@ -68,8 +70,7 @@ export function MoveDialog({
     return trimmed
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  function handleCheck() {
     const trimmed = destination.trim()
     if (!trimmed) {
       setError("Destination path cannot be empty.")
@@ -89,6 +90,13 @@ export function MoveDialog({
       return
     }
     setError("")
+    setChecked(true)
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const trimmed = destination.trim()
+    const resolved = resolveDestination(trimmed)
     await onConfirm(resolved)
   }
 
@@ -111,17 +119,30 @@ export function MoveDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="move-input">Destination path</Label>
-              <Input
-                id="move-input"
-                value={destination}
-                onChange={(e) => {
-                  setDestination(e.target.value)
-                  setError("")
-                }}
-                autoFocus
-                disabled={isLoading}
-                className="font-mono"
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="move-input"
+                  value={destination}
+                  onChange={(e) => {
+                    setDestination(e.target.value)
+                    setError("")
+                    setChecked(false)
+                  }}
+                  autoFocus
+                  disabled={isLoading}
+                  className="font-mono flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleCheck}
+                  disabled={isLoading || checked}
+                  className="shrink-0"
+                >
+                  Check
+                </Button>
+              </div>
               {error && <p className="text-xs text-destructive">{error}</p>}
             </div>
           </div>
@@ -134,7 +155,7 @@ export function MoveDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isLoading}>
+            <Button type="submit" disabled={isLoading || !checked}>
               {isLoading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Move
             </Button>
