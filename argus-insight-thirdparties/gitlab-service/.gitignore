@@ -1,0 +1,5 @@
+dist/
+*.log
+docker/data/
+docker/config/
+docker/logs/
