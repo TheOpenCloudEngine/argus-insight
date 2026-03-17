@@ -27,6 +27,11 @@ const ENCODINGS: { label: string; value: string }[] = [
   { label: "UTF-16BE", value: "UTF-16BE" },
 ]
 
+const LINE_DELIMITERS: { label: string; value: string }[] = [
+  { label: "\\n (LF)", value: "\n" },
+  { label: "\\r\\n (CRLF)", value: "\r\n" },
+]
+
 const DELIMITER_PRESETS: { label: string; value: string }[] = [
   { label: "Comma (,)", value: "," },
   { label: "Tab (\\t)", value: "\t" },
@@ -72,6 +77,7 @@ type CsvViewerProps = {
 
 export function CsvViewer({ url, defaultDelimiter }: CsvViewerProps) {
   const [encoding, setEncoding] = useState("UTF-8")
+  const [lineDelimiter, setLineDelimiter] = useState("\n")
   const [delimiter, setDelimiter] = useState(defaultDelimiter)
   /** Tracks which special mode is active: null = preset, "escape" or "custom". */
   const [delimiterMode, setDelimiterMode] = useState<null | "escape" | "custom">(null)
@@ -114,7 +120,7 @@ export function CsvViewer({ url, defaultDelimiter }: CsvViewerProps) {
   }, [isCustomQuote, customQuoteChar, quoteChar])
 
   const fetchAndParse = useCallback(
-    async (enc: string, delim: string, escape: string | undefined, quote: string | false) => {
+    async (enc: string, delim: string, escape: string | undefined, quote: string | false, lineDelim: string) => {
       setIsLoading(true)
       setError(null)
       setRows([])
@@ -126,6 +132,7 @@ export function CsvViewer({ url, defaultDelimiter }: CsvViewerProps) {
 
         const parseConfig: Papa.ParseConfig = {
           delimiter: delim,
+          newline: lineDelim,
           header: false,
           skipEmptyLines: true,
         }
@@ -156,12 +163,12 @@ export function CsvViewer({ url, defaultDelimiter }: CsvViewerProps) {
 
   // Initial load
   useEffect(() => {
-    fetchAndParse(encoding, effectiveDelimiter, effectiveEscapeChar, effectiveQuoteChar)
+    fetchAndParse(encoding, effectiveDelimiter, effectiveEscapeChar, effectiveQuoteChar, lineDelimiter)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url])
 
   function handleRefresh() {
-    fetchAndParse(encoding, effectiveDelimiter, effectiveEscapeChar, effectiveQuoteChar)
+    fetchAndParse(encoding, effectiveDelimiter, effectiveEscapeChar, effectiveQuoteChar, lineDelimiter)
   }
 
   const displayRows = useMemo(() => {
@@ -198,6 +205,22 @@ export function CsvViewer({ url, defaultDelimiter }: CsvViewerProps) {
               {ENCODINGS.map((enc) => (
                 <SelectItem key={enc.value} value={enc.value} className="text-sm">
                   {enc.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-sm">Line Delimiter</Label>
+          <Select value={lineDelimiter} onValueChange={setLineDelimiter}>
+            <SelectTrigger className="w-[130px] h-8 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LINE_DELIMITERS.map((ld) => (
+                <SelectItem key={ld.value} value={ld.value} className="text-sm">
+                  {ld.label}
                 </SelectItem>
               ))}
             </SelectContent>
