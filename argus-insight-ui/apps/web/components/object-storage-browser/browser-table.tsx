@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import { createPortal } from "react-dom"
 import {
   ArrowDown,
   ArrowUp,
@@ -134,13 +135,30 @@ function CopyToast({ message, onDone }: { message: string; onDone: () => void })
     return () => clearTimeout(timer)
   }, [onDone])
 
-  return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-2 duration-200">
+  return createPortal(
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] animate-in fade-in slide-in-from-bottom-2 duration-200">
       <div className="bg-foreground text-background text-sm px-4 py-2 rounded-md shadow-lg">
         {message}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
+}
+
+function copyToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text)
+  }
+  // Fallback for non-secure contexts
+  const textarea = document.createElement("textarea")
+  textarea.value = text
+  textarea.style.position = "fixed"
+  textarea.style.opacity = "0"
+  document.body.appendChild(textarea)
+  textarea.select()
+  document.execCommand("copy")
+  document.body.removeChild(textarea)
+  return Promise.resolve()
 }
 
 export function BrowserTable({
@@ -159,8 +177,12 @@ export function BrowserTable({
   const hideToast = useCallback(() => setToastMessage(null), [])
 
   async function handleCopyPath(entry: StorageEntry) {
-    await navigator.clipboard.writeText(entry.key)
-    setToastMessage("Copied to clipboard.")
+    try {
+      await copyToClipboard(entry.key)
+      setToastMessage("Copied to clipboard.")
+    } catch {
+      setToastMessage("Failed to copy.")
+    }
   }
 
   // Disable sorting when the directory has >= 300 entries for performance
