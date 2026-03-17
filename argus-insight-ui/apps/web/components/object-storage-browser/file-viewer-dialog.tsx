@@ -98,6 +98,11 @@ export function isViewableFile(name: string): boolean {
   return viewableExtensions.has(getExtension(name))
 }
 
+/** Check whether a file is CSV or TSV. */
+export function isCsvTsvFile(name: string): boolean {
+  return getExtension(name) in csvExtensions
+}
+
 type FileViewerDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void

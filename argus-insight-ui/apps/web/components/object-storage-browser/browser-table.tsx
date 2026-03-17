@@ -18,6 +18,7 @@ import {
   FileSpreadsheet,
   FileType,
   Eye,
+  FileTerminal,
   Pencil,
   Trash2,
   Info,
@@ -36,9 +37,9 @@ import {
 
 import type { StorageEntry, SortConfig, SortDirection } from "./types"
 import { entryId, formatBytes, formatDate, getFileCategory } from "./utils"
-import { isViewableFile } from "./file-viewer-dialog"
+import { isCsvTsvFile, isViewableFile } from "./file-viewer-dialog"
 
-export type EntryContextAction = "rename" | "delete" | "properties" | "view" | "download"
+export type EntryContextAction = "rename" | "delete" | "properties" | "view" | "view-cat" | "download"
 
 type BrowserTableProps = {
   entries: StorageEntry[]
@@ -355,6 +356,14 @@ export function BrowserTable({
                     >
                       <Eye className="h-4 w-4" />
                       View
+                    </ContextMenuItem>
+                  )}
+                  {entry.kind === "object" && isCsvTsvFile(entry.name) && (
+                    <ContextMenuItem
+                      onClick={() => onContextAction?.("view-cat", entry)}
+                    >
+                      <FileTerminal className="h-4 w-4" />
+                      View (Cat)
                     </ContextMenuItem>
                   )}
                   {entry.kind === "object" && (

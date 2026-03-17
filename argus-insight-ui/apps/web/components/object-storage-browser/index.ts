@@ -10,6 +10,8 @@ export { RenameDialog } from "./rename-dialog"
 export { UploadProgressDialog } from "./upload-progress-dialog"
 export { FileViewerDialog } from "./file-viewer-dialog"
 export { CsvViewer } from "./csv-viewer"
+export { CatViewerDialog } from "./cat-viewer-dialog"
+export { HexViewer } from "./hex-viewer"
 
 export type {
   StorageFolder,

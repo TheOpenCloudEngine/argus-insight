@@ -23,6 +23,7 @@ import { PropertiesDialog } from "./properties-dialog"
 import { RenameDialog } from "./rename-dialog"
 import { UploadProgressDialog, type FileUploadStatus } from "./upload-progress-dialog"
 import { FileViewerDialog, isViewableFile } from "./file-viewer-dialog"
+import { CatViewerDialog } from "./cat-viewer-dialog"
 import { entryId } from "./utils"
 
 type ObjectStorageBrowserProps = {
@@ -71,6 +72,10 @@ export function ObjectStorageBrowser({
   // --- File viewer dialog state ---
   const [viewerEntry, setViewerEntry] = useState<StorageEntry | null>(null)
   const [viewerOpen, setViewerOpen] = useState(false)
+
+  // --- Cat viewer dialog state ---
+  const [catViewerEntry, setCatViewerEntry] = useState<StorageEntry | null>(null)
+  const [catViewerOpen, setCatViewerOpen] = useState(false)
 
   // --- Context menu dialog state ---
   const [contextEntry, setContextEntry] = useState<StorageEntry | null>(null)
@@ -291,6 +296,10 @@ case "properties":
       case "view":
         setViewerEntry(entry)
         setViewerOpen(true)
+        break
+      case "view-cat":
+        setCatViewerEntry(entry)
+        setCatViewerOpen(true)
         break
       case "download":
         downloadAsOctetStream(entry.key)
@@ -585,6 +594,12 @@ async function handleContextDelete() {
         open={viewerOpen}
         onOpenChange={setViewerOpen}
         entry={viewerEntry}
+        getDownloadUrl={(key) => dataSource.getDownloadUrl(bucket, key)}
+      />
+      <CatViewerDialog
+        open={catViewerOpen}
+        onOpenChange={setCatViewerOpen}
+        entry={catViewerEntry}
         getDownloadUrl={(key) => dataSource.getDownloadUrl(bucket, key)}
       />
     </div>
