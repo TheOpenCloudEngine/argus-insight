@@ -23,6 +23,7 @@ import { PropertiesDialog } from "./properties-dialog"
 import { RenameDialog } from "./rename-dialog"
 import { MoveDialog } from "./move-dialog"
 import { UploadProgressDialog, type FileUploadStatus } from "./upload-progress-dialog"
+import { FileViewerDialog, isViewableFile } from "./file-viewer-dialog"
 
 type ObjectStorageBrowserProps = {
   /** The bucket name to browse. */
@@ -66,6 +67,10 @@ export function ObjectStorageBrowser({
   // --- Properties dialog state ---
   const [propertiesEntry, setPropertiesEntry] = useState<StorageEntry | null>(null)
   const [propertiesOpen, setPropertiesOpen] = useState(false)
+
+  // --- File viewer dialog state ---
+  const [viewerEntry, setViewerEntry] = useState<StorageEntry | null>(null)
+  const [viewerOpen, setViewerOpen] = useState(false)
 
   // --- Context menu dialog state ---
   const [contextEntry, setContextEntry] = useState<StorageEntry | null>(null)
@@ -260,6 +265,10 @@ export function ObjectStorageBrowser({
         setPropertiesEntry(entry)
         setPropertiesOpen(true)
         break
+      case "view":
+        setViewerEntry(entry)
+        setViewerOpen(true)
+        break
     }
   }
 
@@ -453,6 +462,20 @@ export function ObjectStorageBrowser({
               setPropertiesOpen(true)
             }
           }}
+          onView={() => {
+            const key = Array.from(selectedKeys)[0]
+            const entry = entries.find((e) => e.key === key)
+            if (entry) {
+              setViewerEntry(entry)
+              setViewerOpen(true)
+            }
+          }}
+          viewDisabled={(() => {
+            if (selectedKeys.size !== 1) return true
+            const key = Array.from(selectedKeys)[0]
+            const entry = entries.find((e) => e.key === key)
+            return !entry || entry.kind === "folder" || !isViewableFile(entry.name)
+          })()}
           onRefresh={() => fetchData(prefix)}
           isLoading={isLoading}
         />
@@ -551,6 +574,12 @@ export function ObjectStorageBrowser({
         selectedKeys={contextEntry ? [contextEntry.key] : []}
         onConfirm={handleContextDelete}
         isLoading={dialogLoading}
+      />
+      <FileViewerDialog
+        open={viewerOpen}
+        onOpenChange={setViewerOpen}
+        entry={viewerEntry}
+        getDownloadUrl={(key) => dataSource.getDownloadUrl(bucket, key)}
       />
     </div>
   )

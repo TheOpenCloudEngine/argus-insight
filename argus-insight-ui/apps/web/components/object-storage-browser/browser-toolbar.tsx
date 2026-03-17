@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import {
   Download,
+  Eye,
   FolderPlus,
   Info,
   Pencil,
@@ -26,6 +27,8 @@ type BrowserToolbarProps = {
   onDownload: () => void
   onRename: () => void
   onProperties: () => void
+  onView: () => void
+  viewDisabled: boolean
   onRefresh: () => void
   isLoading: boolean
 }
@@ -44,6 +47,8 @@ export function BrowserToolbar({
   onDownload,
   onRename,
   onProperties,
+  onView,
+  viewDisabled,
   onRefresh,
   isLoading,
 }: BrowserToolbarProps) {
@@ -153,7 +158,7 @@ export function BrowserToolbar({
 
         <ToolbarSeparator />
 
-        {/* Properties */}
+        {/* Properties / View */}
         <Button
           variant="outline"
           size="sm"
@@ -163,6 +168,16 @@ export function BrowserToolbar({
         >
           <Info className="h-4 w-4" />
           Properties
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onView}
+          disabled={viewDisabled}
+          className="h-8 gap-1.5"
+        >
+          <Eye className="h-4 w-4" />
+          View
         </Button>
 
         <ToolbarSeparator />

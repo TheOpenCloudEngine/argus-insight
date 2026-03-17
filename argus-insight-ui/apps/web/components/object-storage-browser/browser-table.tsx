@@ -14,6 +14,7 @@ import {
   Folder,
   FileSpreadsheet,
   FileType,
+  Eye,
   Pencil,
   Trash2,
   FolderInput,
@@ -33,7 +34,7 @@ import {
 import type { StorageEntry, SortConfig, SortDirection } from "./types"
 import { formatBytes, formatDate, getFileCategory } from "./utils"
 
-export type EntryContextAction = "rename" | "delete" | "move" | "properties"
+export type EntryContextAction = "rename" | "delete" | "move" | "properties" | "view"
 
 type BrowserTableProps = {
   entries: StorageEntry[]
@@ -302,6 +303,12 @@ export function BrowserTable({
                     <Info className="h-4 w-4" />
                     Properties
                   </ContextMenuItem>
+                  {entry.kind === "object" && (
+                    <ContextMenuItem onClick={() => onContextAction?.("view", entry)}>
+                      <Eye className="h-4 w-4" />
+                      View
+                    </ContextMenuItem>
+                  )}
                 </ContextMenuContent>
               </ContextMenu>
             )
