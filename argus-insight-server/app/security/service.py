@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 
 from sqlalchemy import select
@@ -14,6 +15,10 @@ logger = logging.getLogger(__name__)
 CA_CERT_FILENAME = "ca.crt"
 CA_KEY_FILENAME = "ca.key"
 DEFAULT_CERT_DIR = "/opt/argus-insight-server/certs"
+OPENSSL_PATH_ERROR = (
+    "Command Tab의 OpenSSL Absolute Path에 "
+    "openssl의 절대경로를 지정해주십시오."
+)
 
 
 async def _get_config_value(session: AsyncSession, category: str, key: str) -> str:
@@ -309,3 +314,121 @@ async def delete_ca_key(session: AsyncSession) -> dict:
     key_file.unlink()
     logger.info("CA key deleted successfully: %s", key_file)
     return {"success": True, "message": "CA Key가 삭제되었습니다."}
+
+
+# --------------------------------------------------------------------------- #
+# Self-Signed CA Generation
+# --------------------------------------------------------------------------- #
+
+
+async def generate_self_signed_ca(
+    session: AsyncSession,
+    *,
+    country: str,
+    state: str,
+    locality: str,
+    organization: str,
+    org_unit: str,
+    common_name: str,
+    days: int,
+    key_bits: int,
+) -> dict:
+    """Generate a self-signed CA certificate and key.
+
+    Steps:
+    1. Validate OpenSSL path exists and is a real file.
+    2. Resolve the CA cert directory; create if needed.
+    3. Generate RSA private key with openssl genrsa.
+    4. Generate self-signed CA certificate with openssl req -x509.
+    5. Return filenames on success.
+    """
+    cert_dir = await get_ca_cert_dir(session)
+    openssl_path = await get_openssl_path(session)
+
+    # Validate openssl path
+    if not openssl_path:
+        logger.error("OpenSSL path is not configured")
+        raise ValueError(OPENSSL_PATH_ERROR)
+
+    if not os.path.isfile(openssl_path):
+        logger.error("OpenSSL binary not found at configured path: %s", openssl_path)
+        raise ValueError(OPENSSL_PATH_ERROR)
+
+    cert_dir_path = Path(cert_dir)
+
+    # Create directory if it doesn't exist
+    logger.info("Ensuring CA directory exists for generation: %s", cert_dir)
+    try:
+        cert_dir_path.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        logger.error("Failed to create CA directory %s: %s", cert_dir, exc)
+        raise PermissionError("디렉토리를 생성할 수 없습니다.") from exc
+
+    key_file = cert_dir_path / CA_KEY_FILENAME
+    cert_file = cert_dir_path / CA_CERT_FILENAME
+
+    # Step 1: Generate RSA private key
+    logger.info("Generating RSA private key: bits=%d, path=%s", key_bits, key_file)
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            openssl_path, "genrsa", "-out", str(key_file), str(key_bits),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            logger.error("Failed to generate RSA key: %s", stderr.decode())
+            key_file.unlink(missing_ok=True)
+            raise ValueError(f"RSA Key 생성에 실패했습니다: {stderr.decode().strip()}")
+    except FileNotFoundError:
+        logger.error("OpenSSL binary not found at %s", openssl_path)
+        raise ValueError(OPENSSL_PATH_ERROR)
+
+    # Set key file permissions to 400
+    logger.info("Setting key file permissions to 400: %s", key_file)
+    try:
+        os.chmod(str(key_file), 0o400)
+    except OSError as exc:
+        logger.warning("Failed to set key file permissions: %s", exc)
+
+    # Step 2: Generate self-signed CA certificate
+    subj = f"/C={country}/ST={state}/L={locality}/O={organization}/OU={org_unit}/CN={common_name}"
+    logger.info(
+        "Generating self-signed CA certificate: subj=%s, days=%d, path=%s",
+        subj, days, cert_file,
+    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            openssl_path, "req", "-x509", "-new", "-nodes",
+            "-key", str(key_file),
+            "-sha256",
+            "-days", str(days),
+            "-out", str(cert_file),
+            "-subj", subj,
+            "-addext", "basicConstraints=critical,CA:TRUE",
+            "-addext", "keyUsage=critical,keyCertSign,cRLSign",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            logger.error("Failed to generate CA certificate: %s", stderr.decode())
+            key_file.unlink(missing_ok=True)
+            cert_file.unlink(missing_ok=True)
+            raise ValueError(f"CA 인증서 생성에 실패했습니다: {stderr.decode().strip()}")
+    except FileNotFoundError:
+        logger.error("OpenSSL binary not found at %s", openssl_path)
+        key_file.unlink(missing_ok=True)
+        raise ValueError(OPENSSL_PATH_ERROR)
+
+    logger.info(
+        "Self-signed CA generated successfully: cert=%s, key=%s",
+        cert_file, key_file,
+    )
+    return {
+        "success": True,
+        "cert_filename": CA_CERT_FILENAME,
+        "key_filename": CA_KEY_FILENAME,
+        "cert_path": str(cert_file),
+        "key_path": str(key_file),
+    }

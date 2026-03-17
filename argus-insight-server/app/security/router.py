@@ -16,6 +16,8 @@ from app.security.schemas import (
     CaKeyStatusResponse,
     CaKeyUploadResponse,
     CaKeyViewResponse,
+    GenerateSelfSignedCaRequest,
+    GenerateSelfSignedCaResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -132,3 +134,37 @@ async def ca_key_delete(
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return CaKeyDeleteResponse(**result)
+
+
+# --------------------------------------------------------------------------- #
+# Self-Signed CA generation
+# --------------------------------------------------------------------------- #
+
+
+@router.post("/ca/generate", response_model=GenerateSelfSignedCaResponse)
+async def ca_generate_self_signed(
+    body: GenerateSelfSignedCaRequest,
+    session: AsyncSession = Depends(get_session),
+) -> GenerateSelfSignedCaResponse:
+    """Generate a self-signed CA certificate and key."""
+    logger.info(
+        "Self-signed CA generation requested: CN=%s, days=%d, bits=%d",
+        body.common_name, body.days, body.key_bits,
+    )
+    try:
+        result = await service.generate_self_signed_ca(
+            session,
+            country=body.country,
+            state=body.state,
+            locality=body.locality,
+            organization=body.organization,
+            org_unit=body.org_unit,
+            common_name=body.common_name,
+            days=body.days,
+            key_bits=body.key_bits,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return GenerateSelfSignedCaResponse(**result)

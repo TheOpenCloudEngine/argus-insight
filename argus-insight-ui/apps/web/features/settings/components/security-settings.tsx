@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Eye, Loader2, Save, Trash2, Upload } from "lucide-react"
+import { Eye, Loader2, Save, ShieldCheck, Trash2, Upload } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@workspace/ui/components/card"
@@ -21,6 +21,7 @@ import {
   fetchCaCertStatus,
   fetchCaKeyStatus,
   fetchInfraConfig,
+  generateSelfSignedCa,
   updateInfraCategory,
   uploadCaCert,
   uploadCaKey,
@@ -150,6 +151,170 @@ function ViewKeyDialog({
 }
 
 // --------------------------------------------------------------------------- //
+// Generate Self-Signed CA Dialog
+// --------------------------------------------------------------------------- //
+
+const DEFAULT_GEN_FORM = {
+  country: "KR",
+  state: "Gyeonggi-do",
+  locality: "Yongin-si",
+  organization: "Open Cloud Engine Community",
+  org_unit: "Platform Engineering",
+  common_name: "Open Cloud Engine Community CA",
+  days: "3650",
+  key_bits: "4096",
+}
+
+function GenerateCaDialog({
+  open,
+  generating,
+  onClose,
+  onGenerate,
+}: {
+  open: boolean
+  generating: boolean
+  onClose: () => void
+  onGenerate: (params: {
+    country: string
+    state: string
+    locality: string
+    organization: string
+    org_unit: string
+    common_name: string
+    days: number
+    key_bits: number
+  }) => void
+}) {
+  const [form, setForm] = useState(DEFAULT_GEN_FORM)
+
+  function handleChange(key: keyof typeof form, value: string) {
+    setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  function handleGenerate() {
+    onGenerate({
+      country: form.country,
+      state: form.state,
+      locality: form.locality,
+      organization: form.organization,
+      org_unit: form.org_unit,
+      common_name: form.common_name,
+      days: parseInt(form.days, 10) || 3650,
+      key_bits: parseInt(form.key_bits, 10) || 4096,
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Generate Self-Signed CA</DialogTitle>
+        </DialogHeader>
+        <div className="flex-1 overflow-y-auto space-y-4 min-h-0 pr-1">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="gen-country" className="text-xs">Country (C)</Label>
+              <Input
+                id="gen-country"
+                value={form.country}
+                onChange={(e) => handleChange("country", e.target.value)}
+                placeholder="KR"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="gen-state" className="text-xs">State (ST)</Label>
+              <Input
+                id="gen-state"
+                value={form.state}
+                onChange={(e) => handleChange("state", e.target.value)}
+                placeholder="Gyeonggi-do"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="gen-locality" className="text-xs">Locality (L)</Label>
+              <Input
+                id="gen-locality"
+                value={form.locality}
+                onChange={(e) => handleChange("locality", e.target.value)}
+                placeholder="Yongin-si"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="gen-org" className="text-xs">Organization (O)</Label>
+              <Input
+                id="gen-org"
+                value={form.organization}
+                onChange={(e) => handleChange("organization", e.target.value)}
+                placeholder="Open Cloud Engine Community"
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="gen-ou" className="text-xs">Organizational Unit (OU)</Label>
+            <Input
+              id="gen-ou"
+              value={form.org_unit}
+              onChange={(e) => handleChange("org_unit", e.target.value)}
+              placeholder="Platform Engineering"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="gen-cn" className="text-xs">Common Name (CN)</Label>
+            <Input
+              id="gen-cn"
+              value={form.common_name}
+              onChange={(e) => handleChange("common_name", e.target.value)}
+              placeholder="Open Cloud Engine Community CA"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="gen-days" className="text-xs">Validity (days)</Label>
+              <Input
+                id="gen-days"
+                type="number"
+                value={form.days}
+                onChange={(e) => handleChange("days", e.target.value)}
+                placeholder="3650"
+                min={1}
+                max={36500}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="gen-bits" className="text-xs">RSA Key Bits</Label>
+              <Input
+                id="gen-bits"
+                type="number"
+                value={form.key_bits}
+                onChange={(e) => handleChange("key_bits", e.target.value)}
+                placeholder="4096"
+                min={2048}
+                step={1024}
+              />
+            </div>
+          </div>
+        </div>
+        <DialogFooter className="gap-2">
+          <Button size="sm" variant="outline" onClick={onClose} disabled={generating}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={handleGenerate} disabled={generating}>
+            {generating ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+            ) : (
+              <ShieldCheck className="h-4 w-4 mr-1.5" />
+            )}
+            Generate
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// --------------------------------------------------------------------------- //
 // Main Component
 // --------------------------------------------------------------------------- //
 
@@ -184,6 +349,10 @@ export function SecuritySettings() {
     loading: boolean
     data: CaKeyViewData | null
   }>({ open: false, loading: false, data: null })
+
+  // Generate dialog
+  const [generateDialog, setGenerateDialog] = useState(false)
+  const [generating, setGenerating] = useState(false)
 
   // Status messages
   const [statusMessage, setStatusMessage] = useState<{
@@ -243,6 +412,40 @@ export function SecuritySettings() {
       showStatus("error", err instanceof Error ? err.message : "Failed to save")
     } finally {
       setSavingDir(false)
+    }
+  }
+
+  // ---- Generate Self-Signed CA ----
+
+  function handleOpenGenerate() {
+    if (!certDir.trim()) {
+      showError("CA Certificate Directory를 위한 경로를 지정해주십시오.")
+      return
+    }
+    setGenerateDialog(true)
+  }
+
+  async function handleGenerate(params: {
+    country: string
+    state: string
+    locality: string
+    organization: string
+    org_unit: string
+    common_name: string
+    days: number
+    key_bits: number
+  }) {
+    setGenerating(true)
+    try {
+      const result = await generateSelfSignedCa(params)
+      setCertFilename(result.cert_filename)
+      setKeyFilename(result.key_filename)
+      setGenerateDialog(false)
+      showStatus("success", "Self-signed CA generated successfully")
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Generation failed")
+    } finally {
+      setGenerating(false)
     }
   }
 
@@ -375,14 +578,20 @@ export function SecuritySettings() {
                 Manage the CA certificate and key used for TLS/SSL operations
               </CardDescription>
             </div>
-            <Button size="sm" onClick={handleSaveDir} disabled={savingDir}>
-              {savingDir ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
-              ) : (
-                <Save className="h-4 w-4 mr-1.5" />
-              )}
-              Save
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleSaveDir} disabled={savingDir}>
+                {savingDir ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                ) : (
+                  <Save className="h-4 w-4 mr-1.5" />
+                )}
+                Save
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleOpenGenerate}>
+                <ShieldCheck className="h-4 w-4 mr-1.5" />
+                Generate Self-Signed CA
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -545,6 +754,14 @@ export function SecuritySettings() {
         open={viewKeyDialog.open && !viewKeyDialog.loading}
         data={viewKeyDialog.data}
         onClose={() => setViewKeyDialog({ open: false, loading: false, data: null })}
+      />
+
+      {/* Generate Self-Signed CA Dialog */}
+      <GenerateCaDialog
+        open={generateDialog}
+        generating={generating}
+        onClose={() => setGenerateDialog(false)}
+        onGenerate={handleGenerate}
       />
 
       {/* Loading overlay for view dialogs */}

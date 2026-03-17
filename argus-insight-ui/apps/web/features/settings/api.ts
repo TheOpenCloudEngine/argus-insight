@@ -183,3 +183,44 @@ export async function deleteCaKey(): Promise<void> {
     throw new Error(data.detail || `Delete failed: ${res.status}`)
   }
 }
+
+// --------------------------------------------------------------------------- //
+// Self-Signed CA Generation
+// --------------------------------------------------------------------------- //
+
+export type GenerateSelfSignedCaParams = {
+  country: string
+  state: string
+  locality: string
+  organization: string
+  org_unit: string
+  common_name: string
+  days: number
+  key_bits: number
+}
+
+export type GenerateSelfSignedCaResult = {
+  success: boolean
+  cert_filename: string
+  key_filename: string
+  cert_path: string
+  key_path: string
+}
+
+/**
+ * Generate a self-signed CA certificate and key on the server.
+ */
+export async function generateSelfSignedCa(
+  params: GenerateSelfSignedCaParams,
+): Promise<GenerateSelfSignedCaResult> {
+  const res = await fetch(`${SECURITY_BASE}/ca/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: `Generation failed: ${res.status}` }))
+    throw new Error(data.detail || `Generation failed: ${res.status}`)
+  }
+  return res.json()
+}

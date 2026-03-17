@@ -63,6 +63,33 @@ class CaKeyDeleteResponse(BaseModel):
     message: str
 
 
+class GenerateSelfSignedCaRequest(BaseModel):
+    """Request to generate a self-signed CA certificate and key."""
+
+    country: str = Field(default="KR", description="Country code (C)")
+    state: str = Field(default="Gyeonggi-do", description="State/Province (ST)")
+    locality: str = Field(default="Yongin-si", description="City/Locality (L)")
+    organization: str = Field(
+        default="Open Cloud Engine Community", description="Organization name (O)"
+    )
+    org_unit: str = Field(default="Platform Engineering", description="Organizational Unit (OU)")
+    common_name: str = Field(
+        default="Open Cloud Engine Community CA", description="Common Name (CN)"
+    )
+    days: int = Field(default=3650, ge=1, le=36500, description="Certificate validity in days")
+    key_bits: int = Field(default=4096, description="RSA key size in bits")
+
+
+class GenerateSelfSignedCaResponse(BaseModel):
+    """Response after generating a self-signed CA."""
+
+    success: bool
+    cert_filename: str
+    key_filename: str
+    cert_path: str
+    key_path: str
+
+
 class ErrorResponse(BaseModel):
     """Error response with detail message."""
 
