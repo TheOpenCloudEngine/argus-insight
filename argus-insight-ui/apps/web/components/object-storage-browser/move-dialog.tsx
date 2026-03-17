@@ -68,17 +68,6 @@ export function MoveDialog({
     return trimmed
   }
 
-  /** Check if the destination conflicts with an existing file. */
-  function getConflictError(trimmed: string): string | null {
-    if (!trimmed || trimmed === currentKey) return null
-    const resolved = resolveDestination(trimmed)
-    if (resolved === currentKey) return null
-    if (existingObjectKeys.has(resolved)) {
-      return "This path is unavailable. It already exists."
-    }
-    return null
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const trimmed = destination.trim()
@@ -90,14 +79,13 @@ export function MoveDialog({
       setError("Destination is the same as the current path.")
       return
     }
-    const conflict = getConflictError(trimmed)
-    if (conflict) {
-      setError(conflict)
-      return
-    }
     const resolved = resolveDestination(trimmed)
     if (resolved === currentKey) {
       setError("Destination is the same as the current path.")
+      return
+    }
+    if (existingObjectKeys.has(resolved)) {
+      setError("해당 위치에 Object가 존재합니다.")
       return
     }
     setError("")
@@ -112,6 +100,9 @@ export function MoveDialog({
             <DialogTitle>Move</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3 py-4">
+            <p className="text-xs text-destructive">
+              Destination Path로 지정한 위치에 같은 Object가 존재하는 경우 Overwrite할 수 있습니다.
+            </p>
             <div>
               <Label className="text-sm font-medium">Current path</Label>
               <p className="text-sm mt-1 font-mono bg-muted px-2 py-1 rounded break-all">
@@ -131,12 +122,8 @@ export function MoveDialog({
                 disabled={isLoading}
                 className="font-mono"
               />
-              {(() => {
-                const conflict = getConflictError(destination.trim())
-                return conflict ? <p className="text-xs text-destructive">{conflict}</p> : null
-              })()}
+              {error && <p className="text-xs text-destructive">{error}</p>}
             </div>
-            {error && <p className="text-xs text-destructive">{error}</p>}
           </div>
           <DialogFooter>
             <Button
