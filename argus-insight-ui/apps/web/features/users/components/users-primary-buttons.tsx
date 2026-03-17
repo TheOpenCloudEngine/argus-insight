@@ -1,35 +1,51 @@
 /**
  * Users Primary Action Buttons component.
  *
- * Renders the top-level action buttons for the user management page:
+ * Renders a single "Action" dropdown button that contains:
  * - **Activate**: Opens the bulk activate confirmation dialog for selected users.
  * - **Deactivate**: Opens the bulk deactivate confirmation dialog for selected users.
  * - **Add**: Opens the user creation form dialog.
  *
- * These buttons are placed in the page header area and operate on the users
- * selected via table checkboxes (for Activate/Deactivate) or independently (for Add).
  * Dialog state is managed through the UsersProvider context.
  */
 
 "use client"
 
+import { ChevronDown } from "lucide-react"
+
 import { Button } from "@workspace/ui/components/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@workspace/ui/components/dropdown-menu"
 import { useUsers } from "./users-provider"
 
 export function UsersPrimaryButtons() {
   const { setOpen } = useUsers()
 
   return (
-    <div className="flex gap-2">
-      <Button onClick={() => setOpen("activate")}>
-        Activate
-      </Button>
-      <Button onClick={() => setOpen("deactivate")}>
-        Deactivate
-      </Button>
-      <Button onClick={() => setOpen("add")}>
-        Add
-      </Button>
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" className="h-8 bg-blue-600 text-white hover:bg-blue-700">
+          Action
+          <ChevronDown className="ml-1 size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={() => setOpen("activate")}>
+          Activate
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => setOpen("deactivate")}>
+          Deactivate
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => setOpen("add")}>
+          Add
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

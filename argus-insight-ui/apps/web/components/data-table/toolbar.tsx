@@ -90,6 +90,7 @@ export function DataTableToolbar<TData>({
               Search
             </Button>
           )}
+          {extraActions}
           {onClear && (
             <Button
               variant="outline"
@@ -100,11 +101,6 @@ export function DataTableToolbar<TData>({
               <X className="mr-1 h-4 w-4" />
               Clear
             </Button>
-          )}
-          {extraActions && (
-            <div className="ml-2">
-              {extraActions}
-            </div>
           )}
         </div>
       )}

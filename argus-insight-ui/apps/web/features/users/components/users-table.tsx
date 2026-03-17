@@ -51,6 +51,7 @@ import {
 import { roles } from "../data/data"
 import { type User } from "../data/schema"
 import { usersColumns as columns } from "./users-columns"
+import { UsersPrimaryButtons } from "./users-primary-buttons"
 import { useUsers } from "./users-provider"
 
 type UsersTableProps = {
@@ -199,6 +200,7 @@ export function UsersTable({ data, isLoading }: UsersTableProps) {
         ]}
         onSearch={handleSearch}
         onClear={handleClear}
+        extraActions={<UsersPrimaryButtons />}
       />
 
       {/* Main table with header and body */}
