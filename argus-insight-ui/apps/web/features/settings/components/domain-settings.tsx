@@ -3,6 +3,16 @@
 import { useCallback, useEffect, useState } from "react"
 import { Loader2, Save } from "lucide-react"
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@workspace/ui/components/alert-dialog"
 import { Button } from "@workspace/ui/components/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@workspace/ui/components/card"
 import { Input } from "@workspace/ui/components/input"
@@ -16,6 +26,26 @@ import {
 } from "@/features/settings/api"
 
 const DNS_SERVER_COUNT = 3
+
+// --------------------------------------------------------------------------- //
+// Validation helpers
+// --------------------------------------------------------------------------- //
+
+const IP_REGEX = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
+
+function isValidIp(value: string): boolean {
+  const match = value.match(IP_REGEX)
+  if (!match) return false
+  return match.slice(1).every((octet) => {
+    const n = parseInt(octet, 10)
+    return n >= 0 && n <= 255
+  })
+}
+
+function isValidPort(value: string): boolean {
+  const n = parseInt(value, 10)
+  return Number.isInteger(n) && n >= 1 && n <= 65535 && String(n) === value
+}
 
 // --------------------------------------------------------------------------- //
 // Domain Settings Section
@@ -32,41 +62,72 @@ function DomainSettingsSection({
   onSave: () => void
   saving: boolean
 }) {
+  const [confirmOpen, setConfirmOpen] = useState(false)
+
+  const trimmed = domainName.trim()
+  const canSave = trimmed.length > 0
+
+  function handleSaveClick() {
+    setConfirmOpen(true)
+  }
+
+  function handleConfirm() {
+    setConfirmOpen(false)
+    onSave()
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>Domain</CardTitle>
-            <CardDescription>
-              Domain name configuration
-            </CardDescription>
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Domain</CardTitle>
+              <CardDescription>
+                Domain name configuration
+              </CardDescription>
+            </div>
+            <Button size="sm" onClick={handleSaveClick} disabled={saving || !canSave}>
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+              ) : (
+                <Save className="h-4 w-4 mr-1.5" />
+              )}
+              Save
+            </Button>
           </div>
-          <Button size="sm" onClick={onSave} disabled={saving}>
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
-            ) : (
-              <Save className="h-4 w-4 mr-1.5" />
-            )}
-            Save
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-2">
-          <Label htmlFor="infra-domain-name">Domain Name</Label>
-          <Input
-            id="infra-domain-name"
-            value={domainName}
-            onChange={(e) => onDomainNameChange(e.target.value)}
-            placeholder="e.g. example.com"
-          />
-          <p className="text-xs text-muted-foreground">
-            The primary domain name for this infrastructure
-          </p>
-        </div>
-      </CardContent>
-    </Card>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <Label htmlFor="infra-domain-name">Domain Name</Label>
+            <Input
+              id="infra-domain-name"
+              value={domainName}
+              onChange={(e) => onDomainNameChange(e.target.value)}
+              placeholder="e.g. example.com"
+            />
+            <p className="text-xs text-muted-foreground">
+              The primary domain name for this infrastructure
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Domain Name 변경 확인</AlertDialogTitle>
+            <AlertDialogDescription>
+              Domain Name을 변경하면 시스템 전체에 영향을 받을 수 있습니다. 인증서 및 호스트명 등에 영향을 줄 수 있습니다. 계속 진행하시겠습니까?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirm}>Yes</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }
 
@@ -85,6 +146,17 @@ function DnsServersSection({
   onSave: () => void
   saving: boolean
 }) {
+  // Compute validation state for each server
+  const validations = dnsServers.map((s) => {
+    const trimmed = s.trim()
+    if (trimmed === "") return { hasValue: false, valid: true }
+    return { hasValue: true, valid: isValidIp(trimmed) }
+  })
+
+  const hasAtLeastOneValid = validations.some((v) => v.hasValue && v.valid)
+  const hasInvalid = validations.some((v) => v.hasValue && !v.valid)
+  const canSave = hasAtLeastOneValid && !hasInvalid
+
   return (
     <Card>
       <CardHeader>
@@ -95,7 +167,7 @@ function DnsServersSection({
               Configure up to {DNS_SERVER_COUNT} DNS servers
             </CardDescription>
           </div>
-          <Button size="sm" onClick={onSave} disabled={saving}>
+          <Button size="sm" onClick={onSave} disabled={saving || !canSave}>
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
             ) : (
@@ -107,19 +179,27 @@ function DnsServersSection({
       </CardHeader>
       <CardContent>
         <div className="grid gap-3 sm:grid-cols-3">
-          {Array.from({ length: DNS_SERVER_COUNT }, (_, i) => (
-            <div key={i} className="space-y-1.5">
-              <Label htmlFor={`dns-server-${i + 1}`} className="text-xs">
-                DNS Server {i + 1}
-              </Label>
-              <Input
-                id={`dns-server-${i + 1}`}
-                value={dnsServers[i]}
-                onChange={(e) => onDnsServerChange(i, e.target.value)}
-                placeholder={`e.g. 8.8.${i === 0 ? "8.8" : i === 1 ? "4.4" : "0.0"}`}
-              />
-            </div>
-          ))}
+          {Array.from({ length: DNS_SERVER_COUNT }, (_, i) => {
+            const v = validations[i]
+            return (
+              <div key={i} className="space-y-1.5">
+                <Label htmlFor={`dns-server-${i + 1}`}>
+                  DNS Server {i + 1}
+                </Label>
+                <Input
+                  id={`dns-server-${i + 1}`}
+                  value={dnsServers[i]}
+                  onChange={(e) => onDnsServerChange(i, e.target.value)}
+                  placeholder={`e.g. 8.8.${i === 0 ? "8.8" : i === 1 ? "4.4" : "0.0"}`}
+                />
+                {v.hasValue && !v.valid && (
+                  <p className="text-xs text-destructive">
+                    IP 주소 형식이 아닙니다
+                  </p>
+                )}
+              </div>
+            )
+          })}
         </div>
       </CardContent>
     </Card>
@@ -141,6 +221,21 @@ function PowerDnsSettingsSection({
   onSave: () => void
   saving: boolean
 }) {
+  const ipTrimmed = values.ip.trim()
+  const portTrimmed = values.port.trim()
+  const apiKeyTrimmed = values.api_key.trim()
+
+  const ipHasValue = ipTrimmed.length > 0
+  const portHasValue = portTrimmed.length > 0
+  const apiKeyHasValue = apiKeyTrimmed.length > 0
+
+  const ipValid = !ipHasValue || isValidIp(ipTrimmed)
+  const portValid = !portHasValue || isValidPort(portTrimmed)
+
+  const canSave =
+    ipHasValue && portHasValue && apiKeyHasValue &&
+    ipValid && portValid
+
   return (
     <Card>
       <CardHeader>
@@ -151,7 +246,7 @@ function PowerDnsSettingsSection({
               PowerDNS server connection settings
             </CardDescription>
           </div>
-          <Button size="sm" onClick={onSave} disabled={saving}>
+          <Button size="sm" onClick={onSave} disabled={saving || !canSave}>
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
             ) : (
@@ -164,16 +259,25 @@ function PowerDnsSettingsSection({
       <CardContent>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="pdns-ip">PowerDNS IP</Label>
+            <Label htmlFor="pdns-ip">
+              PowerDNS IP <span className="text-destructive">*</span>
+            </Label>
             <Input
               id="pdns-ip"
               value={values.ip}
               onChange={(e) => onChange("ip", e.target.value)}
               placeholder="e.g. 10.0.1.50"
             />
+            {ipHasValue && !ipValid && (
+              <p className="text-xs text-destructive">
+                IP 주소 형식이 아닙니다
+              </p>
+            )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="pdns-port">PowerDNS Port</Label>
+            <Label htmlFor="pdns-port">
+              PowerDNS Port <span className="text-destructive">*</span>
+            </Label>
             <Input
               id="pdns-port"
               type="number"
@@ -183,9 +287,16 @@ function PowerDnsSettingsSection({
               onChange={(e) => onChange("port", e.target.value)}
               placeholder="e.g. 8081"
             />
+            {portHasValue && !portValid && (
+              <p className="text-xs text-destructive">
+                유효한 포트 번호가 아닙니다 (1-65535)
+              </p>
+            )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="pdns-api-key">API Key</Label>
+            <Label htmlFor="pdns-api-key">
+              API Key <span className="text-destructive">*</span>
+            </Label>
             <Input
               id="pdns-api-key"
               type="password"
