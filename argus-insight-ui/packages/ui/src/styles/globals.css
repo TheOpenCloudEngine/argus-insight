@@ -128,16 +128,18 @@
 }
 
 /* BlockNote editor styles */
-.bn-editor {
-  font-family: 'Roboto Condensed', sans-serif;
+.bn-container[data-color-scheme] {
+  --bn-font-family: 'Roboto Condensed', sans-serif !important;
+}
+.bn-editor,
+.bn-editor * {
+  font-family: 'Roboto Condensed', sans-serif !important;
   font-size: 0.7rem;
 }
 .bn-editor code,
-.bn-editor pre {
-  font-family: 'D2Coding', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
-.bn-editor .bn-block {
-  background: #BBBBBB;
+.bn-editor pre,
+.bn-editor [data-content-type="codeBlock"] * {
+  font-family: 'D2Coding', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
 }
 .bn-editor [data-content-type="codeBlock"] {
   background: #BBBBBB !important;
