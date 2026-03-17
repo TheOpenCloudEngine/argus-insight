@@ -15,15 +15,17 @@ import {
   SelectValue,
 } from "@workspace/ui/components/select"
 
-const ENCODINGS = [
-  "UTF-8",
-  "EUC-KR",
-  "ISO-8859-1",
-  "Shift_JIS",
-  "Windows-1252",
-  "UTF-16LE",
-  "UTF-16BE",
-] as const
+/** Encoding options: label is what the user sees, value is the TextDecoder label. */
+const ENCODINGS: { label: string; value: string }[] = [
+  { label: "UTF-8", value: "UTF-8" },
+  { label: "EUC-KR", value: "EUC-KR" },
+  { label: "MS949 (CP949)", value: "windows-949" },
+  { label: "ISO-8859-1", value: "ISO-8859-1" },
+  { label: "Shift_JIS", value: "Shift_JIS" },
+  { label: "Windows-1252", value: "Windows-1252" },
+  { label: "UTF-16LE", value: "UTF-16LE" },
+  { label: "UTF-16BE", value: "UTF-16BE" },
+]
 
 const DELIMITER_PRESETS: { label: string; value: string }[] = [
   { label: "Comma (,)", value: "," },
@@ -194,8 +196,8 @@ export function CsvViewer({ url, defaultDelimiter }: CsvViewerProps) {
             </SelectTrigger>
             <SelectContent>
               {ENCODINGS.map((enc) => (
-                <SelectItem key={enc} value={enc} className="text-sm">
-                  {enc}
+                <SelectItem key={enc.value} value={enc.value} className="text-sm">
+                  {enc.label}
                 </SelectItem>
               ))}
             </SelectContent>
