@@ -1,9 +1,11 @@
 "use client"
 
+import { useCallback, useEffect, useState } from "react"
 import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  ClipboardCopy,
   File,
   FileArchive,
   FileAudio,
@@ -126,6 +128,21 @@ function SortButton({
   )
 }
 
+function CopyToast({ message, onDone }: { message: string; onDone: () => void }) {
+  useEffect(() => {
+    const timer = setTimeout(onDone, 2000)
+    return () => clearTimeout(timer)
+  }, [onDone])
+
+  return (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-2 duration-200">
+      <div className="bg-foreground text-background text-sm px-4 py-2 rounded-md shadow-lg">
+        {message}
+      </div>
+    </div>
+  )
+}
+
 export function BrowserTable({
   entries,
   totalEntryCount,
@@ -138,6 +155,14 @@ export function BrowserTable({
   onSortChange,
   isLoading,
 }: BrowserTableProps) {
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const hideToast = useCallback(() => setToastMessage(null), [])
+
+  async function handleCopyPath(entry: StorageEntry) {
+    await navigator.clipboard.writeText(entry.key)
+    setToastMessage("Copied to clipboard.")
+  }
+
   // Disable sorting when the directory has >= 300 entries for performance
   const sortDisabled = totalEntryCount >= SORT_DISABLE_THRESHOLD
   const allSelectableKeys = entries.map((e) => e.key)
@@ -323,12 +348,18 @@ export function BrowserTable({
                       </ContextMenuItem>
                     </>
                   )}
+                  <ContextMenuSeparator />
+                  <ContextMenuItem onClick={() => handleCopyPath(entry)}>
+                    <ClipboardCopy className="h-4 w-4" />
+                    Copy Path
+                  </ContextMenuItem>
                 </ContextMenuContent>
               </ContextMenu>
             )
           })}
         </tbody>
       </table>
+      {toastMessage && <CopyToast message={toastMessage} onDone={hideToast} />}
     </div>
   )
 }
