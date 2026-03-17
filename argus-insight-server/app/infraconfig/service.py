@@ -85,6 +85,8 @@ async def seed_infra_config(session: AsyncSession) -> None:
         ("ldap", "group_member_attribute", "memberUid", "Group member attribute"),
         # Command
         ("command", "openssl_path", "/usr/bin/openssl", "Path to OpenSSL binary"),
+        # Security
+        ("security", "ca_cert_dir", "/opt/argus-insight-server/certs", "CA certificate directory"),
     ]
     for category, key, value, description in defaults:
         result = await session.execute(

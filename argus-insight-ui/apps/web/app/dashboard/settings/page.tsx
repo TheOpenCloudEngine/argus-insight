@@ -6,6 +6,7 @@ import { CommandSettings } from "@/features/settings/components/command-settings
 import { FileBrowserSettings } from "@/features/settings/components/file-browser-settings"
 import { InfraSettings } from "@/features/settings/components/infra-settings"
 import { LdapSettings } from "@/features/settings/components/ldap-settings"
+import { SecuritySettings } from "@/features/settings/components/security-settings"
 
 export default function SettingsPage() {
   return (
@@ -18,6 +19,7 @@ export default function SettingsPage() {
             <TabsTrigger value="ldap">LDAP</TabsTrigger>
             <TabsTrigger value="command">Command</TabsTrigger>
             <TabsTrigger value="file-browser">File Browser</TabsTrigger>
+            <TabsTrigger value="security">Security</TabsTrigger>
           </TabsList>
           <TabsContent value="infra" className="mt-4">
             <InfraSettings />
@@ -30,6 +32,9 @@ export default function SettingsPage() {
           </TabsContent>
           <TabsContent value="file-browser" className="mt-4">
             <FileBrowserSettings />
+          </TabsContent>
+          <TabsContent value="security" className="mt-4">
+            <SecuritySettings />
           </TabsContent>
         </Tabs>
       </div>

@@ -1,4 +1,5 @@
 const BASE = "/api/v1/infraconfig"
+const SECURITY_BASE = "/api/v1/security"
 
 // --------------------------------------------------------------------------- //
 // Infrastructure Configuration
@@ -49,4 +50,70 @@ export async function checkPath(path: string): Promise<boolean> {
   if (!res.ok) throw new Error(`Failed to check path: ${res.status}`)
   const data = await res.json()
   return data.exists
+}
+
+// --------------------------------------------------------------------------- //
+// Security / CA Certificate Management
+// --------------------------------------------------------------------------- //
+
+export type CaCertStatus = {
+  exists: boolean
+  filename: string
+  cert_path: string
+}
+
+export type CaCertViewData = {
+  raw: string
+  decoded: string
+}
+
+/**
+ * Check the status of the CA certificate file.
+ */
+export async function fetchCaCertStatus(): Promise<CaCertStatus> {
+  const res = await fetch(`${SECURITY_BASE}/ca/status`)
+  if (!res.ok) throw new Error(`Failed to fetch CA cert status: ${res.status}`)
+  return res.json()
+}
+
+/**
+ * Upload a CA certificate file.
+ */
+export async function uploadCaCert(file: File): Promise<{ success: boolean; filename: string; path: string }> {
+  const formData = new FormData()
+  formData.append("file", file)
+  const res = await fetch(`${SECURITY_BASE}/ca/upload`, {
+    method: "POST",
+    body: formData,
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: `Upload failed: ${res.status}` }))
+    throw new Error(data.detail || `Upload failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+/**
+ * View the CA certificate content and decoded information.
+ */
+export async function viewCaCert(): Promise<CaCertViewData> {
+  const res = await fetch(`${SECURITY_BASE}/ca/view`)
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: `View failed: ${res.status}` }))
+    throw new Error(data.detail || `View failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+/**
+ * Delete the CA certificate file.
+ */
+export async function deleteCaCert(): Promise<void> {
+  const res = await fetch(`${SECURITY_BASE}/ca`, {
+    method: "DELETE",
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: `Delete failed: ${res.status}` }))
+    throw new Error(data.detail || `Delete failed: ${res.status}`)
+  }
 }

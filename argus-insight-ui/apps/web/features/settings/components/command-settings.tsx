@@ -22,7 +22,7 @@ type CommandEntry = {
 }
 
 const COMMAND_DEFAULTS: { key: string; label: string; description: string; defaultValue: string }[] = [
-  { key: "openssl_path", label: "OpenSSL", description: "Used for generating and verifying CA certificates and server certificates.", defaultValue: "/usr/bin/openssl" },
+  { key: "openssl_path", label: "OpenSSL Absolute Path", description: "Used for generating and verifying CA certificates and server certificates.", defaultValue: "/usr/bin/openssl" },
 ]
 
 // --------------------------------------------------------------------------- //
