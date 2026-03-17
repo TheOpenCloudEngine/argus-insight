@@ -95,7 +95,7 @@ function BrowserSettingsSection({
               General settings for the file browser behavior
             </CardDescription>
           </div>
-          <Button size="sm" onClick={onSave} disabled={saving}>
+          <Button size="sm" onClick={onSave} disabled={saving} className="bg-blue-600 text-white hover:bg-blue-700">
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
             ) : (
@@ -173,7 +173,7 @@ function PreviewCategoryRow({
             {category.category}
           </Badge>
         </div>
-        <Button size="sm" variant="outline" onClick={handleSave} disabled={isSaving}>
+        <Button size="sm" onClick={handleSave} disabled={isSaving} className="bg-blue-600 text-white hover:bg-blue-700">
           {isSaving ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
           ) : (

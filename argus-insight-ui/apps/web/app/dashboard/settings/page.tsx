@@ -15,11 +15,11 @@ export default function SettingsPage() {
       <div className="flex flex-1 flex-col gap-4 p-4">
         <Tabs defaultValue="domain">
           <TabsList variant="line">
-            <TabsTrigger value="domain">Domain</TabsTrigger>
-            <TabsTrigger value="ldap">LDAP</TabsTrigger>
-            <TabsTrigger value="command">Command</TabsTrigger>
-            <TabsTrigger value="file-browser">File Browser</TabsTrigger>
-            <TabsTrigger value="security">Security</TabsTrigger>
+            <TabsTrigger value="domain" className="text-base">Domain</TabsTrigger>
+            <TabsTrigger value="ldap" className="text-base">LDAP</TabsTrigger>
+            <TabsTrigger value="command" className="text-base">Command</TabsTrigger>
+            <TabsTrigger value="file-browser" className="text-base">File Browser</TabsTrigger>
+            <TabsTrigger value="security" className="text-base">Security</TabsTrigger>
           </TabsList>
           <TabsContent value="domain" className="mt-4">
             <DomainSettings />
