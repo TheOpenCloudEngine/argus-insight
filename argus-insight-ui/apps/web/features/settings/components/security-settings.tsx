@@ -20,9 +20,9 @@ import {
   deleteCaKey,
   fetchCaCertStatus,
   fetchCaKeyStatus,
-  fetchInfraConfig,
+  fetchSecurityConfig,
   generateSelfSignedCa,
-  updateInfraCategory,
+  updateSecurityConfig,
   uploadCaCert,
   uploadCaKey,
   viewCaCert,
@@ -377,11 +377,10 @@ export function SecuritySettings() {
       setLoading(true)
       setError(null)
 
-      // Load infra config for security category (ca_cert_dir)
-      const infraData = await fetchInfraConfig()
-      const securityCat = infraData.categories.find((c) => c.category === "security")
-      if (securityCat?.items.ca_cert_dir) {
-        setCertDir(securityCat.items.ca_cert_dir)
+      // Load security config (ca_cert_dir)
+      const securityItems = await fetchSecurityConfig()
+      if (securityItems.ca_cert_dir) {
+        setCertDir(securityItems.ca_cert_dir)
       }
 
       // Load CA cert and key status
@@ -406,7 +405,7 @@ export function SecuritySettings() {
   async function handleSaveDir() {
     setSavingDir(true)
     try {
-      await updateInfraCategory("security", { ca_cert_dir: certDir })
+      await updateSecurityConfig({ ca_cert_dir: certDir })
       showStatus("success", "CA certificate directory saved successfully")
     } catch (err) {
       showStatus("error", err instanceof Error ? err.message : "Failed to save")

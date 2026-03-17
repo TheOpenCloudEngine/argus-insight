@@ -9,7 +9,7 @@ import { Checkbox } from "@workspace/ui/components/checkbox"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 
-import { fetchInfraConfig, updateInfraCategory } from "@/features/settings/api"
+import { fetchLdapConfig, updateLdapConfig } from "@/features/settings/api"
 
 // --------------------------------------------------------------------------- //
 // Types
@@ -67,26 +67,23 @@ export function LdapSettings() {
     try {
       setLoading(true)
       setError(null)
-      const data = await fetchInfraConfig()
-      const cat = data.categories.find((c) => c.category === "ldap")
-      if (cat) {
-        setLdap({
-          enable_ldap_auth: cat.items.enable_ldap_auth ?? LDAP_DEFAULTS.enable_ldap_auth,
-          ldap_url: cat.items.ldap_url ?? LDAP_DEFAULTS.ldap_url,
-          ad_domain: cat.items.ad_domain ?? LDAP_DEFAULTS.ad_domain,
-          ldap_bind_user: cat.items.ldap_bind_user ?? LDAP_DEFAULTS.ldap_bind_user,
-          ldap_bind_password: cat.items.ldap_bind_password ?? LDAP_DEFAULTS.ldap_bind_password,
-          user_search_base: cat.items.user_search_base ?? LDAP_DEFAULTS.user_search_base,
-          user_object_class: cat.items.user_object_class ?? LDAP_DEFAULTS.user_object_class,
-          user_search_filter: cat.items.user_search_filter ?? LDAP_DEFAULTS.user_search_filter,
-          user_name_attribute: cat.items.user_name_attribute ?? LDAP_DEFAULTS.user_name_attribute,
-          group_search_base: cat.items.group_search_base ?? LDAP_DEFAULTS.group_search_base,
-          group_object_class: cat.items.group_object_class ?? LDAP_DEFAULTS.group_object_class,
-          group_search_filter: cat.items.group_search_filter ?? LDAP_DEFAULTS.group_search_filter,
-          group_name_attribute: cat.items.group_name_attribute ?? LDAP_DEFAULTS.group_name_attribute,
-          group_member_attribute: cat.items.group_member_attribute ?? LDAP_DEFAULTS.group_member_attribute,
-        })
-      }
+      const items = await fetchLdapConfig()
+      setLdap({
+        enable_ldap_auth: items.enable_ldap_auth ?? LDAP_DEFAULTS.enable_ldap_auth,
+        ldap_url: items.ldap_url ?? LDAP_DEFAULTS.ldap_url,
+        ad_domain: items.ad_domain ?? LDAP_DEFAULTS.ad_domain,
+        ldap_bind_user: items.ldap_bind_user ?? LDAP_DEFAULTS.ldap_bind_user,
+        ldap_bind_password: items.ldap_bind_password ?? LDAP_DEFAULTS.ldap_bind_password,
+        user_search_base: items.user_search_base ?? LDAP_DEFAULTS.user_search_base,
+        user_object_class: items.user_object_class ?? LDAP_DEFAULTS.user_object_class,
+        user_search_filter: items.user_search_filter ?? LDAP_DEFAULTS.user_search_filter,
+        user_name_attribute: items.user_name_attribute ?? LDAP_DEFAULTS.user_name_attribute,
+        group_search_base: items.group_search_base ?? LDAP_DEFAULTS.group_search_base,
+        group_object_class: items.group_object_class ?? LDAP_DEFAULTS.group_object_class,
+        group_search_filter: items.group_search_filter ?? LDAP_DEFAULTS.group_search_filter,
+        group_name_attribute: items.group_name_attribute ?? LDAP_DEFAULTS.group_name_attribute,
+        group_member_attribute: items.group_member_attribute ?? LDAP_DEFAULTS.group_member_attribute,
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load configuration")
     } finally {
@@ -110,7 +107,7 @@ export function LdapSettings() {
   async function handleSave() {
     setSaving(true)
     try {
-      await updateInfraCategory("ldap", ldap)
+      await updateLdapConfig(ldap)
       showStatus("success", "LDAP settings saved successfully")
       await loadConfig()
     } catch (err) {

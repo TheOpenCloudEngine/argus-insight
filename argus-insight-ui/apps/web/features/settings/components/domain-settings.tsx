@@ -8,7 +8,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@work
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 
-import { fetchInfraConfig, updateInfraCategory } from "@/features/settings/api"
+import {
+  fetchDomainConfig,
+  fetchPowerDnsConfig,
+  updateDomainConfig,
+  updatePowerDnsConfig,
+} from "@/features/settings/api"
 
 const DNS_SERVER_COUNT = 3
 
@@ -229,29 +234,24 @@ export function DomainSettings() {
     try {
       setLoading(true)
       setError(null)
-      const data = await fetchInfraConfig()
+      const [domain, powerdns] = await Promise.all([
+        fetchDomainConfig(),
+        fetchPowerDnsConfig(),
+      ])
 
-      // Domain category
-      const domain = data.categories.find((c) => c.category === "domain")
-      if (domain) {
-        setDomainName(domain.items.domain_name ?? "")
-        setDnsServers([
-          domain.items.dns_server_1 ?? "",
-          domain.items.dns_server_2 ?? "",
-          domain.items.dns_server_3 ?? "",
-        ])
-      }
+      setDomainName(domain.domain_name ?? "")
+      setDnsServers([
+        domain.dns_server_1 ?? "",
+        domain.dns_server_2 ?? "",
+        domain.dns_server_3 ?? "",
+      ])
 
-      // PowerDNS category
-      const powerdns = data.categories.find((c) => c.category === "powerdns")
-      if (powerdns) {
-        setPdns({
-          ip: powerdns.items.pdns_ip ?? "",
-          port: powerdns.items.pdns_port ?? "",
-          api_key: powerdns.items.pdns_api_key ?? "",
-          server_id: powerdns.items.pdns_server_id ?? "",
-        })
-      }
+      setPdns({
+        ip: powerdns.pdns_ip ?? "",
+        port: powerdns.pdns_port ?? "",
+        api_key: powerdns.pdns_api_key ?? "",
+        server_id: powerdns.pdns_server_id ?? "",
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load configuration")
     } finally {
@@ -271,7 +271,7 @@ export function DomainSettings() {
   async function handleSaveDomain() {
     setSavingDomain(true)
     try {
-      await updateInfraCategory("domain", {
+      await updateDomainConfig({
         domain_name: domainName,
         dns_server_1: dnsServers[0],
         dns_server_2: dnsServers[1],
@@ -289,7 +289,7 @@ export function DomainSettings() {
   async function handleSaveDns() {
     setSavingDns(true)
     try {
-      await updateInfraCategory("domain", {
+      await updateDomainConfig({
         domain_name: domainName,
         dns_server_1: dnsServers[0],
         dns_server_2: dnsServers[1],
@@ -307,7 +307,7 @@ export function DomainSettings() {
   async function handleSavePdns() {
     setSavingPdns(true)
     try {
-      await updateInfraCategory("powerdns", {
+      await updatePowerDnsConfig({
         pdns_ip: pdns.ip,
         pdns_port: pdns.port,
         pdns_api_key: pdns.api_key,

@@ -7,7 +7,7 @@ import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 
-import { checkPath, fetchInfraConfig, updateInfraCategory } from "@/features/settings/api"
+import { checkPath, fetchCommandConfig, updateCommandConfig } from "@/features/settings/api"
 
 // --------------------------------------------------------------------------- //
 // Types
@@ -43,14 +43,13 @@ export function CommandSettings() {
     try {
       setLoading(true)
       setError(null)
-      const data = await fetchInfraConfig()
-      const cat = data.categories.find((c) => c.category === "command")
+      const items = await fetchCommandConfig()
       setCommands(
         COMMAND_DEFAULTS.map((def) => ({
           key: def.key,
           label: def.label,
           description: def.description,
-          value: cat?.items[def.key] ?? def.defaultValue,
+          value: items[def.key] ?? def.defaultValue,
           checkResult: "none",
         })),
       )
@@ -104,7 +103,7 @@ export function CommandSettings() {
       for (const cmd of commands) {
         items[cmd.key] = cmd.value
       }
-      await updateInfraCategory("command", items)
+      await updateCommandConfig(items)
       showStatus("success", "Command settings saved successfully")
       await loadConfig()
     } catch (err) {

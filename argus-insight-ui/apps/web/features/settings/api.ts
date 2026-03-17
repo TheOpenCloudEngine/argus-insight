@@ -2,31 +2,33 @@ const BASE = "/api/v1/infraconfig"
 const SECURITY_BASE = "/api/v1/security"
 
 // --------------------------------------------------------------------------- //
-// Infrastructure Configuration
+// Infrastructure Configuration (per-category helpers)
 // --------------------------------------------------------------------------- //
 
-export type InfraCategory = {
+type InfraCategory = {
   category: string
   items: Record<string, string>
 }
 
-export type InfraConfig = {
+type InfraConfig = {
   categories: InfraCategory[]
 }
 
 /**
- * Fetch all infrastructure configuration from the server.
+ * Internal: fetch all categories and return items for a specific category.
  */
-export async function fetchInfraConfig(): Promise<InfraConfig> {
+async function fetchCategory(category: string): Promise<Record<string, string>> {
   const res = await fetch(`${BASE}/configuration`)
-  if (!res.ok) throw new Error(`Failed to fetch infra config: ${res.status}`)
-  return res.json()
+  if (!res.ok) throw new Error(`Failed to fetch ${category} config: ${res.status}`)
+  const data: InfraConfig = await res.json()
+  const cat = data.categories.find((c) => c.category === category)
+  return cat?.items ?? {}
 }
 
 /**
- * Update settings within a single infrastructure category.
+ * Internal: update items for a specific category.
  */
-export async function updateInfraCategory(
+async function updateCategory(
   category: string,
   items: Record<string, string>,
 ): Promise<void> {
@@ -35,7 +37,55 @@ export async function updateInfraCategory(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ category, items }),
   })
-  if (!res.ok) throw new Error(`Failed to update infra category: ${res.status}`)
+  if (!res.ok) throw new Error(`Failed to update ${category} config: ${res.status}`)
+}
+
+// --------------------------------------------------------------------------- //
+// Domain Settings
+// --------------------------------------------------------------------------- //
+
+export async function fetchDomainConfig(): Promise<Record<string, string>> {
+  return fetchCategory("domain")
+}
+
+export async function updateDomainConfig(items: Record<string, string>): Promise<void> {
+  return updateCategory("domain", items)
+}
+
+// --------------------------------------------------------------------------- //
+// PowerDNS Settings
+// --------------------------------------------------------------------------- //
+
+export async function fetchPowerDnsConfig(): Promise<Record<string, string>> {
+  return fetchCategory("powerdns")
+}
+
+export async function updatePowerDnsConfig(items: Record<string, string>): Promise<void> {
+  return updateCategory("powerdns", items)
+}
+
+// --------------------------------------------------------------------------- //
+// LDAP Settings
+// --------------------------------------------------------------------------- //
+
+export async function fetchLdapConfig(): Promise<Record<string, string>> {
+  return fetchCategory("ldap")
+}
+
+export async function updateLdapConfig(items: Record<string, string>): Promise<void> {
+  return updateCategory("ldap", items)
+}
+
+// --------------------------------------------------------------------------- //
+// Command Settings
+// --------------------------------------------------------------------------- //
+
+export async function fetchCommandConfig(): Promise<Record<string, string>> {
+  return fetchCategory("command")
+}
+
+export async function updateCommandConfig(items: Record<string, string>): Promise<void> {
+  return updateCategory("command", items)
 }
 
 /**
@@ -50,6 +100,18 @@ export async function checkPath(path: string): Promise<boolean> {
   if (!res.ok) throw new Error(`Failed to check path: ${res.status}`)
   const data = await res.json()
   return data.exists
+}
+
+// --------------------------------------------------------------------------- //
+// Security Settings (infra config)
+// --------------------------------------------------------------------------- //
+
+export async function fetchSecurityConfig(): Promise<Record<string, string>> {
+  return fetchCategory("security")
+}
+
+export async function updateSecurityConfig(items: Record<string, string>): Promise<void> {
+  return updateCategory("security", items)
 }
 
 // --------------------------------------------------------------------------- //
