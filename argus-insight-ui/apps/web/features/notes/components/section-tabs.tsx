@@ -27,7 +27,7 @@ export function SectionTabs() {
         <button
           key={sec.id}
           onClick={() => selectSection(sec)}
-          className={`group flex items-center gap-1 px-3 py-1.5 rounded-md text-sm whitespace-nowrap transition-colors ${
+          className={`group flex items-center gap-1 px-3 py-1.5 rounded-md text-base whitespace-nowrap transition-colors ${
             currentSection?.id === sec.id
               ? "bg-primary text-primary-foreground"
               : "hover:bg-muted text-muted-foreground"

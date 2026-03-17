@@ -32,7 +32,7 @@ function NotebookDetail() {
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 text-xs"
+            className="h-7 text-sm"
             onClick={() => router.push("/dashboard/notes")}
           >
             <ArrowLeft className="h-3.5 w-3.5 mr-1" />

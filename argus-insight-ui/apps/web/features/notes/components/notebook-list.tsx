@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import {
   BookOpen,
@@ -60,11 +60,33 @@ export function NotebookList() {
   const [newTitle, setNewTitle] = useState("")
   const [newDescription, setNewDescription] = useState("")
   const [newColor, setNewColor] = useState("default")
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const handleSearch = (value: string) => {
+  const doSearch = useCallback(
+    (value: string) => {
+      loadNotebooks(value || undefined)
+    },
+    [loadNotebooks],
+  )
+
+  const handleSearchChange = (value: string) => {
     setSearch(value)
-    loadNotebooks(value || undefined)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => doSearch(value), 3000)
   }
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      doSearch(search)
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [])
 
   const handleCreate = async () => {
     if (!newTitle.trim()) return
@@ -94,7 +116,8 @@ export function NotebookList() {
           <Input
             placeholder="Search notebooks..."
             value={search}
-            onChange={(e) => handleSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
             className="pl-8 h-9"
           />
         </div>
@@ -180,7 +203,7 @@ export function NotebookList() {
                       <DropdownMenuSub>
                         <DropdownMenuSubTrigger onClick={(e) => e.stopPropagation()}>
                           <Palette className="h-4 w-4 mr-2" />
-                          Change Color
+                          Color
                         </DropdownMenuSubTrigger>
                         <DropdownMenuSubContent>
                           {Object.keys(COLORS).map((c) => (

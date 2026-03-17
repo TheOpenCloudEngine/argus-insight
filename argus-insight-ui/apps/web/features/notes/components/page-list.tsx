@@ -24,7 +24,7 @@ export function PageList() {
   return (
     <div className="flex flex-col h-full border-r w-56 shrink-0">
       <div className="flex items-center justify-between px-3 py-2 border-b">
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        <span className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
           Pages
         </span>
         <Button
@@ -61,7 +61,7 @@ export function PageList() {
         {pages.length === 0 && !adding ? (
           <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
             <FileText className="h-8 w-8 mb-2" />
-            <p className="text-xs">No pages yet</p>
+            <p className="text-sm">No pages yet</p>
           </div>
         ) : (
           pages.map((page) => (
@@ -74,7 +74,7 @@ export function PageList() {
             >
               <div className="flex items-center gap-1.5">
                 {page.isPinned && <Pin className="h-3 w-3 text-muted-foreground shrink-0" />}
-                <span className="text-sm truncate">{page.title}</span>
+                <span className="text-base truncate">{page.title}</span>
                 <Trash2
                   className="h-3 w-3 ml-auto text-muted-foreground opacity-0 group-hover:opacity-100 shrink-0 hover:text-destructive"
                   onClick={(e) => {
@@ -83,7 +83,7 @@ export function PageList() {
                   }}
                 />
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
+              <p className="text-sm text-muted-foreground mt-0.5">
                 {new Date(page.updatedAt).toLocaleDateString()}
               </p>
             </button>

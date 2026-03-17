@@ -109,7 +109,7 @@ export function PageEditor() {
         <Input
           value={title}
           onChange={(e) => handleTitleChange(e.target.value)}
-          className="h-8 font-semibold text-base border-none shadow-none focus-visible:ring-0 px-1"
+          className="h-8 font-semibold text-lg border-none shadow-none focus-visible:ring-0 px-1"
           placeholder="Page title"
         />
         <Separator orientation="vertical" className="h-5" />
@@ -146,7 +146,7 @@ export function PageEditor() {
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 text-xs"
+          className="h-7 text-sm"
           onClick={() => setShowVersions(true)}
         >
           <History className="h-3.5 w-3.5 mr-1" />
@@ -178,7 +178,8 @@ export function PageEditor() {
                 minimap: { enabled: false },
                 lineNumbers: "on",
                 wordWrap: "on",
-                fontSize: 14,
+                fontSize: 18,
+                fontFamily: "'D2Coding', monospace",
                 scrollBeyondLastLine: false,
                 padding: { top: 12 },
               }}
@@ -193,7 +194,7 @@ export function PageEditor() {
       </div>
 
       {/* Status bar */}
-      <div className="flex items-center px-3 py-1.5 border-t text-xs text-muted-foreground shrink-0">
+      <div className="flex items-center px-3 py-1.5 border-t text-sm text-muted-foreground shrink-0">
         <span>
           {dirty ? "Unsaved changes" : `Last saved ${new Date(currentPage.updatedAt).toLocaleString()}`}
         </span>

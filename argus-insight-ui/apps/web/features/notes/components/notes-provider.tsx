@@ -115,9 +115,11 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const changeNotebookColor = useCallback(
     async (id: number, color: string) => {
       await apiUpdateNotebook(id, { color })
-      await loadNotebooks()
+      setNotebooks((prev) =>
+        prev.map((nb) => (nb.id === id ? { ...nb, color } : nb)),
+      )
     },
-    [loadNotebooks],
+    [],
   )
 
   const removeNotebook = useCallback(
