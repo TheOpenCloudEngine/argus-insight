@@ -221,11 +221,25 @@ export function ObjectStorageBrowser({
     }
   }
 
+  async function downloadAsOctetStream(key: string) {
+    const url = await dataSource.getDownloadUrl(bucket, key)
+    const response = await fetch(url)
+    const blob = await response.blob()
+    const octetBlob = new Blob([blob], { type: "application/octet-stream" })
+    const blobUrl = URL.createObjectURL(octetBlob)
+    const a = document.createElement("a")
+    a.href = blobUrl
+    a.download = key.split("/").filter(Boolean).pop() ?? "download"
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(blobUrl)
+  }
+
   async function handleDownload() {
     const fileKeys = Array.from(selectedKeys).filter((k) => !k.endsWith("/"))
     for (const key of fileKeys) {
-      const url = await dataSource.getDownloadUrl(bucket, key)
-      window.open(url, "_blank")
+      await downloadAsOctetStream(key)
     }
   }
 
@@ -268,6 +282,9 @@ export function ObjectStorageBrowser({
       case "view":
         setViewerEntry(entry)
         setViewerOpen(true)
+        break
+      case "download":
+        downloadAsOctetStream(entry.key)
         break
     }
   }

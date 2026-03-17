@@ -19,6 +19,7 @@ import {
   Trash2,
   FolderInput,
   Info,
+  Download,
 } from "lucide-react"
 
 import { cn } from "@workspace/ui/lib/utils"
@@ -33,8 +34,9 @@ import {
 
 import type { StorageEntry, SortConfig, SortDirection } from "./types"
 import { formatBytes, formatDate, getFileCategory } from "./utils"
+import { isViewableFile } from "./file-viewer-dialog"
 
-export type EntryContextAction = "rename" | "delete" | "move" | "properties" | "view"
+export type EntryContextAction = "rename" | "delete" | "move" | "properties" | "view" | "download"
 
 type BrowserTableProps = {
   entries: StorageEntry[]
@@ -304,10 +306,22 @@ export function BrowserTable({
                     Properties
                   </ContextMenuItem>
                   {entry.kind === "object" && (
-                    <ContextMenuItem onClick={() => onContextAction?.("view", entry)}>
+                    <ContextMenuItem
+                      onClick={() => onContextAction?.("view", entry)}
+                      disabled={!isViewableFile(entry.name)}
+                    >
                       <Eye className="h-4 w-4" />
                       View
                     </ContextMenuItem>
+                  )}
+                  {entry.kind === "object" && (
+                    <>
+                      <ContextMenuSeparator />
+                      <ContextMenuItem onClick={() => onContextAction?.("download", entry)}>
+                        <Download className="h-4 w-4" />
+                        Download
+                      </ContextMenuItem>
+                    </>
                   )}
                 </ContextMenuContent>
               </ContextMenu>

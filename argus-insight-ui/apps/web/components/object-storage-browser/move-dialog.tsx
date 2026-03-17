@@ -64,12 +64,12 @@ export function MoveDialog({
           </DialogHeader>
           <div className="grid gap-3 py-4">
             <div>
-              <Label className="text-muted-foreground text-xs">Current path</Label>
+              <Label className="text-sm font-medium">Current path</Label>
               <p className="text-sm mt-1 font-mono bg-muted px-2 py-1 rounded break-all">
                 {currentKey}
               </p>
             </div>
-            <div>
+            <div className="space-y-2">
               <Label htmlFor="move-input">Destination path</Label>
               <Input
                 id="move-input"
