@@ -9,6 +9,7 @@ export { PropertiesDialog } from "./properties-dialog"
 export { RenameDialog } from "./rename-dialog"
 export { UploadProgressDialog } from "./upload-progress-dialog"
 export { FileViewerDialog } from "./file-viewer-dialog"
+export { CsvViewer } from "./csv-viewer"
 
 export type {
   StorageFolder,

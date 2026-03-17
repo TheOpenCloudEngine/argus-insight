@@ -13,6 +13,7 @@ import {
 
 import type { StorageEntry } from "./types"
 import { getExtension } from "./utils"
+import { CsvViewer } from "./csv-viewer"
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react").then((m) => m.default), {
   ssr: false,
@@ -79,10 +80,17 @@ const imageExtensions = new Set([
   "jpg", "jpeg", "png", "gif", "svg", "webp", "bmp", "ico", "tiff",
 ])
 
-/** All viewable extensions (code/text + images). */
+/** CSV/TSV extensions that use the dedicated table viewer. */
+const csvExtensions: Record<string, string> = {
+  csv: ",",
+  tsv: "\t",
+}
+
+/** All viewable extensions (code/text + images + csv/tsv). */
 const viewableExtensions = new Set([
   ...Object.keys(extensionToLanguage),
   ...imageExtensions,
+  ...Object.keys(csvExtensions),
 ])
 
 /** Check whether a file can be viewed. */
@@ -106,12 +114,14 @@ export function FileViewerDialog({
 }: FileViewerDialogProps) {
   const [content, setContent] = useState<string | null>(null)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [csvUrl, setCsvUrl] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const reset = useCallback(() => {
     setContent(null)
     setImageUrl(null)
+    setCsvUrl(null)
     setIsLoading(false)
     setError(null)
   }, [])
@@ -124,9 +134,10 @@ export function FileViewerDialog({
 
     const ext = getExtension(entry.name)
     const isImage = imageExtensions.has(ext)
+    const isCsv = ext in csvExtensions
 
-    // Size check for non-image files
-    if (!isImage && entry.size > MAX_VIEW_SIZE) {
+    // Size check for non-image, non-csv files
+    if (!isImage && !isCsv && entry.size > MAX_VIEW_SIZE) {
       setError("Only files of 20 KB or smaller can be displayed.")
       return
     }
@@ -138,6 +149,9 @@ export function FileViewerDialog({
       .then((url) => {
         if (isImage) {
           setImageUrl(url)
+          setIsLoading(false)
+        } else if (isCsv) {
+          setCsvUrl(url)
           setIsLoading(false)
         } else {
           return fetch(url)
@@ -161,11 +175,12 @@ export function FileViewerDialog({
 
   const ext = getExtension(entry.name)
   const isImage = imageExtensions.has(ext)
+  const isCsv = ext in csvExtensions
   const language = extensionToLanguage[ext] ?? "plaintext"
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[800px] max-h-[85vh] flex flex-col">
+      <DialogContent className={`max-h-[85vh] flex flex-col ${isCsv ? "sm:max-w-[1000px]" : "sm:max-w-[800px]"}`}>
         <DialogHeader>
           <DialogTitle className="truncate">{entry.name}</DialogTitle>
         </DialogHeader>
@@ -194,7 +209,11 @@ export function FileViewerDialog({
             </div>
           )}
 
-          {!isLoading && !error && !isImage && content !== null && (
+          {!isLoading && !error && isCsv && csvUrl && (
+            <CsvViewer url={csvUrl} defaultDelimiter={csvExtensions[ext]} />
+          )}
+
+          {!isLoading && !error && !isImage && !isCsv && content !== null && (
             <div className="h-[500px] overflow-hidden">
               <MonacoEditor
                 height="100%"
