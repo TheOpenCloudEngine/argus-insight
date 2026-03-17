@@ -16,12 +16,13 @@ import { checkPath, fetchInfraConfig, updateInfraCategory } from "@/features/set
 type CommandEntry = {
   key: string
   label: string
+  description: string
   value: string
   checkResult: "none" | "checking" | "exists" | "not_found"
 }
 
-const COMMAND_DEFAULTS: { key: string; label: string; defaultValue: string }[] = [
-  { key: "openssl_path", label: "OpenSSL", defaultValue: "/usr/bin/openssl" },
+const COMMAND_DEFAULTS: { key: string; label: string; description: string; defaultValue: string }[] = [
+  { key: "openssl_path", label: "OpenSSL", description: "Used for generating and verifying CA certificates and server certificates.", defaultValue: "/usr/bin/openssl" },
 ]
 
 // --------------------------------------------------------------------------- //
@@ -48,6 +49,7 @@ export function CommandSettings() {
         COMMAND_DEFAULTS.map((def) => ({
           key: def.key,
           label: def.label,
+          description: def.description,
           value: cat?.items[def.key] ?? def.defaultValue,
           checkResult: "none",
         })),
@@ -163,6 +165,7 @@ export function CommandSettings() {
       {commands.map((cmd) => (
         <div key={cmd.key} className="space-y-1.5">
           <Label htmlFor={`cmd-${cmd.key}`}>{cmd.label}</Label>
+          <p className="text-xs text-muted-foreground">{cmd.description}</p>
           <div className="flex gap-2">
             <Input
               id={`cmd-${cmd.key}`}
