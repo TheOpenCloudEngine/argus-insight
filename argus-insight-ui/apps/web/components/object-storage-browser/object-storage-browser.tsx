@@ -24,6 +24,7 @@ import { RenameDialog } from "./rename-dialog"
 import { MoveDialog } from "./move-dialog"
 import { UploadProgressDialog, type FileUploadStatus } from "./upload-progress-dialog"
 import { FileViewerDialog, isViewableFile } from "./file-viewer-dialog"
+import { entryId } from "./utils"
 
 type ObjectStorageBrowserProps = {
   /** The bucket name to browse. */
@@ -186,6 +187,19 @@ export function ObjectStorageBrowser({
     return [...sortedFolders, ...sortedObjects]
   }, [folders, objects, searchValue, sort])
 
+  /** Find an entry by its entryId (kind:key). */
+  function findEntryById(id: string): StorageEntry | undefined {
+    return entries.find((e) => entryId(e.kind, e.key) === id)
+  }
+
+  /** Extract real S3 keys from selectedKeys (entryId set). */
+  function selectedRealKeys(): string[] {
+    return Array.from(selectedKeys).map((id) => {
+      const colonIdx = id.indexOf(":")
+      return colonIdx >= 0 ? id.slice(colonIdx + 1) : id
+    })
+  }
+
   // --- Actions ---
   async function handleCreateFolder(folderName: string) {
     setDialogLoading(true)
@@ -212,7 +226,7 @@ export function ObjectStorageBrowser({
   async function handleDelete() {
     setDialogLoading(true)
     try {
-      await dataSource.deleteObjects(bucket, Array.from(selectedKeys))
+      await dataSource.deleteObjects(bucket, selectedRealKeys())
       setDeleteOpen(false)
       setSelectedKeys(new Set())
       await fetchData(prefix)
@@ -237,7 +251,7 @@ export function ObjectStorageBrowser({
   }
 
   async function handleDownload() {
-    const fileKeys = Array.from(selectedKeys).filter((k) => !k.endsWith("/"))
+    const fileKeys = selectedRealKeys().filter((k) => !k.endsWith("/"))
     for (const key of fileKeys) {
       await downloadAsOctetStream(key)
     }
@@ -269,7 +283,7 @@ export function ObjectStorageBrowser({
         setRenameOpen(true)
         break
       case "delete":
-        setSelectedKeys(new Set([entry.key]))
+        setSelectedKeys(new Set([entryId(entry.kind, entry.key)]))
         setContextDeleteOpen(true)
         break
       case "move":
@@ -324,7 +338,7 @@ export function ObjectStorageBrowser({
   async function handleContextDelete() {
     setDialogLoading(true)
     try {
-      await dataSource.deleteObjects(bucket, Array.from(selectedKeys))
+      await dataSource.deleteObjects(bucket, selectedRealKeys())
       setContextDeleteOpen(false)
       setSelectedKeys(new Set())
       await fetchData(prefixRef.current)
@@ -464,24 +478,24 @@ export function ObjectStorageBrowser({
           onDelete={() => setDeleteOpen(true)}
           onDownload={handleDownload}
           onRename={() => {
-            const key = Array.from(selectedKeys)[0]
-            const entry = entries.find((e) => e.key === key)
+            const id = Array.from(selectedKeys)[0]
+            const entry = findEntryById(id)
             if (entry) {
               setContextEntry(entry)
               setRenameOpen(true)
             }
           }}
           onProperties={() => {
-            const key = Array.from(selectedKeys)[0]
-            const entry = entries.find((e) => e.key === key)
+            const id = Array.from(selectedKeys)[0]
+            const entry = findEntryById(id)
             if (entry) {
               setPropertiesEntry(entry)
               setPropertiesOpen(true)
             }
           }}
           onView={() => {
-            const key = Array.from(selectedKeys)[0]
-            const entry = entries.find((e) => e.key === key)
+            const id = Array.from(selectedKeys)[0]
+            const entry = findEntryById(id)
             if (entry) {
               setViewerEntry(entry)
               setViewerOpen(true)
@@ -489,8 +503,8 @@ export function ObjectStorageBrowser({
           }}
           viewDisabled={(() => {
             if (selectedKeys.size !== 1) return true
-            const key = Array.from(selectedKeys)[0]
-            const entry = entries.find((e) => e.key === key)
+            const id = Array.from(selectedKeys)[0]
+            const entry = findEntryById(id)
             return !entry || entry.kind === "folder" || !isViewableFile(entry.name)
           })()}
           onRefresh={() => fetchData(prefix)}
@@ -557,7 +571,7 @@ export function ObjectStorageBrowser({
       <DeleteDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        selectedKeys={Array.from(selectedKeys)}
+        selectedKeys={selectedRealKeys()}
         onConfirm={handleDelete}
         isLoading={dialogLoading}
       />

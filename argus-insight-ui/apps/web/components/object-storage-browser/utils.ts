@@ -26,6 +26,15 @@ export function getNameFromKey(key: string): string {
   return parts[parts.length - 1] || key
 }
 
+/**
+ * Build a unique identifier for a storage entry.
+ * Folder and object with the same name can coexist in object storage,
+ * so we prefix the kind to guarantee uniqueness.
+ */
+export function entryId(kind: "folder" | "object", key: string): string {
+  return `${kind}:${key}`
+}
+
 /** Get the file extension from a filename. */
 export function getExtension(name: string): string {
   const i = name.lastIndexOf(".")

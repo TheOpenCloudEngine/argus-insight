@@ -36,7 +36,7 @@ import {
 } from "@workspace/ui/components/context-menu"
 
 import type { StorageEntry, SortConfig, SortDirection } from "./types"
-import { formatBytes, formatDate, getFileCategory } from "./utils"
+import { entryId, formatBytes, formatDate, getFileCategory } from "./utils"
 import { isViewableFile } from "./file-viewer-dialog"
 
 export type EntryContextAction = "rename" | "delete" | "move" | "properties" | "view" | "download"
@@ -187,7 +187,7 @@ export function BrowserTable({
 
   // Disable sorting when the directory has >= 300 entries for performance
   const sortDisabled = totalEntryCount >= SORT_DISABLE_THRESHOLD
-  const allSelectableKeys = entries.map((e) => e.key)
+  const allSelectableKeys = entries.map((e) => entryId(e.kind, e.key))
   const allSelected =
     allSelectableKeys.length > 0 &&
     allSelectableKeys.every((k) => selectedKeys.has(k))
@@ -282,10 +282,11 @@ export function BrowserTable({
         <tbody className="divide-y">
           {entries.map((entry) => {
             const isFolder = entry.kind === "folder"
-            const isSelected = selectedKeys.has(entry.key)
+            const id = entryId(entry.kind, entry.key)
+            const isSelected = selectedKeys.has(id)
 
             return (
-              <ContextMenu key={entry.key}>
+              <ContextMenu key={id}>
                 <ContextMenuTrigger asChild>
                   <tr
                     onDoubleClick={() => onEntryDoubleClick?.(entry)}
@@ -297,7 +298,7 @@ export function BrowserTable({
                     <td className="px-3 py-1.5">
                       <Checkbox
                         checked={isSelected}
-                        onCheckedChange={() => toggleOne(entry.key)}
+                        onCheckedChange={() => toggleOne(id)}
                         aria-label={`Select ${entry.name}`}
                       />
                     </td>
