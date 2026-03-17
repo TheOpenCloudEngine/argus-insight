@@ -208,7 +208,7 @@ function PowerDnsSettingsSection({
 // Main Component
 // --------------------------------------------------------------------------- //
 
-export function InfraSettings() {
+export function DomainSettings() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [savingDomain, setSavingDomain] = useState(false)

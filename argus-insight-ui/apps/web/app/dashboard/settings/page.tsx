@@ -4,7 +4,7 @@ import { DashboardHeader } from "@/components/dashboard-header"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@workspace/ui/components/tabs"
 import { CommandSettings } from "@/features/settings/components/command-settings"
 import { FileBrowserSettings } from "@/features/settings/components/file-browser-settings"
-import { InfraSettings } from "@/features/settings/components/infra-settings"
+import { DomainSettings } from "@/features/settings/components/domain-settings"
 import { LdapSettings } from "@/features/settings/components/ldap-settings"
 import { SecuritySettings } from "@/features/settings/components/security-settings"
 
@@ -13,16 +13,16 @@ export default function SettingsPage() {
     <>
       <DashboardHeader title="Settings" />
       <div className="flex flex-1 flex-col gap-4 p-4">
-        <Tabs defaultValue="infra">
+        <Tabs defaultValue="domain">
           <TabsList variant="line">
-            <TabsTrigger value="infra">Infra</TabsTrigger>
+            <TabsTrigger value="domain">Domain</TabsTrigger>
             <TabsTrigger value="ldap">LDAP</TabsTrigger>
             <TabsTrigger value="command">Command</TabsTrigger>
             <TabsTrigger value="file-browser">File Browser</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>
           </TabsList>
-          <TabsContent value="infra" className="mt-4">
-            <InfraSettings />
+          <TabsContent value="domain" className="mt-4">
+            <DomainSettings />
           </TabsContent>
           <TabsContent value="ldap" className="mt-4">
             <LdapSettings />
