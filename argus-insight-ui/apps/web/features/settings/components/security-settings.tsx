@@ -587,7 +587,7 @@ export function SecuritySettings() {
                 )}
                 Save
               </Button>
-              <Button size="sm" variant="outline" onClick={handleOpenGenerate}>
+              <Button size="sm" variant="destructive" onClick={handleOpenGenerate}>
                 <ShieldCheck className="h-4 w-4 mr-1.5" />
                 Generate Self-Signed CA
               </Button>
