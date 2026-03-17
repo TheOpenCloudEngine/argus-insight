@@ -12,7 +12,7 @@ import {
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Separator } from "@workspace/ui/components/separator"
-import Editor from "@monaco-editor/react"
+import Editor, { type Monaco } from "@monaco-editor/react"
 import { useTheme } from "next-themes"
 import { MarkdownPreview } from "./markdown-preview"
 import { VersionHistory } from "./version-history"
@@ -70,6 +70,17 @@ export function PageEditor() {
       setSaving(false)
     }
   }, [currentPage, title, content, dirty, savePage])
+
+  const handleEditorBeforeMount = useCallback((monaco: Monaco) => {
+    monaco.editor.defineTheme("argus-light", {
+      base: "vs",
+      inherit: true,
+      rules: [],
+      colors: {
+        "editor.background": "#EEEEEE",
+      },
+    })
+  }, [])
 
   // Ctrl+S to save
   useEffect(() => {
@@ -163,7 +174,8 @@ export function PageEditor() {
               defaultLanguage="markdown"
               value={content}
               onChange={handleContentChange}
-              theme={resolvedTheme === "dark" ? "vs-dark" : "vs"}
+              beforeMount={handleEditorBeforeMount}
+              theme={resolvedTheme === "dark" ? "vs-dark" : "argus-light"}
               options={{
                 minimap: { enabled: false },
                 lineNumbers: "on",
