@@ -15,7 +15,7 @@ export default function SettingsPage() {
         <Tabs defaultValue="infra">
           <TabsList variant="line">
             <TabsTrigger value="infra">Infra</TabsTrigger>
-            <TabsTrigger value="ldap">AD & LDAP</TabsTrigger>
+            <TabsTrigger value="ldap">LDAP</TabsTrigger>
             <TabsTrigger value="command">Command</TabsTrigger>
             <TabsTrigger value="file-browser">File Browser</TabsTrigger>
           </TabsList>
