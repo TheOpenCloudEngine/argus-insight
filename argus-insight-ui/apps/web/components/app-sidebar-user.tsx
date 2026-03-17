@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronUp, LogOut, Mail, Phone, Settings, User, User2 } from "lucide-react"
+import { ChevronUp, LogOut, Mail, Phone, Settings, Shield, User, User2 } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@workspace/ui/components/avatar"
 import {
@@ -25,8 +25,20 @@ interface AppSidebarUserProps {
   user: SessionUser
 }
 
+function getDisplayName(user: SessionUser): string {
+  return `${user.lastName}${user.firstName}`.trim() || user.username
+}
+
+function getInitials(user: SessionUser): string {
+  const last = user.lastName.charAt(0)
+  const first = user.firstName.charAt(0)
+  return (last + first).trim().toUpperCase() || user.username.charAt(0).toUpperCase()
+}
+
 export function AppSidebarUser({ user }: AppSidebarUserProps) {
   const [profileOpen, setProfileOpen] = useState(false)
+  const displayName = getDisplayName(user)
+  const initials = getInitials(user)
 
   return (
     <>
@@ -39,11 +51,10 @@ export function AppSidebarUser({ user }: AppSidebarUserProps) {
                 className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
               >
                 <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage src={user.avatarUrl} alt={user.name} />
-                  <AvatarFallback className="rounded-lg">AD</AvatarFallback>
+                  <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">{user.name}</span>
+                  <span className="truncate font-semibold">{displayName}</span>
                   <span className="truncate text-xs text-muted-foreground">{user.email}</span>
                 </div>
                 <ChevronUp className="ml-auto size-4" />
@@ -81,11 +92,10 @@ export function AppSidebarUser({ user }: AppSidebarUserProps) {
 
           <div className="flex flex-col items-center gap-4 py-2">
             <Avatar className="h-16 w-16 rounded-full">
-              <AvatarImage src={user.avatarUrl} alt={user.name} />
-              <AvatarFallback className="rounded-full text-xl">AD</AvatarFallback>
+              <AvatarFallback className="rounded-full text-xl">{initials}</AvatarFallback>
             </Avatar>
             <div className="text-center">
-              <p className="text-lg font-semibold">{user.name}</p>
+              <p className="text-lg font-semibold">{displayName}</p>
               <p className="text-sm text-muted-foreground">@{user.username}</p>
             </div>
           </div>
@@ -97,7 +107,7 @@ export function AppSidebarUser({ user }: AppSidebarUserProps) {
               <User className="size-3.5" />
               Name
             </dt>
-            <dd className="font-medium">{user.name}</dd>
+            <dd className="font-medium">{displayName}</dd>
 
             <dt className="flex items-center gap-1.5 text-muted-foreground">
               <User2 className="size-3.5" />
@@ -116,6 +126,12 @@ export function AppSidebarUser({ user }: AppSidebarUserProps) {
               Phone
             </dt>
             <dd className="font-medium">{user.phone}</dd>
+
+            <dt className="flex items-center gap-1.5 text-muted-foreground">
+              <Shield className="size-3.5" />
+              Role
+            </dt>
+            <dd className="font-medium">{user.role}</dd>
           </dl>
         </DialogContent>
       </Dialog>
