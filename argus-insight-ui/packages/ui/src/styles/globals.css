@@ -135,11 +135,9 @@
 .bn-editor code {
   font-family: 'D2Coding', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
-.bn-editor [data-content-type="codeBlock"] pre {
+.bn-editor [data-content-type="codeBlock"] {
   background: #CCCCCC !important;
-}
-.bn-editor [data-content-type="codeBlock"] code {
-  background: #CCCCCC;
+  border-radius: 0.375rem;
 }
 
 /* Markdown preview styles */
