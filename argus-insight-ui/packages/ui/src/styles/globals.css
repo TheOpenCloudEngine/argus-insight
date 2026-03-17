@@ -131,9 +131,6 @@
 .bn-editor {
   font-family: 'D2Coding', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
-.bn-editor .bn-block-content {
-  font-size: 1.125rem;
-}
 .bn-editor code {
   font-family: 'D2Coding', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
