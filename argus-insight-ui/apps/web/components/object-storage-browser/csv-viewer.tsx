@@ -32,6 +32,9 @@ const DELIMITER_PRESETS: { label: string; value: string }[] = [
   { label: "Pipe (|)", value: "|" },
 ]
 
+/** Sentinel value used by the Select component to represent "no quote character". */
+const NO_QUOTE = "__none__"
+
 type CsvViewerProps = {
   /** Raw file URL to fetch the CSV/TSV data from. */
   url: string
@@ -43,16 +46,28 @@ export function CsvViewer({ url, defaultDelimiter }: CsvViewerProps) {
   const [encoding, setEncoding] = useState("UTF-8")
   const [delimiter, setDelimiter] = useState(defaultDelimiter)
   const [customDelimiter, setCustomDelimiter] = useState("")
-  const [isCustom, setIsCustom] = useState(false)
+  const [isCustomDelimiter, setIsCustomDelimiter] = useState(false)
+
+  const [hasHeader, setHasHeader] = useState(true)
+  const [escapeChar, setEscapeChar] = useState("")
+  const [quoteChar, setQuoteChar] = useState(NO_QUOTE)
+  const [customQuoteChar, setCustomQuoteChar] = useState("")
+  const [isCustomQuote, setIsCustomQuote] = useState(false)
 
   const [rows, setRows] = useState<string[][]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const effectiveDelimiter = isCustom ? customDelimiter : delimiter
+  const effectiveDelimiter = isCustomDelimiter ? customDelimiter : delimiter
+
+  const effectiveQuoteChar = useMemo(() => {
+    if (isCustomQuote) return customQuoteChar || false
+    if (quoteChar === NO_QUOTE) return false
+    return quoteChar
+  }, [isCustomQuote, customQuoteChar, quoteChar])
 
   const fetchAndParse = useCallback(
-    async (enc: string, delim: string) => {
+    async (enc: string, delim: string, escape: string, quote: string | false) => {
       setIsLoading(true)
       setError(null)
       setRows([])
@@ -61,11 +76,25 @@ export function CsvViewer({ url, defaultDelimiter }: CsvViewerProps) {
         if (!res.ok) throw new Error(`Failed to fetch file (${res.status})`)
         const buf = await res.arrayBuffer()
         const decoded = new TextDecoder(enc).decode(buf)
-        const result = Papa.parse<string[]>(decoded, {
+
+        const parseConfig: Papa.ParseConfig = {
           delimiter: delim,
           header: false,
           skipEmptyLines: true,
-        })
+        }
+
+        if (escape) {
+          parseConfig.escapeChar = escape
+        }
+
+        if (quote !== false) {
+          parseConfig.quoteChar = quote
+        } else {
+          // Disable quoting entirely
+          parseConfig.quoteChar = "\0"
+        }
+
+        const result = Papa.parse<string[]>(decoded, parseConfig)
         if (result.errors.length > 0) {
           console.warn("CSV parse warnings:", result.errors)
         }
@@ -81,17 +110,22 @@ export function CsvViewer({ url, defaultDelimiter }: CsvViewerProps) {
 
   // Initial load
   useEffect(() => {
-    fetchAndParse(encoding, effectiveDelimiter)
+    fetchAndParse(encoding, effectiveDelimiter, escapeChar, effectiveQuoteChar)
     // Only run on mount / url change
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url])
 
   function handleRefresh() {
-    fetchAndParse(encoding, effectiveDelimiter)
+    fetchAndParse(encoding, effectiveDelimiter, escapeChar, effectiveQuoteChar)
   }
 
-  const headerRow = rows[0]
-  const dataRows = rows.slice(1)
+  const displayRows = useMemo(() => {
+    if (!rows.length) return { header: undefined, data: [], allRows: rows }
+    if (hasHeader) {
+      return { header: rows[0], data: rows.slice(1), allRows: rows }
+    }
+    return { header: undefined, data: rows, allRows: rows }
+  }, [rows, hasHeader])
 
   // Column count for proper rendering
   const columnCount = useMemo(() => {
@@ -101,7 +135,7 @@ export function CsvViewer({ url, defaultDelimiter }: CsvViewerProps) {
 
   return (
     <div className="flex flex-col gap-3 h-full text-sm">
-      {/* Controls */}
+      {/* Controls – Row 1 */}
       <div className="flex items-end gap-3 flex-wrap">
         <div className="space-y-1">
           <Label className="text-sm">Encoding</Label>
@@ -122,12 +156,12 @@ export function CsvViewer({ url, defaultDelimiter }: CsvViewerProps) {
         <div className="space-y-1">
           <Label className="text-sm">Delimiter</Label>
           <Select
-            value={isCustom ? "__custom__" : delimiter}
+            value={isCustomDelimiter ? "__custom__" : delimiter}
             onValueChange={(v) => {
               if (v === "__custom__") {
-                setIsCustom(true)
+                setIsCustomDelimiter(true)
               } else {
-                setIsCustom(false)
+                setIsCustomDelimiter(false)
                 setDelimiter(v)
               }
             }}
@@ -148,14 +182,76 @@ export function CsvViewer({ url, defaultDelimiter }: CsvViewerProps) {
           </Select>
         </div>
 
-        {isCustom && (
+        {isCustomDelimiter && (
           <div className="space-y-1">
-            <Label className="text-sm">Custom</Label>
+            <Label className="text-sm">Custom Delimiter</Label>
             <Input
               value={customDelimiter}
               onChange={(e) => setCustomDelimiter(e.target.value)}
               placeholder="e.g. :"
               className="w-[80px] h-8 text-sm font-[D2Coding,monospace]"
+            />
+          </div>
+        )}
+
+        <div className="space-y-1">
+          <Label className="text-sm">Header</Label>
+          <Select value={hasHeader ? "yes" : "no"} onValueChange={(v) => setHasHeader(v === "yes")}>
+            <SelectTrigger className="w-[120px] h-8 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="yes" className="text-sm">With Header</SelectItem>
+              <SelectItem value="no" className="text-sm">No Header</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-sm">Escape</Label>
+          <Input
+            value={escapeChar}
+            onChange={(e) => setEscapeChar(e.target.value.slice(0, 1))}
+            placeholder="None"
+            className="w-[70px] h-8 text-sm font-[D2Coding,monospace]"
+            maxLength={1}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-sm">Quote</Label>
+          <Select
+            value={isCustomQuote ? "__custom__" : quoteChar}
+            onValueChange={(v) => {
+              if (v === "__custom__") {
+                setIsCustomQuote(true)
+              } else {
+                setIsCustomQuote(false)
+                setQuoteChar(v)
+              }
+            }}
+          >
+            <SelectTrigger className="w-[120px] h-8 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_QUOTE} className="text-sm">None</SelectItem>
+              <SelectItem value={'"'} className="text-sm">Double (&quot;)</SelectItem>
+              <SelectItem value="'" className="text-sm">Single (&apos;)</SelectItem>
+              <SelectItem value="__custom__" className="text-sm">Custom...</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {isCustomQuote && (
+          <div className="space-y-1">
+            <Label className="text-sm">Custom Quote</Label>
+            <Input
+              value={customQuoteChar}
+              onChange={(e) => setCustomQuoteChar(e.target.value.slice(0, 1))}
+              placeholder="e.g. `"
+              className="w-[80px] h-8 text-sm font-[D2Coding,monospace]"
+              maxLength={1}
             />
           </div>
         )}
@@ -174,7 +270,7 @@ export function CsvViewer({ url, defaultDelimiter }: CsvViewerProps) {
 
         {!isLoading && rows.length > 0 && (
           <span className="text-sm text-muted-foreground ml-auto">
-            {dataRows.length} rows · {columnCount} columns
+            {displayRows.data.length} rows · {columnCount} columns
           </span>
         )}
       </div>
@@ -195,23 +291,25 @@ export function CsvViewer({ url, defaultDelimiter }: CsvViewerProps) {
       {!isLoading && !error && rows.length > 0 && (
         <div className="border rounded overflow-auto flex-1 min-h-0 max-h-[500px]">
           <table className="w-full text-sm font-[D2Coding,monospace] border-collapse">
-            <thead className="bg-muted/60 sticky top-0 z-10">
-              <tr>
-                <th className="px-2 py-1.5 text-right text-muted-foreground border-r w-10 font-medium">
-                  #
-                </th>
-                {headerRow?.map((cell, i) => (
-                  <th
-                    key={i}
-                    className="px-2 py-1.5 text-left font-semibold border-r last:border-r-0 whitespace-nowrap"
-                  >
-                    {cell}
+            {displayRows.header && (
+              <thead className="bg-muted/60 sticky top-0 z-10">
+                <tr>
+                  <th className="px-2 py-1.5 text-right text-muted-foreground border-r w-10 font-medium">
+                    #
                   </th>
-                ))}
-              </tr>
-            </thead>
+                  {displayRows.header.map((cell, i) => (
+                    <th
+                      key={i}
+                      className="px-2 py-1.5 text-left font-semibold border-r last:border-r-0 whitespace-nowrap"
+                    >
+                      {cell}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+            )}
             <tbody className="divide-y">
-              {dataRows.map((row, ri) => (
+              {displayRows.data.map((row, ri) => (
                 <tr key={ri} className="hover:bg-muted/30">
                   <td className="px-2 py-1 text-right text-muted-foreground border-r tabular-nums">
                     {ri + 1}
