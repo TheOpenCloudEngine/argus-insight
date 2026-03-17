@@ -182,6 +182,45 @@ export function uploadFileWithProgress(
   })
 }
 
+/** Tabular preview response (parquet, xlsx, xls). */
+export type TablePreviewResponse = {
+  format: string
+  columns: string[]
+  rows: unknown[][]
+  total_rows: number
+  sheet_names: string[]
+  active_sheet: string
+}
+
+/** Document preview response (docx, pptx). */
+export type DocumentPreviewResponse = {
+  format: string
+  html: string
+  slides?: { slide_number: number; texts: string[]; notes: string }[] | null
+}
+
+/**
+ * Request server-side file preview (parquet, xlsx, xls, docx, pptx).
+ */
+export async function previewFile(
+  bucket: string,
+  key: string,
+  options?: { sheet?: string; maxRows?: number },
+): Promise<TablePreviewResponse | DocumentPreviewResponse> {
+  const params = new URLSearchParams()
+  params.set("bucket", bucket)
+  params.set("key", key)
+  if (options?.sheet) params.set("sheet", options.sheet)
+  if (options?.maxRows) params.set("max_rows", String(options.maxRows))
+
+  const res = await fetch(`${BASE}/objects/preview?${params.toString()}`)
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "")
+    throw new Error(`Preview failed (${res.status}): ${detail}`)
+  }
+  return res.json()
+}
+
 /**
  * Get a presigned download URL for a given key.
  */

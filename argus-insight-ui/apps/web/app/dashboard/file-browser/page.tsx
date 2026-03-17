@@ -11,6 +11,7 @@ import {
   uploadFileWithProgress,
   getDownloadUrl,
   copyObject,
+  previewFile,
 } from "@/features/object-storage/api"
 
 const dataSource: BrowserDataSource = {
@@ -21,6 +22,7 @@ const dataSource: BrowserDataSource = {
   uploadFileWithProgress,
   getDownloadUrl,
   copyObject,
+  previewFile,
 }
 
 export default function FileBrowserPage() {

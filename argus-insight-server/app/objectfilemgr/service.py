@@ -21,6 +21,7 @@ from app.objectfilemgr.schemas import (
     CopyObjectResponse,
     CreateFolderResponse,
     DeleteObjectsResponse,
+    DocumentPreviewResponse,
     FolderInfo,
     HeadObjectResponse,
     ListObjectsResponse,
@@ -31,6 +32,7 @@ from app.objectfilemgr.schemas import (
     PresignedUploadUrlResponse,
     PresignedUrlResponse,
     S3SelectResponse,
+    TablePreviewResponse,
     Tag,
     TaggingResponse,
 )
@@ -535,3 +537,171 @@ async def delete_object_tagging(bucket: str, key: str) -> None:
     async with get_s3_client() as s3:
         await s3.delete_object_tagging(Bucket=bucket, Key=key)
     logger.info("DeleteObjectTagging: bucket=%s key=%s", bucket, key)
+
+
+# =========================================================================== #
+# 6. File Preview
+# =========================================================================== #
+
+MAX_PREVIEW_ROWS = 1000
+
+
+async def _download_object_bytes(bucket: str, key: str) -> bytes:
+    """Download object bytes from S3."""
+    async with get_s3_client() as s3:
+        resp = await s3.get_object(Bucket=bucket, Key=key)
+        return await resp["Body"].read()
+
+
+async def preview_parquet(
+    bucket: str, key: str, max_rows: int = MAX_PREVIEW_ROWS,
+) -> TablePreviewResponse:
+    """Preview a Parquet file as tabular data using PyArrow."""
+    import io
+    import pyarrow.parquet as pq
+
+    data = await _download_object_bytes(bucket, key)
+    pf = pq.ParquetFile(io.BytesIO(data))
+    total_rows = pf.metadata.num_rows
+    columns = pf.schema_arrow.names
+
+    table = pf.read_row_groups(list(range(pf.metadata.num_row_groups)))
+    if table.num_rows > max_rows:
+        table = table.slice(0, max_rows)
+
+    rows = []
+    for batch in table.to_batches():
+        cols = [batch.column(i).to_pylist() for i in range(batch.num_columns)]
+        for row_idx in range(batch.num_rows):
+            rows.append([_serialize_value(cols[ci][row_idx]) for ci in range(len(cols))])
+
+    logger.info("PreviewParquet: bucket=%s key=%s rows=%d/%d", bucket, key, len(rows), total_rows)
+    return TablePreviewResponse(
+        format="parquet",
+        columns=columns,
+        rows=rows,
+        total_rows=total_rows,
+    )
+
+
+async def preview_xlsx(
+    bucket: str,
+    key: str,
+    sheet: str | None = None,
+    max_rows: int = MAX_PREVIEW_ROWS,
+) -> TablePreviewResponse:
+    """Preview an XLSX/XLS file as tabular data using openpyxl."""
+    import io
+    import openpyxl
+
+    data = await _download_object_bytes(bucket, key)
+    wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+
+    sheet_names = wb.sheetnames
+    active_sheet = sheet if sheet and sheet in sheet_names else sheet_names[0]
+    ws = wb[active_sheet]
+
+    rows: list[list] = []
+    columns: list[str] = []
+    for i, row in enumerate(ws.iter_rows(values_only=True)):
+        if i == 0:
+            columns = [str(c) if c is not None else f"col_{j}" for j, c in enumerate(row)]
+            continue
+        if i > max_rows:
+            break
+        rows.append([_serialize_value(c) for c in row])
+
+    total_rows = ws.max_row - 1 if ws.max_row else 0
+    wb.close()
+
+    ext = key.rsplit(".", 1)[-1].lower() if "." in key else "xlsx"
+    logger.info(
+        "PreviewXlsx: bucket=%s key=%s sheet=%s rows=%d/%d",
+        bucket, key, active_sheet, len(rows), total_rows,
+    )
+    return TablePreviewResponse(
+        format=ext,
+        columns=columns,
+        rows=rows,
+        total_rows=total_rows,
+        sheet_names=sheet_names,
+        active_sheet=active_sheet,
+    )
+
+
+async def preview_docx(bucket: str, key: str) -> DocumentPreviewResponse:
+    """Preview a DOCX file by converting to HTML using mammoth."""
+    import io
+    import mammoth
+
+    data = await _download_object_bytes(bucket, key)
+    result = mammoth.convert_to_html(io.BytesIO(data))
+    if result.messages:
+        logger.warning("PreviewDocx warnings: %s", result.messages)
+
+    logger.info("PreviewDocx: bucket=%s key=%s html_len=%d", bucket, key, len(result.value))
+    return DocumentPreviewResponse(format="docx", html=result.value)
+
+
+async def preview_pptx(bucket: str, key: str) -> DocumentPreviewResponse:
+    """Preview a PPTX file by extracting slide text and notes."""
+    import io
+    from pptx import Presentation
+
+    data = await _download_object_bytes(bucket, key)
+    prs = Presentation(io.BytesIO(data))
+
+    slides = []
+    for i, slide in enumerate(prs.slides, 1):
+        texts = []
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                for paragraph in shape.text_frame.paragraphs:
+                    text = paragraph.text.strip()
+                    if text:
+                        texts.append(text)
+            if shape.has_table:
+                table = shape.table
+                for row in table.rows:
+                    row_texts = [cell.text.strip() for cell in row.cells]
+                    texts.append(" | ".join(row_texts))
+
+        notes = ""
+        if slide.has_notes_slide and slide.notes_slide.notes_text_frame:
+            notes = slide.notes_slide.notes_text_frame.text.strip()
+
+        slides.append({
+            "slide_number": i,
+            "texts": texts,
+            "notes": notes,
+        })
+
+    # Build a simple HTML representation
+    html_parts = []
+    for s in slides:
+        html_parts.append(f'<div class="slide"><h3>Slide {s["slide_number"]}</h3>')
+        for t in s["texts"]:
+            html_parts.append(f"<p>{t}</p>")
+        if s["notes"]:
+            html_parts.append(f'<blockquote class="notes">{s["notes"]}</blockquote>')
+        html_parts.append("</div><hr/>")
+
+    logger.info("PreviewPptx: bucket=%s key=%s slides=%d", bucket, key, len(slides))
+    return DocumentPreviewResponse(
+        format="pptx",
+        html="\n".join(html_parts),
+        slides=slides,
+    )
+
+
+def _serialize_value(val):
+    """Convert a cell value to a JSON-safe type."""
+    if val is None:
+        return None
+    if isinstance(val, (int, float, str, bool)):
+        return val
+    if isinstance(val, datetime):
+        return val.isoformat()
+    if isinstance(val, bytes):
+        return val.hex()
+    return str(val)

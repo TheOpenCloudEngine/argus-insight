@@ -1,7 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
-import * as XLSX from "xlsx"
+import { useCallback, useState } from "react"
 import { Loader2 } from "lucide-react"
 
 import { Label } from "@workspace/ui/components/label"
@@ -13,77 +12,62 @@ import {
   SelectValue,
 } from "@workspace/ui/components/select"
 
-type XlsxViewerProps = {
-  /** Presigned download URL. */
-  url: string
+type TablePreviewData = {
+  format: string
+  columns: string[]
+  rows: unknown[][]
+  total_rows: number
+  sheet_names: string[]
+  active_sheet: string
 }
 
-export function XlsxViewer({ url }: XlsxViewerProps) {
-  const [workbook, setWorkbook] = useState<XLSX.WorkBook | null>(null)
-  const [activeSheet, setActiveSheet] = useState("")
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+type XlsxViewerProps = {
+  /** Server-side preview data. */
+  data: TablePreviewData
+  /** Object key (needed for sheet switching). */
+  entryKey: string
+  /** Server-side preview function for sheet switching. */
+  previewFile?: (
+    key: string,
+    options?: { sheet?: string; maxRows?: number },
+  ) => Promise<unknown>
+}
 
-  useEffect(() => {
-    fetch(url)
-      .then((res) => {
-        if (!res.ok) throw new Error(`Failed to fetch file (${res.status})`)
-        return res.arrayBuffer()
-      })
-      .then((buf) => {
-        const wb = XLSX.read(buf, { type: "array" })
-        setWorkbook(wb)
-        setActiveSheet(wb.SheetNames[0] ?? "")
-        setIsLoading(false)
-      })
-      .catch((err) => {
-        setError(err instanceof Error ? err.message : "Failed to load file")
-        setIsLoading(false)
-      })
-  }, [url])
+export function XlsxViewer({ data: initialData, entryKey, previewFile }: XlsxViewerProps) {
+  const [data, setData] = useState<TablePreviewData>(initialData)
+  const [isLoadingSheet, setIsLoadingSheet] = useState(false)
 
-  const rows = useMemo(() => {
-    if (!workbook || !activeSheet) return []
-    const sheet = workbook.Sheets[activeSheet]
-    if (!sheet) return []
-    return XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: "" })
-  }, [workbook, activeSheet])
+  const { columns, rows, total_rows, sheet_names, active_sheet } = data
+  const columnCount = columns.length
 
-  const columnCount = useMemo(() => {
-    if (!rows.length) return 0
-    return Math.max(...rows.map((r) => r.length))
-  }, [rows])
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-[400px]">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-[200px]">
-        <p className="text-sm text-muted-foreground">{error}</p>
-      </div>
-    )
-  }
-
-  const sheetNames = workbook?.SheetNames ?? []
+  const handleSheetChange = useCallback(
+    async (sheetName: string) => {
+      if (!previewFile || sheetName === active_sheet) return
+      setIsLoadingSheet(true)
+      try {
+        const result = (await previewFile(entryKey, { sheet: sheetName })) as TablePreviewData
+        setData(result)
+      } catch (err) {
+        console.error("Failed to switch sheet:", err)
+      } finally {
+        setIsLoadingSheet(false)
+      }
+    },
+    [previewFile, entryKey, active_sheet],
+  )
 
   return (
     <div className="flex flex-col gap-3 h-full text-sm">
       <div className="flex items-end gap-3">
-        {sheetNames.length > 1 && (
+        {sheet_names.length > 1 && (
           <div className="space-y-1">
             <Label className="text-sm">Sheet</Label>
-            <Select value={activeSheet} onValueChange={setActiveSheet}>
+            <Select value={active_sheet} onValueChange={handleSheetChange}>
               <SelectTrigger className="w-[200px] h-8 text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {sheetNames.map((name) => (
+                {sheet_names.map((name) => (
                   <SelectItem key={name} value={name} className="text-sm">
                     {name}
                   </SelectItem>
@@ -93,8 +77,9 @@ export function XlsxViewer({ url }: XlsxViewerProps) {
           </div>
         )}
         <span className="text-sm text-muted-foreground ml-auto">
+          {isLoadingSheet && <Loader2 className="inline h-3.5 w-3.5 animate-spin mr-1.5" />}
           {rows.length} rows · {columnCount} columns
-          {sheetNames.length > 1 && ` · ${sheetNames.length} sheets`}
+          {sheet_names.length > 1 && ` · ${sheet_names.length} sheets`}
         </span>
       </div>
 
@@ -106,18 +91,18 @@ export function XlsxViewer({ url }: XlsxViewerProps) {
                 <th className="px-2 py-1.5 text-right text-muted-foreground border-r w-10 font-medium">
                   #
                 </th>
-                {rows[0]?.map((cell, i) => (
+                {columns.map((col, i) => (
                   <th
                     key={i}
                     className="px-2 py-1.5 text-left font-semibold border-r last:border-r-0 whitespace-nowrap"
                   >
-                    {String(cell)}
+                    {String(col)}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y">
-              {rows.slice(1).map((row, ri) => (
+              {rows.map((row, ri) => (
                 <tr key={ri} className="hover:bg-muted/30">
                   <td className="px-2 py-1 text-right text-muted-foreground border-r tabular-nums">
                     {ri + 1}

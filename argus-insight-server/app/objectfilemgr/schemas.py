@@ -247,3 +247,27 @@ class S3SelectResponse(BaseModel):
 
     records: list[str]
     stats: dict | None = None
+
+
+# --------------------------------------------------------------------------- #
+# File Preview
+# --------------------------------------------------------------------------- #
+
+
+class TablePreviewResponse(BaseModel):
+    """Tabular preview for Parquet, XLSX/XLS files."""
+
+    format: str = Field(..., description="Source format: parquet, xlsx, xls")
+    columns: list[str] = Field(default_factory=list, description="Column names")
+    rows: list[list] = Field(default_factory=list, description="Row data (list of lists)")
+    total_rows: int = Field(0, description="Total rows in the source")
+    sheet_names: list[str] = Field(default_factory=list, description="Sheet names (xlsx/xls only)")
+    active_sheet: str = Field("", description="Active sheet name (xlsx/xls only)")
+
+
+class DocumentPreviewResponse(BaseModel):
+    """Document preview for DOCX, PPTX files."""
+
+    format: str = Field(..., description="Source format: docx, pptx")
+    html: str = Field("", description="Converted HTML content")
+    slides: list[dict] | None = Field(None, description="Slide data (pptx only)")

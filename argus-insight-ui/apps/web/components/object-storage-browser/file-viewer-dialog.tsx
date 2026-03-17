@@ -20,6 +20,7 @@ import { AudioViewer } from "./audio-viewer"
 import { XlsxViewer } from "./xlsx-viewer"
 import { DocxViewer } from "./docx-viewer"
 import { ParquetViewer } from "./parquet-viewer"
+import { PptxViewer } from "./pptx-viewer"
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react").then((m) => m.default), {
   ssr: false,
@@ -101,14 +102,8 @@ const videoExtensions = new Set(["mp4", "webm", "ogg", "mov", "m4v", "avi", "mkv
 /** Audio extensions. */
 const audioExtensions = new Set(["mp3", "wav", "m4a", "flac", "aac", "wma"])
 
-/** Spreadsheet extensions handled by SheetJS. */
-const xlsxExtensions = new Set(["xls", "xlsx"])
-
-/** Word document extensions handled by mammoth (.docx only). */
-const docxExtensions = new Set(["docx"])
-
-/** Parquet file extension. */
-const parquetExtensions = new Set(["parquet"])
+/** Extensions handled by server-side preview API. */
+const serverPreviewExtensions = new Set(["xls", "xlsx", "docx", "pptx", "parquet"])
 
 /** File type category for routing to the correct viewer. */
 type FileCategory =
@@ -120,6 +115,7 @@ type FileCategory =
   | "audio"
   | "xlsx"
   | "docx"
+  | "pptx"
   | "parquet"
   | null
 
@@ -130,9 +126,10 @@ function getFileCategory(ext: string): FileCategory {
   if (pdfExtensions.has(ext)) return "pdf"
   if (videoExtensions.has(ext)) return "video"
   if (audioExtensions.has(ext)) return "audio"
-  if (xlsxExtensions.has(ext)) return "xlsx"
-  if (docxExtensions.has(ext)) return "docx"
-  if (parquetExtensions.has(ext)) return "parquet"
+  if (ext === "xls" || ext === "xlsx") return "xlsx"
+  if (ext === "docx") return "docx"
+  if (ext === "pptx") return "pptx"
+  if (ext === "parquet") return "parquet"
   return null
 }
 
@@ -144,9 +141,7 @@ const viewableExtensions = new Set([
   ...pdfExtensions,
   ...videoExtensions,
   ...audioExtensions,
-  ...xlsxExtensions,
-  ...docxExtensions,
-  ...parquetExtensions,
+  ...serverPreviewExtensions,
 ])
 
 /** Check whether a file can be viewed. */
@@ -161,12 +156,12 @@ export function isCsvTsvFile(name: string): boolean {
 
 /** Categories that skip the text-specific size limit. */
 const SIZE_UNLIMITED_CATEGORIES = new Set<FileCategory>([
-  "image", "csv", "pdf", "video", "audio", "xlsx", "docx", "parquet",
+  "image", "csv", "pdf", "video", "audio", "xlsx", "docx", "pptx", "parquet",
 ])
 
 /** Categories that need a wider dialog. */
 const WIDE_DIALOG_CATEGORIES = new Set<FileCategory>([
-  "csv", "xlsx", "parquet", "video", "pdf",
+  "csv", "xlsx", "parquet", "video", "pdf", "pptx",
 ])
 
 type FileViewerDialogProps = {
@@ -175,6 +170,11 @@ type FileViewerDialogProps = {
   entry: StorageEntry | null
   /** Returns a presigned download URL for the given key. */
   getDownloadUrl: (key: string) => Promise<string>
+  /** Server-side file preview (parquet, xlsx, xls, docx, pptx). */
+  previewFile?: (
+    key: string,
+    options?: { sheet?: string; maxRows?: number },
+  ) => Promise<unknown>
 }
 
 export function FileViewerDialog({
@@ -182,15 +182,18 @@ export function FileViewerDialog({
   onOpenChange,
   entry,
   getDownloadUrl,
+  previewFile,
 }: FileViewerDialogProps) {
   const [content, setContent] = useState<string | null>(null)
   const [mediaUrl, setMediaUrl] = useState<string | null>(null)
+  const [previewData, setPreviewData] = useState<unknown>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const reset = useCallback(() => {
     setContent(null)
     setMediaUrl(null)
+    setPreviewData(null)
     setIsLoading(false)
     setError(null)
   }, [])
@@ -218,10 +221,23 @@ export function FileViewerDialog({
     setIsLoading(true)
     setError(null)
 
+    // Server-side preview types
+    if (serverPreviewExtensions.has(ext) && previewFile) {
+      previewFile(entry.key)
+        .then((data) => {
+          setPreviewData(data)
+          setIsLoading(false)
+        })
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : "Failed to load file")
+          setIsLoading(false)
+        })
+      return
+    }
+
     getDownloadUrl(entry.key)
       .then((url) => {
         if (category === "text") {
-          // Text files: fetch content as string for Monaco
           return fetch(url)
             .then((res) => {
               if (!res.ok) throw new Error(`Failed to fetch file (${res.status})`)
@@ -240,7 +256,7 @@ export function FileViewerDialog({
         setError(err instanceof Error ? err.message : "Failed to load file")
         setIsLoading(false)
       })
-  }, [open, entry, getDownloadUrl, reset])
+  }, [open, entry, getDownloadUrl, previewFile, reset])
 
   if (!entry) return null
 
@@ -301,19 +317,28 @@ export function FileViewerDialog({
             <AudioViewer url={mediaUrl} extension={ext} fileName={entry.name} />
           )}
 
-          {/* XLSX / XLS */}
-          {!isLoading && !error && category === "xlsx" && mediaUrl && (
-            <XlsxViewer url={mediaUrl} />
+          {/* XLSX / XLS (server-side preview) */}
+          {!isLoading && !error && category === "xlsx" && previewData && (
+            <XlsxViewer
+              data={previewData as never}
+              entryKey={entry.key}
+              previewFile={previewFile}
+            />
           )}
 
-          {/* DOCX */}
-          {!isLoading && !error && category === "docx" && mediaUrl && (
-            <DocxViewer url={mediaUrl} />
+          {/* DOCX (server-side preview) */}
+          {!isLoading && !error && category === "docx" && previewData && (
+            <DocxViewer data={previewData as never} />
           )}
 
-          {/* Parquet */}
-          {!isLoading && !error && category === "parquet" && mediaUrl && (
-            <ParquetViewer url={mediaUrl} />
+          {/* PPTX (server-side preview) */}
+          {!isLoading && !error && category === "pptx" && previewData && (
+            <PptxViewer data={previewData as never} />
+          )}
+
+          {/* Parquet (server-side preview) */}
+          {!isLoading && !error && category === "parquet" && previewData && (
+            <ParquetViewer data={previewData as never} />
           )}
 
           {/* Text / Code (Monaco) */}

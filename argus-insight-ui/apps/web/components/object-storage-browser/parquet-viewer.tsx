@@ -1,79 +1,32 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { parquetMetadata, parquetRead } from "hyparquet"
-import { Loader2 } from "lucide-react"
+import { useMemo } from "react"
 
-type ParquetViewerProps = {
-  /** Presigned download URL. */
-  url: string
+type TablePreviewData = {
+  format: string
+  columns: string[]
+  rows: unknown[][]
+  total_rows: number
 }
 
-export function ParquetViewer({ url }: ParquetViewerProps) {
-  const [columns, setColumns] = useState<string[]>([])
-  const [rows, setRows] = useState<Record<string, unknown>[]>([])
-  const [totalRows, setTotalRows] = useState(0)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+type ParquetViewerProps = {
+  /** Server-side preview data. */
+  data: TablePreviewData
+}
 
-  useEffect(() => {
-    fetch(url)
-      .then((res) => {
-        if (!res.ok) throw new Error(`Failed to fetch file (${res.status})`)
-        return res.arrayBuffer()
-      })
-      .then(async (buf) => {
-        const metadata = parquetMetadata(buf)
-        const numRows = Number(metadata.num_rows)
-        setTotalRows(numRows)
+export function ParquetViewer({ data }: ParquetViewerProps) {
+  const { columns, rows, total_rows } = data
 
-        const cols = metadata.schema
-          .filter((s) => s.name !== "schema" && s.num_children === undefined)
-          .map((s) => s.name)
-        setColumns(cols)
-
-        // Read up to 1000 rows for preview
-        const previewRows: Record<string, unknown>[] = []
-        await parquetRead({
-          file: buf,
-          rowEnd: Math.min(numRows, 1000),
-          onComplete: (data: Record<string, unknown>[]) => {
-            previewRows.push(...data)
-          },
-        })
-        setRows(previewRows)
-        setIsLoading(false)
-      })
-      .catch((err) => {
-        setError(err instanceof Error ? err.message : "Failed to load file")
-        setIsLoading(false)
-      })
-  }, [url])
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-[400px]">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-[200px]">
-        <p className="text-sm text-muted-foreground">{error}</p>
-      </div>
-    )
-  }
+  const columnCount = columns.length
 
   return (
     <div className="flex flex-col gap-3 h-full text-sm">
       <div className="flex items-end gap-3">
         <span className="text-sm text-muted-foreground ml-auto">
-          {rows.length === totalRows
-            ? `${totalRows} rows`
-            : `Showing ${rows.length} of ${totalRows} rows`}{" "}
-          · {columns.length} columns
+          {rows.length === total_rows
+            ? `${total_rows} rows`
+            : `Showing ${rows.length} of ${total_rows} rows`}{" "}
+          · {columnCount} columns
         </span>
       </div>
 
@@ -101,12 +54,12 @@ export function ParquetViewer({ url }: ParquetViewerProps) {
                   <td className="px-2 py-1 text-right text-muted-foreground border-r tabular-nums">
                     {ri + 1}
                   </td>
-                  {columns.map((col) => {
-                    const val = row[col]
+                  {columns.map((_, ci) => {
+                    const val = row[ci]
                     const display = val === null || val === undefined ? "" : String(val)
                     return (
                       <td
-                        key={col}
+                        key={ci}
                         className="px-2 py-1 border-r last:border-r-0 whitespace-nowrap max-w-[300px] truncate"
                         title={display}
                       >

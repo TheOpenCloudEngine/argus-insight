@@ -595,6 +595,11 @@ async function handleContextDelete() {
         onOpenChange={setViewerOpen}
         entry={viewerEntry}
         getDownloadUrl={(key) => dataSource.getDownloadUrl(bucket, key)}
+        previewFile={
+          dataSource.previewFile
+            ? (key, options) => dataSource.previewFile!(bucket, key, options)
+            : undefined
+        }
       />
       <CatViewerDialog
         open={catViewerOpen}

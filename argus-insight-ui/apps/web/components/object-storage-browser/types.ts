@@ -89,6 +89,13 @@ export type BrowserDataSource = {
     sourceKey: string,
     destinationKey: string,
   ) => Promise<void>
+
+  /** Server-side file preview (parquet, xlsx, xls, docx, pptx). */
+  previewFile?: (
+    bucket: string,
+    key: string,
+    options?: { sheet?: string; maxRows?: number },
+  ) => Promise<unknown>
 }
 
 /** Sort direction. */

@@ -18,6 +18,7 @@ export { AudioViewer } from "./audio-viewer"
 export { XlsxViewer } from "./xlsx-viewer"
 export { DocxViewer } from "./docx-viewer"
 export { ParquetViewer } from "./parquet-viewer"
+export { PptxViewer } from "./pptx-viewer"
 
 export type {
   StorageFolder,

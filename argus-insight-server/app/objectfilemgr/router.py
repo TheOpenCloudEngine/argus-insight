@@ -27,6 +27,7 @@ from app.objectfilemgr.schemas import (
     CreateFolderResponse,
     DeleteObjectsRequest,
     DeleteObjectsResponse,
+    DocumentPreviewResponse,
     HeadObjectResponse,
     ListObjectsResponse,
     MultipartUploadInitResponse,
@@ -37,6 +38,7 @@ from app.objectfilemgr.schemas import (
     PutTaggingRequest,
     S3SelectRequest,
     S3SelectResponse,
+    TablePreviewResponse,
     TaggingResponse,
 )
 
@@ -408,4 +410,58 @@ async def delete_object_tags(
         return {"key": key, "tags_deleted": True}
     except Exception as e:
         logger.error("delete_object_tagging error: key=%s %s", key, e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =========================================================================== #
+# File Preview
+# =========================================================================== #
+
+_PREVIEW_FORMATS = {
+    "parquet": "table",
+    "xlsx": "table",
+    "xls": "table",
+    "docx": "document",
+    "pptx": "document",
+}
+
+
+@router.get(
+    "/objects/preview",
+    response_model=TablePreviewResponse | DocumentPreviewResponse,
+)
+async def preview_object(
+    key: str = Query(..., description="Object key"),
+    bucket: str | None = Query(None),
+    sheet: str | None = Query(None, description="Sheet name (xlsx/xls only)"),
+    max_rows: int = Query(1000, ge=1, le=10000, description="Max rows for tabular preview"),
+):
+    """Preview a file by converting it on the server.
+
+    Supported formats:
+      - **parquet** → tabular JSON (columns + rows)
+      - **xlsx / xls** → tabular JSON with sheet selection
+      - **docx** → HTML
+      - **pptx** → HTML with slide data
+    """
+    ext = key.rsplit(".", 1)[-1].lower() if "." in key else ""
+    if ext not in _PREVIEW_FORMATS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported preview format: .{ext}. "
+            f"Supported: {', '.join(_PREVIEW_FORMATS.keys())}",
+        )
+
+    try:
+        b = _bucket(bucket)
+        if ext == "parquet":
+            return await service.preview_parquet(bucket=b, key=key, max_rows=max_rows)
+        if ext in ("xlsx", "xls"):
+            return await service.preview_xlsx(bucket=b, key=key, sheet=sheet, max_rows=max_rows)
+        if ext == "docx":
+            return await service.preview_docx(bucket=b, key=key)
+        if ext == "pptx":
+            return await service.preview_pptx(bucket=b, key=key)
+    except Exception as e:
+        logger.error("preview_object error: key=%s %s", key, e)
         raise HTTPException(status_code=500, detail=str(e))
