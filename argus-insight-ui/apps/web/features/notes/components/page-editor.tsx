@@ -13,7 +13,6 @@ import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Separator } from "@workspace/ui/components/separator"
 import Editor, { type Monaco } from "@monaco-editor/react"
-import { useTheme } from "next-themes"
 import { MarkdownPreview } from "./markdown-preview"
 import { VersionHistory } from "./version-history"
 import { useNotes } from "./notes-provider"
@@ -22,7 +21,6 @@ type ViewMode = "edit" | "split" | "preview"
 
 export function PageEditor() {
   const { currentPage, savePage } = useNotes()
-  const { resolvedTheme } = useTheme()
   const [viewMode, setViewMode] = useState<ViewMode>("split")
   const [title, setTitle] = useState("")
   const [content, setContent] = useState("")
@@ -175,7 +173,7 @@ export function PageEditor() {
               value={content}
               onChange={handleContentChange}
               beforeMount={handleEditorBeforeMount}
-              theme={resolvedTheme === "dark" ? "vs-dark" : "argus-light"}
+              theme="argus-light"
               options={{
                 minimap: { enabled: false },
                 lineNumbers: "on",

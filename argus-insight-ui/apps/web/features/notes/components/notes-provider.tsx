@@ -16,6 +16,7 @@ import {
   fetchPage,
   createNotebook as apiCreateNotebook,
   deleteNotebook as apiDeleteNotebook,
+  updateNotebook as apiUpdateNotebook,
   createSection as apiCreateSection,
   deleteSection as apiDeleteSection,
   createPage as apiCreatePage,
@@ -39,6 +40,7 @@ type NotesContextType = {
   selectSection: (section: Section) => Promise<void>
   selectPage: (pageId: number) => Promise<void>
   createNotebook: (title: string, description?: string, color?: string) => Promise<Notebook>
+  changeNotebookColor: (id: number, color: string) => Promise<void>
   removeNotebook: (id: number) => Promise<void>
   addSection: (title: string) => Promise<Section | null>
   removeSection: (id: number) => Promise<void>
@@ -106,6 +108,14 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       const nb = await apiCreateNotebook({ title, description, color })
       await loadNotebooks()
       return nb
+    },
+    [loadNotebooks],
+  )
+
+  const changeNotebookColor = useCallback(
+    async (id: number, color: string) => {
+      await apiUpdateNotebook(id, { color })
+      await loadNotebooks()
     },
     [loadNotebooks],
   )
@@ -220,6 +230,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         selectSection,
         selectPage,
         createNotebook,
+        changeNotebookColor,
         removeNotebook,
         addSection,
         removeSection,
