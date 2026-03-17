@@ -18,16 +18,12 @@ const DNS_SERVER_COUNT = 3
 
 function DomainSettingsSection({
   domainName,
-  dnsServers,
   onDomainNameChange,
-  onDnsServerChange,
   onSave,
   saving,
 }: {
   domainName: string
-  dnsServers: [string, string, string]
   onDomainNameChange: (value: string) => void
-  onDnsServerChange: (index: number, value: string) => void
   onSave: () => void
   saving: boolean
 }) {
@@ -38,7 +34,7 @@ function DomainSettingsSection({
           <div>
             <CardTitle>Domain</CardTitle>
             <CardDescription>
-              Domain name and DNS server configuration
+              Domain name configuration
             </CardDescription>
           </div>
           <Button size="sm" onClick={onSave} disabled={saving}>
@@ -52,45 +48,73 @@ function DomainSettingsSection({
         </div>
       </CardHeader>
       <CardContent>
-        <div className="space-y-6">
-          {/* Domain Name */}
-          <div className="space-y-2">
-            <Label htmlFor="infra-domain-name">Domain Name</Label>
-            <Input
-              id="infra-domain-name"
-              value={domainName}
-              onChange={(e) => onDomainNameChange(e.target.value)}
-              placeholder="e.g. example.com"
-            />
-            <p className="text-xs text-muted-foreground">
-              The primary domain name for this infrastructure
-            </p>
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="infra-domain-name">Domain Name</Label>
+          <Input
+            id="infra-domain-name"
+            value={domainName}
+            onChange={(e) => onDomainNameChange(e.target.value)}
+            placeholder="e.g. example.com"
+          />
+          <p className="text-xs text-muted-foreground">
+            The primary domain name for this infrastructure
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
-          {/* DNS Servers - always 3 fixed fields */}
-          <div className="space-y-3">
-            <div>
-              <Label>DNS Servers</Label>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Configure up to {DNS_SERVER_COUNT} DNS servers
-              </p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              {Array.from({ length: DNS_SERVER_COUNT }, (_, i) => (
-                <div key={i} className="space-y-1.5">
-                  <Label htmlFor={`dns-server-${i + 1}`} className="text-xs">
-                    DNS Server {i + 1}
-                  </Label>
-                  <Input
-                    id={`dns-server-${i + 1}`}
-                    value={dnsServers[i]}
-                    onChange={(e) => onDnsServerChange(i, e.target.value)}
-                    placeholder={`e.g. 8.8.${i === 0 ? "8.8" : i === 1 ? "4.4" : "0.0"}`}
-                  />
-                </div>
-              ))}
-            </div>
+// --------------------------------------------------------------------------- //
+// DNS Servers Section
+// --------------------------------------------------------------------------- //
+
+function DnsServersSection({
+  dnsServers,
+  onDnsServerChange,
+  onSave,
+  saving,
+}: {
+  dnsServers: [string, string, string]
+  onDnsServerChange: (index: number, value: string) => void
+  onSave: () => void
+  saving: boolean
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>DNS Servers</CardTitle>
+            <CardDescription>
+              Configure up to {DNS_SERVER_COUNT} DNS servers
+            </CardDescription>
           </div>
+          <Button size="sm" onClick={onSave} disabled={saving}>
+            {saving ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+            ) : (
+              <Save className="h-4 w-4 mr-1.5" />
+            )}
+            Save
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {Array.from({ length: DNS_SERVER_COUNT }, (_, i) => (
+            <div key={i} className="space-y-1.5">
+              <Label htmlFor={`dns-server-${i + 1}`} className="text-xs">
+                DNS Server {i + 1}
+              </Label>
+              <Input
+                id={`dns-server-${i + 1}`}
+                value={dnsServers[i]}
+                onChange={(e) => onDnsServerChange(i, e.target.value)}
+                placeholder={`e.g. 8.8.${i === 0 ? "8.8" : i === 1 ? "4.4" : "0.0"}`}
+              />
+            </div>
+          ))}
         </div>
       </CardContent>
     </Card>
@@ -188,6 +212,7 @@ export function InfraSettings() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [savingDomain, setSavingDomain] = useState(false)
+  const [savingDns, setSavingDns] = useState(false)
   const [savingPdns, setSavingPdns] = useState(false)
 
   // Domain state
@@ -261,6 +286,24 @@ export function InfraSettings() {
     }
   }
 
+  async function handleSaveDns() {
+    setSavingDns(true)
+    try {
+      await updateInfraCategory("domain", {
+        domain_name: domainName,
+        dns_server_1: dnsServers[0],
+        dns_server_2: dnsServers[1],
+        dns_server_3: dnsServers[2],
+      })
+      showStatus("success", "DNS server settings saved successfully")
+      await loadConfig()
+    } catch (err) {
+      showStatus("error", err instanceof Error ? err.message : "Failed to save")
+    } finally {
+      setSavingDns(false)
+    }
+  }
+
   async function handleSavePdns() {
     setSavingPdns(true)
     try {
@@ -325,11 +368,17 @@ export function InfraSettings() {
       {/* Domain Settings */}
       <DomainSettingsSection
         domainName={domainName}
-        dnsServers={dnsServers}
         onDomainNameChange={setDomainName}
-        onDnsServerChange={handleDnsServerChange}
         onSave={handleSaveDomain}
         saving={savingDomain}
+      />
+
+      {/* DNS Servers */}
+      <DnsServersSection
+        dnsServers={dnsServers}
+        onDnsServerChange={handleDnsServerChange}
+        onSave={handleSaveDns}
+        saving={savingDns}
       />
 
       {/* PowerDNS Settings */}
