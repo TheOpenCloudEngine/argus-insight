@@ -95,7 +95,10 @@ const [contextDeleteOpen, setContextDeleteOpen] = useState(false)
   useEffect(() => {
     if (dataSource.fetchConfiguration) {
       dataSource.fetchConfiguration()
-        .then(setFbConfig)
+        .then((config) => {
+          console.log("[FileBrowser] Configuration loaded:", config)
+          setFbConfig(config)
+        })
         .catch((err) => {
           console.error("Failed to fetch filebrowser config:", err)
         })
