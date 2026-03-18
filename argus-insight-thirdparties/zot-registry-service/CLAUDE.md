@@ -157,20 +157,39 @@ stringData:
 
 #### Step 4. TLS 인증서 생성
 
-```bash
-# 자체 서명 인증서 생성 (Production에서는 CA 발급 인증서 사용 권장)
-DOMAIN=zot.argus-insight.dev.net
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-  -keyout /tmp/zot-tls.key -out /tmp/zot-tls.crt \
-  -subj "/CN=$DOMAIN" \
-  -addext "subjectAltName=DNS:$DOMAIN"
+`generate_certs.sh`는 Self-signed CA → 서버 인증서 2단계 구조로 인증서를 생성합니다. Production의 폐쇄망/airgap 환경에서도 이 방식을 사용합니다.
 
-# Kubernetes TLS Secret 생성
+```bash
+# hosts.txt에 호스트명 설정
+echo "zot.argus-insight.dev.net" > hosts.txt
+
+# CA + 서버 인증서 생성
+bash generate_certs.sh
+```
+
+생성되는 파일 구조:
+
+```
+ca/
+├── ca.key                              # CA 개인키 (안전하게 보관)
+└── ca.crt                              # CA 인증서 (클라이언트에 배포)
+zot.argus-insight.dev.net/
+├── zot.argus-insight.dev.net.key       # 서버 개인키
+├── zot.argus-insight.dev.net.crt       # 서버 인증서
+└── zot.argus-insight.dev.net.pem       # 인증서 체인 (서버 + CA)
+```
+
+Kubernetes TLS Secret으로 등록:
+
+```bash
+HOST=zot.argus-insight.dev.net
 kubectl create namespace argus-insight --dry-run=client -o yaml | kubectl apply -f -
 kubectl create secret tls zot-registry-tls \
-  --cert=/tmp/zot-tls.crt --key=/tmp/zot-tls.key \
+  --cert=$HOST/$HOST.crt --key=$HOST/$HOST.key \
   -n argus-insight
 ```
+
+> **인증서 유효기간**: CA 10년 (3650일), 서버 인증서 825일 (`generate_certs.sh`의 기본값). 서버 인증서 갱신 시 CA를 재생성할 필요 없이 `generate_certs.sh`를 다시 실행하면 기존 CA로 새 서버 인증서를 발급합니다.
 
 #### Step 5. Ingress 호스트명 설정
 
@@ -220,14 +239,28 @@ kubectl get svc -n ingress-nginx ingress-nginx-controller
 echo "<NODE_IP> zot.argus-insight.dev.net" >> /etc/hosts
 ```
 
-#### Step 8. Docker 클라이언트 설정
+#### Step 8. 클라이언트 CA 인증서 등록
+
+Self-signed CA를 사용하므로, 레지스트리에 접근하는 모든 클라이언트 노드에 CA 인증서를 등록해야 합니다.
 
 ```bash
-# 자체 서명 인증서인 경우 CA 등록 (CA 발급 인증서면 불필요)
 NODEPORT=31274  # Step 7에서 확인한 포트
+
+# Docker 클라이언트
 mkdir -p /etc/docker/certs.d/zot.argus-insight.dev.net:$NODEPORT
-cp /tmp/zot-tls.crt /etc/docker/certs.d/zot.argus-insight.dev.net:$NODEPORT/ca.crt
+cp ca/ca.crt /etc/docker/certs.d/zot.argus-insight.dev.net:$NODEPORT/ca.crt
+
+# OS 신뢰 저장소 (curl, 브라우저 등에서 사용)
+# RHEL/Rocky Linux
+sudo cp ca/ca.crt /etc/pki/ca-trust/source/anchors/argus-insight-ca.crt
+sudo update-ca-trust
+
+# Ubuntu/Debian
+sudo cp ca/ca.crt /usr/local/share/ca-certificates/argus-insight-ca.crt
+sudo update-ca-certificates
 ```
+
+> CA 인증서는 한 번만 등록하면 됩니다. 이후 해당 CA로 발급한 서버 인증서를 교체하더라도 클라이언트 재설정은 불필요합니다.
 
 #### Step 9. 접속 확인
 
@@ -248,6 +281,120 @@ docker push zot.argus-insight.dev.net:$NODEPORT/library/hello-world:latest
 # 카탈로그 확인
 curl -sk -u admin:'Argus!insight2026' https://zot.argus-insight.dev.net:$NODEPORT/v2/_catalog
 ```
+
+### Kubernetes 리소스 삭제
+
+배포된 Zot Registry와 관련 리소스를 모두 제거하는 절차입니다.
+
+#### Step 1. Kubernetes 리소스 삭제
+
+```bash
+# Kustomize로 배포한 리소스 일괄 삭제 (namespace 포함)
+kubectl delete -k kubernetes/
+
+# TLS Secret은 namespace와 함께 삭제됨. 별도 확인:
+kubectl get all,ingress,pvc,secret -n argus-insight 2>&1
+# "No resources found" 또는 namespace 없음이 정상
+```
+
+#### Step 2. Docker 이미지 삭제
+
+```bash
+# Zot Registry 이미지
+docker rmi argus-insight/zot-registry:2.1.2
+
+# 테스트용 이미지 (push 테스트에 사용한 경우)
+docker rmi zot.argus-insight.dev.net:$NODEPORT/library/hello-world:latest
+```
+
+#### Step 3. Docker 클라이언트 정리
+
+```bash
+# 레지스트리 로그인 정보 제거
+docker logout zot.argus-insight.dev.net:$NODEPORT
+
+# Docker 클라이언트 인증서 제거
+rm -rf /etc/docker/certs.d/zot.argus-insight.dev.net:*
+```
+
+#### Step 4. DNS/호스트 등록 제거
+
+```bash
+# /etc/hosts에서 zot 항목 제거
+sed -i '/zot.argus-insight.dev.net/d' /etc/hosts
+```
+
+#### Step 5. OS 신뢰 저장소에서 CA 제거 (선택)
+
+CA 인증서를 다른 서비스에서도 사용 중이면 유지합니다. Zot 전용이었다면 제거합니다.
+
+```bash
+# RHEL/Rocky Linux
+sudo rm -f /etc/pki/ca-trust/source/anchors/argus-insight-ca.crt
+sudo update-ca-trust
+
+# Ubuntu/Debian
+sudo rm -f /usr/local/share/ca-certificates/argus-insight-ca.crt
+sudo update-ca-certificates
+```
+
+> Nginx Ingress Controller는 다른 서비스에서도 사용할 수 있으므로 별도로 삭제하지 않습니다. 제거가 필요하면: `kubectl delete -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.1/deploy/static/provider/cloud/deploy.yaml`
+
+---
+
+## TLS 인증서 관리
+
+### 인증서 구조
+
+`generate_certs.sh`는 Self-signed CA → 서버 인증서 2단계 구조를 사용합니다. 폐쇄망/airgap 환경에서는 공인 CA 발급이 불가능하므로, 이 Self-signed CA 방식이 Production에서도 적합합니다.
+
+```
+┌──────────────────────────────────┐
+│  Self-signed CA (ca/ca.crt)      │  유효기간: 10년
+│  - 모든 클라이언트 노드에 1회 등록  │
+└──────────┬───────────────────────┘
+           │ 서명
+┌──────────▼───────────────────────┐
+│  서버 인증서 (<host>/<host>.crt) │  유효기간: 825일
+│  - Ingress TLS Secret에 등록     │
+└──────────────────────────────────┘
+```
+
+### CA와 서버 인증서 역할
+
+| 구분 | 파일 | 배포 대상 | 유효기간 |
+|---|---|---|---|
+| CA 개인키 | `ca/ca.key` | 인증서 발급 서버에만 보관 (외부 유출 금지) | — |
+| CA 인증서 | `ca/ca.crt` | 모든 클라이언트 노드의 신뢰 저장소 | 10년 |
+| 서버 개인키 | `<host>/<host>.key` | Kubernetes TLS Secret | — |
+| 서버 인증서 | `<host>/<host>.crt` | Kubernetes TLS Secret | 825일 |
+
+### 서버 인증서 갱신
+
+서버 인증서 만료 시 CA를 재생성할 필요 없이 `generate_certs.sh`를 다시 실행합니다. 기존 CA(`ca/` 디렉토리)가 존재하면 자동으로 재사용합니다.
+
+```bash
+# 서버 인증서 재발급 (기존 CA 재사용)
+bash generate_certs.sh
+
+# Kubernetes TLS Secret 교체
+HOST=zot.argus-insight.dev.net
+kubectl delete secret zot-registry-tls -n argus-insight
+kubectl create secret tls zot-registry-tls \
+  --cert=$HOST/$HOST.crt --key=$HOST/$HOST.key \
+  -n argus-insight
+
+# Ingress가 새 인증서를 인식하도록 재시작
+kubectl rollout restart deployment/zot-registry -n argus-insight
+```
+
+> CA를 교체하지 않았으므로 클라이언트 노드의 신뢰 저장소는 재설정 불필요합니다.
+
+### 호스트 추가
+
+새로운 호스트의 인증서가 필요하면 `hosts.txt`에 호스트명을 추가하고 `generate_certs.sh`를 실행합니다. 기존 호스트의 인증서도 함께 재발급됩니다.
+
+---
 
 ## Kubernetes 배포 시 주의사항
 
