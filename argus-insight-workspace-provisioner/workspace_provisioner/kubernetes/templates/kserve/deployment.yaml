@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kserve-${WORKSPACE_NAME}-controller
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: kserve
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kserve
+      app.kubernetes.io/component: controller
+      app.kubernetes.io/instance: ${WORKSPACE_NAME}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kserve
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/instance: ${WORKSPACE_NAME}
+        app.kubernetes.io/part-of: argus-insight
+        argus-insight/workspace: ${WORKSPACE_NAME}
+    spec:
+      serviceAccountName: kserve-${WORKSPACE_NAME}
+      containers:
+        - name: controller
+          image: ${KSERVE_CONTROLLER_IMAGE}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: KSERVE_NAMESPACE
+              value: "${K8S_NAMESPACE}"
+            - name: DEFAULT_RUNTIME
+              value: "${KSERVE_DEFAULT_RUNTIME}"
+            - name: S3_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: kserve-${WORKSPACE_NAME}
+                  key: minio-endpoint
+          resources:
+            requests:
+              cpu: "${KSERVE_CPU_REQUEST}"
+              memory: "${KSERVE_MEMORY_REQUEST}"
+            limits:
+              cpu: "${KSERVE_CPU_LIMIT}"
+              memory: "${KSERVE_MEMORY_LIMIT}"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20

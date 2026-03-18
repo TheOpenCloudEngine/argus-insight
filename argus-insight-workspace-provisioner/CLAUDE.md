@@ -43,7 +43,8 @@ argus-insight-workspace-provisioner/
     │   └── templates/
     │       ├── minio/         # MinIO K8s 매니페스트 템플릿
     │       ├── airflow/       # Airflow K8s 매니페스트 템플릿
-    │       └── mlflow/        # MLflow K8s 매니페스트 템플릿
+    │       ├── mlflow/        # MLflow K8s 매니페스트 템플릿
+    │       └── kserve/        # KServe K8s 매니페스트 템플릿
     └── workflow/
         ├── __init__.py
         ├── engine.py          # WorkflowStep ABC, WorkflowContext, WorkflowExecutor
@@ -54,7 +55,9 @@ argus-insight-workspace-provisioner/
             ├── minio_deploy.py           # Step 2: MinIO K8s 배포
             ├── minio_setup.py            # Step 3: 버킷 + 사용자 생성
             ├── airflow_deploy.py         # Step 4: Airflow K8s 배포
-            └── mlflow_deploy.py          # Step 5: MLflow K8s 배포
+            ├── mlflow_deploy.py          # Step 5: MLflow K8s 배포
+            ├── kserve_deploy.py          # Step 6: KServe K8s 배포
+            └── custom_hook.py            # Step 7: 커스텀 훅 (빈 구현체)
 ```
 
 ## 아키텍처
@@ -86,7 +89,16 @@ WorkspaceService.create_workspace()
          ├── Step 5: MlflowDeployStep
          │    ├── PostgreSQL + MLflow Tracking Server
          │    └── MinIO를 artifact store로 사용
+         ├── Step 6: KServeDeployStep
+         │    ├── KServe Controller Deployment
+         │    ├── MinIO를 model storage로 사용
+         │    └── InferenceService 기본 런타임 설정
+         ├── Step 7: CustomHookStep
+         │    ├── 빈 구현체 (사용자 정의 로직 확장용)
+         │    └── 전체 WorkflowContext 접근 가능 (이전 단계 결과 포함)
          └── 완료 → workspace.status = active
+
+* steps 파라미터를 통해 특정 Step만 선택적으로 실행 가능
 ```
 
 ## Provisioning Config (UI 설정)
@@ -135,6 +147,40 @@ WorkspaceService.create_workspace()
 | `postgres_image` | string | `"postgres:16-alpine"` | Backend store PostgreSQL 이미지 |
 | `db_storage_size` | string | `"10Gi"` | PostgreSQL 데이터 볼륨 PVC 크기 |
 | `resources` | ResourceConfig | (기본값) | CPU/Memory 리소스 |
+
+#### KServeConfig
+
+| 필드 | 타입 | 기본값 | 설명 |
+|------|------|--------|------|
+| `controller_image` | string | `"kserve/kserve-controller:v0.14.1"` | KServe 컨트롤러 이미지 |
+| `default_runtime` | string | `"kserve-mlserver"` | 기본 InferenceService 런타임 |
+| `resources` | ResourceConfig | (기본값) | CPU/Memory 리소스 |
+
+### 선택적 Step 실행
+
+`steps` 파라미터를 통해 특정 Step만 선택적으로 실행할 수 있습니다.
+`steps`를 생략하거나 `null`로 전달하면 모든 Step이 실행됩니다.
+
+#### 사용 가능한 Step 이름
+
+| Step 이름 | 설명 |
+|-----------|------|
+| `gitlab-create-project` | GitLab 프로젝트 생성 |
+| `minio-deploy` | MinIO K8s 배포 |
+| `minio-setup` | 버킷 + 사용자 생성 |
+| `airflow-deploy` | Airflow K8s 배포 |
+| `mlflow-deploy` | MLflow K8s 배포 |
+| `kserve-deploy` | KServe K8s 배포 |
+| `custom-hook` | 커스텀 훅 (빈 구현체) |
+
+### 커스텀 훅 (CustomHookStep)
+
+워크플로우 마지막에 실행되는 빈 구현체입니다. 전체 WorkflowContext에 접근할 수 있어,
+이전 단계의 모든 결과 값 (주소, username, password 등)을 참조할 수 있습니다.
+
+- `CustomHookStep`을 상속하여 `execute()`를 오버라이드하면 커스텀 로직을 구현할 수 있습니다.
+- `hook_name` 파라미터로 Step 이름을 지정할 수 있습니다 (기본값: `"custom-hook"`).
+- `ctx.get("key")`로 이전 단계 결과를 읽고, `ctx.set("key", value)`로 값을 설정합니다.
 
 ### API 요청 예시
 
@@ -214,13 +260,42 @@ POST /api/v1/workspace/workspaces
 }
 ```
 
+#### 특정 Step만 선택적 실행
+
+```json
+POST /api/v1/workspace/workspaces
+{
+  "name": "ml-inference",
+  "display_name": "ML Inference Team",
+  "domain": "dev.net",
+  "admin_user_id": 1,
+  "steps": ["gitlab-create-project", "minio-deploy", "minio-setup", "kserve-deploy"]
+}
+```
+
+#### 커스텀 훅만 추가 실행
+
+```json
+POST /api/v1/workspace/workspaces
+{
+  "name": "ml-team-full",
+  "display_name": "ML Team Full",
+  "domain": "dev.net",
+  "admin_user_id": 1,
+  "steps": [
+    "gitlab-create-project", "minio-deploy", "minio-setup",
+    "airflow-deploy", "mlflow-deploy", "kserve-deploy", "custom-hook"
+  ]
+}
+```
+
 ### 설정 데이터 흐름
 
 ```
 argus-insight-ui (Settings 페이지)
     │
     │  POST /api/v1/workspace/workspaces
-    │  { ..., "provisioning_config": { "minio": {...}, "airflow": {...}, "mlflow": {...} } }
+    │  { ..., "provisioning_config": { "minio": {...}, "airflow": {...}, "mlflow": {...}, "kserve": {...} }, "steps": [...] }
     │
     ▼
 router.py → WorkspaceCreateRequest.provisioning_config (Pydantic 검증 + 기본값 채움)
@@ -259,6 +334,7 @@ kubernetes/client.py → render_manifests() → kubectl apply
 | MinIO Console | `https://minio-console-{ws}.argus-insight.{domain}` |
 | Airflow | `https://airflow-{ws}.argus-insight.{domain}` |
 | MLflow | `https://mlflow-{ws}.argus-insight.{domain}` |
+| KServe | `https://kserve-{ws}.argus-insight.{domain}` |
 
 ## 새 Step 추가 방법
 
@@ -511,7 +587,7 @@ app.include_router(workspace_router, prefix="/api/v1")
 
 | 테이블 | 설명 |
 |--------|------|
-| `argus_workspaces` | Workspace 정의 (이름, 도메인, K8s, GitLab, MinIO, Airflow, MLflow 정보, 상태) |
+| `argus_workspaces` | Workspace 정의 (이름, 도메인, K8s, GitLab, MinIO, Airflow, MLflow, KServe 정보, 상태) |
 | `argus_workspace_members` | Workspace 멤버십 (user_id, workspace_id, role) |
 | `argus_workflow_executions` | 워크플로우 실행 이력 (workspace_id, status) |
 | `argus_workflow_step_executions` | Step별 실행 상태 (step_name, status, error, result) |

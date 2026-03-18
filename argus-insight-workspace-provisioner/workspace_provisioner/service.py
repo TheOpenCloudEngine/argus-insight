@@ -40,6 +40,8 @@ from workspace_provisioner.workflow.steps.airflow_deploy import AirflowDeploySte
 from workspace_provisioner.workflow.steps.minio_deploy import MinioDeployStep
 from workspace_provisioner.workflow.steps.minio_setup import MinioSetupStep
 from workspace_provisioner.workflow.steps.mlflow_deploy import MlflowDeployStep
+from workspace_provisioner.workflow.steps.kserve_deploy import KServeDeployStep
+from workspace_provisioner.workflow.steps.custom_hook import CustomHookStep
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +62,7 @@ def _build_workspace_response(ws: ArgusWorkspace) -> WorkspaceResponse:
         minio_default_bucket=ws.minio_default_bucket,
         airflow_endpoint=ws.airflow_endpoint,
         mlflow_endpoint=ws.mlflow_endpoint,
+        kserve_endpoint=ws.kserve_endpoint,
         status=WorkspaceStatus(ws.status),
         created_by=ws.created_by,
         created_at=ws.created_at,
@@ -156,6 +159,7 @@ async def _run_provisioning_workflow(
                 minio_config=provisioning_config.minio,
                 airflow_config=provisioning_config.airflow,
                 mlflow_config=provisioning_config.mlflow,
+                kserve_config=provisioning_config.kserve,
             )
 
             executor = WorkflowExecutor(session)
@@ -164,13 +168,14 @@ async def _run_provisioning_workflow(
             executor.add_step(MinioSetupStep())
             executor.add_step(AirflowDeployStep())
             executor.add_step(MlflowDeployStep())
-            # Future steps will be added here:
-            # executor.add_step(DnsRegisterStep(...))
+            executor.add_step(KServeDeployStep())
+            executor.add_step(CustomHookStep())
 
             execution = await executor.run(
                 workspace_id=workspace_id,
                 workflow_name="workspace-provision",
                 ctx=ctx,
+                include_steps=req.steps,
             )
 
             # Update workspace status based on workflow result
@@ -188,6 +193,7 @@ async def _run_provisioning_workflow(
                     workspace.minio_default_bucket = ctx.get("minio_default_bucket")
                     workspace.airflow_endpoint = ctx.get("airflow_endpoint")
                     workspace.mlflow_endpoint = ctx.get("mlflow_endpoint")
+                    workspace.kserve_endpoint = ctx.get("kserve_endpoint")
 
                     # Store service credentials and connection info
                     credential = ArgusWorkspaceCredential(
@@ -203,6 +209,7 @@ async def _run_provisioning_workflow(
                         airflow_admin_username="admin",
                         airflow_admin_password=ctx.get("airflow_admin_password"),
                         mlflow_artifact_bucket=ctx.get("mlflow_artifact_bucket"),
+                        kserve_endpoint=ctx.get("kserve_endpoint"),
                     )
                     session.add(credential)
                     logger.info(
@@ -310,6 +317,7 @@ async def get_workspace_credentials(
         airflow_admin_username=cred.airflow_admin_username,
         airflow_admin_password=cred.airflow_admin_password,
         mlflow_artifact_bucket=cred.mlflow_artifact_bucket,
+        kserve_endpoint=cred.kserve_endpoint,
         created_at=cred.created_at,
         updated_at=cred.updated_at,
     )

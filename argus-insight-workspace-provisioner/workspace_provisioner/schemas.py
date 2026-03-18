@@ -79,6 +79,13 @@ class WorkspaceCreateRequest(BaseModel):
         description="Service-level provisioning settings (images, storage sizes, resources). "
         "Fields not provided will use platform defaults.",
     )
+    steps: list[str] | None = Field(
+        default=None,
+        description="If provided, only these steps will be executed during provisioning. "
+        "Steps not in this list are skipped. Pass null or omit to run all steps. "
+        "Available step names: gitlab-create-project, minio-deploy, minio-setup, "
+        "airflow-deploy, mlflow-deploy, kserve-deploy, custom-hook.",
+    )
 
 
 class WorkspaceMemberAddRequest(BaseModel):
@@ -115,6 +122,7 @@ class WorkspaceResponse(BaseModel):
     minio_default_bucket: str | None = None
     airflow_endpoint: str | None = None
     mlflow_endpoint: str | None = None
+    kserve_endpoint: str | None = None
     status: WorkspaceStatus
     created_by: int
     created_at: datetime
@@ -136,6 +144,7 @@ class WorkspaceCredentialResponse(BaseModel):
     airflow_admin_username: str | None = None
     airflow_admin_password: str | None = None
     mlflow_artifact_bucket: str | None = None
+    kserve_endpoint: str | None = None
     created_at: datetime
     updated_at: datetime
 

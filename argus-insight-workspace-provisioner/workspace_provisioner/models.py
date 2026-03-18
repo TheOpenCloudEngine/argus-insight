@@ -33,6 +33,7 @@ class ArgusWorkspace(Base):
         minio_default_bucket: Default bucket name (same as workspace name).
         airflow_endpoint: Airflow webserver URL (e.g., "airflow-ml-team-dev.argus-insight.dev.net").
         mlflow_endpoint: MLflow tracking server URL (e.g., "mlflow-ml-team-dev.argus-insight.dev.net").
+        kserve_endpoint: KServe gateway URL (e.g., "kserve-ml-team-dev.argus-insight.dev.net").
         status:       Workspace status ("provisioning", "active", "failed", "deleting", "deleted").
         created_by:   User ID of the admin who created this workspace.
         created_at:   Timestamp when the workspace was created.
@@ -55,6 +56,7 @@ class ArgusWorkspace(Base):
     minio_default_bucket = Column(String(255))
     airflow_endpoint = Column(String(500))
     mlflow_endpoint = Column(String(500))
+    kserve_endpoint = Column(String(500))
     status = Column(String(20), nullable=False, default="provisioning")
     created_by = Column(Integer, ForeignKey("argus_users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -104,6 +106,7 @@ class ArgusWorkspaceCredential(Base):
         airflow_admin_username: Airflow admin username.
         airflow_admin_password: Airflow web UI admin password.
         mlflow_artifact_bucket: MinIO bucket for MLflow artifacts.
+        kserve_endpoint:    KServe gateway external URL.
         created_at:         Timestamp when credentials were stored.
         updated_at:         Timestamp of last modification.
     """
@@ -125,5 +128,6 @@ class ArgusWorkspaceCredential(Base):
     airflow_admin_username = Column(String(255))
     airflow_admin_password = Column(String(500))
     mlflow_artifact_bucket = Column(String(255))
+    kserve_endpoint = Column(String(500))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

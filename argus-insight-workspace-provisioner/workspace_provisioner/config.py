@@ -106,6 +106,23 @@ class MlflowConfig(BaseModel):
     )
 
 
+class KServeConfig(BaseModel):
+    """KServe model serving deployment settings."""
+
+    controller_image: str = Field(
+        default="kserve/kserve-controller:v0.14.1",
+        description="KServe controller container image",
+    )
+    default_runtime: str = Field(
+        default="kserve-mlserver",
+        description="Default InferenceService runtime (e.g., kserve-mlserver, kserve-triton)",
+    )
+    resources: ResourceConfig = Field(
+        default_factory=ResourceConfig,
+        description="CPU/Memory for the KServe controller container",
+    )
+
+
 class ProvisioningConfig(BaseModel):
     """Top-level provisioning configuration.
 
@@ -125,4 +142,8 @@ class ProvisioningConfig(BaseModel):
     mlflow: MlflowConfig = Field(
         default_factory=MlflowConfig,
         description="MLflow deployment settings",
+    )
+    kserve: KServeConfig = Field(
+        default_factory=KServeConfig,
+        description="KServe model serving settings",
     )

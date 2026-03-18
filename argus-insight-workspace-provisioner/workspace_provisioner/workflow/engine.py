@@ -124,6 +124,7 @@ class WorkflowExecutor:
         workspace_id: int,
         workflow_name: str,
         ctx: WorkflowContext,
+        include_steps: list[str] | None = None,
     ) -> ArgusWorkflowExecution:
         """Execute all steps sequentially.
 
@@ -135,10 +136,15 @@ class WorkflowExecutor:
             workspace_id: The workspace to provision.
             workflow_name: Identifier for this workflow type.
             ctx: Pre-built workflow context with workspace metadata.
+            include_steps: If provided, only steps whose name is in this
+                list will be executed. Steps not in the list are recorded
+                with status "skipped". Pass ``None`` (default) to run all
+                steps.
 
         Returns:
             The ArgusWorkflowExecution record with final status.
         """
+        include_set: set[str] | None = set(include_steps) if include_steps else None
         now = datetime.now(timezone.utc)
 
         # Create workflow execution record
@@ -175,6 +181,19 @@ class WorkflowExecutor:
             if failed:
                 step_record.status = "skipped"
                 await self._session.commit()
+                continue
+
+            # Skip steps not in include_steps filter
+            if include_set is not None and step.name not in include_set:
+                step_record.status = "skipped"
+                await self._session.commit()
+                logger.info(
+                    "Workflow %s step [%d/%d] %s: skipped (not in include_steps)",
+                    workflow_name,
+                    i + 1,
+                    len(self._steps),
+                    step.name,
+                )
                 continue
 
             step_record.status = "running"
