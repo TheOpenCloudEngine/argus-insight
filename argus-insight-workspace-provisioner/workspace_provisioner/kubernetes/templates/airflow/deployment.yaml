@@ -27,7 +27,7 @@ spec:
     spec:
       containers:
         - name: postgres
-          image: postgres:16-alpine
+          image: ${AIRFLOW_POSTGRES_IMAGE}
           env:
             - name: POSTGRES_DB
               value: airflow

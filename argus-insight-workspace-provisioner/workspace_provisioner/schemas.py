@@ -9,6 +9,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from workspace_provisioner.config import ProvisioningConfig
+
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -71,6 +73,11 @@ class WorkspaceCreateRequest(BaseModel):
     )
     admin_user_id: int = Field(
         ..., description="User ID to assign as WorkspaceAdmin",
+    )
+    provisioning_config: ProvisioningConfig = Field(
+        default_factory=ProvisioningConfig,
+        description="Service-level provisioning settings (images, storage sizes, resources). "
+        "Fields not provided will use platform defaults.",
     )
 
 

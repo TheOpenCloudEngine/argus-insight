@@ -17,6 +17,7 @@ import logging
 import secrets
 import string
 
+from workspace_provisioner.config import MlflowConfig
 from workspace_provisioner.kubernetes.client import (
     kubectl_apply,
     kubectl_delete,
@@ -27,15 +28,6 @@ from workspace_provisioner.minio.client import MinioAdminClient
 from workspace_provisioner.workflow.engine import WorkflowContext, WorkflowStep
 
 logger = logging.getLogger(__name__)
-
-MLFLOW_DEFAULTS = {
-    "MLFLOW_IMAGE": "ghcr.io/mlflow/mlflow:v2.19.0",
-    "MLFLOW_DB_STORAGE_SIZE": "10Gi",
-    "MLFLOW_CPU_REQUEST": "250m",
-    "MLFLOW_CPU_LIMIT": "2",
-    "MLFLOW_MEMORY_REQUEST": "512Mi",
-    "MLFLOW_MEMORY_LIMIT": "2Gi",
-}
 
 
 def _generate_password(length: int = 24) -> str:
@@ -54,6 +46,7 @@ class MlflowDeployStep(WorkflowStep):
         - minio_endpoint: MinIO internal endpoint (from MinioDeployStep).
         - minio_root_user: MinIO root user (from MinioDeployStep).
         - minio_root_password: MinIO root password (from MinioDeployStep).
+        - provisioning_config.mlflow: MLflow configuration from UI settings.
 
     Writes to context:
         - mlflow_endpoint: External MLflow tracking server URL.
@@ -70,6 +63,9 @@ class MlflowDeployStep(WorkflowStep):
         domain = ctx.domain
         namespace = ctx.get("k8s_namespace", f"argus-ws-{workspace_name}")
         kubeconfig = ctx.get("k8s_kubeconfig")
+
+        # Get config from context (set by service from UI request)
+        config: MlflowConfig = ctx.get("mlflow_config", MlflowConfig())
 
         db_password = _generate_password()
         artifact_bucket = workspace_name  # Reuse workspace default bucket
@@ -92,7 +88,13 @@ class MlflowDeployStep(WorkflowStep):
                 logger.warning("MinIO bucket check for MLflow artifacts: %s", e)
 
         variables = {
-            **MLFLOW_DEFAULTS,
+            "MLFLOW_IMAGE": config.image,
+            "MLFLOW_POSTGRES_IMAGE": config.postgres_image,
+            "MLFLOW_DB_STORAGE_SIZE": config.db_storage_size,
+            "MLFLOW_CPU_REQUEST": config.resources.cpu_request,
+            "MLFLOW_CPU_LIMIT": config.resources.cpu_limit,
+            "MLFLOW_MEMORY_REQUEST": config.resources.memory_request,
+            "MLFLOW_MEMORY_LIMIT": config.resources.memory_limit,
             "WORKSPACE_NAME": workspace_name,
             "K8S_NAMESPACE": namespace,
             "DOMAIN": domain,
@@ -101,9 +103,6 @@ class MlflowDeployStep(WorkflowStep):
             "MINIO_ACCESS_KEY": minio_access_key,
             "MINIO_SECRET_KEY": minio_secret_key,
         }
-
-        if ctx.get("mlflow_image"):
-            variables["MLFLOW_IMAGE"] = ctx.get("mlflow_image")
 
         manifests = render_manifests("mlflow", variables)
         logger.info(

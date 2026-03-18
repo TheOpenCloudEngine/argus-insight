@@ -138,10 +138,14 @@ async def _run_provisioning_workflow(
 
     async with async_session() as session:
         try:
+            provisioning_config = req.provisioning_config
             ctx = WorkflowContext(
                 workspace_id=workspace_id,
                 workspace_name=req.name,
                 domain=req.domain,
+                minio_config=provisioning_config.minio,
+                airflow_config=provisioning_config.airflow,
+                mlflow_config=provisioning_config.mlflow,
             )
 
             executor = WorkflowExecutor(session)

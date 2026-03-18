@@ -152,7 +152,7 @@ spec:
             - name: logs
               mountPath: /opt/airflow/logs
         - name: git-sync
-          image: alpine/git:latest
+          image: ${AIRFLOW_GIT_SYNC_IMAGE}
           command: ["/bin/sh", "/scripts/git-sync.sh"]
           env:
             - name: GITLAB_REPO_URL

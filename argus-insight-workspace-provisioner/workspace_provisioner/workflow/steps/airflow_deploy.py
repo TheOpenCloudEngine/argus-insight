@@ -18,6 +18,7 @@ import string
 
 from cryptography.fernet import Fernet
 
+from workspace_provisioner.config import AirflowConfig
 from workspace_provisioner.kubernetes.client import (
     kubectl_apply,
     kubectl_delete,
@@ -27,21 +28,6 @@ from workspace_provisioner.kubernetes.client import (
 from workspace_provisioner.workflow.engine import WorkflowContext, WorkflowStep
 
 logger = logging.getLogger(__name__)
-
-AIRFLOW_DEFAULTS = {
-    "AIRFLOW_IMAGE": "apache/airflow:2.10.4-python3.11",
-    "AIRFLOW_DAGS_STORAGE_SIZE": "10Gi",
-    "AIRFLOW_LOGS_STORAGE_SIZE": "20Gi",
-    "AIRFLOW_DB_STORAGE_SIZE": "10Gi",
-    "AIRFLOW_WEBSERVER_CPU_REQUEST": "250m",
-    "AIRFLOW_WEBSERVER_CPU_LIMIT": "2",
-    "AIRFLOW_WEBSERVER_MEMORY_REQUEST": "512Mi",
-    "AIRFLOW_WEBSERVER_MEMORY_LIMIT": "2Gi",
-    "AIRFLOW_SCHEDULER_CPU_REQUEST": "250m",
-    "AIRFLOW_SCHEDULER_CPU_LIMIT": "2",
-    "AIRFLOW_SCHEDULER_MEMORY_REQUEST": "512Mi",
-    "AIRFLOW_SCHEDULER_MEMORY_LIMIT": "2Gi",
-}
 
 
 def _generate_password(length: int = 24) -> str:
@@ -63,6 +49,7 @@ class AirflowDeployStep(WorkflowStep):
         - k8s_kubeconfig (optional): Path to kubeconfig.
         - gitlab_http_url (optional): GitLab repo URL for DAG sync.
         - gitlab_token (optional): GitLab access token for git-sync.
+        - provisioning_config.airflow: Airflow configuration from UI settings.
 
     Writes to context:
         - airflow_endpoint: External Airflow webserver URL.
@@ -80,6 +67,9 @@ class AirflowDeployStep(WorkflowStep):
         namespace = ctx.get("k8s_namespace", f"argus-ws-{workspace_name}")
         kubeconfig = ctx.get("k8s_kubeconfig")
 
+        # Get config from context (set by service from UI request)
+        config: AirflowConfig = ctx.get("airflow_config", AirflowConfig())
+
         admin_password = _generate_password()
         db_password = _generate_password()
         fernet_key = _generate_fernet_key()
@@ -90,7 +80,21 @@ class AirflowDeployStep(WorkflowStep):
         gitlab_token = ctx.get("gitlab_token", "")
 
         variables = {
-            **AIRFLOW_DEFAULTS,
+            "AIRFLOW_IMAGE": config.image,
+            "AIRFLOW_POSTGRES_IMAGE": config.postgres_image,
+            "AIRFLOW_GIT_SYNC_IMAGE": config.git_sync_image,
+            "AIRFLOW_GIT_SYNC_INTERVAL": str(config.git_sync_interval),
+            "AIRFLOW_DAGS_STORAGE_SIZE": config.dags_storage_size,
+            "AIRFLOW_LOGS_STORAGE_SIZE": config.logs_storage_size,
+            "AIRFLOW_DB_STORAGE_SIZE": config.db_storage_size,
+            "AIRFLOW_WEBSERVER_CPU_REQUEST": config.webserver_resources.cpu_request,
+            "AIRFLOW_WEBSERVER_CPU_LIMIT": config.webserver_resources.cpu_limit,
+            "AIRFLOW_WEBSERVER_MEMORY_REQUEST": config.webserver_resources.memory_request,
+            "AIRFLOW_WEBSERVER_MEMORY_LIMIT": config.webserver_resources.memory_limit,
+            "AIRFLOW_SCHEDULER_CPU_REQUEST": config.scheduler_resources.cpu_request,
+            "AIRFLOW_SCHEDULER_CPU_LIMIT": config.scheduler_resources.cpu_limit,
+            "AIRFLOW_SCHEDULER_MEMORY_REQUEST": config.scheduler_resources.memory_request,
+            "AIRFLOW_SCHEDULER_MEMORY_LIMIT": config.scheduler_resources.memory_limit,
             "WORKSPACE_NAME": workspace_name,
             "K8S_NAMESPACE": namespace,
             "DOMAIN": domain,
@@ -101,10 +105,6 @@ class AirflowDeployStep(WorkflowStep):
             "GITLAB_REPO_URL": gitlab_repo_url,
             "GITLAB_TOKEN": gitlab_token,
         }
-
-        # Apply context overrides
-        if ctx.get("airflow_image"):
-            variables["AIRFLOW_IMAGE"] = ctx.get("airflow_image")
 
         manifests = render_manifests("airflow", variables)
         logger.info(

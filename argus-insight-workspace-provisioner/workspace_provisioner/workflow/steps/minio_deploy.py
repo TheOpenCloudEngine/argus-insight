@@ -11,6 +11,7 @@ import logging
 import secrets
 import string
 
+from workspace_provisioner.config import MinioConfig
 from workspace_provisioner.kubernetes.client import (
     kubectl_apply,
     kubectl_delete,
@@ -20,16 +21,6 @@ from workspace_provisioner.kubernetes.client import (
 from workspace_provisioner.workflow.engine import WorkflowContext, WorkflowStep
 
 logger = logging.getLogger(__name__)
-
-# Default resource settings for workspace MinIO instances
-MINIO_DEFAULTS = {
-    "MINIO_IMAGE": "minio/minio:RELEASE.2025-02-28T09-55-16Z",
-    "MINIO_STORAGE_SIZE": "50Gi",
-    "MINIO_CPU_REQUEST": "250m",
-    "MINIO_CPU_LIMIT": "2",
-    "MINIO_MEMORY_REQUEST": "512Mi",
-    "MINIO_MEMORY_LIMIT": "2Gi",
-}
 
 
 def _generate_password(length: int = 24) -> str:
@@ -46,8 +37,7 @@ class MinioDeployStep(WorkflowStep):
         - domain: Used for Ingress host rules.
         - k8s_namespace: Target namespace (default: argus-ws-{workspace_name}).
         - k8s_kubeconfig (optional): Path to kubeconfig file.
-        - minio_image (optional): Override MinIO image.
-        - minio_storage_size (optional): Override PVC size.
+        - provisioning_config.minio: MinIO configuration from UI settings.
 
     Writes to context:
         - minio_endpoint: Internal K8s service endpoint (host:port).
@@ -68,23 +58,26 @@ class MinioDeployStep(WorkflowStep):
         namespace = ctx.get("k8s_namespace", f"argus-ws-{workspace_name}")
         kubeconfig = ctx.get("k8s_kubeconfig")
 
+        # Get config from context (set by service from UI request)
+        config: MinioConfig = ctx.get("minio_config", MinioConfig())
+
         root_user = f"minio-{workspace_name}-admin"
         root_password = _generate_password()
 
-        # Build template variables
+        # Build template variables from config
         variables = {
-            **MINIO_DEFAULTS,
+            "MINIO_IMAGE": config.image,
+            "MINIO_STORAGE_SIZE": config.storage_size,
+            "MINIO_CPU_REQUEST": config.resources.cpu_request,
+            "MINIO_CPU_LIMIT": config.resources.cpu_limit,
+            "MINIO_MEMORY_REQUEST": config.resources.memory_request,
+            "MINIO_MEMORY_LIMIT": config.resources.memory_limit,
             "WORKSPACE_NAME": workspace_name,
             "K8S_NAMESPACE": namespace,
             "DOMAIN": domain,
             "MINIO_ROOT_USER": root_user,
             "MINIO_ROOT_PASSWORD": root_password,
         }
-        # Allow context overrides
-        if ctx.get("minio_image"):
-            variables["MINIO_IMAGE"] = ctx.get("minio_image")
-        if ctx.get("minio_storage_size"):
-            variables["MINIO_STORAGE_SIZE"] = ctx.get("minio_storage_size")
 
         # Render and apply manifests
         manifests = render_manifests("minio", variables)

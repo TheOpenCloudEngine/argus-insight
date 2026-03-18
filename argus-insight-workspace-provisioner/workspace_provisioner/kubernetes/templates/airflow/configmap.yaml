@@ -45,5 +45,5 @@ data:
       else
         git clone --branch "$BRANCH" --single-branch "$REPO_URL" "$SYNC_DIR"
       fi
-      sleep 60
+      sleep ${AIRFLOW_GIT_SYNC_INTERVAL}
     done
