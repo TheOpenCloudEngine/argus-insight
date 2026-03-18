@@ -35,7 +35,27 @@ CREATE TABLE IF NOT EXISTS argus_workspaces (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
--- 2. argus_workspace_members
+-- 2. argus_workspace_credentials
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS argus_workspace_credentials (
+    workspace_id        INT             NOT NULL,
+    gitlab_http_url     VARCHAR(500)    DEFAULT NULL,
+    gitlab_ssh_url      VARCHAR(500)    DEFAULT NULL,
+    minio_endpoint      VARCHAR(500)    DEFAULT NULL,
+    minio_root_user     VARCHAR(255)    DEFAULT NULL,
+    minio_root_password VARCHAR(500)    DEFAULT NULL,
+    minio_access_key    VARCHAR(255)    DEFAULT NULL,
+    minio_secret_key    VARCHAR(500)    DEFAULT NULL,
+    airflow_admin_password VARCHAR(500) DEFAULT NULL,
+    mlflow_artifact_bucket VARCHAR(255) DEFAULT NULL,
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (workspace_id),
+    CONSTRAINT fk_workspace_credentials_workspace FOREIGN KEY (workspace_id) REFERENCES argus_workspaces (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------------
+-- 3. argus_workspace_members
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS argus_workspace_members (
     id              INT             NOT NULL AUTO_INCREMENT,
@@ -51,7 +71,7 @@ CREATE TABLE IF NOT EXISTS argus_workspace_members (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
--- 3. argus_workflow_executions
+-- 4. argus_workflow_executions
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS argus_workflow_executions (
     id              INT             NOT NULL AUTO_INCREMENT,
@@ -69,7 +89,7 @@ CREATE TABLE IF NOT EXISTS argus_workflow_executions (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
--- 4. argus_workflow_step_executions
+-- 5. argus_workflow_step_executions
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS argus_workflow_step_executions (
     id              INT             NOT NULL AUTO_INCREMENT,

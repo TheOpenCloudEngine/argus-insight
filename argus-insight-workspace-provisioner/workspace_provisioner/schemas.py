@@ -121,6 +121,23 @@ class WorkspaceResponse(BaseModel):
     updated_at: datetime
 
 
+class WorkspaceCredentialResponse(BaseModel):
+    """Credential and connection info generated during provisioning."""
+
+    workspace_id: int
+    gitlab_http_url: str | None = None
+    gitlab_ssh_url: str | None = None
+    minio_endpoint: str | None = None
+    minio_root_user: str | None = None
+    minio_root_password: str | None = None
+    minio_access_key: str | None = None
+    minio_secret_key: str | None = None
+    airflow_admin_password: str | None = None
+    mlflow_artifact_bucket: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class PaginatedWorkspaceResponse(BaseModel):
     items: list[WorkspaceResponse]
     total: int

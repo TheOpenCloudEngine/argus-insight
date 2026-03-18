@@ -7,12 +7,18 @@ of argus-insight-server.
 Usage:
     from workspace_provisioner.standalone import init_db, get_standalone_session, Base
 
-    await init_db("sqlite+aiosqlite:///test.db")
+    await init_db()
     async with get_standalone_session() as session:
         ...
 
+The database URL is resolved in the following order:
+    1. Explicit `db_url` argument passed to `init_db()`
+    2. PROVISIONER_DB_URL environment variable
+    3. argus-insight-server config (config.yml + config.properties)
+    4. Fallback: sqlite+aiosqlite:///provisioner.db
+
 Environment variables (used by CLI):
-    PROVISIONER_DB_URL: Database URL (default: sqlite+aiosqlite:///provisioner.db)
+    PROVISIONER_DB_URL: Database URL (overrides server config)
     GITLAB_URL: GitLab server URL
     GITLAB_TOKEN: GitLab private token
 """
@@ -37,21 +43,67 @@ _engine = None
 _async_session: async_sessionmaker | None = None
 
 
+def _build_db_url_from_server_config() -> str | None:
+    """Attempt to build a database URL from argus-insight-server config.
+
+    Returns:
+        Database URL string if server config is available, None otherwise.
+    """
+    try:
+        from app.core.config import settings
+
+        db_type = settings.db_type.lower()
+        host = settings.db_host
+        port = settings.db_port
+        name = settings.db_name
+        user = settings.db_username
+        password = settings.db_password
+
+        if db_type == "postgresql":
+            url = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{name}"
+        elif db_type in ("mariadb", "mysql"):
+            url = f"mysql+aiomysql://{user}:{password}@{host}:{port}/{name}?charset=utf8mb4"
+        else:
+            logger.warning("Unsupported db_type '%s' in server config, skipping", db_type)
+            return None
+
+        logger.info("Using database config from argus-insight-server: %s@%s:%d/%s", user, host, port, name)
+        return url
+    except Exception:
+        logger.info("argus-insight-server config not available, skipping server config")
+        return None
+
+
 async def init_db(db_url: str | None = None) -> None:
     """Initialize the standalone database engine and create all tables.
 
     Args:
-        db_url: SQLAlchemy async database URL. Defaults to env PROVISIONER_DB_URL
-                or sqlite+aiosqlite:///provisioner.db.
+        db_url: SQLAlchemy async database URL. If not provided, resolved from
+                env PROVISIONER_DB_URL → server config → SQLite fallback.
     """
     global _engine, _async_session
 
     if db_url is None:
-        db_url = os.environ.get(
-            "PROVISIONER_DB_URL", "sqlite+aiosqlite:///provisioner.db"
-        )
+        db_url = os.environ.get("PROVISIONER_DB_URL")
 
-    logger.info("Initializing standalone database: %s", db_url)
+    if db_url is None:
+        db_url = _build_db_url_from_server_config()
+
+    if db_url is None:
+        db_url = "sqlite+aiosqlite:///provisioner.db"
+        logger.info("No database configuration found, using SQLite fallback")
+
+    # Mask password in log
+    masked = db_url
+    at_idx = db_url.find("@")
+    if at_idx > 0:
+        colon_idx = db_url.find("://")
+        if colon_idx > 0:
+            prefix_end = db_url.find(":", colon_idx + 3)
+            if 0 < prefix_end < at_idx:
+                masked = db_url[:prefix_end + 1] + "****" + db_url[at_idx:]
+
+    logger.info("Initializing standalone database: %s", masked)
     _engine = create_async_engine(db_url, echo=False)
     _async_session = async_sessionmaker(_engine, expire_on_commit=False)
 
@@ -71,7 +123,11 @@ def _register_models() -> None:
     need them to use this module's Base. This function patches the
     table metadata so create_all works correctly.
     """
-    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceMember
+    from workspace_provisioner.models import (
+        ArgusWorkspace,
+        ArgusWorkspaceCredential,
+        ArgusWorkspaceMember,
+    )
     from workspace_provisioner.workflow.models import (
         ArgusWorkflowExecution,
         ArgusWorkflowStepExecution,
@@ -80,6 +136,7 @@ def _register_models() -> None:
     for model in [
         ArgusWorkspace,
         ArgusWorkspaceMember,
+        ArgusWorkspaceCredential,
         ArgusWorkflowExecution,
         ArgusWorkflowStepExecution,
     ]:

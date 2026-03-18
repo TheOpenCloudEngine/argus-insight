@@ -12,11 +12,16 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from workspace_provisioner.gitlab.client import GitLabClient
-from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceMember
+from workspace_provisioner.models import (
+    ArgusWorkspace,
+    ArgusWorkspaceCredential,
+    ArgusWorkspaceMember,
+)
 from workspace_provisioner.schemas import (
     PaginatedWorkspaceResponse,
     StepExecutionResponse,
     WorkflowExecutionResponse,
+    WorkspaceCredentialResponse,
     WorkspaceMemberAddRequest,
     WorkspaceMemberResponse,
     WorkspaceCreateRequest,
@@ -183,7 +188,26 @@ async def _run_provisioning_workflow(
                     workspace.minio_default_bucket = ctx.get("minio_default_bucket")
                     workspace.airflow_endpoint = ctx.get("airflow_endpoint")
                     workspace.mlflow_endpoint = ctx.get("mlflow_endpoint")
-                    logger.info("Provisioning completed for workspace %d (%s), status → active", workspace_id, req.name)
+
+                    # Store service credentials and connection info
+                    credential = ArgusWorkspaceCredential(
+                        workspace_id=workspace_id,
+                        gitlab_http_url=ctx.get("gitlab_http_url"),
+                        gitlab_ssh_url=ctx.get("gitlab_ssh_url"),
+                        minio_endpoint=ctx.get("minio_endpoint"),
+                        minio_root_user=ctx.get("minio_root_user"),
+                        minio_root_password=ctx.get("minio_root_password"),
+                        minio_access_key=ctx.get("minio_ws_admin_access_key"),
+                        minio_secret_key=ctx.get("minio_ws_admin_secret_key"),
+                        airflow_admin_password=ctx.get("airflow_admin_password"),
+                        mlflow_artifact_bucket=ctx.get("mlflow_artifact_bucket"),
+                    )
+                    session.add(credential)
+                    logger.info(
+                        "Provisioning completed for workspace %d (%s), "
+                        "credentials stored, status → active",
+                        workspace_id, req.name,
+                    )
                 else:
                     workspace.status = WorkspaceStatus.FAILED.value
                     logger.error("Provisioning failed for workspace %d (%s), status → failed", workspace_id, req.name)
@@ -255,6 +279,36 @@ async def delete_workspace(session: AsyncSession, workspace_id: int) -> bool:
     await session.commit()
     logger.info("Workspace deleted: %s (id=%d)", ws.name, ws.id)
     return True
+
+
+async def get_workspace_credentials(
+    session: AsyncSession, workspace_id: int
+) -> WorkspaceCredentialResponse | None:
+    """Get credentials and connection info for a workspace."""
+    logger.info("Fetching credentials for workspace: id=%d", workspace_id)
+    result = await session.execute(
+        select(ArgusWorkspaceCredential).where(
+            ArgusWorkspaceCredential.workspace_id == workspace_id
+        )
+    )
+    cred = result.scalars().first()
+    if not cred:
+        logger.info("Credentials not found for workspace: id=%d", workspace_id)
+        return None
+    return WorkspaceCredentialResponse(
+        workspace_id=cred.workspace_id,
+        gitlab_http_url=cred.gitlab_http_url,
+        gitlab_ssh_url=cred.gitlab_ssh_url,
+        minio_endpoint=cred.minio_endpoint,
+        minio_root_user=cred.minio_root_user,
+        minio_root_password=cred.minio_root_password,
+        minio_access_key=cred.minio_access_key,
+        minio_secret_key=cred.minio_secret_key,
+        airflow_admin_password=cred.airflow_admin_password,
+        mlflow_artifact_bucket=cred.mlflow_artifact_bucket,
+        created_at=cred.created_at,
+        updated_at=cred.updated_at,
+    )
 
 
 # ---------------------------------------------------------------------------

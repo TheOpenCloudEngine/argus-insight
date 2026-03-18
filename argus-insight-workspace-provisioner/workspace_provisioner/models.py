@@ -1,8 +1,9 @@
 """SQLAlchemy ORM models for workspace management.
 
-Defines the database schema for workspaces and membership:
+Defines the database schema for workspaces, membership, and credentials:
 - ArgusWorkspace: Workspace definitions with K8s cluster binding.
 - ArgusWorkspaceMember: Many-to-many relationship between users and workspaces with roles.
+- ArgusWorkspaceCredential: Service credentials and connection info generated during provisioning.
 """
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, func
@@ -81,3 +82,44 @@ class ArgusWorkspaceMember(Base):
     user_id = Column(Integer, ForeignKey("argus_users.id"), nullable=False)
     role = Column(String(50), nullable=False, default="User")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ArgusWorkspaceCredential(Base):
+    """Workspace credential and connection info table.
+
+    Stores all service credentials and connection details generated during
+    workspace provisioning. The primary key is the workspace_id itself
+    (one credential record per workspace).
+
+    Columns:
+        workspace_id:       PK + FK to argus_workspaces.id.
+        gitlab_http_url:    GitLab HTTP clone URL.
+        gitlab_ssh_url:     GitLab SSH clone URL.
+        minio_endpoint:     MinIO internal K8s service endpoint.
+        minio_root_user:    MinIO root admin username.
+        minio_root_password: MinIO root admin password.
+        minio_access_key:   Workspace admin S3 access key.
+        minio_secret_key:   Workspace admin S3 secret key.
+        airflow_admin_password: Airflow web UI admin password.
+        mlflow_artifact_bucket: MinIO bucket for MLflow artifacts.
+        created_at:         Timestamp when credentials were stored.
+        updated_at:         Timestamp of last modification.
+    """
+
+    __tablename__ = "argus_workspace_credentials"
+
+    workspace_id = Column(
+        Integer, ForeignKey("argus_workspaces.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    gitlab_http_url = Column(String(500))
+    gitlab_ssh_url = Column(String(500))
+    minio_endpoint = Column(String(500))
+    minio_root_user = Column(String(255))
+    minio_root_password = Column(String(500))
+    minio_access_key = Column(String(255))
+    minio_secret_key = Column(String(500))
+    airflow_admin_password = Column(String(500))
+    mlflow_artifact_bucket = Column(String(255))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

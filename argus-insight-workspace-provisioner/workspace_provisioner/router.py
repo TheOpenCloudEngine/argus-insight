@@ -25,6 +25,7 @@ from workspace_provisioner.gitlab.client import GitLabClient
 from workspace_provisioner.schemas import (
     PaginatedWorkspaceResponse,
     WorkspaceCreateRequest,
+    WorkspaceCredentialResponse,
     WorkspaceMemberAddRequest,
     WorkspaceMemberResponse,
     WorkspaceResponse,
@@ -129,6 +130,32 @@ async def delete_workspace(
         raise HTTPException(status_code=404, detail="Workspace not found")
     logger.info("DELETE /workspaces/%d - deleted", workspace_id)
     return {"status": "ok", "message": "Workspace deleted"}
+
+
+# ---------------------------------------------------------------------------
+# Credential endpoints
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/workspaces/{workspace_id}/credentials",
+    response_model=WorkspaceCredentialResponse,
+)
+async def get_workspace_credentials(
+    workspace_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Get service credentials and connection info for a workspace.
+
+    Returns credentials generated during provisioning (GitLab URLs,
+    MinIO keys, Airflow password, etc.). Only available after
+    provisioning completes successfully.
+    """
+    logger.info("GET /workspaces/%d/credentials", workspace_id)
+    cred = await service.get_workspace_credentials(session, workspace_id)
+    if not cred:
+        logger.info("GET /workspaces/%d/credentials - not found", workspace_id)
+        raise HTTPException(status_code=404, detail="Credentials not found")
+    return cred
 
 
 # ---------------------------------------------------------------------------

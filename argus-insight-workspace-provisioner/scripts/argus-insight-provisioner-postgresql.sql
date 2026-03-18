@@ -48,7 +48,32 @@ CREATE OR REPLACE TRIGGER trg_workspaces_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- ---------------------------------------------------------------------------
--- 2. argus_workspace_members
+-- 2. argus_workspace_credentials
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS argus_workspace_credentials (
+    workspace_id        INTEGER         NOT NULL,
+    gitlab_http_url     VARCHAR(500)    DEFAULT NULL,
+    gitlab_ssh_url      VARCHAR(500)    DEFAULT NULL,
+    minio_endpoint      VARCHAR(500)    DEFAULT NULL,
+    minio_root_user     VARCHAR(255)    DEFAULT NULL,
+    minio_root_password VARCHAR(500)    DEFAULT NULL,
+    minio_access_key    VARCHAR(255)    DEFAULT NULL,
+    minio_secret_key    VARCHAR(500)    DEFAULT NULL,
+    airflow_admin_password VARCHAR(500) DEFAULT NULL,
+    mlflow_artifact_bucket VARCHAR(255) DEFAULT NULL,
+    created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (workspace_id),
+    CONSTRAINT fk_workspace_credentials_workspace FOREIGN KEY (workspace_id) REFERENCES argus_workspaces (id) ON DELETE CASCADE
+);
+
+CREATE OR REPLACE TRIGGER trg_workspace_credentials_updated_at
+    BEFORE UPDATE ON argus_workspace_credentials
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- ---------------------------------------------------------------------------
+-- 3. argus_workspace_members
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS argus_workspace_members (
     id              SERIAL          PRIMARY KEY,
@@ -64,7 +89,7 @@ CREATE TABLE IF NOT EXISTS argus_workspace_members (
 CREATE INDEX IF NOT EXISTS idx_workspace_members_user ON argus_workspace_members (user_id);
 
 -- ---------------------------------------------------------------------------
--- 3. argus_workflow_executions
+-- 4. argus_workflow_executions
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS argus_workflow_executions (
     id              SERIAL          PRIMARY KEY,
@@ -82,7 +107,7 @@ CREATE INDEX IF NOT EXISTS idx_workflow_exec_workspace ON argus_workflow_executi
 CREATE INDEX IF NOT EXISTS idx_workflow_exec_status ON argus_workflow_executions (status);
 
 -- ---------------------------------------------------------------------------
--- 4. argus_workflow_step_executions
+-- 5. argus_workflow_step_executions
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS argus_workflow_step_executions (
     id              SERIAL          PRIMARY KEY,
