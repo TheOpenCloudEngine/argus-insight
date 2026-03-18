@@ -59,6 +59,8 @@ CREATE TABLE IF NOT EXISTS argus_workspace_credentials (
     minio_root_password VARCHAR(500)    DEFAULT NULL,
     minio_access_key    VARCHAR(255)    DEFAULT NULL,
     minio_secret_key    VARCHAR(500)    DEFAULT NULL,
+    airflow_url         VARCHAR(500)    DEFAULT NULL,
+    airflow_admin_username VARCHAR(255) DEFAULT NULL,
     airflow_admin_password VARCHAR(500) DEFAULT NULL,
     mlflow_artifact_bucket VARCHAR(255) DEFAULT NULL,
     created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),

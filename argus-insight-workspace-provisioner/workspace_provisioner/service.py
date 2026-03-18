@@ -199,6 +199,8 @@ async def _run_provisioning_workflow(
                         minio_root_password=ctx.get("minio_root_password"),
                         minio_access_key=ctx.get("minio_ws_admin_access_key"),
                         minio_secret_key=ctx.get("minio_ws_admin_secret_key"),
+                        airflow_url=ctx.get("airflow_endpoint"),
+                        airflow_admin_username="admin",
                         airflow_admin_password=ctx.get("airflow_admin_password"),
                         mlflow_artifact_bucket=ctx.get("mlflow_artifact_bucket"),
                     )
@@ -304,6 +306,8 @@ async def get_workspace_credentials(
         minio_root_password=cred.minio_root_password,
         minio_access_key=cred.minio_access_key,
         minio_secret_key=cred.minio_secret_key,
+        airflow_url=cred.airflow_url,
+        airflow_admin_username=cred.airflow_admin_username,
         airflow_admin_password=cred.airflow_admin_password,
         mlflow_artifact_bucket=cred.mlflow_artifact_bucket,
         created_at=cred.created_at,

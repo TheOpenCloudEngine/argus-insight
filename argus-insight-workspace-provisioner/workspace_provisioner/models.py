@@ -100,6 +100,8 @@ class ArgusWorkspaceCredential(Base):
         minio_root_password: MinIO root admin password.
         minio_access_key:   Workspace admin S3 access key.
         minio_secret_key:   Workspace admin S3 secret key.
+        airflow_url:        Airflow webserver external URL.
+        airflow_admin_username: Airflow admin username.
         airflow_admin_password: Airflow web UI admin password.
         mlflow_artifact_bucket: MinIO bucket for MLflow artifacts.
         created_at:         Timestamp when credentials were stored.
@@ -119,6 +121,8 @@ class ArgusWorkspaceCredential(Base):
     minio_root_password = Column(String(500))
     minio_access_key = Column(String(255))
     minio_secret_key = Column(String(500))
+    airflow_url = Column(String(500))
+    airflow_admin_username = Column(String(255))
     airflow_admin_password = Column(String(500))
     mlflow_artifact_bucket = Column(String(255))
     created_at = Column(DateTime(timezone=True), server_default=func.now())

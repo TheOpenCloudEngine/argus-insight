@@ -132,6 +132,8 @@ class WorkspaceCredentialResponse(BaseModel):
     minio_root_password: str | None = None
     minio_access_key: str | None = None
     minio_secret_key: str | None = None
+    airflow_url: str | None = None
+    airflow_admin_username: str | None = None
     airflow_admin_password: str | None = None
     mlflow_artifact_bucket: str | None = None
     created_at: datetime
