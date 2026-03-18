@@ -118,6 +118,26 @@ class KServeDeployStep(WorkflowStep):
             "namespace": namespace,
         }
 
+    def _render_manifests(self, ctx: WorkflowContext) -> str:
+        """Re-render manifests from context for teardown."""
+        config: KServeConfig = ctx.get("kserve_config", KServeConfig())
+        namespace = ctx.get("k8s_namespace", f"argus-ws-{ctx.workspace_name}")
+        return render_manifests("kserve", {
+            "KSERVE_CONTROLLER_IMAGE": config.controller_image,
+            "KSERVE_DEFAULT_RUNTIME": config.default_runtime,
+            "KSERVE_CPU_REQUEST": config.resources.cpu_request,
+            "KSERVE_CPU_LIMIT": config.resources.cpu_limit,
+            "KSERVE_MEMORY_REQUEST": config.resources.memory_request,
+            "KSERVE_MEMORY_LIMIT": config.resources.memory_limit,
+            "WORKSPACE_NAME": ctx.workspace_name,
+            "K8S_NAMESPACE": namespace,
+            "DOMAIN": ctx.domain,
+            "MINIO_ENDPOINT": ctx.get("minio_endpoint", ""),
+            "MINIO_ACCESS_KEY": ctx.get("minio_ws_admin_access_key", ""),
+            "MINIO_SECRET_KEY": ctx.get("minio_ws_admin_secret_key", ""),
+            "MODEL_BUCKET": ctx.workspace_name,
+        })
+
     async def rollback(self, ctx: WorkflowContext) -> None:
         manifests = ctx.get("kserve_manifests")
         if manifests:
@@ -127,3 +147,11 @@ class KServeDeployStep(WorkflowStep):
                 "Rolled back KServe K8s resources for workspace '%s'",
                 ctx.workspace_name,
             )
+
+    async def teardown(self, ctx: WorkflowContext) -> dict | None:
+        """Delete all KServe K8s resources (re-rendering manifests from context)."""
+        manifests = ctx.get("kserve_manifests") or self._render_manifests(ctx)
+        kubeconfig = ctx.get("k8s_kubeconfig")
+        await kubectl_delete(manifests, kubeconfig=kubeconfig)
+        logger.info("Teardown KServe K8s resources for workspace '%s'", ctx.workspace_name)
+        return {"k8s_deleted": True}

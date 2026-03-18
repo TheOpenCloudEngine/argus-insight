@@ -118,6 +118,24 @@ class MinioDeployStep(WorkflowStep):
             "namespace": namespace,
         }
 
+    def _render_manifests(self, ctx: WorkflowContext) -> str:
+        """Re-render manifests from context for teardown/rollback."""
+        config: MinioConfig = ctx.get("minio_config", MinioConfig())
+        namespace = ctx.get("k8s_namespace", f"argus-ws-{ctx.workspace_name}")
+        return render_manifests("minio", {
+            "MINIO_IMAGE": config.image,
+            "MINIO_STORAGE_SIZE": config.storage_size,
+            "MINIO_CPU_REQUEST": config.resources.cpu_request,
+            "MINIO_CPU_LIMIT": config.resources.cpu_limit,
+            "MINIO_MEMORY_REQUEST": config.resources.memory_request,
+            "MINIO_MEMORY_LIMIT": config.resources.memory_limit,
+            "WORKSPACE_NAME": ctx.workspace_name,
+            "K8S_NAMESPACE": namespace,
+            "DOMAIN": ctx.domain,
+            "MINIO_ROOT_USER": ctx.get("minio_root_user", ""),
+            "MINIO_ROOT_PASSWORD": ctx.get("minio_root_password", ""),
+        })
+
     async def rollback(self, ctx: WorkflowContext) -> None:
         """Delete all MinIO K8s resources."""
         manifests = ctx.get("minio_manifests")
@@ -125,3 +143,11 @@ class MinioDeployStep(WorkflowStep):
             kubeconfig = ctx.get("k8s_kubeconfig")
             await kubectl_delete(manifests, kubeconfig=kubeconfig)
             logger.info("Rolled back MinIO K8s resources for workspace '%s'", ctx.workspace_name)
+
+    async def teardown(self, ctx: WorkflowContext) -> dict | None:
+        """Delete all MinIO K8s resources (re-rendering manifests from context)."""
+        manifests = ctx.get("minio_manifests") or self._render_manifests(ctx)
+        kubeconfig = ctx.get("k8s_kubeconfig")
+        await kubectl_delete(manifests, kubeconfig=kubeconfig)
+        logger.info("Teardown MinIO K8s resources for workspace '%s'", ctx.workspace_name)
+        return {"k8s_deleted": True}

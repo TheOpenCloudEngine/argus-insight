@@ -124,3 +124,27 @@ class GitLabCreateProjectStep(WorkflowStep):
         if project_id:
             await self._client.delete_project(project_id)
             logger.info("Rolled back GitLab project: id=%d", project_id)
+
+    async def teardown(self, ctx: WorkflowContext) -> dict | None:
+        """Delete the GitLab project during workspace deletion."""
+        project_id = ctx.get("gitlab_project_id")
+        if not project_id:
+            logger.warning(
+                "GitLab project ID not found for workspace '%s', skipping",
+                ctx.workspace_name,
+            )
+            return None
+        try:
+            await self._client.delete_project(project_id)
+            logger.info(
+                "Teardown GitLab project: id=%d for workspace '%s'",
+                project_id, ctx.workspace_name,
+            )
+            return {"project_id": project_id, "deleted": True}
+        except Exception as e:
+            # Project may already be deleted
+            logger.warning(
+                "GitLab project deletion failed (may not exist): id=%d err=%s",
+                project_id, e,
+            )
+            return {"project_id": project_id, "deleted": False, "error": str(e)}

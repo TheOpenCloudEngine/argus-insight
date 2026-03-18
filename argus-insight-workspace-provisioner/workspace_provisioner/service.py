@@ -22,6 +22,7 @@ from workspace_provisioner.schemas import (
     StepExecutionResponse,
     WorkflowExecutionResponse,
     WorkspaceCredentialResponse,
+    WorkspaceDeleteRequest,
     WorkspaceMemberAddRequest,
     WorkspaceMemberResponse,
     WorkspaceCreateRequest,
@@ -274,8 +275,33 @@ async def list_workspaces(
     )
 
 
-async def delete_workspace(session: AsyncSession, workspace_id: int) -> bool:
-    """Delete a workspace by ID."""
+async def delete_workspace(
+    session: AsyncSession,
+    workspace_id: int,
+    gitlab_client: GitLabClient,
+    req: WorkspaceDeleteRequest | None = None,
+) -> WorkspaceResponse | None:
+    """Delete a workspace by tearing down all provisioned resources.
+
+    Sets status to "deleting" and launches the deletion workflow in the
+    background. The workflow tears down resources in reverse order:
+    CustomHook → KServe → MLflow → Airflow → MinioSetup → MinioDeploy → GitLab.
+
+    Args:
+        session: Active database session.
+        workspace_id: Workspace to delete.
+        gitlab_client: Authenticated GitLab client.
+        req: Optional deletion options (force, steps filter).
+
+    Returns:
+        The workspace with status "deleting", or None if not found.
+
+    Raises:
+        ValueError: If the workspace is already being deleted or provisioned.
+    """
+    if req is None:
+        req = WorkspaceDeleteRequest()
+
     logger.info("Deleting workspace: id=%d", workspace_id)
     result = await session.execute(
         select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
@@ -283,11 +309,166 @@ async def delete_workspace(session: AsyncSession, workspace_id: int) -> bool:
     ws = result.scalars().first()
     if not ws:
         logger.info("Workspace not found for deletion: id=%d", workspace_id)
-        return False
-    await session.delete(ws)
+        return None
+
+    if ws.status in (WorkspaceStatus.DELETING.value, WorkspaceStatus.DELETED.value):
+        raise ValueError(f"Workspace is already {ws.status}")
+    if ws.status == WorkspaceStatus.PROVISIONING.value and not req.force:
+        raise ValueError("Workspace is still provisioning. Use force=true to delete.")
+
+    # Fetch credentials before status change
+    cred_result = await session.execute(
+        select(ArgusWorkspaceCredential).where(
+            ArgusWorkspaceCredential.workspace_id == workspace_id
+        )
+    )
+    cred = cred_result.scalars().first()
+
+    # Set status to deleting
+    ws.status = WorkspaceStatus.DELETING.value
     await session.commit()
-    logger.info("Workspace deleted: %s (id=%d)", ws.name, ws.id)
-    return True
+    await session.refresh(ws)
+
+    # Build deletion context from DB records
+    deletion_context = _build_deletion_context(ws, cred)
+
+    logger.info("Launching deletion workflow in background for workspace %d", workspace_id)
+    asyncio.create_task(
+        _run_deletion_workflow(workspace_id, deletion_context, gitlab_client, req)
+    )
+
+    return _build_workspace_response(ws)
+
+
+def _build_deletion_context(
+    ws: ArgusWorkspace,
+    cred: ArgusWorkspaceCredential | None,
+) -> dict:
+    """Build context dict from workspace and credential DB records.
+
+    This reconstructs the WorkflowContext data that was originally built
+    during provisioning, so teardown steps can access endpoints, credentials,
+    and configuration needed to delete resources.
+    """
+    ctx_data = {
+        "k8s_namespace": ws.k8s_namespace or f"argus-ws-{ws.name}",
+        "gitlab_project_id": ws.gitlab_project_id,
+        "gitlab_project_url": ws.gitlab_project_url,
+    }
+    if cred:
+        ctx_data.update({
+            "gitlab_http_url": cred.gitlab_http_url,
+            "gitlab_ssh_url": cred.gitlab_ssh_url,
+            "minio_endpoint": cred.minio_endpoint,
+            "minio_root_user": cred.minio_root_user,
+            "minio_root_password": cred.minio_root_password,
+            "minio_ws_admin_access_key": cred.minio_access_key,
+            "minio_ws_admin_secret_key": cred.minio_secret_key,
+            "minio_default_bucket": ws.minio_default_bucket,
+            "airflow_endpoint": cred.airflow_url,
+            "airflow_admin_password": cred.airflow_admin_password,
+            "mlflow_artifact_bucket": cred.mlflow_artifact_bucket,
+            "kserve_endpoint": cred.kserve_endpoint,
+        })
+    return ctx_data
+
+
+async def _run_deletion_workflow(
+    workspace_id: int,
+    deletion_context: dict,
+    gitlab_client: GitLabClient,
+    req: WorkspaceDeleteRequest,
+) -> None:
+    """Background task: run the workspace deletion workflow.
+
+    Tears down all provisioned resources in reverse order (best-effort).
+    On completion, sets workspace status to "deleted" and removes
+    credential/member records. On failure, sets status to "failed".
+    """
+    from app.core.database import async_session
+
+    logger.info("Starting deletion workflow for workspace %d", workspace_id)
+    async with async_session() as session:
+        try:
+            # Load workspace for name/domain
+            result = await session.execute(
+                select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+            )
+            ws = result.scalars().first()
+            if not ws:
+                logger.error("Workspace %d not found during deletion workflow", workspace_id)
+                return
+
+            ctx = WorkflowContext(
+                workspace_id=workspace_id,
+                workspace_name=ws.name,
+                domain=ws.domain,
+                **deletion_context,
+            )
+
+            # Build executor with same steps as provisioning
+            # (run_teardown executes them in reverse order)
+            executor = WorkflowExecutor(session)
+            executor.add_step(GitLabCreateProjectStep(gitlab_client))
+            executor.add_step(MinioDeployStep())
+            executor.add_step(MinioSetupStep())
+            executor.add_step(AirflowDeployStep())
+            executor.add_step(MlflowDeployStep())
+            executor.add_step(KServeDeployStep())
+            executor.add_step(CustomHookStep())
+
+            execution = await executor.run_teardown(
+                workspace_id=workspace_id,
+                workflow_name="workspace-delete",
+                ctx=ctx,
+                include_steps=req.steps,
+            )
+
+            # Update workspace status
+            result = await session.execute(
+                select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+            )
+            ws = result.scalars().first()
+            if ws:
+                if execution.status == "completed":
+                    ws.status = WorkspaceStatus.DELETED.value
+                    # Clean up credential and member records
+                    cred_result = await session.execute(
+                        select(ArgusWorkspaceCredential).where(
+                            ArgusWorkspaceCredential.workspace_id == workspace_id
+                        )
+                    )
+                    cred = cred_result.scalars().first()
+                    if cred:
+                        await session.delete(cred)
+                    member_result = await session.execute(
+                        select(ArgusWorkspaceMember).where(
+                            ArgusWorkspaceMember.workspace_id == workspace_id
+                        )
+                    )
+                    for m in member_result.scalars().all():
+                        await session.delete(m)
+                    logger.info(
+                        "Deletion completed for workspace %d (%s), status → deleted",
+                        workspace_id, ws.name,
+                    )
+                else:
+                    ws.status = WorkspaceStatus.FAILED.value
+                    logger.error(
+                        "Deletion failed for workspace %d (%s): %s",
+                        workspace_id, ws.name, execution.error_message,
+                    )
+                await session.commit()
+
+        except Exception as e:
+            logger.error("Deletion workflow failed for workspace %d: %s", workspace_id, e)
+            result = await session.execute(
+                select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+            )
+            ws = result.scalars().first()
+            if ws:
+                ws.status = WorkspaceStatus.FAILED.value
+                await session.commit()
 
 
 async def get_workspace_credentials(

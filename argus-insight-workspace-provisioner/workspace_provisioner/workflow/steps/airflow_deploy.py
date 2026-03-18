@@ -148,6 +148,37 @@ class AirflowDeployStep(WorkflowStep):
             "namespace": namespace,
         }
 
+    def _render_manifests(self, ctx: WorkflowContext) -> str:
+        """Re-render manifests from context for teardown."""
+        config: AirflowConfig = ctx.get("airflow_config", AirflowConfig())
+        namespace = ctx.get("k8s_namespace", f"argus-ws-{ctx.workspace_name}")
+        return render_manifests("airflow", {
+            "AIRFLOW_IMAGE": config.image,
+            "AIRFLOW_POSTGRES_IMAGE": config.postgres_image,
+            "AIRFLOW_GIT_SYNC_IMAGE": config.git_sync_image,
+            "AIRFLOW_GIT_SYNC_INTERVAL": str(config.git_sync_interval),
+            "AIRFLOW_DAGS_STORAGE_SIZE": config.dags_storage_size,
+            "AIRFLOW_LOGS_STORAGE_SIZE": config.logs_storage_size,
+            "AIRFLOW_DB_STORAGE_SIZE": config.db_storage_size,
+            "AIRFLOW_WEBSERVER_CPU_REQUEST": config.webserver_resources.cpu_request,
+            "AIRFLOW_WEBSERVER_CPU_LIMIT": config.webserver_resources.cpu_limit,
+            "AIRFLOW_WEBSERVER_MEMORY_REQUEST": config.webserver_resources.memory_request,
+            "AIRFLOW_WEBSERVER_MEMORY_LIMIT": config.webserver_resources.memory_limit,
+            "AIRFLOW_SCHEDULER_CPU_REQUEST": config.scheduler_resources.cpu_request,
+            "AIRFLOW_SCHEDULER_CPU_LIMIT": config.scheduler_resources.cpu_limit,
+            "AIRFLOW_SCHEDULER_MEMORY_REQUEST": config.scheduler_resources.memory_request,
+            "AIRFLOW_SCHEDULER_MEMORY_LIMIT": config.scheduler_resources.memory_limit,
+            "WORKSPACE_NAME": ctx.workspace_name,
+            "K8S_NAMESPACE": namespace,
+            "DOMAIN": ctx.domain,
+            "AIRFLOW_ADMIN_PASSWORD": ctx.get("airflow_admin_password", ""),
+            "AIRFLOW_DB_PASSWORD": "",
+            "AIRFLOW_FERNET_KEY": "",
+            "AIRFLOW_SECRET_KEY": "",
+            "GITLAB_REPO_URL": ctx.get("gitlab_http_url", ""),
+            "GITLAB_TOKEN": ctx.get("gitlab_token", ""),
+        })
+
     async def rollback(self, ctx: WorkflowContext) -> None:
         manifests = ctx.get("airflow_manifests")
         if manifests:
@@ -157,3 +188,11 @@ class AirflowDeployStep(WorkflowStep):
                 "Rolled back Airflow K8s resources for workspace '%s'",
                 ctx.workspace_name,
             )
+
+    async def teardown(self, ctx: WorkflowContext) -> dict | None:
+        """Delete all Airflow K8s resources (re-rendering manifests from context)."""
+        manifests = ctx.get("airflow_manifests") or self._render_manifests(ctx)
+        kubeconfig = ctx.get("k8s_kubeconfig")
+        await kubectl_delete(manifests, kubeconfig=kubeconfig)
+        logger.info("Teardown Airflow K8s resources for workspace '%s'", ctx.workspace_name)
+        return {"k8s_deleted": True}

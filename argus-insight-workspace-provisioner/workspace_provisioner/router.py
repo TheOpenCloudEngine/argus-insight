@@ -26,6 +26,7 @@ from workspace_provisioner.schemas import (
     PaginatedWorkspaceResponse,
     WorkspaceCreateRequest,
     WorkspaceCredentialResponse,
+    WorkspaceDeleteRequest,
     WorkspaceMemberAddRequest,
     WorkspaceMemberResponse,
     WorkspaceResponse,
@@ -118,18 +119,30 @@ async def get_workspace(
     return ws
 
 
-@router.delete("/workspaces/{workspace_id}")
+@router.delete("/workspaces/{workspace_id}", response_model=WorkspaceResponse)
 async def delete_workspace(
     workspace_id: int,
+    req: WorkspaceDeleteRequest = WorkspaceDeleteRequest(),
     session: AsyncSession = Depends(get_session),
+    gitlab_client: GitLabClient = Depends(_get_gitlab_client),
 ):
-    """Delete a workspace."""
+    """Delete a workspace and tear down all provisioned resources.
+
+    Sets the workspace status to "deleting" and launches a teardown
+    workflow in the background. Use the GET workflow endpoint to
+    monitor deletion progress.
+    """
     logger.info("DELETE /workspaces/%d", workspace_id)
-    if not await service.delete_workspace(session, workspace_id):
-        logger.info("DELETE /workspaces/%d - not found", workspace_id)
-        raise HTTPException(status_code=404, detail="Workspace not found")
-    logger.info("DELETE /workspaces/%d - deleted", workspace_id)
-    return {"status": "ok", "message": "Workspace deleted"}
+    try:
+        result = await service.delete_workspace(session, workspace_id, gitlab_client, req)
+        if not result:
+            logger.info("DELETE /workspaces/%d - not found", workspace_id)
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        logger.info("DELETE /workspaces/%d - deletion started", workspace_id)
+        return result
+    except ValueError as e:
+        logger.error("DELETE /workspaces/%d - failed: %s", workspace_id, e)
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # ---------------------------------------------------------------------------

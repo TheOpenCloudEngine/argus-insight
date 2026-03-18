@@ -73,6 +73,7 @@ class WorkflowStep(ABC):
 
     Optionally override:
     - rollback(): Called if a later step fails and rollback is needed.
+    - teardown(): Called during workspace deletion to remove resources.
     """
 
     @property
@@ -100,6 +101,25 @@ class WorkflowStep(ABC):
         Default implementation is a no-op. Override in subclasses that
         create resources which should be cleaned up on failure.
         """
+
+    async def teardown(self, ctx: WorkflowContext) -> dict | None:
+        """Tear down resources created by this step during workspace deletion.
+
+        Unlike rollback() which handles immediate provisioning failures,
+        teardown() handles graceful deletion of long-running resources
+        (e.g., draining a bucket with production data before deleting).
+
+        Default implementation delegates to rollback() for backward
+        compatibility.
+
+        Args:
+            ctx: Shared workflow context populated from DB credentials.
+
+        Returns:
+            Optional dict of result data to persist.
+        """
+        await self.rollback(ctx)
+        return None
 
 
 class WorkflowExecutor:
@@ -265,6 +285,123 @@ class WorkflowExecutor:
             execution.finished_at = datetime.now(timezone.utc)
             await self._session.commit()
             logger.info("Workflow %s: completed successfully", workflow_name)
+
+        await self._session.refresh(execution)
+        return execution
+
+    async def run_teardown(
+        self,
+        workspace_id: int,
+        workflow_name: str,
+        ctx: WorkflowContext,
+        include_steps: list[str] | None = None,
+    ) -> ArgusWorkflowExecution:
+        """Execute teardown for all steps in reverse order (best-effort).
+
+        Unlike run(), teardown continues executing remaining steps even if
+        one fails. This ensures maximum cleanup — e.g., if KServe deletion
+        fails, MinIO and GitLab are still cleaned up.
+
+        Args:
+            workspace_id: The workspace being deleted.
+            workflow_name: Identifier (e.g., "workspace-delete").
+            ctx: Workflow context populated from DB credentials.
+            include_steps: If provided, only teardown steps in this list.
+
+        Returns:
+            The ArgusWorkflowExecution record with final status.
+        """
+        include_set: set[str] | None = set(include_steps) if include_steps else None
+        now = datetime.now(timezone.utc)
+
+        # Steps run in reverse order for teardown
+        steps_reversed = list(reversed(self._steps))
+
+        execution = ArgusWorkflowExecution(
+            workspace_id=workspace_id,
+            workflow_name=workflow_name,
+            status="running",
+            started_at=now,
+        )
+        self._session.add(execution)
+        await self._session.commit()
+        await self._session.refresh(execution)
+
+        step_records: list[ArgusWorkflowStepExecution] = []
+        for i, step in enumerate(steps_reversed):
+            step_record = ArgusWorkflowStepExecution(
+                execution_id=execution.id,
+                step_name=step.name,
+                step_order=i,
+                status="pending",
+            )
+            self._session.add(step_record)
+            step_records.append(step_record)
+        await self._session.commit()
+        for sr in step_records:
+            await self._session.refresh(sr)
+
+        failed_steps: list[str] = []
+
+        for i, (step, step_record) in enumerate(zip(steps_reversed, step_records)):
+            # Skip steps not in include_steps filter
+            if include_set is not None and step.name not in include_set:
+                step_record.status = "skipped"
+                await self._session.commit()
+                logger.info(
+                    "Workflow %s step [%d/%d] %s: skipped (not in include_steps)",
+                    workflow_name, i + 1, len(steps_reversed), step.name,
+                )
+                continue
+
+            step_record.status = "running"
+            step_record.started_at = datetime.now(timezone.utc)
+            await self._session.commit()
+
+            logger.info(
+                "Workflow %s step [%d/%d] %s: tearing down",
+                workflow_name, i + 1, len(steps_reversed), step.name,
+            )
+
+            try:
+                result = await step.teardown(ctx)
+                step_record.status = "completed"
+                step_record.finished_at = datetime.now(timezone.utc)
+                if result:
+                    step_record.result_data = json.dumps(result, ensure_ascii=False)
+                await self._session.commit()
+                logger.info(
+                    "Workflow %s step [%d/%d] %s: teardown completed",
+                    workflow_name, i + 1, len(steps_reversed), step.name,
+                )
+            except Exception as e:
+                step_record.status = "failed"
+                step_record.finished_at = datetime.now(timezone.utc)
+                step_record.error_message = str(e)
+                await self._session.commit()
+                failed_steps.append(step.name)
+                logger.error(
+                    "Workflow %s step [%d/%d] %s: teardown failed - %s "
+                    "(continuing with remaining steps)",
+                    workflow_name, i + 1, len(steps_reversed), step.name, e,
+                )
+                # Best-effort: do NOT break, continue with remaining steps
+
+        if failed_steps:
+            execution.status = "failed"
+            execution.error_message = f"Teardown failed for steps: {', '.join(failed_steps)}"
+        else:
+            execution.status = "completed"
+        execution.finished_at = datetime.now(timezone.utc)
+        await self._session.commit()
+
+        if not failed_steps:
+            logger.info("Workflow %s: teardown completed successfully", workflow_name)
+        else:
+            logger.error(
+                "Workflow %s: teardown completed with errors: %s",
+                workflow_name, ", ".join(failed_steps),
+            )
 
         await self._session.refresh(execution)
         return execution

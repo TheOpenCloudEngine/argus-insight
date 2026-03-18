@@ -132,6 +132,48 @@ class MinioAdminClient:
 
         return {"bucket": bucket_name, "created": True}
 
+    async def drain_bucket(self, bucket_name: str) -> int:
+        """Remove all objects (including versions) from a bucket.
+
+        Must be called before delete_bucket() when the bucket contains data.
+
+        Args:
+            bucket_name: Name of the bucket to drain.
+
+        Returns:
+            Number of objects deleted.
+        """
+        exists = await self._run_sync(self._client.bucket_exists, bucket_name)
+        if not exists:
+            logger.info("MinIO bucket does not exist, skip drain: %s", bucket_name)
+            return 0
+
+        deleted = 0
+
+        def _drain():
+            nonlocal deleted
+            objects = self._client.list_objects(bucket_name, recursive=True, include_version=True)
+            from minio.deleteobjects import DeleteObject
+            delete_list = []
+            for obj in objects:
+                delete_list.append(
+                    DeleteObject(obj.object_name, version_id=obj.version_id)
+                )
+                deleted += 1
+            if delete_list:
+                errors = list(
+                    self._client.remove_objects(bucket_name, delete_list)
+                )
+                for err in errors:
+                    logger.warning(
+                        "MinIO drain error: bucket=%s object=%s err=%s",
+                        bucket_name, err.name, err.message,
+                    )
+
+        await self._run_sync(_drain)
+        logger.info("MinIO bucket drained: %s (%d objects removed)", bucket_name, deleted)
+        return deleted
+
     async def delete_bucket(self, bucket_name: str) -> None:
         """Delete a bucket.
 

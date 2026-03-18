@@ -146,6 +146,27 @@ class MlflowDeployStep(WorkflowStep):
             "namespace": namespace,
         }
 
+    def _render_manifests(self, ctx: WorkflowContext) -> str:
+        """Re-render manifests from context for teardown."""
+        config: MlflowConfig = ctx.get("mlflow_config", MlflowConfig())
+        namespace = ctx.get("k8s_namespace", f"argus-ws-{ctx.workspace_name}")
+        return render_manifests("mlflow", {
+            "MLFLOW_IMAGE": config.image,
+            "MLFLOW_POSTGRES_IMAGE": config.postgres_image,
+            "MLFLOW_DB_STORAGE_SIZE": config.db_storage_size,
+            "MLFLOW_CPU_REQUEST": config.resources.cpu_request,
+            "MLFLOW_CPU_LIMIT": config.resources.cpu_limit,
+            "MLFLOW_MEMORY_REQUEST": config.resources.memory_request,
+            "MLFLOW_MEMORY_LIMIT": config.resources.memory_limit,
+            "WORKSPACE_NAME": ctx.workspace_name,
+            "K8S_NAMESPACE": namespace,
+            "DOMAIN": ctx.domain,
+            "MLFLOW_DB_PASSWORD": "",
+            "MLFLOW_ARTIFACT_BUCKET": ctx.get("mlflow_artifact_bucket", ctx.workspace_name),
+            "MINIO_ACCESS_KEY": ctx.get("minio_ws_admin_access_key", ""),
+            "MINIO_SECRET_KEY": ctx.get("minio_ws_admin_secret_key", ""),
+        })
+
     async def rollback(self, ctx: WorkflowContext) -> None:
         manifests = ctx.get("mlflow_manifests")
         if manifests:
@@ -155,3 +176,11 @@ class MlflowDeployStep(WorkflowStep):
                 "Rolled back MLflow K8s resources for workspace '%s'",
                 ctx.workspace_name,
             )
+
+    async def teardown(self, ctx: WorkflowContext) -> dict | None:
+        """Delete all MLflow K8s resources (re-rendering manifests from context)."""
+        manifests = ctx.get("mlflow_manifests") or self._render_manifests(ctx)
+        kubeconfig = ctx.get("k8s_kubeconfig")
+        await kubectl_delete(manifests, kubeconfig=kubeconfig)
+        logger.info("Teardown MLflow K8s resources for workspace '%s'", ctx.workspace_name)
+        return {"k8s_deleted": True}

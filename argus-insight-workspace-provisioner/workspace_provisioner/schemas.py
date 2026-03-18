@@ -88,6 +88,20 @@ class WorkspaceCreateRequest(BaseModel):
     )
 
 
+class WorkspaceDeleteRequest(BaseModel):
+    """Options for workspace deletion."""
+
+    force: bool = Field(
+        default=False,
+        description="Force delete even if some teardown steps fail.",
+    )
+    steps: list[str] | None = Field(
+        default=None,
+        description="If provided, only teardown these steps. "
+        "Pass null or omit to teardown all steps.",
+    )
+
+
 class WorkspaceMemberAddRequest(BaseModel):
     """Request to add a member to a workspace."""
 

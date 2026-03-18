@@ -101,6 +101,49 @@ WorkspaceService.create_workspace()
 * steps 파라미터를 통해 특정 Step만 선택적으로 실행 가능
 ```
 
+### 삭제 워크플로우
+
+```
+DELETE /api/v1/workspace/workspaces/{id} (+ WorkspaceDeleteRequest)
+    │
+    ▼
+WorkspaceService.delete_workspace()
+    ├── workspace.status = deleting
+    ├── DB에서 credentials 조회 → WorkflowContext 재구성
+    └── Background Task: WorkflowExecutor.run_teardown()
+         │  (역순 실행, best-effort: 한 Step 실패해도 나머지 계속)
+         ├── Step 7: CustomHookStep.teardown()        ← no-op
+         ├── Step 6: KServeDeployStep.teardown()      ← kubectl_delete
+         ├── Step 5: MlflowDeployStep.teardown()      ← kubectl_delete
+         ├── Step 4: AirflowDeployStep.teardown()     ← kubectl_delete
+         ├── Step 3: MinioSetupStep.teardown()        ← delete user, drain+delete bucket
+         ├── Step 2: MinioDeployStep.teardown()       ← kubectl_delete (StatefulSet, PVC 등)
+         ├── Step 1: GitLabCreateProjectStep.teardown()← gitlab.delete_project()
+         └── 완료
+              ├── 성공 → workspace.status = deleted, credentials/members 정리
+              └── 실패 → workspace.status = failed, error_message 기록
+```
+
+### 상태 전이
+
+```
+provisioning ──→ active ──→ deleting ──→ deleted
+      │                        │
+      ▼                        ▼
+   failed ──────────→ deleting ──→ deleted
+              (실패한 workspace도 삭제 가능)
+```
+
+### teardown() vs rollback()
+
+| | rollback() | teardown() |
+|---|---|---|
+| **호출 시점** | 프로비저닝 도중 Step 실패 시 | 운영 중인 workspace 삭제 시 |
+| **에러 처리** | 전체 중단 + 역순 롤백 | Best-effort (실패해도 계속) |
+| **데이터** | 방금 생성된 빈 리소스 | 운영 중 데이터 있는 리소스 |
+| **버킷** | 빈 버킷 삭제 | drain (오브젝트 전체 삭제) 후 삭제 |
+| **매니페스트** | ctx에 저장된 것 사용 | 없으면 re-render |
+
 ## Provisioning Config (UI 설정)
 
 워크스페이스 생성 시 `provisioning_config` 필드를 통해 각 서비스의 배포 설정을 지정할 수 있습니다.
@@ -578,7 +621,7 @@ app.include_router(workspace_router, prefix="/api/v1")
 | POST | /workspace/workspaces | Workspace 생성 + 프로비저닝 시작 |
 | GET | /workspace/workspaces | Workspace 목록 (페이지네이션) |
 | GET | /workspace/workspaces/{id} | Workspace 상세 조회 |
-| DELETE | /workspace/workspaces/{id} | Workspace 삭제 |
+| DELETE | /workspace/workspaces/{id} | Workspace 삭제 (teardown 워크플로우 실행) |
 | POST | /workspace/workspaces/{id}/members | 멤버 추가 |
 | GET | /workspace/workspaces/{id}/members | 멤버 목록 |
 | DELETE | /workspace/workspaces/{id}/members/{mid} | 멤버 제거 |

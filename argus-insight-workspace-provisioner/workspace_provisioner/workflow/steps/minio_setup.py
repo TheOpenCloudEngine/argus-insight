@@ -128,3 +128,49 @@ class MinioSetupStep(WorkflowStep):
             )
         except Exception as e:
             logger.error("MinIO setup rollback failed: %s", e)
+
+    async def teardown(self, ctx: WorkflowContext) -> dict | None:
+        """Delete user, drain all bucket objects, then delete bucket.
+
+        Unlike rollback() which expects an empty bucket (just created),
+        teardown() handles production buckets with data by draining
+        all objects first.
+        """
+        endpoint = ctx.get("minio_endpoint")
+        root_user = ctx.get("minio_root_user")
+        root_password = ctx.get("minio_root_password")
+
+        if not endpoint or not root_user or not root_password:
+            logger.warning(
+                "MinIO credentials not available for teardown of workspace '%s'",
+                ctx.workspace_name,
+            )
+            return None
+
+        client = MinioAdminClient(
+            endpoint=endpoint,
+            root_user=root_user,
+            root_password=root_password,
+        )
+
+        result = {}
+
+        # 1. Delete user
+        ws_admin_key = ctx.get("minio_ws_admin_access_key")
+        if ws_admin_key:
+            await client.delete_user(ws_admin_key)
+            result["user_deleted"] = ws_admin_key
+
+        # 2. Drain and delete bucket
+        bucket_name = ctx.get("minio_default_bucket")
+        if bucket_name:
+            objects_deleted = await client.drain_bucket(bucket_name)
+            await client.delete_bucket(bucket_name)
+            result["bucket_deleted"] = bucket_name
+            result["objects_drained"] = objects_deleted
+
+        logger.info(
+            "Teardown MinIO setup for workspace '%s': %s",
+            ctx.workspace_name, result,
+        )
+        return result
