@@ -17,6 +17,7 @@ Environment variables (used by CLI):
     GITLAB_TOKEN: GitLab private token
 """
 
+import logging
 import os
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
@@ -29,6 +30,8 @@ class Base(DeclarativeBase):
     """Standalone declarative base for ORM models."""
     pass
 
+
+logger = logging.getLogger(__name__)
 
 _engine = None
 _async_session: async_sessionmaker | None = None
@@ -48,6 +51,7 @@ async def init_db(db_url: str | None = None) -> None:
             "PROVISIONER_DB_URL", "sqlite+aiosqlite:///provisioner.db"
         )
 
+    logger.info("Initializing standalone database: %s", db_url)
     _engine = create_async_engine(db_url, echo=False)
     _async_session = async_sessionmaker(_engine, expire_on_commit=False)
 
@@ -56,6 +60,7 @@ async def init_db(db_url: str | None = None) -> None:
 
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    logger.info("Standalone database initialized, tables created")
 
 
 def _register_models() -> None:
@@ -87,15 +92,18 @@ def _register_models() -> None:
         ]
         for fk in fks_to_remove:
             table.foreign_key_constraints.discard(fk)
+            logger.info("Removed external FK constraint on table '%s' for standalone mode", table.name)
 
         if table.name not in Base.metadata.tables:
             Base.metadata._add_table(table.name, table.schema, table)
+            logger.info("Registered model table: %s", table.name)
 
 
 @asynccontextmanager
 async def get_standalone_session() -> AsyncGenerator[AsyncSession, None]:
     """Yield an async session from the standalone session factory."""
     if _async_session is None:
+        logger.error("Attempted to get session before init_db() was called")
         raise RuntimeError("Database not initialized. Call init_db() first.")
     async with _async_session() as session:
         yield session
@@ -104,5 +112,6 @@ async def get_standalone_session() -> AsyncGenerator[AsyncSession, None]:
 def get_session_factory() -> async_sessionmaker:
     """Get the standalone session factory (for patching into service.py)."""
     if _async_session is None:
+        logger.error("Attempted to get session factory before init_db() was called")
         raise RuntimeError("Database not initialized. Call init_db() first.")
     return _async_session

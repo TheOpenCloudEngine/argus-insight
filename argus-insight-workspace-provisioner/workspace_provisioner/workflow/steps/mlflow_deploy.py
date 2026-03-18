@@ -129,6 +129,7 @@ class MlflowDeployStep(WorkflowStep):
             kubeconfig=kubeconfig,
         )
         if not ready:
+            logger.error("MLflow rollout timed out: mlflow-%s in %s", workspace_name, namespace)
             raise RuntimeError(
                 f"MLflow rollout timed out: mlflow-{workspace_name} in {namespace}"
             )

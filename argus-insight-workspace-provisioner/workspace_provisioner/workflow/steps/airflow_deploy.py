@@ -131,6 +131,7 @@ class AirflowDeployStep(WorkflowStep):
             kubeconfig=kubeconfig,
         )
         if not ready:
+            logger.error("Airflow rollout timed out: airflow-%s in %s", workspace_name, namespace)
             raise RuntimeError(
                 f"Airflow rollout timed out: airflow-{workspace_name} in {namespace}"
             )

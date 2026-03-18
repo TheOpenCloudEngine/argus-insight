@@ -91,6 +91,7 @@ class MinioDeployStep(WorkflowStep):
             resource, namespace=namespace, timeout=300, kubeconfig=kubeconfig
         )
         if not ready:
+            logger.error("MinIO StatefulSet rollout timed out: %s in %s", resource, namespace)
             raise RuntimeError(
                 f"MinIO StatefulSet rollout timed out: {resource} in {namespace}"
             )

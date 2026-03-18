@@ -210,6 +210,7 @@ class MinioAdminClient:
         stderr_str = stderr.decode().strip()
 
         if proc.returncode != 0:
+            logger.error("mc admin command failed (rc=%d): %s", proc.returncode, stderr_str)
             raise RuntimeError(f"mc admin command failed: {stderr_str}")
 
         return stdout_str

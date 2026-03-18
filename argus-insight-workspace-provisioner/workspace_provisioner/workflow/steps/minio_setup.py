@@ -52,6 +52,7 @@ class MinioSetupStep(WorkflowStep):
         root_password = ctx.get("minio_root_password")
 
         if not endpoint or not root_user or not root_password:
+            logger.error("MinIO endpoint/credentials not found in context for workspace '%s'", workspace_name)
             raise RuntimeError(
                 "MinIO endpoint/credentials not found in context. "
                 "Ensure MinioDeployStep runs before MinioSetupStep."

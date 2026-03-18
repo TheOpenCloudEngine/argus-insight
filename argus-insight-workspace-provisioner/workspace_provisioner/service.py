@@ -84,11 +84,14 @@ async def create_workspace(
     Raises:
         ValueError: If the workspace name already exists.
     """
+    logger.info("Creating workspace: name=%s, domain=%s, admin_user_id=%d", req.name, req.domain, req.admin_user_id)
+
     # Check uniqueness
     existing = await session.execute(
         select(ArgusWorkspace).where(ArgusWorkspace.name == req.name)
     )
     if existing.scalars().first():
+        logger.error("Workspace creation failed: name '%s' already exists", req.name)
         raise ValueError(f"Workspace '{req.name}' already exists")
 
     # Create workspace record
@@ -117,6 +120,7 @@ async def create_workspace(
     await session.commit()
 
     # Launch provisioning workflow in background
+    logger.info("Launching provisioning workflow in background for workspace %d", workspace.id)
     asyncio.create_task(
         _run_provisioning_workflow(workspace.id, req, gitlab_client)
     )
@@ -136,6 +140,7 @@ async def _run_provisioning_workflow(
     """
     from app.core.database import async_session
 
+    logger.info("Starting provisioning workflow for workspace %d (%s)", workspace_id, req.name)
     async with async_session() as session:
         try:
             provisioning_config = req.provisioning_config
@@ -178,8 +183,10 @@ async def _run_provisioning_workflow(
                     workspace.minio_default_bucket = ctx.get("minio_default_bucket")
                     workspace.airflow_endpoint = ctx.get("airflow_endpoint")
                     workspace.mlflow_endpoint = ctx.get("mlflow_endpoint")
+                    logger.info("Provisioning completed for workspace %d (%s), status → active", workspace_id, req.name)
                 else:
                     workspace.status = WorkspaceStatus.FAILED.value
+                    logger.error("Provisioning failed for workspace %d (%s), status → failed", workspace_id, req.name)
                 await session.commit()
 
         except Exception as e:
@@ -195,11 +202,13 @@ async def _run_provisioning_workflow(
 
 async def get_workspace(session: AsyncSession, workspace_id: int) -> WorkspaceResponse | None:
     """Get a workspace by ID."""
+    logger.info("Fetching workspace: id=%d", workspace_id)
     result = await session.execute(
         select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
     )
     ws = result.scalars().first()
     if not ws:
+        logger.info("Workspace not found: id=%d", workspace_id)
         return None
     return _build_workspace_response(ws)
 
@@ -211,6 +220,7 @@ async def list_workspaces(
     page_size: int = 10,
 ) -> PaginatedWorkspaceResponse:
     """List workspaces with optional filtering and pagination."""
+    logger.info("Listing workspaces: status=%s, page=%d, page_size=%d", status, page, page_size)
     base = select(ArgusWorkspace)
     if status:
         base = base.where(ArgusWorkspace.status == status)
@@ -233,11 +243,13 @@ async def list_workspaces(
 
 async def delete_workspace(session: AsyncSession, workspace_id: int) -> bool:
     """Delete a workspace by ID."""
+    logger.info("Deleting workspace: id=%d", workspace_id)
     result = await session.execute(
         select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
     )
     ws = result.scalars().first()
     if not ws:
+        logger.info("Workspace not found for deletion: id=%d", workspace_id)
         return False
     await session.delete(ws)
     await session.commit()
@@ -277,6 +289,7 @@ async def list_members(
     session: AsyncSession, workspace_id: int
 ) -> list[WorkspaceMemberResponse]:
     """List all members of a workspace."""
+    logger.info("Listing members for workspace: id=%d", workspace_id)
     result = await session.execute(
         select(ArgusWorkspaceMember).where(
             ArgusWorkspaceMember.workspace_id == workspace_id
@@ -297,14 +310,17 @@ async def list_members(
 
 async def remove_member(session: AsyncSession, member_id: int) -> bool:
     """Remove a member from a workspace."""
+    logger.info("Removing member: id=%d", member_id)
     result = await session.execute(
         select(ArgusWorkspaceMember).where(ArgusWorkspaceMember.id == member_id)
     )
     member = result.scalars().first()
     if not member:
+        logger.info("Member not found for removal: id=%d", member_id)
         return False
     await session.delete(member)
     await session.commit()
+    logger.info("Member removed: id=%d, user=%d, workspace=%d", member_id, member.user_id, member.workspace_id)
     return True
 
 
@@ -316,6 +332,7 @@ async def get_workflow_status(
     session: AsyncSession, workspace_id: int
 ) -> list[WorkflowExecutionResponse]:
     """Get all workflow executions for a workspace, with step details."""
+    logger.info("Fetching workflow status for workspace: id=%d", workspace_id)
     result = await session.execute(
         select(ArgusWorkflowExecution)
         .where(ArgusWorkflowExecution.workspace_id == workspace_id)

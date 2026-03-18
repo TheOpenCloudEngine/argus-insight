@@ -49,12 +49,15 @@ def init_gitlab_client(url: str, private_token: str) -> None:
         private_token: GitLab API token with admin privileges.
     """
     global _gitlab_client
+    logger.info("Initializing GitLab client: %s", url)
     _gitlab_client = GitLabClient(url=url, private_token=private_token)
+    logger.info("GitLab client initialized successfully")
 
 
 def _get_gitlab_client() -> GitLabClient:
     """FastAPI dependency to get the GitLab client."""
     if _gitlab_client is None:
+        logger.error("GitLab client not initialized, returning 503")
         raise HTTPException(
             status_code=503, detail="GitLab client not initialized"
         )
@@ -78,9 +81,13 @@ async def create_workspace(
     asynchronously in the background. Use the GET workflow endpoint
     to monitor progress.
     """
+    logger.info("POST /workspaces - name=%s, domain=%s", req.name, req.domain)
     try:
-        return await service.create_workspace(session, req, gitlab_client)
+        result = await service.create_workspace(session, req, gitlab_client)
+        logger.info("POST /workspaces - workspace created: id=%d, name=%s", result.id, result.name)
+        return result
     except ValueError as e:
+        logger.error("POST /workspaces - failed: %s", e)
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -92,6 +99,7 @@ async def list_workspaces(
     session: AsyncSession = Depends(get_session),
 ):
     """List workspaces with optional status filter and pagination."""
+    logger.info("GET /workspaces - status=%s, page=%d, page_size=%d", status, page, page_size)
     return await service.list_workspaces(session, status=status, page=page, page_size=page_size)
 
 
@@ -101,8 +109,10 @@ async def get_workspace(
     session: AsyncSession = Depends(get_session),
 ):
     """Get workspace details by ID."""
+    logger.info("GET /workspaces/%d", workspace_id)
     ws = await service.get_workspace(session, workspace_id)
     if not ws:
+        logger.info("GET /workspaces/%d - not found", workspace_id)
         raise HTTPException(status_code=404, detail="Workspace not found")
     return ws
 
@@ -113,8 +123,11 @@ async def delete_workspace(
     session: AsyncSession = Depends(get_session),
 ):
     """Delete a workspace."""
+    logger.info("DELETE /workspaces/%d", workspace_id)
     if not await service.delete_workspace(session, workspace_id):
+        logger.info("DELETE /workspaces/%d - not found", workspace_id)
         raise HTTPException(status_code=404, detail="Workspace not found")
+    logger.info("DELETE /workspaces/%d - deleted", workspace_id)
     return {"status": "ok", "message": "Workspace deleted"}
 
 
@@ -132,8 +145,10 @@ async def add_member(
     session: AsyncSession = Depends(get_session),
 ):
     """Add a member to a workspace."""
+    logger.info("POST /workspaces/%d/members - user_id=%d, role=%s", workspace_id, req.user_id, req.role)
     ws = await service.get_workspace(session, workspace_id)
     if not ws:
+        logger.error("POST /workspaces/%d/members - workspace not found", workspace_id)
         raise HTTPException(status_code=404, detail="Workspace not found")
     return await service.add_member(session, workspace_id, req)
 
@@ -147,6 +162,7 @@ async def list_members(
     session: AsyncSession = Depends(get_session),
 ):
     """List all members of a workspace."""
+    logger.info("GET /workspaces/%d/members", workspace_id)
     return await service.list_members(session, workspace_id)
 
 
@@ -157,8 +173,11 @@ async def remove_member(
     session: AsyncSession = Depends(get_session),
 ):
     """Remove a member from a workspace."""
+    logger.info("DELETE /workspaces/%d/members/%d", workspace_id, member_id)
     if not await service.remove_member(session, member_id):
+        logger.info("DELETE /workspaces/%d/members/%d - not found", workspace_id, member_id)
         raise HTTPException(status_code=404, detail="Member not found")
+    logger.info("DELETE /workspaces/%d/members/%d - removed", workspace_id, member_id)
     return {"status": "ok", "message": "Member removed"}
 
 
@@ -180,4 +199,5 @@ async def get_workflow_status(
     step-by-step status. Use this to monitor provisioning progress
     after creating a workspace.
     """
+    logger.info("GET /workspaces/%d/workflow", workspace_id)
     return await service.get_workflow_status(session, workspace_id)
