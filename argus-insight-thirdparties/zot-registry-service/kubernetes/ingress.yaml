@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: zot-registry
+  namespace: argus-insight
+  labels:
+    app.kubernetes.io/name: zot-registry
+    app.kubernetes.io/part-of: argus-insight
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - zot.argus-insight.dev.net
+      secretName: zot-registry-tls
+  rules:
+    - host: zot.argus-insight.dev.net
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: zot-registry
+                port:
+                  number: 5000
