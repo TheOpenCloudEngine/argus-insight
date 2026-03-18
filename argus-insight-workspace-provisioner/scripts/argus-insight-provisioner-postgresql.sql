@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS argus_workspaces (
     minio_endpoint      VARCHAR(500)    DEFAULT NULL,
     minio_console_endpoint VARCHAR(500) DEFAULT NULL,
     minio_default_bucket VARCHAR(255)   DEFAULT NULL,
+    airflow_endpoint    VARCHAR(500)    DEFAULT NULL,
+    mlflow_endpoint     VARCHAR(500)    DEFAULT NULL,
     status              VARCHAR(20)     NOT NULL DEFAULT 'provisioning',
     created_by          INTEGER         NOT NULL,
     created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),

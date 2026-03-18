@@ -30,6 +30,8 @@ class ArgusWorkspace(Base):
         minio_endpoint: MinIO API endpoint URL (e.g., "minio-ml-team-dev.argus-insight.dev.net").
         minio_console_endpoint: MinIO console URL (e.g., "minio-console-ml-team-dev.argus-insight.dev.net").
         minio_default_bucket: Default bucket name (same as workspace name).
+        airflow_endpoint: Airflow webserver URL (e.g., "airflow-ml-team-dev.argus-insight.dev.net").
+        mlflow_endpoint: MLflow tracking server URL (e.g., "mlflow-ml-team-dev.argus-insight.dev.net").
         status:       Workspace status ("provisioning", "active", "failed", "deleting", "deleted").
         created_by:   User ID of the admin who created this workspace.
         created_at:   Timestamp when the workspace was created.
@@ -50,6 +52,8 @@ class ArgusWorkspace(Base):
     minio_endpoint = Column(String(500))
     minio_console_endpoint = Column(String(500))
     minio_default_bucket = Column(String(255))
+    airflow_endpoint = Column(String(500))
+    mlflow_endpoint = Column(String(500))
     status = Column(String(20), nullable=False, default="provisioning")
     created_by = Column(Integer, ForeignKey("argus_users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

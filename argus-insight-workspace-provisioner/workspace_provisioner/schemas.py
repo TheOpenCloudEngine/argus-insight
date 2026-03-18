@@ -106,6 +106,8 @@ class WorkspaceResponse(BaseModel):
     minio_endpoint: str | None = None
     minio_console_endpoint: str | None = None
     minio_default_bucket: str | None = None
+    airflow_endpoint: str | None = None
+    mlflow_endpoint: str | None = None
     status: WorkspaceStatus
     created_by: int
     created_at: datetime

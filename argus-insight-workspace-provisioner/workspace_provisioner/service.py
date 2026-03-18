@@ -31,8 +31,10 @@ from workspace_provisioner.workflow.models import (
 from workspace_provisioner.workflow.steps.gitlab_create_project import (
     GitLabCreateProjectStep,
 )
+from workspace_provisioner.workflow.steps.airflow_deploy import AirflowDeployStep
 from workspace_provisioner.workflow.steps.minio_deploy import MinioDeployStep
 from workspace_provisioner.workflow.steps.minio_setup import MinioSetupStep
+from workspace_provisioner.workflow.steps.mlflow_deploy import MlflowDeployStep
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +53,8 @@ def _build_workspace_response(ws: ArgusWorkspace) -> WorkspaceResponse:
         minio_endpoint=ws.minio_endpoint,
         minio_console_endpoint=ws.minio_console_endpoint,
         minio_default_bucket=ws.minio_default_bucket,
+        airflow_endpoint=ws.airflow_endpoint,
+        mlflow_endpoint=ws.mlflow_endpoint,
         status=WorkspaceStatus(ws.status),
         created_by=ws.created_by,
         created_at=ws.created_at,
@@ -144,8 +148,9 @@ async def _run_provisioning_workflow(
             executor.add_step(GitLabCreateProjectStep(gitlab_client))
             executor.add_step(MinioDeployStep())
             executor.add_step(MinioSetupStep())
+            executor.add_step(AirflowDeployStep())
+            executor.add_step(MlflowDeployStep())
             # Future steps will be added here:
-            # executor.add_step(AirflowDeployStep(...))
             # executor.add_step(DnsRegisterStep(...))
 
             execution = await executor.run(
@@ -167,6 +172,8 @@ async def _run_provisioning_workflow(
                     workspace.minio_endpoint = ctx.get("minio_external_endpoint")
                     workspace.minio_console_endpoint = ctx.get("minio_console_endpoint")
                     workspace.minio_default_bucket = ctx.get("minio_default_bucket")
+                    workspace.airflow_endpoint = ctx.get("airflow_endpoint")
+                    workspace.mlflow_endpoint = ctx.get("mlflow_endpoint")
                 else:
                     workspace.status = WorkspaceStatus.FAILED.value
                 await session.commit()
