@@ -424,6 +424,7 @@ bin/provisioner-cli.py <command> [options]
 | `workspace-minimal.json` | 일부 설정만 오버라이드 |
 | `workspace-full.json` | 모든 설정을 명시적으로 지정 |
 | `workspace-gpu.json` | GPU 학습용 고사양 설정 |
+| `workspace-inference-only.json` | KServe만 배포 (선택적 Step 실행 예시) |
 
 ### 테스트 시나리오
 

@@ -48,6 +48,16 @@
         "memory_request": "1Gi",
         "memory_limit": "4Gi"
       }
+    },
+    "kserve": {
+      "controller_image": "kserve/kserve-controller:v0.14.1",
+      "default_runtime": "kserve-triton",
+      "resources": {
+        "cpu_request": "500m",
+        "cpu_limit": "4",
+        "memory_request": "1Gi",
+        "memory_limit": "4Gi"
+      }
     }
   }
 }

@@ -1,0 +1,18 @@
+{
+  "name": "ml-inference",
+  "display_name": "ML Inference Service",
+  "description": "Workspace for model serving only (GitLab + MinIO + KServe)",
+  "domain": "dev.net",
+  "admin_user_id": 1,
+  "steps": [
+    "gitlab-create-project",
+    "minio-deploy",
+    "minio-setup",
+    "kserve-deploy"
+  ],
+  "provisioning_config": {
+    "kserve": {
+      "default_runtime": "kserve-mlserver"
+    }
+  }
+}
