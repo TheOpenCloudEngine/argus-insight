@@ -63,6 +63,87 @@ kubectl apply -k kubernetes/
 kubectl get all -n argus-insight -l app.kubernetes.io/name=zot-registry
 ```
 
+## Getting Started (Docker Compose)
+
+Docker Compose로 Zot Registry를 실행하고 이미지를 push/pull하는 빠른 시작 가이드입니다.
+
+### 1. TLS 인증서 생성
+
+```bash
+# hosts.txt에 호스트명 설정 (기본값: dev-server)
+cat hosts.txt
+
+# 인증서 생성
+bash generate_certs.sh
+
+# 생성된 인증서를 certs/ 디렉토리에 배치
+mkdir -p certs
+cp -r dev-server certs/
+```
+
+### 2. Docker 이미지 빌드 및 실행
+
+```bash
+# Zot Registry 이미지 빌드
+make docker
+
+# Docker Compose로 실행
+cd docker
+docker compose --env-file ../versions.env up --build -d
+
+# 로그 확인
+docker compose logs -f zot-registry
+```
+
+### 3. 클라이언트에서 TLS 인증서 신뢰 설정
+
+자체 서명 CA를 사용하므로, Docker 데몬이 레지스트리를 신뢰하도록 CA 인증서를 등록해야 합니다.
+
+```bash
+# Linux
+sudo mkdir -p /etc/docker/certs.d/localhost:5000
+sudo cp certs/dev-server/dev-server.crt /etc/docker/certs.d/localhost:5000/ca.crt
+
+# macOS (Docker Desktop)
+# ca/ca.crt를 키체인에 '항상 신뢰'로 등록 후 Docker Desktop 재시작
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ca/ca.crt
+```
+
+### 4. 레지스트리 로그인
+
+```bash
+# htpasswd에 등록된 계정으로 로그인 (기본 계정: admin)
+docker login localhost:5000
+```
+
+### 5. 이미지 Push / Pull
+
+```bash
+# 기존 이미지에 레지스트리 태그 추가
+docker tag alpine:latest localhost:5000/library/alpine:latest
+
+# 이미지 Push
+docker push localhost:5000/library/alpine:latest
+
+# 이미지 Pull (다른 머신 또는 확인용)
+docker pull localhost:5000/library/alpine:latest
+
+# 레지스트리에 저장된 이미지 목록 확인
+curl -k -u admin:<password> https://localhost:5000/v2/_catalog
+```
+
+### 6. 업스트림 미러링 (onDemand)
+
+Zot는 onDemand 미러링이 설정되어 있어, 업스트림 이미지를 직접 pull하면 자동으로 캐싱됩니다.
+
+```bash
+# Docker Hub 이미지를 Zot를 통해 pull (자동 캐싱)
+docker pull localhost:5000/library/nginx:latest
+
+# Quay.io 이미지
+docker pull localhost:5000/quay.io/prometheus/prometheus:latest
+```
+
 ## 초기 관리자 계정
 
 ### Zot Registry
