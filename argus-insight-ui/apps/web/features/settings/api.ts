@@ -1,4 +1,4 @@
-const BASE = "/api/v1/infraconfig"
+const BASE = "/api/v1/config"
 const SECURITY_BASE = "/api/v1/security"
 
 // --------------------------------------------------------------------------- //

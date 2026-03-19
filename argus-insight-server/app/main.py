@@ -18,7 +18,7 @@ from app.core.database import Base, close_database, engine, init_database
 from app.core.logging import setup_logging
 from app.core.security import SecurityHeadersMiddleware
 from app.dashboard.router import router as dashboard_router
-from app.infraconfig.router import router as infraconfig_router
+from app.config.router import router as config_router
 from app.notes.router import router as notes_router
 from app.objectfilemgr.router import router as objectfilemgr_router
 from app.proxy.router import router as proxy_router
@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
     await init_database()
     # Ensure ORM tables exist (import models so they are registered with Base)
     import app.agent.models  # noqa: F401
-    import app.infraconfig.models  # noqa: F401
+    import app.config.models  # noqa: F401
     import app.notes.models  # noqa: F401
     import app.objectfilemgr.models  # noqa: F401
     import app.usermgr.models  # noqa: F401
@@ -71,7 +71,7 @@ async def lifespan(app: FastAPI):
     async with async_session() as session:
         await seed_roles(session)
 
-    from app.infraconfig.service import seed_infra_config
+    from app.config.service import seed_infra_config
 
     async with async_session() as session:
         await seed_infra_config(session)
@@ -106,7 +106,7 @@ app.include_router(proxy_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
 app.include_router(usermgr_router, prefix="/api/v1")
 app.include_router(servermgr_router, prefix="/api/v1")
-app.include_router(infraconfig_router, prefix="/api/v1")
+app.include_router(config_router, prefix="/api/v1")
 app.include_router(notes_router, prefix="/api/v1")
 app.include_router(objectfilemgr_router, prefix="/api/v1")
 app.include_router(security_router, prefix="/api/v1")

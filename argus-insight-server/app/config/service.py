@@ -6,8 +6,8 @@ from collections import defaultdict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.infraconfig.models import ArgusConfiguration
-from app.infraconfig.schemas import InfraCategoryResponse, InfraConfigResponse
+from app.config.models import ArgusConfiguration
+from app.config.schemas import InfraCategoryResponse, InfraConfigResponse
 
 logger = logging.getLogger(__name__)
 
