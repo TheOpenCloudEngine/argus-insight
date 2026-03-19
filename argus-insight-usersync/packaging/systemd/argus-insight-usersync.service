@@ -1,0 +1,17 @@
+[Unit]
+Description=Argus Insight UserSync
+Documentation=https://github.com/TheOpenCloudEngine/argus-insight
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=argus
+Group=argus
+ExecStart=/opt/argus-insight-usersync/bin/argus-insight-usersync
+WorkingDirectory=/opt/argus-insight-usersync
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
