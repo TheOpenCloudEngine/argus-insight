@@ -29,8 +29,8 @@ services:
         PDNS_VERSION: ${PDNS_VERSION}
     image: argus-insight/powerdns-server:${PDNS_VERSION}
     ports:
-      - "10053:53/udp"
-      - "10053:53/tcp"
+      - "53:53/udp"
+      - "53:53/tcp"
       - "15001:8081"
     environment:
       - PDNS_api=yes

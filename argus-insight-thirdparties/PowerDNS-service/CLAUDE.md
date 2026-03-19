@@ -58,6 +58,14 @@ make docker-load                 # tar.gz 에서 이미지 로드
 
 # 정리
 make clean                       # dist/ 삭제
+
+# Docker Compose
+cd docker
+docker compose --env-file versions.env up --build -d
+
+# Kubernetes
+kubectl apply -k kubernetes/
+kubectl get all -n argus-insight -l app.kubernetes.io/name=powerdns-server
 ```
 
 ## 초기 관리자 계정
