@@ -179,9 +179,10 @@ type SchemaNodeProps = {
   schema: Schema
   depth: number
   pathname: string
+  autoExpand?: boolean
 }
 
-function SchemaNode({ catalog, schema, depth, pathname }: SchemaNodeProps) {
+function SchemaNode({ catalog, schema, depth, pathname, autoExpand }: SchemaNodeProps) {
   const [expanded, setExpanded] = useState(false)
   const [tables, setTables] = useState<UCTable[]>([])
   const [volumes, setVolumes] = useState<Volume[]>([])
@@ -209,6 +210,13 @@ function SchemaNode({ catalog, schema, depth, pathname }: SchemaNodeProps) {
       setLoading(false)
     }
   }, [catalog, schema.name, loaded])
+
+  useEffect(() => {
+    if (autoExpand && !expanded && !loaded) {
+      loadData()
+      setExpanded(true)
+    }
+  }, [autoExpand, expanded, loaded, loadData])
 
   function handleToggle() {
     if (!expanded) loadData()
@@ -285,6 +293,7 @@ type CatalogNodeProps = {
 }
 
 function CatalogNode({ catalog, depth, pathname }: CatalogNodeProps) {
+  const isGlobal = catalog.name === "global"
   const [expanded, setExpanded] = useState(false)
   const [schemas, setSchemas] = useState<Schema[]>([])
   const [loaded, setLoaded] = useState(false)
@@ -301,6 +310,13 @@ function CatalogNode({ catalog, depth, pathname }: CatalogNodeProps) {
       setLoading(false)
     }
   }, [catalog.name, loaded])
+
+  useEffect(() => {
+    if (isGlobal && !expanded && !loaded) {
+      loadSchemas()
+      setExpanded(true)
+    }
+  }, [isGlobal, expanded, loaded, loadSchemas])
 
   function handleToggle() {
     if (!expanded) loadSchemas()
@@ -334,6 +350,7 @@ function CatalogNode({ catalog, depth, pathname }: CatalogNodeProps) {
             schema={schema}
             depth={depth + 1}
             pathname={pathname}
+            autoExpand={isGlobal && schema.name === "default"}
           />
         ))
       ) : loaded ? (
