@@ -38,9 +38,47 @@ export type DnsRRsetPatch = {
   records: DnsRecord[]
 }
 
+export type DnsHealthResponse = {
+  reachable: boolean
+  zone_exists: boolean
+  zone: string
+  error: string | null
+}
+
+export type DnsZoneCreateResponse = {
+  zone: string
+  created: boolean
+}
+
 // --------------------------------------------------------------------------- //
 // API functions
 // --------------------------------------------------------------------------- //
+
+/**
+ * Check PowerDNS connectivity and zone existence.
+ */
+export async function checkDnsHealth(): Promise<DnsHealthResponse> {
+  const res = await fetch(`${BASE}/health`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    const detail = body?.detail ?? `Failed to check DNS health: ${res.status}`
+    throw new Error(detail)
+  }
+  return res.json()
+}
+
+/**
+ * Create the configured domain zone on the PowerDNS server.
+ */
+export async function createZone(): Promise<DnsZoneCreateResponse> {
+  const res = await fetch(`${BASE}/zone`, { method: "POST" })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    const detail = body?.detail ?? `Failed to create zone: ${res.status}`
+    throw new Error(detail)
+  }
+  return res.json()
+}
 
 /**
  * Fetch all DNS records for the configured domain zone.

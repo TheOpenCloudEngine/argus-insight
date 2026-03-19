@@ -56,3 +56,19 @@ class DnsRecordUpdateRequest(BaseModel):
     """Request body for updating DNS records via PATCH."""
 
     rrsets: list[DnsRRsetPatch]
+
+
+class DnsHealthResponse(BaseModel):
+    """Response from the PowerDNS health check."""
+
+    reachable: bool
+    zone_exists: bool
+    zone: str
+    error: str | None = None
+
+
+class DnsZoneCreateResponse(BaseModel):
+    """Response after creating a zone."""
+
+    zone: str
+    created: bool

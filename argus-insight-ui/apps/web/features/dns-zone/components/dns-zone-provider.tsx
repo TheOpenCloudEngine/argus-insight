@@ -1,13 +1,15 @@
 /**
  * DNS Zone Context Provider.
  *
- * Central state management for the Domain Zone feature. This provider wraps
- * the dns-zone page and exposes all shared state through React Context:
+ * On mount, first checks PowerDNS health (connectivity + zone existence),
+ * then fetches records only if everything is ready.
  *
- * - **Record data**: All DNS records fetched from PowerDNS via the backend.
- * - **Zone name**: The configured domain name.
- * - **Dialog control**: Which dialog is currently open and which record triggered it.
- * - **Loading/Error**: Fetch status for the zone records.
+ * Health states:
+ * - checking:       initial health check in progress
+ * - not_configured: PowerDNS settings missing → show "Go to PowerDNS Settings"
+ * - unreachable:    PowerDNS server cannot be reached → show "Go to PowerDNS Settings"
+ * - zone_missing:   PowerDNS reachable but zone doesn't exist → show "Create Zone"
+ * - ready:          everything OK → show records grid
  */
 
 "use client"
@@ -15,10 +17,17 @@
 import React, { useCallback, useEffect, useState } from "react"
 
 import useDialogState from "@/hooks/use-dialog-state"
-import { fetchZoneRecords } from "../api"
+import { checkDnsHealth, createZone, fetchZoneRecords } from "../api"
 import { type DnsRecord } from "../data/schema"
 
 type DnsZoneDialogType = "add" | "edit" | "delete"
+
+export type HealthStatus =
+  | "checking"
+  | "not_configured"
+  | "unreachable"
+  | "zone_missing"
+  | "ready"
 
 type DnsZoneContextType = {
   open: DnsZoneDialogType | null
@@ -29,7 +38,11 @@ type DnsZoneContextType = {
   zone: string
   isLoading: boolean
   error: string | null
+  healthStatus: HealthStatus
+  healthError: string | null
   refreshRecords: () => Promise<void>
+  handleCreateZone: () => Promise<void>
+  creatingZone: boolean
 }
 
 const DnsZoneContext = React.createContext<DnsZoneContextType | null>(null)
@@ -39,8 +52,11 @@ export function DnsZoneProvider({ children }: { children: React.ReactNode }) {
   const [currentRow, setCurrentRow] = useState<DnsRecord | null>(null)
   const [records, setRecords] = useState<DnsRecord[]>([])
   const [zone, setZone] = useState("")
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [healthStatus, setHealthStatus] = useState<HealthStatus>("checking")
+  const [healthError, setHealthError] = useState<string | null>(null)
+  const [creatingZone, setCreatingZone] = useState(false)
 
   const loadRecords = useCallback(async () => {
     try {
@@ -57,20 +73,66 @@ export function DnsZoneProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  useEffect(() => {
-    loadRecords()
+  const runHealthCheck = useCallback(async () => {
+    try {
+      setHealthStatus("checking")
+      setHealthError(null)
+      const health = await checkDnsHealth()
+
+      setZone(health.zone)
+
+      if (!health.reachable) {
+        if (health.error?.includes("not configured")) {
+          setHealthStatus("not_configured")
+        } else {
+          setHealthStatus("unreachable")
+        }
+        setHealthError(health.error ?? "Cannot connect to PowerDNS")
+        return
+      }
+
+      if (!health.zone_exists) {
+        setHealthStatus("zone_missing")
+        return
+      }
+
+      setHealthStatus("ready")
+      await loadRecords()
+    } catch (err) {
+      setHealthStatus("unreachable")
+      setHealthError(err instanceof Error ? err.message : "Health check failed")
+    }
   }, [loadRecords])
 
+  useEffect(() => {
+    runHealthCheck()
+  }, [runHealthCheck])
+
   const refreshRecords = useCallback(async () => {
-    await loadRecords()
-  }, [loadRecords])
+    await runHealthCheck()
+  }, [runHealthCheck])
+
+  const handleCreateZone = useCallback(async () => {
+    try {
+      setCreatingZone(true)
+      setHealthError(null)
+      await createZone()
+      await runHealthCheck()
+    } catch (err) {
+      setHealthError(err instanceof Error ? err.message : "Failed to create zone")
+    } finally {
+      setCreatingZone(false)
+    }
+  }, [runHealthCheck])
 
   return (
     <DnsZoneContext value={{
       open, setOpen,
       currentRow, setCurrentRow,
       records, zone, isLoading, error,
+      healthStatus, healthError,
       refreshRecords,
+      handleCreateZone, creatingZone,
     }}>
       {children}
     </DnsZoneContext>
