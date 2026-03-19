@@ -14,6 +14,8 @@ from app.settings.schemas import (
     DockerRegistryTestRequest,
     DockerRegistryTestResponse,
     InfraConfigResponse,
+    UnityCatalogTestRequest,
+    UnityCatalogTestResponse,
     UpdateInfraCategoryRequest,
 )
 
@@ -47,6 +49,13 @@ async def test_docker_registry(body: DockerRegistryTestRequest) -> DockerRegistr
     """Test connectivity to a Docker Registry."""
     result = await service.test_docker_registry(body.url, body.username, body.password)
     return DockerRegistryTestResponse(**result)
+
+
+@router.post("/unity-catalog/test", response_model=UnityCatalogTestResponse)
+async def test_unity_catalog(body: UnityCatalogTestRequest) -> UnityCatalogTestResponse:
+    """Test connectivity to a Unity Catalog server."""
+    result = await service.test_unity_catalog(body.url, body.access_token)
+    return UnityCatalogTestResponse(**result)
 
 
 @router.post("/check-path", response_model=CheckPathResponse)

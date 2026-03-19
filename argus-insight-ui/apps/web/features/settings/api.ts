@@ -324,6 +324,22 @@ export async function updateArgusConfig(items: Record<string, string>): Promise<
   return updateCategory("argus", items)
 }
 
+export async function testUnityCatalog(
+  url: string,
+  accessToken: string,
+): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${BASE}/unity-catalog/test`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, access_token: accessToken }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: `Test failed: ${res.status}` }))
+    throw new Error(data.detail || `Test failed: ${res.status}`)
+  }
+  return res.json()
+}
+
 export async function testDockerRegistry(
   url: string,
   username: string,

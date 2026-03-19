@@ -11,6 +11,7 @@ import { Label } from "@workspace/ui/components/label"
 import {
   fetchArgusConfig,
   testDockerRegistry,
+  testUnityCatalog,
   updateArgusConfig,
 } from "@/features/settings/api"
 
@@ -25,8 +26,16 @@ export function ArgusSettings() {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
 
+  const [ucUrl, setUcUrl] = useState("")
+  const [ucAccessToken, setUcAccessToken] = useState("")
+  const [ucSaving, setUcSaving] = useState(false)
+  const [ucTesting, setUcTesting] = useState(false)
+  const [showUcToken, setShowUcToken] = useState(false)
+
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const [testResult, setTestResult] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [ucStatusMessage, setUcStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [ucTestResult, setUcTestResult] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
   const loadConfig = useCallback(async () => {
     try {
@@ -36,6 +45,8 @@ export function ArgusSettings() {
       setRegistryUrl(config.docker_registry_url ?? "https://zot.argus-insight.dev.net:30000")
       setUsername(config.docker_registry_username ?? "admin")
       setPassword(config.docker_registry_password ?? "Argus!insight2026")
+      setUcUrl(config.unity_catalog_url ?? "")
+      setUcAccessToken(config.unity_catalog_access_token ?? "")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load configuration")
     } finally {
@@ -89,6 +100,48 @@ export function ArgusSettings() {
       setTestResult({ type: "error", text: err instanceof Error ? err.message : "Test failed" })
     } finally {
       setTesting(false)
+    }
+  }
+
+  const ucUrlTrimmed = ucUrl.trim()
+  const ucAccessTokenTrimmed = ucAccessToken.trim()
+  const canSaveUc = ucUrlTrimmed.length > 0
+
+  function showUcStatus(type: "success" | "error", text: string) {
+    setUcStatusMessage({ type, text })
+    setTimeout(() => setUcStatusMessage(null), 3000)
+  }
+
+  async function handleUcSave() {
+    setUcSaving(true)
+    try {
+      await updateArgusConfig({
+        unity_catalog_url: ucUrl,
+        unity_catalog_access_token: ucAccessToken,
+      })
+      showUcStatus("success", "Unity Catalog settings saved successfully")
+      await loadConfig()
+    } catch (err) {
+      showUcStatus("error", err instanceof Error ? err.message : "Failed to save")
+    } finally {
+      setUcSaving(false)
+    }
+  }
+
+  async function handleUcTest() {
+    setUcTesting(true)
+    setUcTestResult(null)
+    try {
+      const result = await testUnityCatalog(ucUrlTrimmed, ucAccessTokenTrimmed)
+      if (result.success) {
+        setUcTestResult({ type: "success", text: result.message || "Unity Catalog connection successful" })
+      } else {
+        setUcTestResult({ type: "error", text: result.message || "Connection failed" })
+      }
+    } catch (err) {
+      setUcTestResult({ type: "error", text: err instanceof Error ? err.message : "Test failed" })
+    } finally {
+      setUcTesting(false)
     }
   }
 
@@ -210,6 +263,104 @@ export function ArgusSettings() {
                   aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {ucStatusMessage && (
+        <div
+          className={`rounded-md px-4 py-2 text-sm ${
+            ucStatusMessage.type === "success"
+              ? "bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-200"
+              : "bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200"
+          }`}
+        >
+          {ucStatusMessage.text}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Unity Catalog</CardTitle>
+              <CardDescription>
+                Unity Catalog connection settings
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleUcSave} disabled={ucSaving || !canSaveUc}>
+                {ucSaving ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                ) : (
+                  <Save className="h-4 w-4 mr-1.5" />
+                )}
+                Save
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleUcTest} disabled={ucTesting || !canSaveUc}>
+                {ucTesting ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                ) : (
+                  <Play className="h-4 w-4 mr-1.5" />
+                )}
+                Test
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {ucTestResult && (
+            <div
+              className={`mb-4 rounded-md px-4 py-2 text-sm ${
+                ucTestResult.type === "success"
+                  ? "bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-200"
+                  : "bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200"
+              }`}
+            >
+              {ucTestResult.text}
+            </div>
+          )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="unity-catalog-url">
+                Unity Catalog URL <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="unity-catalog-url"
+                value={ucUrl}
+                onChange={(e) => setUcUrl(e.target.value)}
+                placeholder="e.g. https://unity-catalog.example.com"
+              />
+              <p className="text-xs text-muted-foreground">
+                Unity Catalog server URL
+              </p>
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="unity-catalog-access-token">Access Token</Label>
+              <div className="relative">
+                <Input
+                  id="unity-catalog-access-token"
+                  type={showUcToken ? "text" : "password"}
+                  value={ucAccessToken}
+                  onChange={(e) => setUcAccessToken(e.target.value)}
+                  placeholder="Unity Catalog access token"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowUcToken((prev) => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  tabIndex={-1}
+                  aria-label={showUcToken ? "Hide token" : "Show token"}
+                >
+                  {showUcToken ? (
                     <EyeOff className="h-4 w-4" />
                   ) : (
                     <Eye className="h-4 w-4" />

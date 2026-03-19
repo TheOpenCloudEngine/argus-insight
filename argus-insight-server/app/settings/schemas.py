@@ -52,6 +52,20 @@ class DockerRegistryTestResponse(BaseModel):
     message: str
 
 
+class UnityCatalogTestRequest(BaseModel):
+    """Request to test Unity Catalog connectivity."""
+
+    url: str = Field(description="Unity Catalog URL")
+    access_token: str = Field(default="", description="Unity Catalog access token")
+
+
+class UnityCatalogTestResponse(BaseModel):
+    """Response from Unity Catalog connectivity test."""
+
+    success: bool
+    message: str
+
+
 class CheckPathRequest(BaseModel):
     """Request to check if a file path exists on the server."""
 

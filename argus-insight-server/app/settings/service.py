@@ -91,6 +91,34 @@ async def test_docker_registry(url: str, username: str, password: str) -> dict[s
         return {"success": False, "message": str(exc)}
 
 
+async def test_unity_catalog(url: str, access_token: str) -> dict[str, object]:
+    """Test connectivity to a Unity Catalog server."""
+    base_url = url.rstrip("/")
+
+    headers: dict[str, str] = {}
+    if access_token:
+        headers["Authorization"] = f"Bearer {access_token}"
+
+    try:
+        async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
+            resp = await client.get(base_url, headers=headers)
+    except httpx.ConnectError:
+        return {"success": False, "message": f"Cannot connect to {base_url}"}
+    except httpx.TimeoutException:
+        return {"success": False, "message": f"Connection to {base_url} timed out"}
+    except Exception as exc:
+        return {"success": False, "message": str(exc)}
+
+    if resp.status_code == 200:
+        return {"success": True, "message": "Unity Catalog connection successful"}
+    if resp.status_code == 401:
+        return {
+            "success": False,
+            "message": "Authentication failed. Please check your access token.",
+        }
+    return {"success": False, "message": f"Unity Catalog returned status {resp.status_code}"}
+
+
 async def seed_infra_config(session: AsyncSession) -> None:
     """Seed default infrastructure configuration if not present."""
     defaults = [
