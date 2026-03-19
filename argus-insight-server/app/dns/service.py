@@ -292,27 +292,32 @@ async def create_zone(session: AsyncSession) -> DnsZoneCreateResponse:
     base_url = _build_base_url(cfg)
     zone = _zone_id(cfg["domain_name"])
 
+    ns1_name = f"ns1.{zone}"
+    pdns_ip = cfg["pdns_ip"]
+    headers = {"X-API-Key": cfg["pdns_api_key"]}
+
     body = {
         "name": zone,
         "kind": "Native",
-        "nameservers": [f"ns1.{zone}", f"ns2.{zone}"],
+        "nameservers": [ns1_name],
     }
 
-    logger.info("Creating zone: POST %s/zones (name=%s, kind=Native)", base_url, zone)
+    logger.info("Creating zone: POST %s/zones (name=%s, kind=Native, ns=%s)",
+                base_url, zone, ns1_name)
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
                 f"{base_url}/zones",
                 json=body,
-                headers={"X-API-Key": cfg["pdns_api_key"]},
+                headers=headers,
             )
     except httpx.ConnectError as exc:
         logger.info("Zone creation failed: cannot connect to %s:%s",
-                     cfg["pdns_ip"], cfg["pdns_port"])
+                     pdns_ip, cfg["pdns_port"])
         raise HTTPException(
             status_code=503,
-            detail=f"Cannot connect to PowerDNS at {cfg['pdns_ip']}:{cfg['pdns_port']}",
+            detail=f"Cannot connect to PowerDNS at {pdns_ip}:{cfg['pdns_port']}",
         ) from exc
 
     logger.info("POST create zone returned status=%d", resp.status_code)
@@ -324,6 +329,32 @@ async def create_zone(session: AsyncSession) -> DnsZoneCreateResponse:
             detail=f"Failed to create zone: PowerDNS returned {resp.status_code}: "
                    f"{resp.text[:200]}",
         )
+
+    # Add A record for ns1 pointing to the PowerDNS server IP.
+    glue_body = {
+        "rrsets": [
+            {
+                "name": ns1_name,
+                "type": "A",
+                "ttl": 3600,
+                "changetype": "REPLACE",
+                "records": [{"content": pdns_ip, "disabled": False}],
+            },
+        ],
+    }
+    logger.info("Adding glue record: PATCH %s/zones/%s (ns1 A -> %s)",
+                base_url, zone, pdns_ip)
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            glue_resp = await client.patch(
+                f"{base_url}/zones/{zone}",
+                json=glue_body,
+                headers=headers,
+            )
+        logger.info("Glue record PATCH returned status=%d", glue_resp.status_code)
+    except httpx.ConnectError:
+        logger.info("Failed to add glue record (connection error), zone was created")
 
     logger.info("Zone created successfully: %s", cfg["domain_name"])
     return DnsZoneCreateResponse(zone=cfg["domain_name"], created=True)
