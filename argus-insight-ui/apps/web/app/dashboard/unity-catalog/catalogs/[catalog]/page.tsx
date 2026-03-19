@@ -13,6 +13,7 @@ import { UCEntityTable } from "@/features/unity-catalog/components/uc-entity-tab
 import { CreateSchemaDialog } from "@/features/unity-catalog/components/uc-create-schema-dialog"
 import { UCDeleteSchemaDialog } from "@/features/unity-catalog/components/uc-delete-schema-dialog"
 import { getCatalog, listSchemas, updateCatalog, deleteSchema } from "@/features/unity-catalog/api"
+import { dispatchUcRefresh } from "@/features/unity-catalog/events"
 import type { Catalog, Schema } from "@/features/unity-catalog/data/schema"
 
 export default function CatalogDetailsPage() {
@@ -113,6 +114,7 @@ export default function CatalogDetailsPage() {
         onConfirm={async (schemaFullName) => {
           await deleteSchema(schemaFullName)
           loadData()
+          dispatchUcRefresh()
         }}
       />
     </>

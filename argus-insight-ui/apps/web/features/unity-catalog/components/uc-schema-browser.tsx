@@ -22,6 +22,7 @@ import {
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
 import { listCatalogs, listSchemas, listTables, listVolumes, listFunctions, listModels } from "../api"
+import { UC_REFRESH_EVENT } from "../events"
 import type { Catalog, Schema, UCTable, Volume, UCFunction, Model } from "../data/schema"
 
 const UC_BASE = "/dashboard/unity-catalog"
@@ -311,12 +312,30 @@ function CatalogNode({ catalog, depth, pathname }: CatalogNodeProps) {
     }
   }, [catalog.name, loaded])
 
+  const reloadSchemas = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await listSchemas(catalog.name)
+      setSchemas(data)
+      setLoaded(true)
+    } finally {
+      setLoading(false)
+    }
+  }, [catalog.name])
+
   useEffect(() => {
     if (isGlobal && !expanded && !loaded) {
       loadSchemas()
       setExpanded(true)
     }
   }, [isGlobal, expanded, loaded, loadSchemas])
+
+  useEffect(() => {
+    if (!loaded) return
+    const handler = () => { reloadSchemas() }
+    window.addEventListener(UC_REFRESH_EVENT, handler)
+    return () => window.removeEventListener(UC_REFRESH_EVENT, handler)
+  }, [loaded, reloadSchemas])
 
   function handleToggle() {
     if (!expanded) loadSchemas()
