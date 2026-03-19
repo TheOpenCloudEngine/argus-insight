@@ -167,19 +167,17 @@ make format
 
 ## Ranger Admin REST API
 
-UserSync가 사용하는 Ranger XUser API:
+실제 Ranger UserSync와 동일한 Bulk UGSync API를 사용합니다:
 
 | Method | Path | 설명 |
 |--------|------|------|
-| GET | /service/xusers/users | 사용자 목록 (페이지네이션) |
-| GET | /service/xusers/users/userName/{name} | 사용자명으로 조회 |
-| POST | /service/xusers/secure/users | 사용자 생성 |
-| PUT | /service/xusers/secure/users/{id} | 사용자 수정 |
-| GET | /service/xusers/groups | 그룹 목록 (페이지네이션) |
-| GET | /service/xusers/groups/groupName/{name} | 그룹명으로 조회 |
-| POST | /service/xusers/secure/groups | 그룹 생성 |
-| PUT | /service/xusers/secure/groups/{id} | 그룹 수정 |
-| POST | /service/xusers/groupusers | 그룹-사용자 매핑 생성 |
+| GET | /service/xusers/ugsync/groupusers | 기존 그룹-사용자 매핑 조회 (캐시 빌드) |
+| POST | /service/xusers/ugsync/users | 사용자 벌크 생성/수정 (VXUserList) |
+| POST | /service/xusers/ugsync/groups | 그룹 벌크 생성/수정 (VXGroupList) |
+| POST | /service/xusers/ugsync/groupusers | 그룹 멤버십 벌크 동기화 (addUsers/delUsers) |
+| POST | /service/xusers/ugsync/users/visibility | 삭제된 사용자 비가시 처리 |
+| POST | /service/xusers/ugsync/groups/visibility | 삭제된 그룹 비가시 처리 |
+| POST | /service/xusers/ugsync/auditinfo | 동기화 감사 정보 전송 |
 
 ## 코딩 규칙
 
