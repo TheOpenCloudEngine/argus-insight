@@ -31,8 +31,7 @@ _REQUIRED_KEYS = ("pdns_ip", "pdns_port", "pdns_api_key", "domain_name")
 async def _get_pdns_settings(session: AsyncSession) -> dict[str, str]:
     """Read PowerDNS connection settings from the database.
 
-    Returns a dict with keys: pdns_ip, pdns_port, pdns_api_key,
-    pdns_server_id, domain_name.
+    Returns a dict with keys: pdns_ip, pdns_port, pdns_api_key, domain_name.
 
     Raises HTTPException(503) if required settings are not configured.
     """
@@ -42,8 +41,14 @@ async def _get_pdns_settings(session: AsyncSession) -> dict[str, str]:
     rows = result.scalars().all()
     cfg = {row.config_key: row.config_value for row in rows}
 
+    logger.info(
+        "Loaded PowerDNS settings: ip=%s, port=%s, domain=%s",
+        cfg.get("pdns_ip"), cfg.get("pdns_port"), cfg.get("domain_name"),
+    )
+
     missing = [k for k in _REQUIRED_KEYS if not cfg.get(k)]
     if missing:
+        logger.info("PowerDNS settings missing: %s", ", ".join(missing))
         raise HTTPException(
             status_code=503,
             detail=(
@@ -76,14 +81,19 @@ async def get_zone_records(session: AsyncSession) -> DnsZoneTableResponse:
     zone = _zone_id(cfg["domain_name"])
     url = f"{base_url}/zones/{zone}"
 
+    logger.info("Fetching zone records: GET %s", url)
+
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(url, headers={"X-API-Key": cfg["pdns_api_key"]})
     except httpx.ConnectError as exc:
+        logger.info("Connection failed to PowerDNS at %s:%s", cfg["pdns_ip"], cfg["pdns_port"])
         raise HTTPException(
             status_code=503,
             detail=f"Cannot connect to PowerDNS at {cfg['pdns_ip']}:{cfg['pdns_port']}",
         ) from exc
+
+    logger.info("GET zone records returned status=%d", resp.status_code)
 
     if resp.status_code == 404:
         raise HTTPException(
@@ -120,6 +130,10 @@ async def get_zone_records(session: AsyncSession) -> DnsZoneTableResponse:
                 )
             )
 
+    logger.info(
+        "Flattened %d records from %d rrsets for zone %s",
+        len(rows), len(rrsets), cfg["domain_name"],
+    )
     return DnsZoneTableResponse(zone=cfg["domain_name"], records=rows)
 
 
@@ -134,6 +148,7 @@ async def update_zone_records(
     url = f"{base_url}/zones/{zone}"
 
     body = {"rrsets": [rrset.model_dump() for rrset in rrsets]}
+    logger.info("Updating zone records: PATCH %s (%d rrsets)", url, len(rrsets))
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -143,10 +158,13 @@ async def update_zone_records(
                 headers={"X-API-Key": cfg["pdns_api_key"]},
             )
     except httpx.ConnectError as exc:
+        logger.info("Connection failed to PowerDNS at %s:%s", cfg["pdns_ip"], cfg["pdns_port"])
         raise HTTPException(
             status_code=503,
             detail=f"Cannot connect to PowerDNS at {cfg['pdns_ip']}:{cfg['pdns_port']}",
         ) from exc
+
+    logger.info("PATCH zone records returned status=%d", resp.status_code)
 
     if resp.status_code not in (200, 204):
         raise HTTPException(
@@ -157,10 +175,11 @@ async def update_zone_records(
 
 async def check_health(session: AsyncSession) -> DnsHealthResponse:
     """Check if PowerDNS is reachable and whether the configured zone exists."""
+    logger.info("Starting PowerDNS health check")
     try:
         cfg = await _get_pdns_settings(session)
     except HTTPException:
-        # Settings not configured — return not reachable with settings error.
+        logger.info("Health check failed: PowerDNS settings not configured")
         return DnsHealthResponse(
             reachable=False,
             zone_exists=False,
@@ -174,10 +193,13 @@ async def check_health(session: AsyncSession) -> DnsHealthResponse:
     zone = _zone_id(cfg["domain_name"])
 
     # 1) Check basic connectivity via GET /api/v1/servers.
+    logger.info("Health check step 1: GET %s/servers", api_base)
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(f"{api_base}/servers", headers=headers)
     except (httpx.ConnectError, httpx.TimeoutException):
+        logger.info("Health check step 1 failed: cannot connect to %s:%s",
+                     cfg["pdns_ip"], cfg["pdns_port"])
         return DnsHealthResponse(
             reachable=False,
             zone_exists=False,
@@ -185,7 +207,10 @@ async def check_health(session: AsyncSession) -> DnsHealthResponse:
             error=f"Cannot connect to PowerDNS at {cfg['pdns_ip']}:{cfg['pdns_port']}",
         )
 
+    logger.info("Health check step 1 result: status=%d", resp.status_code)
+
     if resp.status_code == 401:
+        logger.info("Health check failed: API key unauthorized")
         return DnsHealthResponse(
             reachable=False,
             zone_exists=False,
@@ -194,6 +219,7 @@ async def check_health(session: AsyncSession) -> DnsHealthResponse:
         )
 
     if resp.status_code != 200:
+        logger.info("Health check failed: unexpected status %d", resp.status_code)
         return DnsHealthResponse(
             reachable=False,
             zone_exists=False,
@@ -201,18 +227,22 @@ async def check_health(session: AsyncSession) -> DnsHealthResponse:
             error=f"PowerDNS returned {resp.status_code} on connectivity check.",
         )
 
-    # 2) Validate server_id by listing zones.
+    # 2) List zones to validate configuration.
     base_url = _build_base_url(cfg)
+    logger.info("Health check step 2: GET %s/zones", base_url)
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             zones_resp = await client.get(f"{base_url}/zones", headers=headers)
     except (httpx.ConnectError, httpx.TimeoutException):
+        logger.info("Health check step 2 failed: connection error")
         return DnsHealthResponse(
             reachable=True,
             zone_exists=False,
             zone=cfg["domain_name"],
             error="Failed to list zones from PowerDNS.",
         )
+
+    logger.info("Health check step 2 result: status=%d", zones_resp.status_code)
 
     if zones_resp.status_code == 404:
         return DnsHealthResponse(
@@ -232,19 +262,26 @@ async def check_health(session: AsyncSession) -> DnsHealthResponse:
         )
 
     # 3) Check if the zone exists.
+    logger.info("Health check step 3: GET %s/zones/%s", base_url, zone)
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             zone_resp = await client.get(f"{base_url}/zones/{zone}", headers=headers)
     except (httpx.ConnectError, httpx.TimeoutException):
+        logger.info("Health check step 3 failed: connection error")
         return DnsHealthResponse(
             reachable=True,
             zone_exists=False,
             zone=cfg["domain_name"],
         )
 
+    zone_exists = zone_resp.status_code == 200
+    logger.info(
+        "Health check complete: reachable=True, zone_exists=%s, zone=%s",
+        zone_exists, cfg["domain_name"],
+    )
     return DnsHealthResponse(
         reachable=True,
-        zone_exists=zone_resp.status_code == 200,
+        zone_exists=zone_exists,
         zone=cfg["domain_name"],
     )
 
@@ -261,6 +298,8 @@ async def create_zone(session: AsyncSession) -> DnsZoneCreateResponse:
         "nameservers": [f"ns1.{zone}", f"ns2.{zone}"],
     }
 
+    logger.info("Creating zone: POST %s/zones (name=%s, kind=Native)", base_url, zone)
+
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
@@ -269,16 +308,22 @@ async def create_zone(session: AsyncSession) -> DnsZoneCreateResponse:
                 headers={"X-API-Key": cfg["pdns_api_key"]},
             )
     except httpx.ConnectError as exc:
+        logger.info("Zone creation failed: cannot connect to %s:%s",
+                     cfg["pdns_ip"], cfg["pdns_port"])
         raise HTTPException(
             status_code=503,
             detail=f"Cannot connect to PowerDNS at {cfg['pdns_ip']}:{cfg['pdns_port']}",
         ) from exc
 
+    logger.info("POST create zone returned status=%d", resp.status_code)
+
     if resp.status_code not in (200, 201):
+        logger.info("Zone creation failed: %s", resp.text[:200])
         raise HTTPException(
             status_code=502,
             detail=f"Failed to create zone: PowerDNS returned {resp.status_code}: "
                    f"{resp.text[:200]}",
         )
 
+    logger.info("Zone created successfully: %s", cfg["domain_name"])
     return DnsZoneCreateResponse(zone=cfg["domain_name"], created=True)

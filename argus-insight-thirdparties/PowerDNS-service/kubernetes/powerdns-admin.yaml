@@ -26,7 +26,7 @@ spec:
             - name: GUNICORN_TIMEOUT
               value: "60"
             - name: PDNS_API_URL
-              value: "http://powerdns-server:8081/"
+              value: "http://powerdns-server:8083/"
             - name: PDNS_API_KEY
               valueFrom:
                 secretKeyRef:

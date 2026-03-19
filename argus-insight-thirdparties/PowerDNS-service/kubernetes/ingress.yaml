@@ -27,4 +27,4 @@ spec:
               service:
                 name: powerdns-server
                 port:
-                  number: 8081
+                  number: 8083
