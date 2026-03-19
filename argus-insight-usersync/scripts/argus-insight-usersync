@@ -1,0 +1,17 @@
+#!/bin/bash
+# Argus Insight UserSync entry point for system installation
+# Installed to /opt/argus-insight-usersync/bin/argus-insight-usersync
+
+INSTALL_DIR="/opt/argus-insight-usersync"
+CONFIG_DIR="/etc/argus-insight-usersync"
+VENV_DIR="${INSTALL_DIR}/venv"
+
+# Activate virtual environment
+if [ -f "${VENV_DIR}/bin/activate" ]; then
+    source "${VENV_DIR}/bin/activate"
+fi
+
+exec python -m app.main \
+    --config-yaml "${CONFIG_DIR}/config.yml" \
+    --config-properties "${CONFIG_DIR}/config.properties" \
+    "$@"

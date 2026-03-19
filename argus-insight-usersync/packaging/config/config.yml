@@ -1,0 +1,57 @@
+# =============================================================================
+# Argus Insight UserSync - Main Configuration
+# =============================================================================
+# Uses Spring Boot style ${variable:default} syntax.
+# Variables are resolved from config.properties.
+
+app:
+  name: argus-insight-usersync
+  version: 0.1.0
+
+logging:
+  level: ${log.level:INFO}
+  dir: ${log.dir:/var/log/argus-insight-usersync}
+  filename: ${log.filename:usersync.log}
+  rolling:
+    type: daily
+    backup_count: 30
+
+# Sync source configuration
+sync:
+  source: ${sync.source:unix}
+  user_filter: ${sync.user_filter:}
+  group_filter: ${sync.group_filter:}
+  min_uid: ${sync.min_uid:500}
+  min_gid: ${sync.min_gid:500}
+
+# LDAP/Active Directory source
+ldap:
+  url: ${ldap.url:ldap://localhost:389}
+  bind_dn: ${ldap.bind_dn:}
+  bind_password: ${ldap.bind_password:}
+  user_search_base: ${ldap.user_search_base:}
+  user_search_filter: ${ldap.user_search_filter:(objectClass=person)}
+  user_name_attribute: ${ldap.user_name_attribute:uid}
+  user_group_name_attribute: ${ldap.user_group_name_attribute:memberOf}
+  group_search_base: ${ldap.group_search_base:}
+  group_search_filter: ${ldap.group_search_filter:(objectClass=groupOfNames)}
+  group_name_attribute: ${ldap.group_name_attribute:cn}
+  group_member_attribute: ${ldap.group_member_attribute:member}
+  page_size: ${ldap.page_size:500}
+  use_ssl: ${ldap.use_ssl:false}
+  tls_ca_cert: ${ldap.tls_ca_cert:}
+  referral: ignore
+
+# File source
+file:
+  users_path: ${file.users_path:}
+  groups_path: ${file.groups_path:}
+  format: ${file.format:csv}
+
+# Apache Ranger Admin
+ranger:
+  url: ${ranger.url:http://localhost:6080}
+  username: ${ranger.username:admin}
+  password: ${ranger.password:admin}
+  timeout: ${ranger.timeout:30}
+  ssl_verify: ${ranger.ssl_verify:true}

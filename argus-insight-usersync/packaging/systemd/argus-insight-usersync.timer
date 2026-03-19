@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Argus Insight UserSync daily
+Documentation=https://github.com/TheOpenCloudEngine/argus-insight
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
