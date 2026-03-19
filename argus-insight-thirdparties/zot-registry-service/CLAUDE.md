@@ -19,10 +19,10 @@ zot-registry-service/
 │   ├── kustomization.yaml          # Kustomize 엔트리포인트
 │   ├── namespace.yaml              # argus-insight 네임스페이스
 │   ├── secret.yaml                 # htpasswd, credentials
-│   ├── configmap.yaml              # config.json (TLS 없음, Ingress에서 종단)
+│   ├── configmap.yaml              # config.json (TLS 포함, Zot 자체 TLS 종단)
 │   ├── pvc.yaml                    # 이미지 스토리지 볼륨 (50Gi)
-│   ├── zot-registry.yaml           # Deployment (Recreate) + Service (ClusterIP)
-│   └── ingress.yaml                # Nginx Ingress (TLS 종단)
+│   ├── zot-registry.yaml           # Deployment (Recreate) + Service (NodePort:30000)
+│   └── ingress.yaml                # Nginx Ingress (미사용, NodePort 방식 사용 시 불필요)
 ├── config.json                     # Zot 메인 설정 파일 (Docker Compose/RPM용, TLS 포함)
 ├── credentials.json                # 업스트림 레지스트리 인증 정보
 ├── htpasswd                        # Zot 접근용 사용자 인증 파일 (bcrypt)
@@ -99,27 +99,17 @@ sudo rpm -ivh dist/zot-*.rpm
 sudo systemctl enable --now zot
 ```
 
-### Kubernetes Production 배포
+### Kubernetes 배포 (k3s / NodePort + TLS)
 
-Nginx Ingress Controller를 통해 TLS를 종단하고, Zot은 HTTP로 동작하는 구조입니다.
+Ingress 없이 NodePort로 직접 노출하고, Zot 자체에서 TLS를 종단하는 구조입니다. k3s 환경에 적합합니다.
 
 #### 사전 요구사항
 
-- Kubernetes 클러스터
-- Nginx Ingress Controller
+- k3s 또는 Kubernetes 클러스터
 - 도메인 DNS 또는 `/etc/hosts` 등록
+- NodePort 범위에 사용할 포트가 포함되어 있을 것 (기본 30000-32767)
 
-#### Step 1. Nginx Ingress Controller 설치
-
-```bash
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.1/deploy/static/provider/cloud/deploy.yaml
-
-# 설치 확인
-kubectl get pods -n ingress-nginx -l app.kubernetes.io/component=controller
-kubectl get ingressclass
-```
-
-#### Step 2. Docker 이미지 빌드
+#### Step 1. Docker 이미지 빌드
 
 ```bash
 make docker
@@ -130,34 +120,9 @@ docker images | grep zot-registry
 
 > Airgap 환경에서는 `make docker-save`로 저장 후 대상 노드에서 `make docker-load`로 로드합니다.
 
-#### Step 3. Secret 설정
+#### Step 2. TLS 인증서 생성
 
-`kubernetes/secret.yaml`의 placeholder를 실제 값으로 변경합니다:
-
-```bash
-# htpasswd 해시 확인
-cat htpasswd
-```
-
-```yaml
-# kubernetes/secret.yaml
-stringData:
-  htpasswd: |
-    admin:$2y$05$4CSdzVJFAscucxvjhe2U8etOq7nUxVB0JNcA18eld09eHpTGGrFdO
-  credentials.json: |
-    {
-      "registry-1.docker.io": {
-        "username": "<DOCKER_HUB_USERNAME>",
-        "password": "<DOCKER_HUB_ACCESS_TOKEN>"
-      }
-    }
-```
-
-> `credentials.json`은 업스트림 미러링(onDemand)에서 Docker Hub rate limit을 회피하기 위해 필요합니다. 업스트림 미러링을 사용하지 않거나 airgap 환경이면 빈 `{}`로 설정합니다.
-
-#### Step 4. TLS 인증서 생성
-
-`generate_certs.sh`는 Self-signed CA → 서버 인증서 2단계 구조로 인증서를 생성합니다. Production의 폐쇄망/airgap 환경에서도 이 방식을 사용합니다.
+`generate_certs.sh`는 Self-signed CA → 서버 인증서 2단계 구조로 인증서를 생성합니다.
 
 ```bash
 # hosts.txt에 호스트명 설정
@@ -179,7 +144,11 @@ zot.argus-insight.dev.net/
 └── zot.argus-insight.dev.net.pem       # 인증서 체인 (서버 + CA)
 ```
 
-Kubernetes TLS Secret으로 등록:
+> **인증서 유효기간**: CA 10년 (3650일), 서버 인증서 825일. 서버 인증서 갱신 시 CA를 재생성할 필요 없이 `generate_certs.sh`를 다시 실행하면 기존 CA로 새 서버 인증서를 발급합니다.
+
+#### Step 3. Kubernetes TLS Secret 생성
+
+생성된 인증서를 Kubernetes TLS Secret으로 등록합니다. ConfigMap의 config.json에서 이 Secret을 `/etc/zot/tls/` 경로로 마운트하여 Zot이 직접 TLS를 처리합니다.
 
 ```bash
 HOST=zot.argus-insight.dev.net
@@ -189,62 +158,65 @@ kubectl create secret tls zot-registry-tls \
   -n argus-insight
 ```
 
-> **인증서 유효기간**: CA 10년 (3650일), 서버 인증서 825일 (`generate_certs.sh`의 기본값). 서버 인증서 갱신 시 CA를 재생성할 필요 없이 `generate_certs.sh`를 다시 실행하면 기존 CA로 새 서버 인증서를 발급합니다.
+> Deployment에서 `zot-registry-tls` Secret을 `/etc/zot/tls/`에 마운트하고, ConfigMap의 config.json에서 `tls.cert`와 `tls.key` 경로로 참조합니다.
 
-#### Step 5. Ingress 호스트명 설정
+#### Step 4. Secret 설정
 
-`kubernetes/ingress.yaml`에서 호스트명을 환경에 맞게 변경합니다:
+`kubernetes/secret.yaml`의 placeholder를 실제 값으로 변경합니다:
 
-```yaml
-spec:
-  ingressClassName: nginx
-  tls:
-    - hosts:
-        - zot.argus-insight.dev.net    # 환경에 맞게 변경
-      secretName: zot-registry-tls
-  rules:
-    - host: zot.argus-insight.dev.net  # 환경에 맞게 변경
+```bash
+# htpasswd 해시 생성
+htpasswd -nbB admin 'Argus!insight2026'
 ```
 
-#### Step 6. Kustomize 배포
+```yaml
+# kubernetes/secret.yaml
+stringData:
+  htpasswd: |
+    admin:<위에서 생성한 bcrypt 해시>
+  credentials.json: |
+    {
+      "registry-1.docker.io": {
+        "username": "<DOCKER_HUB_USERNAME>",
+        "password": "<DOCKER_HUB_ACCESS_TOKEN>"
+      }
+    }
+```
+
+> `credentials.json`은 업스트림 미러링(onDemand)에서 Docker Hub rate limit을 회피하기 위해 필요합니다. 업스트림 미러링을 사용하지 않거나 airgap 환경이면 빈 `{}`로 설정합니다.
+
+#### Step 5. Kustomize 배포
 
 ```bash
 kubectl apply -k kubernetes/
 
 # 리소스 상태 확인
-kubectl get all,ingress,pvc -n argus-insight -l app.kubernetes.io/name=zot-registry
+kubectl get all,pvc -n argus-insight -l app.kubernetes.io/name=zot-registry
 ```
 
 정상 상태 예시:
 
 ```
 NAME                                READY   STATUS    RESTARTS   AGE
-pod/zot-registry-54d747498b-6jknq   1/1     Running   0          5m
+pod/zot-registry-dcd856d5f-hb5nj    1/1     Running   0          5m
 
-NAME                   TYPE        CLUSTER-IP     PORT(S)    AGE
-service/zot-registry   ClusterIP   10.43.234.67   5000/TCP   5m
-
-NAME                                   CLASS   HOSTS                       PORTS     AGE
-ingress.networking.k8s.io/zot-registry nginx   zot.argus-insight.dev.net   80, 443   5m
+NAME                   TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+service/zot-registry   NodePort   10.43.240.199   <none>        5000:30000/TCP   5m
 ```
 
-#### Step 7. DNS 등록
+#### Step 6. DNS 등록
 
 ```bash
-# Ingress Controller의 HTTPS NodePort 확인
-kubectl get svc -n ingress-nginx ingress-nginx-controller
-# 출력 예: 443:31274/TCP
-
 # /etc/hosts 등록 (또는 DNS 서버에 등록)
 echo "<NODE_IP> zot.argus-insight.dev.net" >> /etc/hosts
 ```
 
-#### Step 8. 클라이언트 CA 인증서 등록
+#### Step 7. 클라이언트 CA 인증서 등록
 
 Self-signed CA를 사용하므로, 레지스트리에 접근하는 모든 클라이언트 노드에 CA 인증서를 등록해야 합니다.
 
 ```bash
-NODEPORT=31274  # Step 7에서 확인한 포트
+NODEPORT=30000
 
 # Docker 클라이언트
 mkdir -p /etc/docker/certs.d/zot.argus-insight.dev.net:$NODEPORT
@@ -262,10 +234,10 @@ sudo update-ca-certificates
 
 > CA 인증서는 한 번만 등록하면 됩니다. 이후 해당 CA로 발급한 서버 인증서를 교체하더라도 클라이언트 재설정은 불필요합니다.
 
-#### Step 9. 접속 확인
+#### Step 8. 접속 확인
 
 ```bash
-NODEPORT=31274
+NODEPORT=30000
 
 # 레지스트리 API 확인
 curl -sk -u admin:'Argus!insight2026' https://zot.argus-insight.dev.net:$NODEPORT/v2/
@@ -281,6 +253,27 @@ docker push zot.argus-insight.dev.net:$NODEPORT/library/hello-world:latest
 # 카탈로그 확인
 curl -sk -u admin:'Argus!insight2026' https://zot.argus-insight.dev.net:$NODEPORT/v2/_catalog
 ```
+
+#### TLS 인증서 갱신 (Kubernetes)
+
+서버 인증서 만료 시 CA를 재생성할 필요 없이 다음 절차로 갱신합니다:
+
+```bash
+# 1. 서버 인증서 재발급 (기존 CA 재사용)
+bash generate_certs.sh
+
+# 2. Kubernetes TLS Secret 교체
+HOST=zot.argus-insight.dev.net
+kubectl delete secret zot-registry-tls -n argus-insight
+kubectl create secret tls zot-registry-tls \
+  --cert=$HOST/$HOST.crt --key=$HOST/$HOST.key \
+  -n argus-insight
+
+# 3. Pod 재시작 (새 인증서 로드)
+kubectl rollout restart deployment/zot-registry -n argus-insight
+```
+
+> CA를 교체하지 않았으므로 클라이언트 노드의 신뢰 저장소는 재설정 불필요합니다.
 
 ### Kubernetes 리소스 삭제
 
@@ -401,9 +394,9 @@ kubectl rollout restart deployment/zot-registry -n argus-insight
 - **Deployment 전략**: BoltDB 파일 잠금 때문에 `Recreate` 전략을 사용합니다. RollingUpdate 시 두 Pod이 동시에 PVC에 접근하면 `cache.db` 잠금 충돌이 발생합니다.
 - **imagePullPolicy**: 로컬 빌드 이미지를 사용할 때 반드시 `IfNotPresent`로 설정합니다. 미설정 시 Docker Hub에서 pull을 시도하여 실패합니다.
 - **Health Probe**: `tcpSocket` probe를 사용합니다. Zot의 `/v2/` 엔드포인트는 인증이 필요하여 `httpGet` probe가 401로 실패합니다.
-- **TLS 구조**: Kubernetes에서는 Nginx Ingress에서 TLS를 종단하고, ConfigMap의 config.json에는 TLS 설정이 없습니다 (Docker Compose/RPM용 config.json과 다름).
-- **Secret 값**: `secret.yaml`의 htpasswd와 credentials.json은 placeholder이므로, 배포 전 반드시 실제 값으로 교체해야 합니다.
-- **NodePort**: Nginx Ingress Service의 HTTPS NodePort는 자동 할당됩니다. 고정하려면 Service에 `nodePort`를 지정하거나 MetalLB로 ExternalIP를 할당합니다.
+- **TLS 구조**: NodePort 방식에서는 Zot 자체에서 TLS를 종단합니다. ConfigMap의 config.json에 TLS 설정이 포함되어 있으며, `zot-registry-tls` Secret을 `/etc/zot/tls/`에 마운트합니다.
+- **Secret 값**: `secret.yaml`의 htpasswd와 credentials.json은 placeholder이므로, 배포 전 반드시 실제 값으로 교체해야 합니다. htpasswd는 `htpasswd -nbB` 명령으로 생성한 해시를 사용합니다.
+- **NodePort**: Service의 `nodePort: 30000`으로 고정되어 있습니다. k3s의 기본 NodePort 범위(8000-32767 또는 30000-32767)에 포함되는 포트를 사용해야 합니다.
 
 세부 트러블슈팅은 `TroubleShooting.md`를 참고하세요.
 
@@ -416,7 +409,7 @@ Zot 메인 설정 파일입니다. 두 가지 버전이 존재합니다:
 | 파일 | TLS | 용도 |
 |---|---|---|
 | `config.json` (루트) | 포함 | Docker Compose, RPM 배포 |
-| `kubernetes/configmap.yaml` | 미포함 | Kubernetes 배포 (Ingress에서 TLS 종단) |
+| `kubernetes/configmap.yaml` | 포함 | Kubernetes 배포 (Zot 자체 TLS 종단, NodePort 방식) |
 
 ### 업스트림 미러링
 

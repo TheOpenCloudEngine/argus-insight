@@ -38,6 +38,9 @@ spec:
             - name: secrets
               mountPath: /etc/zot/credentials.json
               subPath: credentials.json
+            - name: tls
+              mountPath: /etc/zot/tls
+              readOnly: true
           resources:
             requests:
               cpu: 100m
@@ -65,6 +68,9 @@ spec:
         - name: secrets
           secret:
             secretName: zot-registry-secrets
+        - name: tls
+          secret:
+            secretName: zot-registry-tls
 ---
 apiVersion: v1
 kind: Service
@@ -80,5 +86,6 @@ spec:
   ports:
     - port: 5000
       targetPort: 5000
+      nodePort: 30000
       protocol: TCP
-  type: ClusterIP
+  type: NodePort
