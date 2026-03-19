@@ -62,7 +62,7 @@ export function UCDeleteCatalogDialog({ open, onOpenChange, catalogName, onConfi
           </AlertDialogTitle>
           <AlertDialogDescription className="space-y-3">
             <span className="block">
-              Deleting a catalog is irreversible. Please proceed with caution.
+              Deleting a schema is irreversible. Please proceed with caution.
             </span>
             <span className="block font-medium text-foreground">
               To confirm, type <code className="rounded bg-muted px-1.5 py-0.5 text-destructive font-mono text-sm">{expected}</code> below.
