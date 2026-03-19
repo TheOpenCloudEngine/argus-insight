@@ -1,6 +1,6 @@
 """Authentication schemas."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 
 class LoginRequest(BaseModel):
@@ -20,9 +20,19 @@ class LoginResponse(BaseModel):
 class UserInfo(BaseModel):
     """Current user information."""
 
+    id: int
     username: str
     email: str
     first_name: str
     last_name: str
     phone_number: str = ""
     role: str = "user"
+
+
+class UserSelfUpdateRequest(BaseModel):
+    """Request to update the current user's own profile."""
+
+    first_name: str | None = Field(None, min_length=1, max_length=100)
+    last_name: str | None = Field(None, min_length=1, max_length=100)
+    email: EmailStr | None = None
+    phone_number: str | None = Field(None, max_length=30)

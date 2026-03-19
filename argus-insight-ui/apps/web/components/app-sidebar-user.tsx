@@ -1,9 +1,22 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronUp, LogOut, Mail, Phone, Settings, Shield, ShieldCheck, User, User2 } from "lucide-react"
+import { useRouter } from "next/navigation"
+import {
+  ChevronUp,
+  Loader2,
+  LogOut,
+  Mail,
+  Phone,
+  Settings,
+  Shield,
+  ShieldCheck,
+  User,
+  User2,
+} from "lucide-react"
 
 import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar"
+import { Button } from "@workspace/ui/components/button"
 import {
   Dialog,
   DialogContent,
@@ -17,6 +30,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu"
+import { Input } from "@workspace/ui/components/input"
+import { Label } from "@workspace/ui/components/label"
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@workspace/ui/components/sidebar"
 import { Separator } from "@workspace/ui/components/separator"
 import type { SessionUser } from "@/lib/session"
@@ -34,10 +49,62 @@ function isAdmin(user: SessionUser): boolean {
 }
 
 export function AppSidebarUser({ user }: AppSidebarUserProps) {
+  const router = useRouter()
   const [profileOpen, setProfileOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Form state for account settings
+  const [formData, setFormData] = useState({
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email,
+    phone: user.phone,
+  })
+
   const displayName = getDisplayName(user)
   const admin = isAdmin(user)
   const RoleIcon = admin ? ShieldCheck : User
+
+  function handleSettingsOpen() {
+    setFormData({
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      phone: user.phone,
+    })
+    setError(null)
+    setSettingsOpen(true)
+  }
+
+  async function handleUpdate() {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/v1/auth/me", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          first_name: formData.firstName,
+          last_name: formData.lastName,
+          email: formData.email,
+          phone_number: formData.phone,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.detail || "Failed to update profile")
+      }
+      setSettingsOpen(false)
+      // Refresh the page to reload session data from the server
+      router.refresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update profile")
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <>
@@ -71,7 +138,7 @@ export function AppSidebarUser({ user }: AppSidebarUserProps) {
                 <User2 className="mr-2 size-4" />
                 Profile
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onSelect={handleSettingsOpen}>
                 <Settings className="mr-2 size-4" />
                 Account Settings
               </DropdownMenuItem>
@@ -85,6 +152,7 @@ export function AppSidebarUser({ user }: AppSidebarUserProps) {
         </SidebarMenuItem>
       </SidebarMenu>
 
+      {/* Profile Dialog (read-only) */}
       <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -136,6 +204,97 @@ export function AppSidebarUser({ user }: AppSidebarUserProps) {
             </dt>
             <dd className="font-medium">{user.role}</dd>
           </dl>
+        </DialogContent>
+      </Dialog>
+
+      {/* Account Settings Dialog (editable) */}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Account Settings</DialogTitle>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-2">
+            {/* Username (read-only, primary key) */}
+            <div className="grid gap-2">
+              <Label htmlFor="settings-username">Username</Label>
+              <Input
+                id="settings-username"
+                value={user.username}
+                disabled
+                className="bg-muted"
+              />
+              <p className="text-xs text-muted-foreground">Username cannot be changed.</p>
+            </div>
+
+            {/* Role (read-only) */}
+            <div className="grid gap-2">
+              <Label htmlFor="settings-role">Role</Label>
+              <Input
+                id="settings-role"
+                value={user.role}
+                disabled
+                className="bg-muted"
+              />
+            </div>
+
+            <Separator />
+
+            {/* Last Name */}
+            <div className="grid gap-2">
+              <Label htmlFor="settings-lastName">Last Name</Label>
+              <Input
+                id="settings-lastName"
+                value={formData.lastName}
+                onChange={(e) => setFormData((prev) => ({ ...prev, lastName: e.target.value }))}
+              />
+            </div>
+
+            {/* First Name */}
+            <div className="grid gap-2">
+              <Label htmlFor="settings-firstName">First Name</Label>
+              <Input
+                id="settings-firstName"
+                value={formData.firstName}
+                onChange={(e) => setFormData((prev) => ({ ...prev, firstName: e.target.value }))}
+              />
+            </div>
+
+            {/* Email */}
+            <div className="grid gap-2">
+              <Label htmlFor="settings-email">Email</Label>
+              <Input
+                id="settings-email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+              />
+            </div>
+
+            {/* Phone */}
+            <div className="grid gap-2">
+              <Label htmlFor="settings-phone">Phone</Label>
+              <Input
+                id="settings-phone"
+                value={formData.phone}
+                onChange={(e) => setFormData((prev) => ({ ...prev, phone: e.target.value }))}
+              />
+            </div>
+
+            {error && (
+              <p className="text-sm text-destructive">{error}</p>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setSettingsOpen(false)} disabled={saving}>
+                Cancel
+              </Button>
+              <Button onClick={handleUpdate} disabled={saving}>
+                {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
+                Update
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </>

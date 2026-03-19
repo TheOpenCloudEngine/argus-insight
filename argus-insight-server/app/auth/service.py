@@ -108,6 +108,57 @@ async def get_current_user_info(session: AsyncSession) -> UserInfo:
     user, role_name = row
     logger.info("Current user resolved: username=%s, role=%s", user.username, role_name)
     return UserInfo(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        phone_number=user.phone_number or "",
+        role=role_name,
+    )
+
+
+async def update_current_user(
+    session: AsyncSession,
+    first_name: str | None = None,
+    last_name: str | None = None,
+    email: str | None = None,
+    phone_number: str | None = None,
+) -> UserInfo:
+    """Update the current user's profile and return the updated info.
+
+    FIXME: 현재는 argus_users.id=1 사용자를 강제로 업데이트합니다.
+           인증 구현 후 토큰 기반으로 변경 필요.
+    """
+    logger.info("Updating current user info: forcing argus_users.id=1")
+    result = await session.execute(
+        select(ArgusUser).where(ArgusUser.id == 1)
+    )
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise ValueError("Default user not found")
+
+    if first_name is not None:
+        user.first_name = first_name
+    if last_name is not None:
+        user.last_name = last_name
+    if email is not None:
+        user.email = email
+    if phone_number is not None:
+        user.phone_number = phone_number
+
+    await session.commit()
+    await session.refresh(user)
+
+    # Fetch role name
+    role_result = await session.execute(
+        select(ArgusRole.name).where(ArgusRole.id == user.role_id)
+    )
+    role_name = role_result.scalar_one()
+
+    logger.info("User updated: username=%s", user.username)
+    return UserInfo(
+        id=user.id,
         username=user.username,
         email=user.email,
         first_name=user.first_name,

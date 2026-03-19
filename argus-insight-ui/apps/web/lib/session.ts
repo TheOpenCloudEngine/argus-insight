@@ -1,4 +1,5 @@
 export interface SessionUser {
+  id: number
   firstName: string
   lastName: string
   username: string
@@ -31,6 +32,7 @@ export async function getSession(): Promise<Session> {
     const data = await res.json()
     return {
       user: {
+        id: data.id,
         firstName: data.first_name,
         lastName: data.last_name,
         username: data.username,
@@ -51,6 +53,7 @@ export async function getSession(): Promise<Session> {
 
 const FALLBACK_SESSION: Session = {
   user: {
+    id: 0,
     firstName: "Unknown",
     lastName: "",
     username: "unknown",
