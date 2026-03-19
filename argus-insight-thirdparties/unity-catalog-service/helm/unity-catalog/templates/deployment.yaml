@@ -24,12 +24,34 @@ spec:
       initContainers:
         - name: init-data-dir
           image: alpine:3.21
-          command: ["sh", "-c", "mkdir -p /var/lib/unity-catalog/data && chown -R 65534:65534 /var/lib/unity-catalog"]
+          command:
+            - sh
+            - -c
+            - |
+              mkdir -p /home/unitycatalog/etc/data /home/unitycatalog/etc/db
+              chown -R 65534:65534 /home/unitycatalog/etc/data /home/unitycatalog/etc/db
           securityContext:
             runAsUser: 0
           volumeMounts:
             - name: data
-              mountPath: /var/lib/unity-catalog
+              mountPath: /home/unitycatalog/etc/data
+            - name: db
+              mountPath: /home/unitycatalog/etc/db
+        {{- if .Values.postgresql.enabled }}
+        - name: wait-for-db
+          image: alpine:3.21
+          command:
+            - sh
+            - -c
+            - |
+              apk add --no-cache postgresql-client > /dev/null 2>&1
+              until pg_isready -h {{ include "unity-catalog.fullname" . }}-db -p 5432 -U {{ .Values.postgresql.auth.username }}; do
+                echo "Waiting for PostgreSQL..."
+                sleep 2
+              done
+          securityContext:
+            runAsUser: 0
+        {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -50,9 +72,14 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
             - name: data
-              mountPath: /var/lib/unity-catalog
+              mountPath: /home/unitycatalog/etc/data
+            - name: db
+              mountPath: /home/unitycatalog/etc/db
             - name: config
-              mountPath: /etc/unity-catalog/server.properties
+              mountPath: /home/unitycatalog/etc/conf/hibernate.properties
+              subPath: hibernate.properties
+            - name: config
+              mountPath: /home/unitycatalog/etc/conf/server.properties
               subPath: server.properties
       volumes:
         - name: config
@@ -65,6 +92,8 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        - name: db
+          emptyDir: {}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

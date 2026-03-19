@@ -1,0 +1,119 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unity-catalog-server
+  namespace: argus-insight
+  labels:
+    app.kubernetes.io/name: unity-catalog-server
+    app.kubernetes.io/part-of: argus-insight
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: unity-catalog-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: unity-catalog-server
+        app.kubernetes.io/part-of: argus-insight
+    spec:
+      initContainers:
+        - name: init-data-dir
+          image: alpine:3.21
+          command:
+            - sh
+            - -c
+            - |
+              mkdir -p /home/unitycatalog/etc/data /home/unitycatalog/etc/db
+              chown -R 65534:65534 /home/unitycatalog/etc/data /home/unitycatalog/etc/db
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: data
+              mountPath: /home/unitycatalog/etc/data
+        - name: wait-for-db
+          image: alpine:3.21
+          command:
+            - sh
+            - -c
+            - |
+              apk add --no-cache postgresql-client > /dev/null 2>&1
+              until pg_isready -h unity-catalog-db -p 5432 -U unity_catalog; do
+                echo "Waiting for PostgreSQL..."
+                sleep 2
+              done
+          securityContext:
+            runAsUser: 0
+      containers:
+        - name: unity-catalog-server
+          image: argus-insight/unity-catalog:0.4.0
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+          livenessProbe:
+            httpGet:
+              path: /api/2.1/unity-catalog/catalogs
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /api/2.1/unity-catalog/catalogs
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+          volumeMounts:
+            - name: data
+              mountPath: /home/unitycatalog/etc/data
+            - name: config-hibernate
+              mountPath: /home/unitycatalog/etc/conf/hibernate.properties
+              subPath: hibernate.properties
+            - name: config-server
+              mountPath: /home/unitycatalog/etc/conf/server.properties
+              subPath: server.properties
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: argus-unity-catalog-data
+        - name: config-hibernate
+          configMap:
+            name: unity-catalog-config
+            items:
+              - key: hibernate.properties
+                path: hibernate.properties
+        - name: config-server
+          configMap:
+            name: unity-catalog-config
+            items:
+              - key: server.properties
+                path: server.properties
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: unity-catalog-server
+  namespace: argus-insight
+  labels:
+    app.kubernetes.io/name: unity-catalog-server
+    app.kubernetes.io/part-of: argus-insight
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      nodePort: 31000
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: unity-catalog-server

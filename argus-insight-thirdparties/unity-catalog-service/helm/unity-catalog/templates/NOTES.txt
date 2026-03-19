@@ -10,6 +10,20 @@ Unity Catalog has been deployed.
   Open: http://$NODE_IP:$NODE_PORT/api/2.1/unity-catalog/catalogs
 {{- end }}
 
-2. API Documentation:
+2. Get the admin token (required when authorization is enabled):
+  export TOKEN=$(kubectl exec -n {{ .Release.Namespace }} deploy/{{ include "unity-catalog.fullname" . }} -- cat /home/unitycatalog/etc/conf/token.txt)
+
+  Example API call:
+  curl -H "Authorization: Bearer $TOKEN" http://$NODE_IP:$NODE_PORT/api/2.1/unity-catalog/catalogs
+
+3. API Documentation:
   Swagger UI: https://docs.unitycatalog.io/swagger-docs/
   API Base Path: /api/2.1/unity-catalog
+
+{{- if .Values.postgresql.enabled }}
+
+4. PostgreSQL:
+  Database: {{ .Values.postgresql.auth.database }}
+  Username: {{ .Values.postgresql.auth.username }}
+  Internal Service: {{ include "unity-catalog.fullname" . }}-db:5432
+{{- end }}

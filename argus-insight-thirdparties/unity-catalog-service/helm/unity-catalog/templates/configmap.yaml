@@ -5,5 +5,14 @@ metadata:
   labels:
     {{- include "unity-catalog.labels" . | nindent 4 }}
 data:
+  hibernate.properties: |
+    {{- .Values.config.hibernateProperties | nindent 4 }}
   server.properties: |
     {{- .Values.config.serverProperties | nindent 4 }}
+  01-schema.sql: |
+    -- Unity Catalog PostgreSQL initialization
+    -- Tables are auto-created by Hibernate (hbm2ddl.auto=update)
+    GRANT ALL PRIVILEGES ON DATABASE unity_catalog TO unity_catalog;
+    GRANT ALL PRIVILEGES ON SCHEMA public TO unity_catalog;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO unity_catalog;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON SEQUENCES TO unity_catalog;

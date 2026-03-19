@@ -1,19 +1,39 @@
 services:
+  postgresql:
+    build:
+      context: ../postgresql
+    image: argus-insight/unity-catalog-postgresql:${POSTGRESQL_VERSION}
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: unity_catalog
+      POSTGRES_USER: unity_catalog
+      POSTGRES_PASSWORD: Argus!insight2026
+    volumes:
+      - argus-unity-catalog-pgdata:/var/lib/postgresql/data
+      - ./initdb/01-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U unity_catalog"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   unity-catalog-server:
     build:
       context: ../server
-      args:
-        UNITY_CATALOG_VERSION: ${UNITY_CATALOG_VERSION}
     image: argus-insight/unity-catalog:${UNITY_CATALOG_VERSION}
     ports:
-      - "8080:8080"
-    ulimits:
-      nofile:
-        soft: 100000
-        hard: 100000
+      - "31000:8080"
+    depends_on:
+      postgresql:
+        condition: service_healthy
     volumes:
-      - argus-unity-catalog-data:/var/lib/unity-catalog
+      - argus-unity-catalog-data:/home/unitycatalog/etc/data
+      - argus-unity-catalog-db:/home/unitycatalog/etc/db
     restart: unless-stopped
 
 volumes:
+  argus-unity-catalog-pgdata:
   argus-unity-catalog-data:
+  argus-unity-catalog-db:

@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: unity-catalog-config
+  namespace: argus-insight
+  labels:
+    app.kubernetes.io/name: unity-catalog
+    app.kubernetes.io/part-of: argus-insight
+data:
+  hibernate.properties: |
+    hibernate.connection.driver_class=org.postgresql.Driver
+    hibernate.connection.url=jdbc:postgresql://unity-catalog-db:5432/unity_catalog
+    hibernate.connection.username=unity_catalog
+    hibernate.connection.password=Argus!insight2026
+    hibernate.hbm2ddl.auto=update
+    hibernate.show_sql=false
+    hibernate.archive.autodetection=class
+    hibernate.use_sql_comments=true
+    org.hibernate.SQL=INFO
+    org.hibernate.type.descriptor.sql.BasicBinder=TRACE
+  server.properties: |
+    server.env=dev
+    server.authorization=disable
+    server.authorization-url=
+    server.token-url=
+    server.client-id=
+    server.client-secret=
+    server.redirect-port=
+    server.cookie-timeout=P5D
+    server.managed-table.enabled=false
+  01-schema.sql: |
+    -- Unity Catalog PostgreSQL initialization
+    -- Tables are auto-created by Hibernate (hbm2ddl.auto=update)
+    GRANT ALL PRIVILEGES ON DATABASE unity_catalog TO unity_catalog;
+    GRANT ALL PRIVILEGES ON SCHEMA public TO unity_catalog;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO unity_catalog;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON SEQUENCES TO unity_catalog;

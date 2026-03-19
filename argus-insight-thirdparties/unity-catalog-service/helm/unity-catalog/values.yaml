@@ -10,8 +10,9 @@ nameOverride: ""
 fullnameOverride: ""
 
 service:
-  type: ClusterIP
+  type: NodePort
   port: 8080
+  nodePort: 31000
 
 resources:
   requests:
@@ -27,9 +28,52 @@ persistence:
   accessMode: ReadWriteOnce
   size: 10Gi
 
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  image:
+    repository: argus-insight/unity-catalog-postgresql
+    tag: "17"
+    pullPolicy: IfNotPresent
+  persistence:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  auth:
+    database: unity_catalog
+    username: unity_catalog
+    password: Argus!insight2026
+
 config:
+  hibernateProperties: |
+    hibernate.connection.driver_class=org.postgresql.Driver
+    hibernate.connection.url=jdbc:postgresql://unity-catalog-db:5432/unity_catalog
+    hibernate.connection.username=unity_catalog
+    hibernate.connection.password=Argus!insight2026
+    hibernate.hbm2ddl.auto=update
+    hibernate.show_sql=false
+    hibernate.archive.autodetection=class
+    hibernate.use_sql_comments=true
+    org.hibernate.SQL=INFO
+    org.hibernate.type.descriptor.sql.BasicBinder=TRACE
   serverProperties: |
-    server.port=8080
+    server.env=dev
+    server.authorization=enable
+    server.authorization-url=
+    server.token-url=
+    server.client-id=
+    server.client-secret=
+    server.redirect-port=
+    server.cookie-timeout=P5D
+    server.managed-table.enabled=false
 
 livenessProbe:
   httpGet:
