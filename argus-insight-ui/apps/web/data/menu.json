@@ -95,6 +95,12 @@
           "icon": "SlidersHorizontal"
         },
         {
+          "id": "dns-zone",
+          "title": "Domain Zone",
+          "url": "/dashboard/dns-zone",
+          "icon": "Globe"
+        },
+        {
           "id": "settings",
           "title": "Settings",
           "url": "/dashboard/settings",
