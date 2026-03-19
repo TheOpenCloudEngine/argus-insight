@@ -21,11 +21,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.database import get_session
+from app.core.s3 import get_s3_settings
 from app.objectfilemgr import service
 from app.objectfilemgr.schemas import (
     AbortMultipartRequest,
+    BucketListResponse,
     CompleteMultipartRequest,
     CompleteMultipartResponse,
     CopyObjectRequest,
@@ -35,6 +36,7 @@ from app.objectfilemgr.schemas import (
     DeleteObjectsRequest,
     DeleteObjectsResponse,
     DocumentPreviewResponse,
+    EnsureUserBucketsResponse,
     FilebrowserConfigResponse,
     HeadObjectResponse,
     ListObjectsResponse,
@@ -58,8 +60,8 @@ router = APIRouter(prefix="/objectfilemgr", tags=["objectfilemgr"])
 
 
 def _bucket(bucket: str | None) -> str:
-    """Resolve bucket name, falling back to the default."""
-    return bucket or settings.s3_default_bucket
+    """Resolve bucket name, falling back to 'global'."""
+    return bucket or "global"
 
 
 _S3_CONN_ERRORS = (
@@ -136,6 +138,29 @@ async def update_preview_category(
     except Exception as e:
         logger.error("update_preview_category error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =========================================================================== #
+# Bucket Management
+# =========================================================================== #
+
+
+@router.get("/buckets", response_model=BucketListResponse)
+async def list_buckets():
+    """List all S3 buckets."""
+    try:
+        return await service.list_buckets()
+    except Exception as e:
+        _raise_if_s3_unavailable(e, "list_buckets")
+
+
+@router.post("/buckets/ensure-user-buckets", response_model=EnsureUserBucketsResponse)
+async def ensure_user_buckets(session: AsyncSession = Depends(get_session)):
+    """Ensure user-<username> buckets exist for all users."""
+    try:
+        return await service.ensure_user_buckets(session)
+    except Exception as e:
+        _raise_if_s3_unavailable(e, "ensure_user_buckets")
 
 
 # =========================================================================== #
@@ -232,7 +257,9 @@ async def put_object(
     using multipart upload to avoid loading the entire file into memory.
     """
     content_type = file.content_type or mimetypes.guess_type(key)[0] or "application/octet-stream"
-    threshold = settings.s3_multipart_threshold  # default 8 MB
+    os_cfg = await get_s3_settings()
+    threshold = int(os_cfg.get("object_storage_multipart_threshold", "8388608"))
+    chunk_size = int(os_cfg.get("object_storage_multipart_chunksize", "8388608"))
 
     try:
         result = await service.put_object_stream(
@@ -241,7 +268,7 @@ async def put_object(
             file=file,
             content_type=content_type,
             multipart_threshold=threshold,
-            chunk_size=settings.s3_multipart_chunksize,
+            chunk_size=chunk_size,
         )
         return result
     except Exception as e:

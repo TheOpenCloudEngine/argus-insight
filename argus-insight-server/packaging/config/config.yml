@@ -46,18 +46,6 @@ database:
     max_overflow: ${db.pool.max_overflow:10}
     recycle: ${db.pool.recycle:3600}
 
-# Object Storage (S3/MinIO)
-object_storage:
-  endpoint_url: ${s3.endpoint_url:http://localhost:9000}
-  access_key: ${s3.access_key:minioadmin}
-  secret_key: ${s3.secret_key:minioadmin}
-  region: ${s3.region:us-east-1}
-  default_bucket: ${s3.default_bucket:argus-data}
-  use_ssl: ${s3.use_ssl:false}
-  multipart_threshold: ${s3.multipart_threshold:8388608}
-  multipart_chunksize: ${s3.multipart_chunksize:8388608}
-  presigned_url_expiry: ${s3.presigned_url_expiry:3600}
-
 # GitLab (for Workspace Provisioner)
 gitlab:
   url: ${gitlab.url:}
