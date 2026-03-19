@@ -386,9 +386,6 @@ export function DomainSettings() {
     try {
       await updateDomainConfig({
         domain_name: domainName,
-        dns_server_1: dnsServers[0],
-        dns_server_2: dnsServers[1],
-        dns_server_3: dnsServers[2],
       })
       showStatus("success", "Domain settings saved successfully")
       await loadConfig()
@@ -403,7 +400,6 @@ export function DomainSettings() {
     setSavingDns(true)
     try {
       await updateDomainConfig({
-        domain_name: domainName,
         dns_server_1: dnsServers[0],
         dns_server_2: dnsServers[1],
         dns_server_3: dnsServers[2],
