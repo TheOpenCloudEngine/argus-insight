@@ -8,7 +8,7 @@ export default function UnityCatalogLayout({ children }: { children: React.React
     <div className="flex h-full flex-col">
       <DashboardHeader title="Catalog" />
       <div className="flex min-h-0 flex-1">
-        <div className="w-64 shrink-0 overflow-y-auto py-4 pl-2">
+        <div className="w-64 shrink-0 overflow-y-auto border-r py-4 pl-2">
           <UCSchemaB />
         </div>
         <div className="min-w-0 flex-1 overflow-y-auto">{children}</div>

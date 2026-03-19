@@ -286,7 +286,7 @@ export function UCSchemaB() {
   }, [])
 
   return (
-    <div className="border-r pr-2 text-black dark:text-white" style={{ fontSize: '120%' }}>
+    <div className="pr-2 text-black dark:text-white" style={{ fontSize: '120%' }}>
       <div className="mb-2 px-2 text-sm font-semibold uppercase tracking-wider">
         Schema Browser
       </div>
