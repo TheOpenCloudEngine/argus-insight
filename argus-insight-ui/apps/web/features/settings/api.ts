@@ -2,6 +2,31 @@ const BASE = "/api/v1/infraconfig"
 const SECURITY_BASE = "/api/v1/security"
 
 // --------------------------------------------------------------------------- //
+// Error helpers
+// --------------------------------------------------------------------------- //
+
+async function extractErrorMessage(res: Response, fallback: string): Promise<string> {
+  if (res.status === 502) {
+    return "서버에 연결할 수 없습니다. argus-insight-server가 실행 중인지 확인하세요."
+  }
+  if (res.status === 503) {
+    try {
+      const data = await res.json()
+      return data.detail || "서비스를 사용할 수 없습니다."
+    } catch {
+      return "서비스를 사용할 수 없습니다."
+    }
+  }
+  try {
+    const data = await res.json()
+    if (data.detail) return data.detail
+  } catch {
+    // ignore parse errors
+  }
+  return `${fallback}: ${res.status}`
+}
+
+// --------------------------------------------------------------------------- //
 // Infrastructure Configuration (per-category helpers)
 // --------------------------------------------------------------------------- //
 
@@ -19,7 +44,7 @@ type InfraConfig = {
  */
 async function fetchCategory(category: string): Promise<Record<string, string>> {
   const res = await fetch(`${BASE}/configuration`)
-  if (!res.ok) throw new Error(`Failed to fetch ${category} config: ${res.status}`)
+  if (!res.ok) throw new Error(await extractErrorMessage(res, `Failed to fetch ${category} config`))
   const data: InfraConfig = await res.json()
   const cat = data.categories.find((c) => c.category === category)
   return cat?.items ?? {}
@@ -37,7 +62,7 @@ async function updateCategory(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ category, items }),
   })
-  if (!res.ok) throw new Error(`Failed to update ${category} config: ${res.status}`)
+  if (!res.ok) throw new Error(await extractErrorMessage(res, `Failed to update ${category} config`))
 }
 
 // --------------------------------------------------------------------------- //
@@ -97,7 +122,7 @@ export async function checkPath(path: string): Promise<boolean> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path }),
   })
-  if (!res.ok) throw new Error(`Failed to check path: ${res.status}`)
+  if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to check path"))
   const data = await res.json()
   return data.exists
 }

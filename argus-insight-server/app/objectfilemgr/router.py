@@ -12,6 +12,11 @@ Provides REST API for S3-compatible object storage operations:
 import logging
 import mimetypes
 
+from botocore.exceptions import (
+    ConnectionClosedError,
+    ConnectTimeoutError,
+    EndpointConnectionError,
+)
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,6 +60,37 @@ router = APIRouter(prefix="/objectfilemgr", tags=["objectfilemgr"])
 def _bucket(bucket: str | None) -> str:
     """Resolve bucket name, falling back to the default."""
     return bucket or settings.s3_default_bucket
+
+
+_S3_CONN_ERRORS = (
+    ConnectionRefusedError,
+    EndpointConnectionError,
+    ConnectTimeoutError,
+    ConnectionClosedError,
+)
+
+
+def _is_s3_connection_error(exc: Exception) -> bool:
+    """Check if an exception is caused by S3/MinIO being unreachable."""
+    if isinstance(exc, _S3_CONN_ERRORS):
+        return True
+    cause = exc.__cause__ or exc.__context__
+    if cause and isinstance(cause, _S3_CONN_ERRORS):
+        return True
+    return False
+
+
+def _raise_if_s3_unavailable(exc: Exception, context: str) -> None:
+    """Raise HTTP 503 if the exception is an S3 connection error, else raise 500."""
+    if _is_s3_connection_error(exc):
+        logger.warning("Object storage unavailable (%s): %s", context, exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Object storage service (MinIO) is unavailable. "
+            "Please check if the MinIO server is running.",
+        )
+    logger.error("%s error: %s", context, exc)
+    raise HTTPException(status_code=500, detail=str(exc))
 
 
 # =========================================================================== #
@@ -125,8 +161,7 @@ async def list_objects(
             max_keys=max_keys,
         )
     except Exception as e:
-        logger.error("list_objects error: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_if_s3_unavailable(e, "list_objects")
 
 
 # =========================================================================== #
@@ -144,6 +179,8 @@ async def head_object(
     try:
         return await service.head_object(bucket=_bucket(bucket), key=key)
     except Exception as e:
+        if _is_s3_connection_error(e):
+            _raise_if_s3_unavailable(e, "head_object")
         logger.error("head_object error: key=%s %s", key, e)
         raise HTTPException(status_code=404, detail=f"Object not found: {key}")
 
@@ -162,6 +199,8 @@ async def get_object(
     try:
         result = await service.get_object(bucket=_bucket(bucket), key=key)
     except Exception as e:
+        if _is_s3_connection_error(e):
+            _raise_if_s3_unavailable(e, "get_object")
         logger.error("get_object error: key=%s %s", key, e)
         raise HTTPException(status_code=404, detail=f"Object not found: {key}")
 
@@ -206,8 +245,7 @@ async def put_object(
         )
         return result
     except Exception as e:
-        logger.error("put_object error: key=%s %s", key, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_if_s3_unavailable(e, "put_object")
 
 
 # =========================================================================== #
@@ -225,8 +263,7 @@ async def delete_object(
         await service.delete_object(bucket=_bucket(bucket), key=key)
         return {"deleted": key}
     except Exception as e:
-        logger.error("delete_object error: key=%s %s", key, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_if_s3_unavailable(e, "delete_object")
 
 
 @router.post("/objects/delete", response_model=DeleteObjectsResponse)
@@ -238,8 +275,7 @@ async def delete_objects(
     try:
         return await service.delete_objects(bucket=_bucket(bucket), keys=body.keys)
     except Exception as e:
-        logger.error("delete_objects error: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_if_s3_unavailable(e, "delete_objects")
 
 
 # =========================================================================== #
@@ -261,8 +297,7 @@ async def copy_object(
             source_bucket=body.source_bucket,
         )
     except Exception as e:
-        logger.error("copy_object error: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_if_s3_unavailable(e, "copy_object")
 
 
 # =========================================================================== #
@@ -279,8 +314,7 @@ async def create_folder(
     try:
         return await service.create_folder(bucket=_bucket(bucket), key=body.key)
     except Exception as e:
-        logger.error("create_folder error: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_if_s3_unavailable(e, "create_folder")
 
 
 # =========================================================================== #
@@ -297,8 +331,7 @@ async def get_download_url(
     try:
         return await service.generate_download_url(bucket=_bucket(bucket), key=key)
     except Exception as e:
-        logger.error("generate_download_url error: key=%s %s", key, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_if_s3_unavailable(e, "generate_download_url")
 
 
 @router.get("/objects/upload-url", response_model=PresignedUploadUrlResponse)
@@ -313,8 +346,7 @@ async def get_upload_url(
             bucket=_bucket(bucket), key=key, content_type=content_type,
         )
     except Exception as e:
-        logger.error("generate_upload_url error: key=%s %s", key, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_if_s3_unavailable(e, "generate_upload_url")
 
 
 # =========================================================================== #
@@ -334,8 +366,7 @@ async def initiate_multipart(
             bucket=_bucket(bucket), key=key, content_type=content_type,
         )
     except Exception as e:
-        logger.error("initiate_multipart error: key=%s %s", key, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_if_s3_unavailable(e, "initiate_multipart")
 
 
 @router.post("/multipart/urls", response_model=MultipartUploadUrlsResponse)
@@ -352,8 +383,7 @@ async def get_multipart_urls(
             part_numbers=body.part_numbers,
         )
     except Exception as e:
-        logger.error("get_multipart_urls error: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_if_s3_unavailable(e, "get_multipart_urls")
 
 
 @router.post("/multipart/complete", response_model=CompleteMultipartResponse)
@@ -370,8 +400,7 @@ async def complete_multipart(
             parts=body.parts,
         )
     except Exception as e:
-        logger.error("complete_multipart error: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_if_s3_unavailable(e, "complete_multipart")
 
 
 @router.post("/multipart/abort")
@@ -386,8 +415,7 @@ async def abort_multipart(
         )
         return {"status": "aborted", "key": body.key, "upload_id": body.upload_id}
     except Exception as e:
-        logger.error("abort_multipart error: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_if_s3_unavailable(e, "abort_multipart")
 
 
 # =========================================================================== #
@@ -412,8 +440,7 @@ async def select_object_content(
             csv_header=body.csv_header,
         )
     except Exception as e:
-        logger.error("s3_select error: key=%s %s", body.key, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_if_s3_unavailable(e, "s3_select")
 
 
 # =========================================================================== #
@@ -430,8 +457,7 @@ async def get_object_tags(
     try:
         return await service.get_object_tagging(bucket=_bucket(bucket), key=key)
     except Exception as e:
-        logger.error("get_object_tagging error: key=%s %s", key, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_if_s3_unavailable(e, "get_object_tagging")
 
 
 @router.put("/objects/tags")
@@ -445,8 +471,7 @@ async def put_object_tags(
         await service.put_object_tagging(bucket=_bucket(bucket), key=key, tags=body.tags)
         return {"key": key, "tags_count": len(body.tags)}
     except Exception as e:
-        logger.error("put_object_tagging error: key=%s %s", key, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_if_s3_unavailable(e, "put_object_tagging")
 
 
 @router.delete("/objects/tags")
@@ -459,8 +484,7 @@ async def delete_object_tags(
         await service.delete_object_tagging(bucket=_bucket(bucket), key=key)
         return {"key": key, "tags_deleted": True}
     except Exception as e:
-        logger.error("delete_object_tagging error: key=%s %s", key, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_if_s3_unavailable(e, "delete_object_tagging")
 
 
 # =========================================================================== #
@@ -513,5 +537,4 @@ async def preview_object(
         if ext == "pptx":
             return await service.preview_pptx(bucket=b, key=key)
     except Exception as e:
-        logger.error("preview_object error: key=%s %s", key, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        _raise_if_s3_unavailable(e, "preview_object")

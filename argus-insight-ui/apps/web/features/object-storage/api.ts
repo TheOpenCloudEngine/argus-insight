@@ -3,6 +3,31 @@ import type { ListObjectsResponse } from "@/components/object-storage-browser"
 const BASE = "/api/v1/objectfilemgr"
 
 // --------------------------------------------------------------------------- //
+// Error helpers
+// --------------------------------------------------------------------------- //
+
+async function extractErrorMessage(res: Response, fallback: string): Promise<string> {
+  if (res.status === 502) {
+    return "서버에 연결할 수 없습니다. argus-insight-server가 실행 중인지 확인하세요."
+  }
+  if (res.status === 503) {
+    try {
+      const data = await res.json()
+      return data.detail || "서비스를 사용할 수 없습니다."
+    } catch {
+      return "서비스를 사용할 수 없습니다."
+    }
+  }
+  try {
+    const data = await res.json()
+    if (data.detail) return data.detail
+  } catch {
+    // ignore parse errors
+  }
+  return `${fallback}: ${res.status}`
+}
+
+// --------------------------------------------------------------------------- //
 // File Browser Configuration
 // --------------------------------------------------------------------------- //
 
@@ -27,7 +52,7 @@ export type FilebrowserConfig = {
  */
 export async function fetchFilebrowserConfig(): Promise<FilebrowserConfig> {
   const res = await fetch(`${BASE}/configuration`)
-  if (!res.ok) throw new Error(`Failed to fetch filebrowser config: ${res.status}`)
+  if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to fetch filebrowser config"))
   return res.json()
 }
 
@@ -42,7 +67,7 @@ export async function updateBrowserSettings(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ browser }),
   })
-  if (!res.ok) throw new Error(`Failed to update browser settings: ${res.status}`)
+  if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to update browser settings"))
 }
 
 /**
@@ -58,7 +83,7 @@ export async function updatePreviewCategory(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ category, max_file_size, max_preview_rows }),
   })
-  if (!res.ok) throw new Error(`Failed to update preview category: ${res.status}`)
+  if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to update preview category"))
 }
 
 /**
@@ -80,7 +105,7 @@ export async function listObjects(
   }
 
   const res = await fetch(`${BASE}/objects?${params.toString()}`)
-  if (!res.ok) throw new Error(`Failed to list objects: ${res.status}`)
+  if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to list objects"))
   const data = await res.json()
 
   return {
@@ -126,7 +151,7 @@ export async function deleteObjects(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ keys }),
   })
-  if (!res.ok) throw new Error(`Failed to delete objects: ${res.status}`)
+  if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to delete objects"))
 }
 
 /**
@@ -144,7 +169,7 @@ export async function createFolder(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ key }),
   })
-  if (!res.ok) throw new Error(`Failed to create folder: ${res.status}`)
+  if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to create folder"))
 }
 
 /**
@@ -194,7 +219,7 @@ export async function copyObject(
       destination_key: destinationKey,
     }),
   })
-  if (!res.ok) throw new Error(`Failed to copy object: ${res.status}`)
+  if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to copy object"))
 }
 
 /**
@@ -292,7 +317,7 @@ export async function getDownloadUrl(
   params.set("key", key)
 
   const res = await fetch(`${BASE}/objects/download-url?${params.toString()}`)
-  if (!res.ok) throw new Error(`Failed to get download URL: ${res.status}`)
+  if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to get download URL"))
   const data = await res.json()
   return data.url
 }
