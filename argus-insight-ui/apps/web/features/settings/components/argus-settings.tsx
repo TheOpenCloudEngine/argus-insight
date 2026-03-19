@@ -12,6 +12,7 @@ import {
   fetchArgusConfig,
   initializeUnityCatalog,
   testDockerRegistry,
+  testObjectStorage,
   testUnityCatalog,
   updateArgusConfig,
 } from "@/features/settings/api"
@@ -22,6 +23,16 @@ export function ArgusSettings() {
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+
+  const [osEndpoint, setOsEndpoint] = useState("")
+  const [osAccessKey, setOsAccessKey] = useState("")
+  const [osSecretKey, setOsSecretKey] = useState("")
+  const [osRegion, setOsRegion] = useState("us-east-1")
+  const [osSaving, setOsSaving] = useState(false)
+  const [osTesting, setOsTesting] = useState(false)
+  const [showOsSecretKey, setShowOsSecretKey] = useState(false)
+  const [osStatusMessage, setOsStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [osTestResult, setOsTestResult] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
   const [registryUrl, setRegistryUrl] = useState("")
   const [username, setUsername] = useState("")
@@ -44,6 +55,10 @@ export function ArgusSettings() {
       setLoading(true)
       setError(null)
       const config = await fetchArgusConfig()
+      setOsEndpoint(config.object_storage_endpoint ?? "")
+      setOsAccessKey(config.object_storage_access_key ?? "")
+      setOsSecretKey(config.object_storage_secret_key ?? "")
+      setOsRegion(config.object_storage_region ?? "us-east-1")
       setRegistryUrl(config.docker_registry_url ?? "https://zot.argus-insight.dev.net:30000")
       setUsername(config.docker_registry_username ?? "admin")
       setPassword(config.docker_registry_password ?? "Argus!insight2026")
@@ -59,6 +74,53 @@ export function ArgusSettings() {
   useEffect(() => {
     loadConfig()
   }, [loadConfig])
+
+  // -- Object Storage handlers --
+
+  const osEndpointTrimmed = osEndpoint.trim()
+  const canSaveOs = osEndpointTrimmed.length > 0
+
+  function showOsStatus(type: "success" | "error", text: string) {
+    setOsStatusMessage({ type, text })
+    setTimeout(() => setOsStatusMessage(null), 3000)
+  }
+
+  async function handleOsSave() {
+    setOsSaving(true)
+    try {
+      await updateArgusConfig({
+        object_storage_endpoint: osEndpoint,
+        object_storage_access_key: osAccessKey,
+        object_storage_secret_key: osSecretKey,
+        object_storage_region: osRegion,
+      })
+      showOsStatus("success", "Object Storage settings saved successfully")
+      await loadConfig()
+    } catch (err) {
+      showOsStatus("error", err instanceof Error ? err.message : "Failed to save")
+    } finally {
+      setOsSaving(false)
+    }
+  }
+
+  async function handleOsTest() {
+    setOsTesting(true)
+    setOsTestResult(null)
+    try {
+      const result = await testObjectStorage(osEndpointTrimmed, osAccessKey.trim(), osSecretKey.trim(), osRegion.trim())
+      if (result.success) {
+        setOsTestResult({ type: "success", text: result.message || "Object Storage connection successful" })
+      } else {
+        setOsTestResult({ type: "error", text: result.message || "Connection failed" })
+      }
+    } catch (err) {
+      setOsTestResult({ type: "error", text: err instanceof Error ? err.message : "Test failed" })
+    } finally {
+      setOsTesting(false)
+    }
+  }
+
+  // -- Docker Registry handlers --
 
   function showStatus(type: "success" | "error", text: string) {
     setStatusMessage({ type, text })
@@ -186,6 +248,122 @@ export function ArgusSettings() {
 
   return (
     <div className="space-y-6">
+      {osStatusMessage && (
+        <div
+          className={`rounded-md px-4 py-2 text-sm ${
+            osStatusMessage.type === "success"
+              ? "bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-200"
+              : "bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200"
+          }`}
+        >
+          {osStatusMessage.text}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Object Storage</CardTitle>
+              <CardDescription>
+                S3-compatible Object Storage connection settings
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleOsSave} disabled={osSaving || !canSaveOs}>
+                {osSaving ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                ) : (
+                  <Save className="h-4 w-4 mr-1.5" />
+                )}
+                Save
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleOsTest} disabled={osTesting || !canSaveOs}>
+                {osTesting ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                ) : (
+                  <Play className="h-4 w-4 mr-1.5" />
+                )}
+                Test
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {osTestResult && (
+            <div
+              className={`mb-4 rounded-md px-4 py-2 text-sm ${
+                osTestResult.type === "success"
+                  ? "bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-200"
+                  : "bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200"
+              }`}
+            >
+              {osTestResult.text}
+            </div>
+          )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="os-endpoint">
+                Endpoint <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="os-endpoint"
+                value={osEndpoint}
+                onChange={(e) => setOsEndpoint(e.target.value)}
+                placeholder="e.g. https://s3.amazonaws.com"
+              />
+              <p className="text-xs text-muted-foreground">
+                S3-compatible Object Storage endpoint URL
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="os-access-key">Access Key</Label>
+              <Input
+                id="os-access-key"
+                value={osAccessKey}
+                onChange={(e) => setOsAccessKey(e.target.value)}
+                placeholder="Access Key"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="os-secret-key">Secret Key</Label>
+              <div className="relative">
+                <Input
+                  id="os-secret-key"
+                  type={showOsSecretKey ? "text" : "password"}
+                  value={osSecretKey}
+                  onChange={(e) => setOsSecretKey(e.target.value)}
+                  placeholder="Secret Key"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowOsSecretKey((prev) => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  tabIndex={-1}
+                  aria-label={showOsSecretKey ? "Hide secret key" : "Show secret key"}
+                >
+                  {showOsSecretKey ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="os-region">Region</Label>
+              <Input
+                id="os-region"
+                value={osRegion}
+                onChange={(e) => setOsRegion(e.target.value)}
+                placeholder="us-east-1"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {statusMessage && (
         <div
           className={`rounded-md px-4 py-2 text-sm ${
