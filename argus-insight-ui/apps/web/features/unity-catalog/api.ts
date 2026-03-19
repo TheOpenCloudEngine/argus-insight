@@ -1,10 +1,17 @@
 /**
- * Unity Catalog API client.
+ * Unity Catalog API — thin re-exports that delegate to UnityCatalogClient.
  *
- * Communicates with the Unity Catalog server via the argus-insight-server proxy.
+ * Existing call-sites keep working unchanged. New code can import ucClient
+ * directly from "./uc-client" for the full set of operations.
  */
 
 import { fetchArgusConfig } from "@/features/settings/api"
+import { ucClient } from "./uc-client"
+import type {
+  CreateTablePayload,
+  CreateVolumePayload,
+  CreateModelPayload,
+} from "./uc-client"
 import type {
   Catalog,
   Schema,
@@ -15,24 +22,26 @@ import type {
   ModelVersion,
 } from "./data/schema"
 
-const BASE = "/api/v1/unity-catalog"
+// Re-export client & payload types for convenience
+export { ucClient } from "./uc-client"
+export type {
+  CreateCatalogPayload,
+  UpdateCatalogPayload,
+  CreateSchemaPayload,
+  UpdateSchemaPayload,
+  CreateTablePayload,
+  CreateTableColumn,
+  CreateVolumePayload,
+  UpdateVolumePayload,
+  CreateFunctionPayload,
+  CreateModelPayload,
+  UpdateModelPayload,
+  CreateModelVersionPayload,
+  UpdateModelVersionPayload,
+} from "./uc-client"
 
 // --------------------------------------------------------------------------- //
-// Generic fetch helper
-// --------------------------------------------------------------------------- //
-
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, init)
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    const detail = body?.detail ?? `Unity Catalog API error: ${res.status}`
-    throw new Error(detail)
-  }
-  return res.json()
-}
-
-// --------------------------------------------------------------------------- //
-// Health check – verify Unity Catalog URL is configured in Settings > Argus
+// Health check
 // --------------------------------------------------------------------------- //
 
 export async function checkUcConfigured(): Promise<{ configured: boolean }> {
@@ -45,185 +54,64 @@ export async function checkUcConfigured(): Promise<{ configured: boolean }> {
 // Catalogs
 // --------------------------------------------------------------------------- //
 
-export async function listCatalogs(): Promise<Catalog[]> {
-  const data = await apiFetch<{ catalogs: Catalog[] }>("/catalogs")
-  return data.catalogs ?? []
-}
-
-export async function getCatalog(name: string): Promise<Catalog> {
-  return apiFetch<Catalog>(`/catalogs/${name}`)
-}
-
-export async function createCatalog(payload: { name: string; comment?: string }): Promise<Catalog> {
-  return apiFetch<Catalog>("/catalogs", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
-}
-
-export async function updateCatalog(name: string, payload: { comment?: string }): Promise<Catalog> {
-  return apiFetch<Catalog>(`/catalogs/${name}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
-}
-
-export async function deleteCatalog(name: string): Promise<void> {
-  await apiFetch(`/catalogs/${name}`, { method: "DELETE" })
-}
+export const listCatalogs = (): Promise<Catalog[]> => ucClient.catalogList()
+export const getCatalog = (name: string): Promise<Catalog> => ucClient.catalogGet(name)
+export const createCatalog = (payload: { name: string; comment?: string }): Promise<Catalog> => ucClient.catalogCreate(payload)
+export const updateCatalog = (name: string, payload: { comment?: string }): Promise<Catalog> => ucClient.catalogUpdate(name, payload)
+export const deleteCatalog = (name: string): Promise<void> => ucClient.catalogDelete(name)
 
 // --------------------------------------------------------------------------- //
 // Schemas
 // --------------------------------------------------------------------------- //
 
-export async function listSchemas(catalogName: string): Promise<Schema[]> {
-  const data = await apiFetch<{ schemas: Schema[] }>(`/schemas?catalog_name=${catalogName}`)
-  return data.schemas ?? []
-}
-
-export async function getSchema(fullName: string): Promise<Schema> {
-  return apiFetch<Schema>(`/schemas/${fullName}`)
-}
-
-export async function createSchema(payload: { catalog_name: string; name: string; comment?: string }): Promise<Schema> {
-  return apiFetch<Schema>("/schemas", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
-}
-
-export async function updateSchema(fullName: string, payload: { comment?: string }): Promise<Schema> {
-  return apiFetch<Schema>(`/schemas/${fullName}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
-}
-
-export async function deleteSchema(fullName: string): Promise<void> {
-  await apiFetch(`/schemas/${fullName}`, { method: "DELETE" })
-}
+export const listSchemas = (catalogName: string): Promise<Schema[]> => ucClient.schemaList(catalogName)
+export const getSchema = (fullName: string): Promise<Schema> => ucClient.schemaGet(fullName)
+export const createSchema = (payload: { catalog_name: string; name: string; comment?: string }): Promise<Schema> => ucClient.schemaCreate(payload)
+export const updateSchema = (fullName: string, payload: { comment?: string }): Promise<Schema> => ucClient.schemaUpdate(fullName, payload)
+export const deleteSchema = (fullName: string): Promise<void> => ucClient.schemaDelete(fullName)
 
 // --------------------------------------------------------------------------- //
 // Tables
 // --------------------------------------------------------------------------- //
 
-export async function listTables(catalogName: string, schemaName: string): Promise<UCTable[]> {
-  const data = await apiFetch<{ tables: UCTable[] }>(`/tables?catalog_name=${catalogName}&schema_name=${schemaName}`)
-  return data.tables ?? []
-}
-
-export async function getTable(fullName: string): Promise<UCTable> {
-  return apiFetch<UCTable>(`/tables/${fullName}`)
-}
-
-export async function createTable(payload: {
-  catalog_name: string
-  schema_name: string
-  name: string
-  table_type: string
-  data_source_format: string
-  columns: { name: string; type_name: string; position: number; nullable?: boolean; comment?: string }[]
-  comment?: string
-}): Promise<UCTable> {
-  return apiFetch<UCTable>("/tables", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
-}
-
-export async function deleteTable(fullName: string): Promise<void> {
-  await apiFetch(`/tables/${fullName}`, { method: "DELETE" })
-}
+export const listTables = (catalogName: string, schemaName: string): Promise<UCTable[]> => ucClient.tableList(catalogName, schemaName)
+export const getTable = (fullName: string): Promise<UCTable> => ucClient.tableGet(fullName)
+export const createTable = (payload: CreateTablePayload): Promise<UCTable> => ucClient.tableCreate(payload)
+export const deleteTable = (fullName: string): Promise<void> => ucClient.tableDelete(fullName)
 
 // --------------------------------------------------------------------------- //
 // Volumes
 // --------------------------------------------------------------------------- //
 
-export async function listVolumes(catalogName: string, schemaName: string): Promise<Volume[]> {
-  const data = await apiFetch<{ volumes: Volume[] }>(`/volumes?catalog_name=${catalogName}&schema_name=${schemaName}`)
-  return data.volumes ?? []
-}
-
-export async function getVolume(fullName: string): Promise<Volume> {
-  return apiFetch<Volume>(`/volumes/${fullName}`)
-}
-
-export async function updateVolume(fullName: string, payload: { comment?: string }): Promise<Volume> {
-  return apiFetch<Volume>(`/volumes/${fullName}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
-}
-
-export async function deleteVolume(fullName: string): Promise<void> {
-  await apiFetch(`/volumes/${fullName}`, { method: "DELETE" })
-}
+export const listVolumes = (catalogName: string, schemaName: string): Promise<Volume[]> => ucClient.volumeList(catalogName, schemaName)
+export const getVolume = (fullName: string): Promise<Volume> => ucClient.volumeGet(fullName)
+export const createVolume = (payload: CreateVolumePayload): Promise<Volume> => ucClient.volumeCreate(payload)
+export const updateVolume = (fullName: string, payload: { comment?: string }): Promise<Volume> => ucClient.volumeUpdate(fullName, payload)
+export const deleteVolume = (fullName: string): Promise<void> => ucClient.volumeDelete(fullName)
 
 // --------------------------------------------------------------------------- //
 // Functions
 // --------------------------------------------------------------------------- //
 
-export async function listFunctions(catalogName: string, schemaName: string): Promise<UCFunction[]> {
-  const data = await apiFetch<{ functions: UCFunction[] }>(`/functions?catalog_name=${catalogName}&schema_name=${schemaName}`)
-  return data.functions ?? []
-}
-
-export async function getFunction(fullName: string): Promise<UCFunction> {
-  return apiFetch<UCFunction>(`/functions/${fullName}`)
-}
-
-export async function deleteFunction(fullName: string): Promise<void> {
-  await apiFetch(`/functions/${fullName}`, { method: "DELETE" })
-}
+export const listFunctions = (catalogName: string, schemaName: string): Promise<UCFunction[]> => ucClient.functionList(catalogName, schemaName)
+export const getFunction = (fullName: string): Promise<UCFunction> => ucClient.functionGet(fullName)
+export const deleteFunction = (fullName: string): Promise<void> => ucClient.functionDelete(fullName)
 
 // --------------------------------------------------------------------------- //
 // Models
 // --------------------------------------------------------------------------- //
 
-export async function listModels(catalogName: string, schemaName: string): Promise<Model[]> {
-  const data = await apiFetch<{ registered_models: Model[] }>(`/models?catalog_name=${catalogName}&schema_name=${schemaName}`)
-  return data.registered_models ?? []
-}
-
-export async function getModel(fullName: string): Promise<Model> {
-  return apiFetch<Model>(`/models/${fullName}`)
-}
-
-export async function updateModel(fullName: string, payload: { comment?: string }): Promise<Model> {
-  return apiFetch<Model>(`/models/${fullName}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
-}
-
-export async function deleteModel(fullName: string): Promise<void> {
-  await apiFetch(`/models/${fullName}`, { method: "DELETE" })
-}
+export const listModels = (catalogName: string, schemaName: string): Promise<Model[]> => ucClient.modelList(catalogName, schemaName)
+export const getModel = (fullName: string): Promise<Model> => ucClient.modelGet(fullName)
+export const createModel = (payload: CreateModelPayload): Promise<Model> => ucClient.modelCreate(payload)
+export const updateModel = (fullName: string, payload: { comment?: string }): Promise<Model> => ucClient.modelUpdate(fullName, payload)
+export const deleteModel = (fullName: string): Promise<void> => ucClient.modelDelete(fullName)
 
 // --------------------------------------------------------------------------- //
 // Model Versions
 // --------------------------------------------------------------------------- //
 
-export async function listModelVersions(fullModelName: string): Promise<ModelVersion[]> {
-  const data = await apiFetch<{ model_versions: ModelVersion[] }>(`/models/${fullModelName}/versions`)
-  return data.model_versions ?? []
-}
-
-export async function getModelVersion(fullModelName: string, version: number): Promise<ModelVersion> {
-  return apiFetch<ModelVersion>(`/models/${fullModelName}/versions/${version}`)
-}
-
-export async function updateModelVersion(fullModelName: string, version: number, payload: { comment?: string }): Promise<ModelVersion> {
-  return apiFetch<ModelVersion>(`/models/${fullModelName}/versions/${version}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
-}
+export const listModelVersions = (fullModelName: string): Promise<ModelVersion[]> => ucClient.modelVersionList(fullModelName)
+export const getModelVersion = (fullModelName: string, version: number): Promise<ModelVersion> => ucClient.modelVersionGet(fullModelName, version)
+export const updateModelVersion = (fullModelName: string, version: number, payload: { comment?: string }): Promise<ModelVersion> => ucClient.modelVersionUpdate(fullModelName, version, payload)
+export const deleteModelVersion = (fullModelName: string, version: number): Promise<void> => ucClient.modelVersionDelete(fullModelName, version)
