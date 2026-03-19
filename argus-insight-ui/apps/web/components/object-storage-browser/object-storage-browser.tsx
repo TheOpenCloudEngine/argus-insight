@@ -34,12 +34,18 @@ type ObjectStorageBrowserProps = {
   dataSource: BrowserDataSource
   /** Optional CSS class for the root container. */
   className?: string
+  /** Available bucket names for the combo box selector. */
+  buckets?: string[]
+  /** Callback when user selects a different bucket. */
+  onBucketChange?: (bucket: string) => void
 }
 
 export function ObjectStorageBrowser({
   bucket,
   dataSource,
   className,
+  buckets,
+  onBucketChange,
 }: ObjectStorageBrowserProps) {
   // --- Navigation state ---
   const [prefix, setPrefix] = useState("")
@@ -474,6 +480,8 @@ async function handleContextDelete() {
             setNavigationHistory([])
             setPrefix(p)
           }}
+          buckets={buckets}
+          onBucketChange={onBucketChange}
         />
 
         {/* Toolbar */}
