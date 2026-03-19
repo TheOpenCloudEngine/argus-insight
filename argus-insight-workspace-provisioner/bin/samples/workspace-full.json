@@ -1,0 +1,63 @@
+{
+  "name": "data-platform",
+  "display_name": "Data Platform Production",
+  "description": "Production data platform workspace with custom resource settings",
+  "domain": "prod.net",
+  "k8s_cluster": "prod-cluster-01",
+  "k8s_namespace": "argus-ws-data-platform",
+  "admin_user_id": 1,
+  "provisioning_config": {
+    "minio": {
+      "image": "minio/minio:RELEASE.2025-02-28T09-55-16Z",
+      "storage_size": "200Gi",
+      "resources": {
+        "cpu_request": "500m",
+        "cpu_limit": "4",
+        "memory_request": "1Gi",
+        "memory_limit": "4Gi"
+      }
+    },
+    "airflow": {
+      "image": "apache/airflow:2.10.4-python3.11",
+      "postgres_image": "postgres:16-alpine",
+      "git_sync_image": "alpine/git:2.43.0",
+      "git_sync_interval": 30,
+      "dags_storage_size": "20Gi",
+      "logs_storage_size": "50Gi",
+      "db_storage_size": "20Gi",
+      "webserver_resources": {
+        "cpu_request": "500m",
+        "cpu_limit": "4",
+        "memory_request": "1Gi",
+        "memory_limit": "4Gi"
+      },
+      "scheduler_resources": {
+        "cpu_request": "500m",
+        "cpu_limit": "4",
+        "memory_request": "1Gi",
+        "memory_limit": "4Gi"
+      }
+    },
+    "mlflow": {
+      "image": "ghcr.io/mlflow/mlflow:v2.19.0",
+      "postgres_image": "postgres:16-alpine",
+      "db_storage_size": "20Gi",
+      "resources": {
+        "cpu_request": "500m",
+        "cpu_limit": "4",
+        "memory_request": "1Gi",
+        "memory_limit": "4Gi"
+      }
+    },
+    "kserve": {
+      "controller_image": "kserve/kserve-controller:v0.14.1",
+      "default_runtime": "kserve-triton",
+      "resources": {
+        "cpu_request": "500m",
+        "cpu_limit": "4",
+        "memory_request": "1Gi",
+        "memory_limit": "4Gi"
+      }
+    }
+  }
+}

@@ -73,21 +73,19 @@ spec:
               cpu: "500m"
               memory: "512Mi"
           livenessProbe:
-            httpGet:
-              path: /api/v1/servers/localhost
-              port: api
-              httpHeaders:
-                - name: X-API-Key
-                  value: "$(PDNS_api_key)"
+            exec:
+              command:
+                - sh
+                - -c
+                - 'wget -q -O- --header="X-API-Key: $PDNS_api_key" http://127.0.0.1:8081/api/v1/servers/localhost > /dev/null 2>&1'
             initialDelaySeconds: 30
             periodSeconds: 15
           readinessProbe:
-            httpGet:
-              path: /api/v1/servers/localhost
-              port: api
-              httpHeaders:
-                - name: X-API-Key
-                  value: "$(PDNS_api_key)"
+            exec:
+              command:
+                - sh
+                - -c
+                - 'wget -q -O- --header="X-API-Key: $PDNS_api_key" http://127.0.0.1:8081/api/v1/servers/localhost > /dev/null 2>&1'
             initialDelaySeconds: 10
             periodSeconds: 5
 ---
@@ -100,7 +98,7 @@ metadata:
     app.kubernetes.io/name: powerdns-server
     app.kubernetes.io/part-of: argus-insight
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   ports:
     - name: dns-udp
       port: 53

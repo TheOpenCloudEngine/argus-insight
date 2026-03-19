@@ -11,3 +11,4 @@ resources:
   - powerdns-db.yaml
   - powerdns-server.yaml
   - powerdns-admin.yaml
+  - ingress.yaml

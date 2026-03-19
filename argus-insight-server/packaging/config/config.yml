@@ -58,6 +58,11 @@ object_storage:
   multipart_chunksize: ${s3.multipart_chunksize:8388608}
   presigned_url_expiry: ${s3.presigned_url_expiry:3600}
 
+# GitLab (for Workspace Provisioner)
+gitlab:
+  url: ${gitlab.url:}
+  token: ${gitlab.token:}
+
 # MariaDB example:
 #database:
 #  type: mariadb

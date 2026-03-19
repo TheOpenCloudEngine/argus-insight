@@ -8,6 +8,8 @@ metadata:
     app.kubernetes.io/part-of: argus-insight
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: alertmanager
@@ -21,35 +23,27 @@ spec:
         fsGroup: 65534
         runAsUser: 65534
         runAsNonRoot: true
-      initContainers:
-        - name: init-data-dir
-          image: alpine:3.21
-          command: ["sh", "-c", "mkdir -p /var/lib/prometheus/alertmanager && chown -R 65534:65534 /var/lib/prometheus/alertmanager"]
-          securityContext:
-            runAsUser: 0
-          volumeMounts:
-            - name: data
-              mountPath: /var/lib/prometheus
       containers:
         - name: alertmanager
           image: argus-insight/alertmanager:0.28.1
           args:
             - "--config.file=/etc/prometheus/alertmanager.yml"
-            - "--storage.path=/var/lib/prometheus/alertmanager"
+            - "--storage.path=/var/lib/alertmanager"
             - "--web.listen-address=0.0.0.0:9093"
+            - "--web.external-url=http://localhost/alertmanager"
           ports:
             - name: http
               containerPort: 9093
               protocol: TCP
           livenessProbe:
             httpGet:
-              path: /-/healthy
+              path: /alertmanager/-/healthy
               port: http
             initialDelaySeconds: 10
             periodSeconds: 15
           readinessProbe:
             httpGet:
-              path: /-/ready
+              path: /alertmanager/-/ready
               port: http
             initialDelaySeconds: 5
             periodSeconds: 5
@@ -58,7 +52,7 @@ spec:
               mountPath: /etc/prometheus/alertmanager.yml
               subPath: alertmanager.yml
             - name: data
-              mountPath: /var/lib/prometheus
+              mountPath: /var/lib/alertmanager
       volumes:
         - name: config
           configMap:
@@ -68,7 +62,7 @@ spec:
                 path: alertmanager.yml
         - name: data
           persistentVolumeClaim:
-            claimName: argus-prometheus
+            claimName: argus-alertmanager
 ---
 apiVersion: v1
 kind: Service

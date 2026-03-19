@@ -100,6 +100,10 @@ class Settings:
         self.db_pool_recycle: int = int(_get_nested("database", "pool", "recycle", 3600))
         self.db_echo: bool = _to_bool(_get("database", "echo", False))
 
+        # GitLab (Workspace Provisioner)
+        self.gitlab_url: str = _get("gitlab", "url", "")
+        self.gitlab_token: str = _get("gitlab", "token", "")
+
         # Object Storage (S3/MinIO)
         self.s3_endpoint_url: str = _get("object_storage", "endpoint_url", "http://localhost:9000")
         self.s3_access_key: str = _get("object_storage", "access_key", "minioadmin")

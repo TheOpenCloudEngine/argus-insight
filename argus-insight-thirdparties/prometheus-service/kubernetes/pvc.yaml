@@ -4,10 +4,26 @@ metadata:
   name: argus-prometheus
   namespace: argus-insight
   labels:
+    app.kubernetes.io/name: prometheus
     app.kubernetes.io/part-of: argus-insight
 spec:
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 10Gi
+      storage: 50Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: argus-alertmanager
+  namespace: argus-insight
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: argus-insight
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi

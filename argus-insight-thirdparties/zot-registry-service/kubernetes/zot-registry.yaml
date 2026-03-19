@@ -8,6 +8,8 @@ metadata:
     app.kubernetes.io/part-of: argus-insight
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: zot-registry
@@ -20,6 +22,7 @@ spec:
       containers:
         - name: zot-registry
           image: argus-insight/zot-registry:2.1.2
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5000
               protocol: TCP
@@ -43,14 +46,12 @@ spec:
               cpu: "1"
               memory: 1Gi
           livenessProbe:
-            httpGet:
-              path: /v2/
+            tcpSocket:
               port: 5000
             initialDelaySeconds: 10
             periodSeconds: 30
           readinessProbe:
-            httpGet:
-              path: /v2/
+            tcpSocket:
               port: 5000
             initialDelaySeconds: 5
             periodSeconds: 10

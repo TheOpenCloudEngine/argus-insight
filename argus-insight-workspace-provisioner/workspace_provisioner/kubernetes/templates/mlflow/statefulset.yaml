@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: argus-mlflow-${WORKSPACE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: mlflow
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+spec:
+  serviceName: argus-mlflow-${WORKSPACE_NAME}
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mlflow
+      app.kubernetes.io/instance: ${WORKSPACE_NAME}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mlflow
+        app.kubernetes.io/instance: ${WORKSPACE_NAME}
+        app.kubernetes.io/part-of: argus-insight
+        argus-insight/workspace: ${WORKSPACE_NAME}
+    spec:
+      containers:
+        - name: mlflow
+          image: ${MLFLOW_IMAGE}
+          command:
+            - mlflow
+            - server
+            - --host=0.0.0.0
+            - --port=5000
+            - --backend-store-uri=postgresql+psycopg2://mlflow:${MLFLOW_DB_PASSWORD}@argus-mlflow-${WORKSPACE_NAME}-db:5432/mlflow
+            - --default-artifact-root=s3://${MLFLOW_ARTIFACT_BUCKET}/mlflow-artifacts
+            - --serve-artifacts
+          env:
+            - name: MLFLOW_S3_ENDPOINT_URL
+              value: "http://argus-minio-${WORKSPACE_NAME}.${K8S_NAMESPACE}.svc.cluster.local:9000"
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: argus-mlflow-${WORKSPACE_NAME}
+                  key: minio-access-key
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: argus-mlflow-${WORKSPACE_NAME}
+                  key: minio-secret-key
+          ports:
+            - name: http
+              containerPort: 5000
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "${MLFLOW_CPU_REQUEST}"
+              memory: "${MLFLOW_MEMORY_REQUEST}"
+            limits:
+              cpu: "${MLFLOW_CPU_LIMIT}"
+              memory: "${MLFLOW_MEMORY_LIMIT}"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5

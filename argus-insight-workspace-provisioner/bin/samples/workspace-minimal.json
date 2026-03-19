@@ -1,0 +1,11 @@
+{
+  "name": "test-ws",
+  "display_name": "Test Workspace",
+  "domain": "dev.net",
+  "admin_user_id": 1,
+  "provisioning_config": {
+    "minio": {
+      "storage_size": "10Gi"
+    }
+  }
+}

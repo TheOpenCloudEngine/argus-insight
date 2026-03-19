@@ -11,3 +11,4 @@ resources:
   - prometheus.yaml
   - pushgateway.yaml
   - alertmanager.yaml
+  - ingress.yaml

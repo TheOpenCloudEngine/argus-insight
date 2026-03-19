@@ -7,8 +7,9 @@ Zot는 OCI Distribution Specification을 준수하는 컨테이너 이미지 레
 ```
 zot-registry-service/
 ├── CLAUDE.md                       # 이 파일
+├── TroubleShooting.md              # Kubernetes 배포 트러블슈팅
 ├── Makefile                        # Docker 이미지 빌드/푸시/저장 오케스트레이션
-├── versions.env                    # 컴포넌트 버전 핀
+├── versions.env                    # 컴포넌트 버전 핀 (ZOT_VERSION=2.1.2)
 ├── .gitignore
 ├── zot-registry/
 │   └── Dockerfile                  # Rocky Linux 9 기반 Docker 이미지
@@ -18,12 +19,13 @@ zot-registry-service/
 │   ├── kustomization.yaml          # Kustomize 엔트리포인트
 │   ├── namespace.yaml              # argus-insight 네임스페이스
 │   ├── secret.yaml                 # htpasswd, credentials
-│   ├── configmap.yaml              # config.json
-│   ├── pvc.yaml                    # 이미지 스토리지 볼륨
-│   └── zot-registry.yaml           # Zot Deployment + Service
-├── config.json                     # Zot 메인 설정 파일
+│   ├── configmap.yaml              # config.json (TLS 없음, Ingress에서 종단)
+│   ├── pvc.yaml                    # 이미지 스토리지 볼륨 (50Gi)
+│   ├── zot-registry.yaml           # Deployment (Recreate) + Service (ClusterIP)
+│   └── ingress.yaml                # Nginx Ingress (TLS 종단)
+├── config.json                     # Zot 메인 설정 파일 (Docker Compose/RPM용, TLS 포함)
 ├── credentials.json                # 업스트림 레지스트리 인증 정보
-├── htpasswd                        # Zot 접근용 사용자 인증 파일
+├── htpasswd                        # Zot 접근용 사용자 인증 파일 (bcrypt)
 ├── hosts.txt                       # TLS 인증서 생성 대상 호스트 목록
 ├── generate_certs.sh               # TLS 인증서 생성 스크립트
 ├── zot.service                     # systemd 서비스 유닛 파일
@@ -37,283 +39,394 @@ zot-registry-service/
     └── zot.spec
 ```
 
-## 빌드 방법
+## 초기 관리자 계정
+
+| 항목 | 값 |
+|---|---|
+| 인증 방식 | htpasswd 파일 기반 (bcrypt) |
+| 기본 사용자명 | `admin` |
+| 기본 패스워드 | `Argus!insight2026` |
+
+```bash
+# 사용자 추가
+htpasswd -bB htpasswd <username> <password>
+```
+
+## 빌드
 
 ```bash
 # Docker 이미지 빌드
-make docker                         # zot 바이너리 다운로드 + Docker 이미지 빌드
-
-# 프라이빗 레지스트리 푸시
-make docker-push                                                    # 기본 (argus-insight/ prefix)
-make docker-push DOCKER_REGISTRY=zot.argus.local:5000/argus-insight # Zot Registry 지정
+make docker
 
 # Airgap 환경용 이미지 저장/로드
 make docker-save                    # dist/ 에 tar.gz 저장
 make docker-load                    # tar.gz 에서 이미지 로드
 
+# 프라이빗 레지스트리 푸시
+make docker-push DOCKER_REGISTRY=zot.argus-insight.dev.net/argus-insight
+
 # 정리
-make clean                          # dist/ 및 다운로드된 바이너리 삭제
-
-# Docker Compose
-cd docker
-docker compose --env-file ../versions.env up --build -d
-
-# Kubernetes
-kubectl apply -k kubernetes/
-kubectl get all -n argus-insight -l app.kubernetes.io/name=zot-registry
+make clean
 ```
 
-## Getting Started (Docker Compose)
+## 배포 방식별 가이드
 
-Docker Compose로 Zot Registry를 실행하고 이미지를 push/pull하는 빠른 시작 가이드입니다.
-
-### 1. TLS 인증서 생성
+### Docker Compose 배포
 
 ```bash
-# hosts.txt에 호스트명 설정 (기본값: dev-server)
-cat hosts.txt
-
-# 인증서 생성
+# 1. TLS 인증서 생성
 bash generate_certs.sh
+mkdir -p certs && cp -r dev-server certs/
 
-# 생성된 인증서를 certs/ 디렉토리에 배치
-mkdir -p certs
-cp -r dev-server certs/
-```
-
-### 2. Docker 이미지 빌드 및 실행
-
-```bash
-# Zot Registry 이미지 빌드
+# 2. Docker 이미지 빌드 및 실행
 make docker
-
-# Docker Compose로 실행
 cd docker
 docker compose --env-file ../versions.env up --build -d
 
-# 로그 확인
-docker compose logs -f zot-registry
-```
-
-### 3. 클라이언트에서 TLS 인증서 신뢰 설정
-
-자체 서명 CA를 사용하므로, Docker 데몬이 레지스트리를 신뢰하도록 CA 인증서를 등록해야 합니다.
-
-```bash
-# Linux
+# 3. 클라이언트 TLS 인증서 신뢰 등록
 sudo mkdir -p /etc/docker/certs.d/localhost:5000
 sudo cp certs/dev-server/dev-server.crt /etc/docker/certs.d/localhost:5000/ca.crt
 
-# macOS (Docker Desktop)
-# ca/ca.crt를 키체인에 '항상 신뢰'로 등록 후 Docker Desktop 재시작
-sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ca/ca.crt
-```
-
-### 4. 레지스트리 로그인
-
-```bash
-# htpasswd에 등록된 계정으로 로그인 (기본 계정: admin)
+# 4. 접속 확인
 docker login localhost:5000
 ```
 
-### 5. 이미지 Push / Pull
+### RPM 패키지 배포 (베어메탈/VM)
 
 ```bash
-# 기존 이미지에 레지스트리 태그 추가
-docker tag alpine:latest localhost:5000/library/alpine:latest
-
-# 이미지 Push
-docker push localhost:5000/library/alpine:latest
-
-# 이미지 Pull (다른 머신 또는 확인용)
-docker pull localhost:5000/library/alpine:latest
-
-# 레지스트리에 저장된 이미지 목록 확인
-curl -k -u admin:<password> https://localhost:5000/v2/_catalog
+cd rpm && ./build-rpm.sh
+sudo rpm -ivh dist/zot-*.rpm
+sudo systemctl enable --now zot
 ```
 
-### 6. 업스트림 미러링 (onDemand)
+### Kubernetes Production 배포
 
-Zot는 onDemand 미러링이 설정되어 있어, 업스트림 이미지를 직접 pull하면 자동으로 캐싱됩니다.
+Nginx Ingress Controller를 통해 TLS를 종단하고, Zot은 HTTP로 동작하는 구조입니다.
+
+#### 사전 요구사항
+
+- Kubernetes 클러스터
+- Nginx Ingress Controller
+- 도메인 DNS 또는 `/etc/hosts` 등록
+
+#### Step 1. Nginx Ingress Controller 설치
 
 ```bash
-# Docker Hub 이미지를 Zot를 통해 pull (자동 캐싱)
-docker pull localhost:5000/library/nginx:latest
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.1/deploy/static/provider/cloud/deploy.yaml
 
-# Quay.io 이미지
-docker pull localhost:5000/quay.io/prometheus/prometheus:latest
+# 설치 확인
+kubectl get pods -n ingress-nginx -l app.kubernetes.io/component=controller
+kubectl get ingressclass
 ```
 
-## 초기 관리자 계정
+#### Step 2. Docker 이미지 빌드
 
-### Zot Registry
-
-| 항목 | 값 |
-|---|---|
-| URL | `https://localhost:5000` |
-| 인증 | htpasswd 파일 기반 인증 |
-| 기본 사용자명 | `admin` |
-| 기본 패스워드 | `Argus!insight2026` |
-
-htpasswd 파일에 사용자를 추가합니다:
 ```bash
-htpasswd -bB htpasswd <username> <password>
+make docker
+
+# 빌드 확인
+docker images | grep zot-registry
 ```
 
-## 버전 관리
+> Airgap 환경에서는 `make docker-save`로 저장 후 대상 노드에서 `make docker-load`로 로드합니다.
 
-`versions.env` 파일에서 Zot 버전을 관리합니다. 버전 변경 후 `make clean && make docker`로 재빌드합니다.
+#### Step 3. Secret 설정
+
+`kubernetes/secret.yaml`의 placeholder를 실제 값으로 변경합니다:
+
+```bash
+# htpasswd 해시 확인
+cat htpasswd
+```
+
+```yaml
+# kubernetes/secret.yaml
+stringData:
+  htpasswd: |
+    admin:$2y$05$4CSdzVJFAscucxvjhe2U8etOq7nUxVB0JNcA18eld09eHpTGGrFdO
+  credentials.json: |
+    {
+      "registry-1.docker.io": {
+        "username": "<DOCKER_HUB_USERNAME>",
+        "password": "<DOCKER_HUB_ACCESS_TOKEN>"
+      }
+    }
+```
+
+> `credentials.json`은 업스트림 미러링(onDemand)에서 Docker Hub rate limit을 회피하기 위해 필요합니다. 업스트림 미러링을 사용하지 않거나 airgap 환경이면 빈 `{}`로 설정합니다.
+
+#### Step 4. TLS 인증서 생성
+
+`generate_certs.sh`는 Self-signed CA → 서버 인증서 2단계 구조로 인증서를 생성합니다. Production의 폐쇄망/airgap 환경에서도 이 방식을 사용합니다.
+
+```bash
+# hosts.txt에 호스트명 설정
+echo "zot.argus-insight.dev.net" > hosts.txt
+
+# CA + 서버 인증서 생성
+bash generate_certs.sh
+```
+
+생성되는 파일 구조:
 
 ```
-ZOT_VERSION=2.1.2
+ca/
+├── ca.key                              # CA 개인키 (안전하게 보관)
+└── ca.crt                              # CA 인증서 (클라이언트에 배포)
+zot.argus-insight.dev.net/
+├── zot.argus-insight.dev.net.key       # 서버 개인키
+├── zot.argus-insight.dev.net.crt       # 서버 인증서
+└── zot.argus-insight.dev.net.pem       # 인증서 체인 (서버 + CA)
 ```
 
-## Docker 이미지
+Kubernetes TLS Secret으로 등록:
 
-| 공식 바이너리 | Argus 이미지 | 설명 |
-|---|---|---|
-| `zot-linux-amd64` (v2.1.2) | `argus-insight/zot-registry:2.1.2` | OCI 컨테이너 레지스트리 |
+```bash
+HOST=zot.argus-insight.dev.net
+kubectl create namespace argus-insight --dry-run=client -o yaml | kubectl apply -f -
+kubectl create secret tls zot-registry-tls \
+  --cert=$HOST/$HOST.crt --key=$HOST/$HOST.key \
+  -n argus-insight
+```
 
-### Airgap 배포 흐름
+> **인증서 유효기간**: CA 10년 (3650일), 서버 인증서 825일 (`generate_certs.sh`의 기본값). 서버 인증서 갱신 시 CA를 재생성할 필요 없이 `generate_certs.sh`를 다시 실행하면 기존 CA로 새 서버 인증서를 발급합니다.
+
+#### Step 5. Ingress 호스트명 설정
+
+`kubernetes/ingress.yaml`에서 호스트명을 환경에 맞게 변경합니다:
+
+```yaml
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - zot.argus-insight.dev.net    # 환경에 맞게 변경
+      secretName: zot-registry-tls
+  rules:
+    - host: zot.argus-insight.dev.net  # 환경에 맞게 변경
+```
+
+#### Step 6. Kustomize 배포
+
+```bash
+kubectl apply -k kubernetes/
+
+# 리소스 상태 확인
+kubectl get all,ingress,pvc -n argus-insight -l app.kubernetes.io/name=zot-registry
+```
+
+정상 상태 예시:
 
 ```
-인터넷 환경                          Airgap 환경
-┌─────────────────┐                ┌──────────────────┐
-│ make docker     │                │ make docker-load │
-│ make docker-save│ ──USB/SCP──▶  │ docker tag ...   │
-│ (dist/*.tar.gz) │                │ docker push ...  │
-└─────────────────┘                │   → Zot Registry │
-                                   └──────────────────┘
+NAME                                READY   STATUS    RESTARTS   AGE
+pod/zot-registry-54d747498b-6jknq   1/1     Running   0          5m
+
+NAME                   TYPE        CLUSTER-IP     PORT(S)    AGE
+service/zot-registry   ClusterIP   10.43.234.67   5000/TCP   5m
+
+NAME                                   CLASS   HOSTS                       PORTS     AGE
+ingress.networking.k8s.io/zot-registry nginx   zot.argus-insight.dev.net   80, 443   5m
 ```
+
+#### Step 7. DNS 등록
+
+```bash
+# Ingress Controller의 HTTPS NodePort 확인
+kubectl get svc -n ingress-nginx ingress-nginx-controller
+# 출력 예: 443:31274/TCP
+
+# /etc/hosts 등록 (또는 DNS 서버에 등록)
+echo "<NODE_IP> zot.argus-insight.dev.net" >> /etc/hosts
+```
+
+#### Step 8. 클라이언트 CA 인증서 등록
+
+Self-signed CA를 사용하므로, 레지스트리에 접근하는 모든 클라이언트 노드에 CA 인증서를 등록해야 합니다.
+
+```bash
+NODEPORT=31274  # Step 7에서 확인한 포트
+
+# Docker 클라이언트
+mkdir -p /etc/docker/certs.d/zot.argus-insight.dev.net:$NODEPORT
+cp ca/ca.crt /etc/docker/certs.d/zot.argus-insight.dev.net:$NODEPORT/ca.crt
+
+# OS 신뢰 저장소 (curl, 브라우저 등에서 사용)
+# RHEL/Rocky Linux
+sudo cp ca/ca.crt /etc/pki/ca-trust/source/anchors/argus-insight-ca.crt
+sudo update-ca-trust
+
+# Ubuntu/Debian
+sudo cp ca/ca.crt /usr/local/share/ca-certificates/argus-insight-ca.crt
+sudo update-ca-certificates
+```
+
+> CA 인증서는 한 번만 등록하면 됩니다. 이후 해당 CA로 발급한 서버 인증서를 교체하더라도 클라이언트 재설정은 불필요합니다.
+
+#### Step 9. 접속 확인
+
+```bash
+NODEPORT=31274
+
+# 레지스트리 API 확인
+curl -sk -u admin:'Argus!insight2026' https://zot.argus-insight.dev.net:$NODEPORT/v2/
+
+# Docker 로그인
+echo 'Argus!insight2026' | docker login zot.argus-insight.dev.net:$NODEPORT -u admin --password-stdin
+
+# 이미지 Push 테스트
+docker pull hello-world:latest
+docker tag hello-world:latest zot.argus-insight.dev.net:$NODEPORT/library/hello-world:latest
+docker push zot.argus-insight.dev.net:$NODEPORT/library/hello-world:latest
+
+# 카탈로그 확인
+curl -sk -u admin:'Argus!insight2026' https://zot.argus-insight.dev.net:$NODEPORT/v2/_catalog
+```
+
+### Kubernetes 리소스 삭제
+
+배포된 Zot Registry와 관련 리소스를 모두 제거하는 절차입니다.
+
+#### Step 1. Kubernetes 리소스 삭제
+
+```bash
+# Kustomize로 배포한 리소스 일괄 삭제 (namespace 포함)
+kubectl delete -k kubernetes/
+
+# TLS Secret은 namespace와 함께 삭제됨. 별도 확인:
+kubectl get all,ingress,pvc,secret -n argus-insight 2>&1
+# "No resources found" 또는 namespace 없음이 정상
+```
+
+#### Step 2. Docker 이미지 삭제
+
+```bash
+# Zot Registry 이미지
+docker rmi argus-insight/zot-registry:2.1.2
+
+# 테스트용 이미지 (push 테스트에 사용한 경우)
+docker rmi zot.argus-insight.dev.net:$NODEPORT/library/hello-world:latest
+```
+
+#### Step 3. Docker 클라이언트 정리
+
+```bash
+# 레지스트리 로그인 정보 제거
+docker logout zot.argus-insight.dev.net:$NODEPORT
+
+# Docker 클라이언트 인증서 제거
+rm -rf /etc/docker/certs.d/zot.argus-insight.dev.net:*
+```
+
+#### Step 4. DNS/호스트 등록 제거
+
+```bash
+# /etc/hosts에서 zot 항목 제거
+sed -i '/zot.argus-insight.dev.net/d' /etc/hosts
+```
+
+#### Step 5. OS 신뢰 저장소에서 CA 제거 (선택)
+
+CA 인증서를 다른 서비스에서도 사용 중이면 유지합니다. Zot 전용이었다면 제거합니다.
+
+```bash
+# RHEL/Rocky Linux
+sudo rm -f /etc/pki/ca-trust/source/anchors/argus-insight-ca.crt
+sudo update-ca-trust
+
+# Ubuntu/Debian
+sudo rm -f /usr/local/share/ca-certificates/argus-insight-ca.crt
+sudo update-ca-certificates
+```
+
+> Nginx Ingress Controller는 다른 서비스에서도 사용할 수 있으므로 별도로 삭제하지 않습니다. 제거가 필요하면: `kubectl delete -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.1/deploy/static/provider/cloud/deploy.yaml`
+
+---
+
+## TLS 인증서 관리
+
+### 인증서 구조
+
+`generate_certs.sh`는 Self-signed CA → 서버 인증서 2단계 구조를 사용합니다. 폐쇄망/airgap 환경에서는 공인 CA 발급이 불가능하므로, 이 Self-signed CA 방식이 Production에서도 적합합니다.
+
+```
+┌──────────────────────────────────┐
+│  Self-signed CA (ca/ca.crt)      │  유효기간: 10년
+│  - 모든 클라이언트 노드에 1회 등록  │
+└──────────┬───────────────────────┘
+           │ 서명
+┌──────────▼───────────────────────┐
+│  서버 인증서 (<host>/<host>.crt) │  유효기간: 825일
+│  - Ingress TLS Secret에 등록     │
+└──────────────────────────────────┘
+```
+
+### CA와 서버 인증서 역할
+
+| 구분 | 파일 | 배포 대상 | 유효기간 |
+|---|---|---|---|
+| CA 개인키 | `ca/ca.key` | 인증서 발급 서버에만 보관 (외부 유출 금지) | — |
+| CA 인증서 | `ca/ca.crt` | 모든 클라이언트 노드의 신뢰 저장소 | 10년 |
+| 서버 개인키 | `<host>/<host>.key` | Kubernetes TLS Secret | — |
+| 서버 인증서 | `<host>/<host>.crt` | Kubernetes TLS Secret | 825일 |
+
+### 서버 인증서 갱신
+
+서버 인증서 만료 시 CA를 재생성할 필요 없이 `generate_certs.sh`를 다시 실행합니다. 기존 CA(`ca/` 디렉토리)가 존재하면 자동으로 재사용합니다.
+
+```bash
+# 서버 인증서 재발급 (기존 CA 재사용)
+bash generate_certs.sh
+
+# Kubernetes TLS Secret 교체
+HOST=zot.argus-insight.dev.net
+kubectl delete secret zot-registry-tls -n argus-insight
+kubectl create secret tls zot-registry-tls \
+  --cert=$HOST/$HOST.crt --key=$HOST/$HOST.key \
+  -n argus-insight
+
+# Ingress가 새 인증서를 인식하도록 재시작
+kubectl rollout restart deployment/zot-registry -n argus-insight
+```
+
+> CA를 교체하지 않았으므로 클라이언트 노드의 신뢰 저장소는 재설정 불필요합니다.
+
+### 호스트 추가
+
+새로운 호스트의 인증서가 필요하면 `hosts.txt`에 호스트명을 추가하고 `generate_certs.sh`를 실행합니다. 기존 호스트의 인증서도 함께 재발급됩니다.
+
+---
+
+## Kubernetes 배포 시 주의사항
+
+- **Deployment 전략**: BoltDB 파일 잠금 때문에 `Recreate` 전략을 사용합니다. RollingUpdate 시 두 Pod이 동시에 PVC에 접근하면 `cache.db` 잠금 충돌이 발생합니다.
+- **imagePullPolicy**: 로컬 빌드 이미지를 사용할 때 반드시 `IfNotPresent`로 설정합니다. 미설정 시 Docker Hub에서 pull을 시도하여 실패합니다.
+- **Health Probe**: `tcpSocket` probe를 사용합니다. Zot의 `/v2/` 엔드포인트는 인증이 필요하여 `httpGet` probe가 401로 실패합니다.
+- **TLS 구조**: Kubernetes에서는 Nginx Ingress에서 TLS를 종단하고, ConfigMap의 config.json에는 TLS 설정이 없습니다 (Docker Compose/RPM용 config.json과 다름).
+- **Secret 값**: `secret.yaml`의 htpasswd와 credentials.json은 placeholder이므로, 배포 전 반드시 실제 값으로 교체해야 합니다.
+- **NodePort**: Nginx Ingress Service의 HTTPS NodePort는 자동 할당됩니다. 고정하려면 Service에 `nodePort`를 지정하거나 MetalLB로 ExternalIP를 할당합니다.
+
+세부 트러블슈팅은 `TroubleShooting.md`를 참고하세요.
 
 ## 설정 파일
 
 ### config.json
 
-Zot 메인 설정 파일입니다. 주요 섹션:
+Zot 메인 설정 파일입니다. 두 가지 버전이 존재합니다:
 
-- **storage**: 이미지 저장 경로 (`/var/lib/zot`), GC 활성화
-- **http**: 리스닝 주소/포트 (`0.0.0.0:5000`), TLS 인증서, htpasswd 인증
-- **log**: 로그 레벨 (`info`)
-- **extensions.sync**: 업스트림 레지스트리 미러링 설정 (onDemand 모드)
+| 파일 | TLS | 용도 |
+|---|---|---|
+| `config.json` (루트) | 포함 | Docker Compose, RPM 배포 |
+| `kubernetes/configmap.yaml` | 미포함 | Kubernetes 배포 (Ingress에서 TLS 종단) |
 
-현재 설정된 업스트림 레지스트리:
+### 업스트림 미러링
+
+onDemand 모드로 설정되어 클라이언트가 이미지를 pull할 때 자동으로 업스트림에서 가져와 캐싱합니다:
+
 - Docker Hub (`registry-1.docker.io`)
 - Quay.io (`quay.io`)
 - Google Container Registry (`gcr.io`)
 - GitHub Container Registry (`ghcr.io`)
 - Microsoft Container Registry (`mcr.microsoft.com`)
-
-모든 업스트림은 `onDemand: true`로 설정되어, 클라이언트가 이미지를 pull할 때 자동으로 업스트림에서 가져와 캐싱합니다.
-
-### credentials.json
-
-업스트림 레지스트리에 접근하기 위한 인증 정보 파일입니다. Docker Hub의 rate limit을 회피하기 위해 인증을 설정합니다.
-
-### htpasswd
-
-Zot 레지스트리에 push/pull할 때 사용하는 사용자 인증 파일입니다. bcrypt 해시 형식입니다.
-
-## 배포 방식
-
-### RPM 패키지 (베어메탈/VM)
-
-`rpm/build-rpm.sh`를 실행하면 zot 바이너리를 다운로드하고 RPM 패키지를 빌드합니다.
-
-```bash
-cd rpm
-./build-rpm.sh
-```
-
-생성된 RPM을 설치하면 다음 경로에 파일이 배치됩니다:
-
-| 경로 | 설명 |
-|---|---|
-| `/usr/local/bin/zot` | zot 바이너리 |
-| `/usr/lib/systemd/system/zot.service` | systemd 서비스 파일 |
-| `/etc/zot/config.json` | 메인 설정 파일 |
-| `/etc/zot/credentials.json` | 업스트림 레지스트리 인증 정보 |
-| `/etc/zot/htpasswd` | 사용자 인증 파일 |
-| `/etc/zot/certs/` | TLS 인증서 디렉토리 |
-| `/var/lib/zot/` | 이미지 스토리지 |
-
-## Docker Compose 배포
-
-### 컨테이너 구성
-
-| 서비스 | 이미지 | 포트 매핑 | 설명 |
-|---|---|---|---|
-| `zot-registry` | `argus-insight/zot-registry:2.1.2` | `5000:5000` | OCI 컨테이너 레지스트리 |
-
-### Docker 볼륨
-
-| 볼륨 이름 | 컨테이너 경로 | 용도 |
-|---|---|---|
-| `argus-zot-data` | `/var/lib/zot` | 이미지 스토리지 |
-
-## Kubernetes 배포
-
-### 리소스 구성
-
-| 리소스 | 이름 | 설명 |
-|---|---|---|
-| Namespace | `argus-insight` | 전용 네임스페이스 (다른 서비스와 공유) |
-| Secret | `zot-registry-secrets` | htpasswd, 업스트림 인증 정보 |
-| ConfigMap | `zot-registry-config` | config.json |
-| PVC | `argus-zot-data` | 이미지 스토리지 (50Gi, ReadWriteOnce) |
-| Deployment + Service | `zot-registry` | OCI 레지스트리 (포트 5000) |
-
-### 배포 전 필수 설정
-
-1. **secret.yaml**: `htpasswd` 내용을 실제 값으로 변경, `credentials.json`에 Docker Hub 토큰 설정
-2. **pvc.yaml**: 스토리지 크기 조정 (기본 50Gi)
-3. **zot-registry.yaml**: 이미지 경로를 프라이빗 레지스트리 주소로 변경
-
-### 리소스 요구사항
-
-| 컴포넌트 | CPU 요청 | CPU 제한 | 메모리 요청 | 메모리 제한 |
-|---|---|---|---|---|
-| Zot Registry | 100m | 1 | 256Mi | 1Gi |
-
-## 네이밍 규칙
-
-### Docker 이미지
-
-| 규칙 | 패턴 | 예시 |
-|---|---|---|
-| 이미지 이름 | `argus-insight/<component>:<version>` | `argus-insight/zot-registry:2.1.2` |
-| 레지스트리 포함 | `<registry>/argus-insight/<component>:<version>` | `zot.argus.local:5000/argus-insight/zot-registry:2.1.2` |
-| 저장 파일명 | `<component>-<version>.tar.gz` | `zot-registry-2.1.2.tar.gz` |
-
-### Docker 볼륨
-
-| 규칙 | 패턴 | 예시 |
-|---|---|---|
-| Docker Compose | `argus-zot-<용도>` | `argus-zot-data` |
-
-### Kubernetes 리소스
-
-| 리소스 | 패턴 | 예시 |
-|---|---|---|
-| PVC | `argus-zot-<용도>` | `argus-zot-data` |
-| Secret | `zot-registry-secrets` | — |
-| ConfigMap | `zot-registry-config` | — |
-| Deployment | `zot-registry` | — |
-| Service | `zot-registry` | — |
-
-### Kubernetes 라벨
-
-| 라벨 | 값 | 설명 |
-|---|---|---|
-| `app.kubernetes.io/name` | `zot-registry` | 컴포넌트 식별 |
-| `app.kubernetes.io/component` | `storage` | PVC 용도 구분 |
-| `app.kubernetes.io/part-of` | `argus-insight` | 플랫폼 소속 |
-
-### 포트 할당
-
-| 프로토콜 | Docker 호스트 포트 | 컨테이너 포트 | 설명 |
-|---|---|---|---|
-| HTTPS | `5000` | `5000` | OCI Registry API |
 
 ## 코드 컨벤션
 
@@ -321,10 +434,3 @@ cd rpm
 - 패키지 라이선스: Apache-2.0
 - `versions.env`에서 Zot 버전을 중앙 관리
 - Makefile의 `DOCKER_REGISTRY` 변수로 레지스트리 주소를 주입 (기본값: `argus-insight`)
-
-## 주의사항
-
-- zot 바이너리는 빌드 시 GitHub에서 다운로드되며, 저장소에는 포함되지 않음 (`.gitignore`)
-- TLS 인증서는 `generate_certs.sh`로 생성 후 `config.json`에서 경로 지정 필요
-- Kubernetes 배포 시 TLS는 ConfigMap의 config.json에서 TLS 섹션을 제거하고, Ingress/LoadBalancer에서 TLS 종단 권장
-- 업스트림 레지스트리 미러링은 onDemand 모드로, 첫 pull 시 캐싱됨
