@@ -67,7 +67,7 @@ export default function CatalogDetailsPage() {
               disabled={isGlobal}
               onClick={() => setDeleteOpen(true)}
             >
-              <Trash2 className="mr-1.5 h-4 w-4" /> Delete Catalog
+              <Trash2 className="mr-1.5 h-4 w-4" /> Delete Schema
             </Button>
           </div>
         </div>
