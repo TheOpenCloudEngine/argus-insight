@@ -23,7 +23,7 @@ const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:4500"
 export async function getSession(): Promise<Session> {
   try {
     const res = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
-      cache: "no-store",
+      next: { revalidate: 300 },
     })
     if (!res.ok) {
       console.error("Failed to fetch session:", res.status, res.statusText)
