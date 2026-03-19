@@ -134,15 +134,13 @@ export function DnsZoneBindDialog({ open, onOpenChange }: DnsZoneBindDialogProps
                 {data ? `Zone: ${data.zone}` : "Loading..."}
               </SheetDescription>
             </div>
-          </div>
-          {data && !loading && (
-            <div className="flex justify-end pt-2">
-              <Button size="sm" onClick={handleExport}>
-                <Download className="mr-1.5 h-4 w-4" />
+            {data && !loading && (
+              <Button variant="outline" size="sm" className="h-8 text-sm gap-1.5 mr-8" onClick={handleExport}>
+                <Download className="h-3.5 w-3.5" />
                 Export
               </Button>
-            </div>
-          )}
+            )}
+          </div>
         </SheetHeader>
 
         {loading && (
