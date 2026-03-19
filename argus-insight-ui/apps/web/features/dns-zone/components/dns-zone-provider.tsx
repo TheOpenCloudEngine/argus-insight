@@ -34,6 +34,8 @@ type DnsZoneContextType = {
   setOpen: (type: DnsZoneDialogType | null) => void
   currentRow: DnsRecord | null
   setCurrentRow: React.Dispatch<React.SetStateAction<DnsRecord | null>>
+  selectedRecordType: string
+  setSelectedRecordType: (type: string) => void
   records: DnsRecord[]
   zone: string
   isLoading: boolean
@@ -50,6 +52,7 @@ const DnsZoneContext = React.createContext<DnsZoneContextType | null>(null)
 export function DnsZoneProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useDialogState<DnsZoneDialogType>(null)
   const [currentRow, setCurrentRow] = useState<DnsRecord | null>(null)
+  const [selectedRecordType, setSelectedRecordType] = useState("")
   const [records, setRecords] = useState<DnsRecord[]>([])
   const [zone, setZone] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -136,6 +139,7 @@ export function DnsZoneProvider({ children }: { children: React.ReactNode }) {
     <DnsZoneContext value={{
       open, setOpen,
       currentRow, setCurrentRow,
+      selectedRecordType, setSelectedRecordType,
       records, zone, isLoading, error,
       healthStatus, healthError,
       refreshRecords,

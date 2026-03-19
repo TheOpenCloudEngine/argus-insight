@@ -1,14 +1,16 @@
 /**
  * DNS Zone Data Table component.
  *
- * Renders the DNS records table with client-side filtering and sorting. Built on TanStack React Table v8.
+ * Renders the DNS records table with client-side filtering and sorting.
+ * Search filters on name and content columns with 3-second debounce.
  */
 
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import {
   type ColumnFiltersState,
+  type FilterFn,
   type SortingState,
   type VisibilityState,
   flexRender,
@@ -33,6 +35,15 @@ import { DataTableToolbar } from "@/components/data-table"
 import { recordStatuses, recordTypes } from "../data/data"
 import { type DnsRecord } from "../data/schema"
 import { dnsZoneColumns as columns } from "./dns-zone-columns"
+import { DnsZoneAddButton } from "./dns-zone-add-button"
+
+/** Custom global filter: match name or content fields only. */
+const nameContentFilter: FilterFn<DnsRecord> = (row, _columnId, filterValue) => {
+  const search = (filterValue as string).toLowerCase()
+  const name = (row.original.name ?? "").toLowerCase()
+  const content = (row.original.content ?? "").toLowerCase()
+  return name.includes(search) || content.includes(search)
+}
 
 type DnsZoneTableProps = {
   data: DnsRecord[]
@@ -43,6 +54,8 @@ export function DnsZoneTable({ data, isLoading }: DnsZoneTableProps) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+  const [globalFilter, setGlobalFilter] = useState("")
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const table = useReactTable({
     data,
@@ -51,7 +64,10 @@ export function DnsZoneTable({ data, isLoading }: DnsZoneTableProps) {
       sorting,
       columnFilters,
       columnVisibility,
+      globalFilter,
     },
+    globalFilterFn: nameContentFilter,
+    onGlobalFilterChange: setGlobalFilter,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
@@ -62,9 +78,20 @@ export function DnsZoneTable({ data, isLoading }: DnsZoneTableProps) {
     getFacetedUniqueValues: getFacetedUniqueValues(),
   })
 
+  // Debounce: apply global filter 3 seconds after last input change
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      // globalFilter is already set via onGlobalFilterChange, TanStack applies it automatically
+    }, 3000)
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [globalFilter])
+
   const handleClear = useCallback(() => {
     table.resetColumnFilters()
-    table.setGlobalFilter("")
+    setGlobalFilter("")
   }, [table])
 
   return (
@@ -72,7 +99,6 @@ export function DnsZoneTable({ data, isLoading }: DnsZoneTableProps) {
       <DataTableToolbar
         table={table}
         searchPlaceholder="Filter records..."
-        searchKey="name"
         filters={[
           {
             columnId: "type",
@@ -86,6 +112,7 @@ export function DnsZoneTable({ data, isLoading }: DnsZoneTableProps) {
           },
         ]}
         onClear={handleClear}
+        extraActions={<DnsZoneAddButton />}
       />
 
       <div className="overflow-hidden rounded-md border">

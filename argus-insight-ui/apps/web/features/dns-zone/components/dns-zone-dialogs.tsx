@@ -1,20 +1,27 @@
 /**
  * DNS Zone Dialogs Orchestrator component.
  *
- * Placeholder for future edit/delete dialogs.
- * Currently renders nothing but is included for structural consistency
- * with the Users feature pattern.
+ * Manages the Add Record dialog based on provider state.
  */
 
 "use client"
 
+import { DnsZoneAddDialog } from "./dns-zone-add-dialog"
 import { useDnsZone } from "./dns-zone-provider"
 
 export function DnsZoneDialogs() {
-  const { open, setOpen, currentRow, setCurrentRow } = useDnsZone()
+  const { open, setOpen, selectedRecordType } = useDnsZone()
 
-  // TODO: Implement edit and delete dialogs for DNS records.
-  // For now, this is a placeholder that follows the Users feature pattern.
-
-  return null
+  return (
+    <>
+      {selectedRecordType && (
+        <DnsZoneAddDialog
+          key={`add-${selectedRecordType}`}
+          open={open === "add"}
+          onOpenChange={() => setOpen("add")}
+          recordType={selectedRecordType}
+        />
+      )}
+    </>
+  )
 }
