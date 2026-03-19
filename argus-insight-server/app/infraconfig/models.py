@@ -5,13 +5,13 @@ from sqlalchemy import Column, DateTime, Integer, String, func
 from app.core.database import Base
 
 
-class ArgusConfigurationInfra(Base):
+class ArgusConfiguration(Base):
     """Infrastructure configuration (key-value pairs).
 
     Categories group related settings together (e.g. 'network').
     """
 
-    __tablename__ = "argus_configuration_infra"
+    __tablename__ = "argus_configuration"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     category = Column(String(50), nullable=False)

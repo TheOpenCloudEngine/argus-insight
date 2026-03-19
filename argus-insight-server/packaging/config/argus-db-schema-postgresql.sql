@@ -214,7 +214,7 @@ ON CONFLICT (extension) DO NOTHING;
 -- Infrastructure configuration table
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS argus_configuration_infra (
+CREATE TABLE IF NOT EXISTS argus_configuration (
     id              SERIAL          PRIMARY KEY,
     category        VARCHAR(50)     NOT NULL,
     config_key      VARCHAR(100)    NOT NULL UNIQUE,
@@ -224,14 +224,14 @@ CREATE TABLE IF NOT EXISTS argus_configuration_infra (
     updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
 
-COMMENT ON TABLE argus_configuration_infra IS 'Infrastructure configuration (key-value, grouped by category)';
-COMMENT ON COLUMN argus_configuration_infra.category IS 'Category grouping (e.g. domain, powerdns)';
-COMMENT ON COLUMN argus_configuration_infra.config_key IS 'Unique setting key';
-COMMENT ON COLUMN argus_configuration_infra.config_value IS 'Setting value';
-COMMENT ON COLUMN argus_configuration_infra.description IS 'Human-readable description';
+COMMENT ON TABLE argus_configuration IS 'Infrastructure configuration (key-value, grouped by category)';
+COMMENT ON COLUMN argus_configuration.category IS 'Category grouping (e.g. domain, powerdns)';
+COMMENT ON COLUMN argus_configuration.config_key IS 'Unique setting key';
+COMMENT ON COLUMN argus_configuration.config_value IS 'Setting value';
+COMMENT ON COLUMN argus_configuration.description IS 'Human-readable description';
 
 -- Seed Infrastructure configuration
-INSERT INTO argus_configuration_infra (category, config_key, config_value, description) VALUES
+INSERT INTO argus_configuration (category, config_key, config_value, description) VALUES
 ('domain', 'domain_name',    '', 'Domain name for this infrastructure'),
 ('domain', 'dns_server_1',   '', 'Primary DNS server'),
 ('domain', 'dns_server_2',   '', 'Secondary DNS server'),

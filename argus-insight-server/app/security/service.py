@@ -8,7 +8,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.infraconfig.models import ArgusConfigurationInfra
+from app.infraconfig.models import ArgusConfiguration
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +27,9 @@ async def _get_config_value(session: AsyncSession, category: str, key: str) -> s
         "Querying config value: category=%s, key=%s", category, key,
     )
     result = await session.execute(
-        select(ArgusConfigurationInfra).where(
-            ArgusConfigurationInfra.category == category,
-            ArgusConfigurationInfra.config_key == key,
+        select(ArgusConfiguration).where(
+            ArgusConfiguration.category == category,
+            ArgusConfiguration.config_key == key,
         )
     )
     row = result.scalar_one_or_none()

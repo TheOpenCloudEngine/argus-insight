@@ -161,7 +161,7 @@ INSERT IGNORE INTO argus_configuration_filebrowser_extension (preview_id, extens
 -- Infrastructure configuration table
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS argus_configuration_infra (
+CREATE TABLE IF NOT EXISTS argus_configuration (
     id              INT             NOT NULL AUTO_INCREMENT PRIMARY KEY,
     category        VARCHAR(50)     NOT NULL                COMMENT 'Category grouping (e.g. domain, powerdns)',
     config_key      VARCHAR(100)    NOT NULL UNIQUE         COMMENT 'Unique setting key',
@@ -172,7 +172,7 @@ CREATE TABLE IF NOT EXISTS argus_configuration_infra (
 ) COMMENT='Infrastructure configuration (key-value, grouped by category)';
 
 -- Seed Infrastructure configuration
-INSERT IGNORE INTO argus_configuration_infra (category, config_key, config_value, description) VALUES
+INSERT IGNORE INTO argus_configuration (category, config_key, config_value, description) VALUES
 ('domain', 'domain_name',    '', 'Domain name for this infrastructure'),
 ('domain', 'dns_server_1',   '', 'Primary DNS server'),
 ('domain', 'dns_server_2',   '', 'Secondary DNS server'),
