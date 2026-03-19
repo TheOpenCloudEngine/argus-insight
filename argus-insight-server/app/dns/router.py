@@ -1,8 +1,12 @@
 """DNS zone management API endpoints."""
 
 import logging
+import tempfile
+import zipfile
+from pathlib import Path
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
@@ -50,6 +54,34 @@ async def export_bind_config(
 ) -> BindConfigResponse:
     """Export DNS zone records as BIND configuration files."""
     return await service.export_bind_config(session)
+
+
+@router.get("/zone/bind-config/download")
+async def download_bind_config(
+    session: AsyncSession = Depends(get_session),
+) -> FileResponse:
+    """Download BIND configuration files as a ZIP archive."""
+    result = await service.export_bind_config(session)
+
+    # Create ZIP in /tmp (auto-cleaned on reboot)
+    tmp = tempfile.NamedTemporaryFile(
+        prefix="bind-", suffix=".zip", dir="/tmp", delete=False,
+    )
+    tmp_path = tmp.name
+    tmp.close()
+
+    with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in result.files:
+            zf.writestr(f.filename, f.content)
+
+    logger.info("Created BIND config ZIP: %s (%d files)", tmp_path, len(result.files))
+
+    return FileResponse(
+        path=tmp_path,
+        filename=f"bind-{result.zone}.zip",
+        media_type="application/octet-stream",
+        background=None,
+    )
 
 
 @router.patch("/zone/records", status_code=204)
