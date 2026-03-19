@@ -70,7 +70,7 @@ export function DnsZoneBindConfButton() {
       onClick={() => setOpen("bind-conf")}
     >
       <FileCode2 className="mr-1.5 h-4 w-4" />
-      Bind Conf
+      Linux BIND
     </Button>
   )
 }

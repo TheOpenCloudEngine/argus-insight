@@ -130,8 +130,8 @@ export function DnsZoneTable({ data, isLoading }: DnsZoneTableProps) {
         extraActions={
           <>
             <DnsZoneAddButton />
-            <DnsZoneBindConfButton />
             <DnsZoneDeleteButton />
+            <DnsZoneBindConfButton />
           </>
         }
       />
