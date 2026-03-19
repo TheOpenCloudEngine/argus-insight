@@ -8,7 +8,7 @@
 "use client"
 
 import { type Row } from "@tanstack/react-table"
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react"
+import { Ban, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu"
 import { type DnsRecord } from "../data/schema"
+import { updateZoneRecords } from "../api"
 import { useDnsZone } from "./dns-zone-provider"
 
 type DataTableRowActionsProps = {
@@ -26,7 +27,26 @@ type DataTableRowActionsProps = {
 }
 
 export function DataTableRowActions({ row }: DataTableRowActionsProps) {
-  const { setOpen, setCurrentRow } = useDnsZone()
+  const { setOpen, setCurrentRow, refreshRecords } = useDnsZone()
+  const record = row.original
+
+  async function handleDisable() {
+    try {
+      await updateZoneRecords([
+        {
+          name: record.name,
+          type: record.type,
+          ttl: record.ttl,
+          changetype: "REPLACE",
+          records: [{ content: record.content, disabled: true }],
+        },
+      ])
+      await refreshRecords()
+    } catch (err) {
+      console.error("Failed to disable record:", err)
+    }
+  }
+
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
@@ -41,7 +61,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
       <DropdownMenuContent align="end" className="w-[160px]">
         <DropdownMenuItem
           onClick={() => {
-            setCurrentRow(row.original)
+            setCurrentRow(record)
             setOpen("edit")
           }}
         >
@@ -53,7 +73,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => {
-            setCurrentRow(row.original)
+            setCurrentRow(record)
             setOpen("delete")
           }}
           className="text-red-500!"
@@ -61,6 +81,13 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           Delete
           <span className="ml-auto">
             <Trash2 size={16} />
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={handleDisable}>
+          Disable
+          <span className="ml-auto">
+            <Ban size={16} />
           </span>
         </DropdownMenuItem>
       </DropdownMenuContent>

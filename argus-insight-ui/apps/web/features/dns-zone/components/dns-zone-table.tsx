@@ -33,6 +33,8 @@ import {
   TableHeader,
   TableRow,
 } from "@workspace/ui/components/table"
+import { X } from "lucide-react"
+import { Button } from "@workspace/ui/components/button"
 import { DataTableBulkActions, DataTableToolbar } from "@/components/data-table"
 import { recordStatuses, recordTypes } from "../data/data"
 import { type DnsRecord } from "../data/schema"
@@ -127,8 +129,8 @@ export function DnsZoneTable({ data, isLoading }: DnsZoneTableProps) {
         onClear={handleClear}
         extraActions={
           <>
-            <DnsZoneDeleteButton />
             <DnsZoneAddButton />
+            <DnsZoneDeleteButton />
           </>
         }
       />

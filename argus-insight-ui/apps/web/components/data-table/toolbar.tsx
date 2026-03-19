@@ -75,6 +75,17 @@ export function DataTableToolbar<TData>({
               />
             )
           })}
+          {onClear && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onClear}
+              className="h-8 px-3"
+            >
+              <X className="mr-1 h-4 w-4" />
+              Clear
+            </Button>
+          )}
         </div>
       </div>
       {(onSearch || onClear || extraActions) && (
@@ -88,17 +99,6 @@ export function DataTableToolbar<TData>({
             >
               <Search className="mr-1 h-4 w-4" />
               Search
-            </Button>
-          )}
-          {onClear && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onClear}
-              className="h-8 px-3"
-            >
-              <X className="mr-1 h-4 w-4" />
-              Clear
             </Button>
           )}
           {extraActions}
