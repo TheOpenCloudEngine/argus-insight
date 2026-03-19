@@ -37,7 +37,7 @@ function TreeNode({ label, icon, href, isActive, expandable, expanded, onToggle,
     <div
       className={cn(
         "flex items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors",
-        isActive ? "bg-accent text-accent-foreground font-medium" : "hover:bg-muted text-muted-foreground hover:text-foreground",
+        isActive ? "bg-accent text-accent-foreground font-medium" : "hover:bg-muted text-foreground",
       )}
       style={{ paddingLeft: `${depth * 16 + 8}px` }}
     >
@@ -93,7 +93,7 @@ function EntityGroup({ label, icon, items, loading, depth, pathname }: EntityGro
       {loading ? (
         <div className="flex items-center gap-2 py-1" style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}>
           <Loader2 className="h-3 w-3 animate-spin" />
-          <span className="text-muted-foreground text-xs">Loading...</span>
+          <span className="text-foreground/70 text-xs">Loading...</span>
         </div>
       ) : items.length > 0 ? (
         items.map((item) => (
@@ -172,7 +172,7 @@ function SchemaNode({ catalog, schema, depth, pathname }: SchemaNodeProps) {
       {loading ? (
         <div className="flex items-center gap-2 py-1" style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}>
           <Loader2 className="h-3 w-3 animate-spin" />
-          <span className="text-muted-foreground text-xs">Loading...</span>
+          <span className="text-foreground/70 text-xs">Loading...</span>
         </div>
       ) : (
         <>
@@ -255,7 +255,7 @@ function CatalogNode({ catalog, depth, pathname }: CatalogNodeProps) {
       {loading ? (
         <div className="flex items-center gap-2 py-1" style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}>
           <Loader2 className="h-3 w-3 animate-spin" />
-          <span className="text-muted-foreground text-xs">Loading...</span>
+          <span className="text-foreground/70 text-xs">Loading...</span>
         </div>
       ) : schemas.length > 0 ? (
         schemas.map((schema) => (
@@ -286,14 +286,14 @@ export function UCSchemaB() {
   }, [])
 
   return (
-    <div className="border-r pr-2">
-      <div className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+    <div className="border-r pr-2 text-black dark:text-white" style={{ fontSize: '120%' }}>
+      <div className="mb-2 px-2 text-sm font-semibold uppercase tracking-wider">
         Schema Browser
       </div>
       {loading ? (
         <div className="flex items-center gap-2 px-2 py-2">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          <span className="text-muted-foreground text-sm">Loading catalogs...</span>
+          <span className="text-foreground/70 text-sm">Loading catalogs...</span>
         </div>
       ) : catalogs.length > 0 ? (
         catalogs.map((cat) => (

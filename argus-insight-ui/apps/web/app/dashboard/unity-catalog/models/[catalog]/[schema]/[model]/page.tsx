@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation"
 import { Brain, MoreHorizontal, Trash2 } from "lucide-react"
 import Link from "next/link"
 
-import { DashboardHeader } from "@/components/dashboard-header"
 import { Button } from "@workspace/ui/components/button"
 import { Badge } from "@workspace/ui/components/badge"
 import {
@@ -64,7 +63,6 @@ export default function ModelDetailsPage() {
 
   return (
     <>
-      <DashboardHeader title={fullName} />
       <div className="flex flex-1 flex-col gap-4 p-4">
         <div className="flex items-center justify-between">
           <UCBreadcrumbs items={[

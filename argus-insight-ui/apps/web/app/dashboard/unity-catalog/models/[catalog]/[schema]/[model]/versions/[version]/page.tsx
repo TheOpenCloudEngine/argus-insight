@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { Badge } from "@workspace/ui/components/badge"
 
-import { DashboardHeader } from "@/components/dashboard-header"
 import { UCBreadcrumbs } from "@/features/unity-catalog/components/uc-breadcrumbs"
 import { UCDescriptionBox } from "@/features/unity-catalog/components/uc-description-box"
 import { UCDetailsLayout } from "@/features/unity-catalog/components/uc-details-layout"
@@ -41,7 +40,6 @@ export default function ModelVersionDetailsPage() {
 
   return (
     <>
-      <DashboardHeader title={`${modelName} v${versionStr}`} />
       <div className="flex flex-1 flex-col gap-4 p-4">
         <UCBreadcrumbs items={[
           { label: "Catalogs", href: UC_BASE },

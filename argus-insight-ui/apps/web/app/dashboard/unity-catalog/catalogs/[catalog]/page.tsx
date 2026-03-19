@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Database, Library, MoreHorizontal, Plus, Trash2 } from "lucide-react"
 
-import { DashboardHeader } from "@/components/dashboard-header"
 import { Button } from "@workspace/ui/components/button"
 import {
   DropdownMenu,
@@ -48,18 +47,14 @@ export default function CatalogDetailsPage() {
 
   if (!catalog && !isLoading) {
     return (
-      <>
-        <DashboardHeader title="Catalog Not Found" />
-        <div className="p-4">
-          <p className="text-muted-foreground">Catalog &apos;{catalogName}&apos; was not found.</p>
-        </div>
-      </>
+      <div className="p-4">
+        <p className="text-muted-foreground">Catalog &apos;{catalogName}&apos; was not found.</p>
+      </div>
     )
   }
 
   return (
     <>
-      <DashboardHeader title={catalogName} />
       <div className="flex flex-1 flex-col gap-4 p-4">
         <div className="flex items-center justify-between">
           <UCBreadcrumbs items={[

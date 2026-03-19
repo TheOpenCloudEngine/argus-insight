@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react"
 import { Library, Plus } from "lucide-react"
 
-import { DashboardHeader } from "@/components/dashboard-header"
 import { Button } from "@workspace/ui/components/button"
 import { UCEntityTable } from "@/features/unity-catalog/components/uc-entity-table"
 import { CreateCatalogDialog } from "@/features/unity-catalog/components/uc-create-catalog-dialog"
@@ -24,7 +23,6 @@ export default function CatalogsListPage() {
 
   return (
     <>
-      <DashboardHeader title="Catalogs" />
       <div className="flex flex-1 flex-col gap-4 p-4">
         <div className="flex items-center justify-between">
           <p className="text-muted-foreground text-sm">
