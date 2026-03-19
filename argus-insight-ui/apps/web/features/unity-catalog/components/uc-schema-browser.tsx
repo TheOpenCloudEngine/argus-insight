@@ -280,9 +280,13 @@ export function UCSchemaB() {
   const pathname = usePathname()
   const [catalogs, setCatalogs] = useState<Catalog[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    listCatalogs().then(setCatalogs).finally(() => setLoading(false))
+    listCatalogs()
+      .then(setCatalogs)
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load catalogs"))
+      .finally(() => setLoading(false))
   }, [])
 
   return (
@@ -295,6 +299,8 @@ export function UCSchemaB() {
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           <span className="text-foreground/70 text-sm">Loading catalogs...</span>
         </div>
+      ) : error ? (
+        <p className="text-destructive px-2 text-xs">{error}</p>
       ) : catalogs.length > 0 ? (
         catalogs.map((cat) => (
           <CatalogNode key={cat.name} catalog={cat} depth={0} pathname={pathname} />

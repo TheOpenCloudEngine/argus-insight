@@ -12,11 +12,16 @@ import type { Catalog } from "@/features/unity-catalog/data/schema"
 export default function CatalogsListPage() {
   const [catalogs, setCatalogs] = useState<Catalog[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
 
   function loadCatalogs() {
     setIsLoading(true)
-    listCatalogs().then(setCatalogs).finally(() => setIsLoading(false))
+    setError(null)
+    listCatalogs()
+      .then(setCatalogs)
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load catalogs"))
+      .finally(() => setIsLoading(false))
   }
 
   useEffect(() => { loadCatalogs() }, [])
@@ -32,13 +37,17 @@ export default function CatalogsListPage() {
             <Plus className="mr-1.5 h-4 w-4" /> Create Catalog
           </Button>
         </div>
-        <UCEntityTable
-          data={catalogs}
-          isLoading={isLoading}
-          emptyMessage="No catalogs found. Create one to get started."
-          nameIcon={<Library className="h-4 w-4 text-muted-foreground" />}
-          getHref={(c) => `/dashboard/unity-catalog/catalogs/${c.name}`}
-        />
+        {error ? (
+          <p className="text-sm text-destructive py-4">{error}</p>
+        ) : (
+          <UCEntityTable
+            data={catalogs}
+            isLoading={isLoading}
+            emptyMessage="No catalogs found. Create one to get started."
+            nameIcon={<Library className="h-4 w-4 text-muted-foreground" />}
+            getHref={(c) => `/dashboard/unity-catalog/catalogs/${c.name}`}
+          />
+        )}
       </div>
       <CreateCatalogDialog open={createOpen} onOpenChange={setCreateOpen} onSuccess={loadCatalogs} />
     </>

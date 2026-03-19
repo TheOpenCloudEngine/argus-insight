@@ -25,6 +25,7 @@ from app.objectfilemgr.router import router as objectfilemgr_router
 from app.proxy.router import router as proxy_router
 from app.security.router import router as security_router
 from app.servermgr.router import router as servermgr_router
+from app.unity_catalog.router import router as unity_catalog_router
 from app.usermgr.router import router as usermgr_router
 from workspace_provisioner.router import router as workspace_router
 from workspace_provisioner.router import init_gitlab_client
@@ -123,6 +124,7 @@ app.include_router(settings_router, prefix="/api/v1")
 app.include_router(notes_router, prefix="/api/v1")
 app.include_router(objectfilemgr_router, prefix="/api/v1")
 app.include_router(security_router, prefix="/api/v1")
+app.include_router(unity_catalog_router, prefix="/api/v1")
 app.include_router(workspace_router, prefix="/api/v1")
 
 
