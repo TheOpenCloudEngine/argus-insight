@@ -340,6 +340,22 @@ export async function testUnityCatalog(
   return res.json()
 }
 
+export async function initializeUnityCatalog(
+  url: string,
+  accessToken: string,
+): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${BASE}/unity-catalog/initialize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, access_token: accessToken }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: `Initialize failed: ${res.status}` }))
+    throw new Error(data.detail || `Initialize failed: ${res.status}`)
+  }
+  return res.json()
+}
+
 export async function testDockerRegistry(
   url: string,
   username: string,

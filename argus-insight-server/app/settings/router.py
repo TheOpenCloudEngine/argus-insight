@@ -14,6 +14,8 @@ from app.settings.schemas import (
     DockerRegistryTestRequest,
     DockerRegistryTestResponse,
     InfraConfigResponse,
+    UnityCatalogInitRequest,
+    UnityCatalogInitResponse,
     UnityCatalogTestRequest,
     UnityCatalogTestResponse,
     UpdateInfraCategoryRequest,
@@ -56,6 +58,13 @@ async def test_unity_catalog(body: UnityCatalogTestRequest) -> UnityCatalogTestR
     """Test connectivity to a Unity Catalog server."""
     result = await service.test_unity_catalog(body.url, body.access_token)
     return UnityCatalogTestResponse(**result)
+
+
+@router.post("/unity-catalog/initialize", response_model=UnityCatalogInitResponse)
+async def initialize_unity_catalog(body: UnityCatalogInitRequest) -> UnityCatalogInitResponse:
+    """Initialize Unity Catalog with 'global' metastore and 'default' catalog."""
+    result = await service.initialize_unity_catalog(body.url, body.access_token)
+    return UnityCatalogInitResponse(**result)
 
 
 @router.post("/check-path", response_model=CheckPathResponse)

@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Eye, EyeOff, Loader2, Play, Save } from "lucide-react"
+import { Eye, EyeOff, Loader2, Play, Rocket, Save } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@workspace/ui/components/card"
@@ -10,6 +10,7 @@ import { Label } from "@workspace/ui/components/label"
 
 import {
   fetchArgusConfig,
+  initializeUnityCatalog,
   testDockerRegistry,
   testUnityCatalog,
   updateArgusConfig,
@@ -30,6 +31,7 @@ export function ArgusSettings() {
   const [ucAccessToken, setUcAccessToken] = useState("")
   const [ucSaving, setUcSaving] = useState(false)
   const [ucTesting, setUcTesting] = useState(false)
+  const [ucInitializing, setUcInitializing] = useState(false)
   const [showUcToken, setShowUcToken] = useState(false)
 
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
@@ -142,6 +144,23 @@ export function ArgusSettings() {
       setUcTestResult({ type: "error", text: err instanceof Error ? err.message : "Test failed" })
     } finally {
       setUcTesting(false)
+    }
+  }
+
+  async function handleUcInitialize() {
+    setUcInitializing(true)
+    setUcTestResult(null)
+    try {
+      const result = await initializeUnityCatalog(ucUrlTrimmed, ucAccessTokenTrimmed)
+      if (result.success) {
+        setUcTestResult({ type: "success", text: result.message || "Unity Catalog initialized successfully" })
+      } else {
+        setUcTestResult({ type: "error", text: result.message || "Initialization failed" })
+      }
+    } catch (err) {
+      setUcTestResult({ type: "error", text: err instanceof Error ? err.message : "Initialization failed" })
+    } finally {
+      setUcInitializing(false)
     }
   }
 
@@ -311,6 +330,14 @@ export function ArgusSettings() {
                   <Play className="h-4 w-4 mr-1.5" />
                 )}
                 Test
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleUcInitialize} disabled={ucInitializing || !canSaveUc}>
+                {ucInitializing ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                ) : (
+                  <Rocket className="h-4 w-4 mr-1.5" />
+                )}
+                Initialize
               </Button>
             </div>
           </div>

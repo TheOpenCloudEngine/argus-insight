@@ -119,6 +119,89 @@ async def test_unity_catalog(url: str, access_token: str) -> dict[str, object]:
     return {"success": False, "message": f"Unity Catalog returned status {resp.status_code}"}
 
 
+async def initialize_unity_catalog(url: str, access_token: str) -> dict[str, object]:
+    """Initialize Unity Catalog with 'global' catalog and 'default' schema."""
+    base_url = url.rstrip("/")
+    api_base = f"{base_url}/api/2.1/unity-catalog"
+
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if access_token:
+        headers["Authorization"] = f"Bearer {access_token}"
+
+    steps: list[str] = []
+
+    try:
+        async with httpx.AsyncClient(verify=False, timeout=15.0) as client:
+            # Step 1: List catalogs and check for "global"
+            resp = await client.get(f"{api_base}/catalogs", headers=headers)
+            if resp.status_code != 200:
+                return {
+                    "success": False,
+                    "message": f"Failed to list catalogs: {resp.status_code}",
+                }
+
+            catalogs = resp.json().get("catalogs", [])
+            global_exists = any(c.get("name") == "global" for c in catalogs)
+
+            # Step 2: Create "global" catalog if missing
+            if not global_exists:
+                create_resp = await client.post(
+                    f"{api_base}/catalogs",
+                    headers=headers,
+                    json={"name": "global", "comment": "Global metastore"},
+                )
+                if create_resp.status_code not in (200, 201):
+                    return {
+                        "success": False,
+                        "message": f"Failed to create 'global' catalog: {create_resp.status_code}",
+                    }
+                steps.append("Created catalog 'global'")
+            else:
+                steps.append("Catalog 'global' already exists")
+
+            # Step 3: List schemas under "global" and check for "default"
+            resp = await client.get(
+                f"{api_base}/schemas", headers=headers, params={"catalog_name": "global"},
+            )
+            if resp.status_code != 200:
+                return {
+                    "success": False,
+                    "message": f"Failed to list schemas: {resp.status_code}",
+                }
+
+            schemas = resp.json().get("schemas", [])
+            default_exists = any(s.get("name") == "default" for s in schemas)
+
+            # Step 4: Create "default" schema if missing
+            if not default_exists:
+                create_resp = await client.post(
+                    f"{api_base}/schemas",
+                    headers=headers,
+                    json={
+                        "catalog_name": "global",
+                        "name": "default",
+                        "comment": "Default catalog",
+                    },
+                )
+                if create_resp.status_code not in (200, 201):
+                    return {
+                        "success": False,
+                        "message": f"Failed to create 'default' schema: {create_resp.status_code}",
+                    }
+                steps.append("Created schema 'default' under 'global'")
+            else:
+                steps.append("Schema 'default' already exists under 'global'")
+
+    except httpx.ConnectError:
+        return {"success": False, "message": f"Cannot connect to {base_url}"}
+    except httpx.TimeoutException:
+        return {"success": False, "message": f"Connection to {base_url} timed out"}
+    except Exception as exc:
+        return {"success": False, "message": str(exc)}
+
+    return {"success": True, "message": ". ".join(steps)}
+
+
 async def seed_infra_config(session: AsyncSession) -> None:
     """Seed default infrastructure configuration if not present."""
     defaults = [

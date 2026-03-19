@@ -66,6 +66,20 @@ class UnityCatalogTestResponse(BaseModel):
     message: str
 
 
+class UnityCatalogInitRequest(BaseModel):
+    """Request to initialize Unity Catalog with default metastore and catalog."""
+
+    url: str = Field(description="Unity Catalog URL")
+    access_token: str = Field(default="", description="Unity Catalog access token")
+
+
+class UnityCatalogInitResponse(BaseModel):
+    """Response from Unity Catalog initialization."""
+
+    success: bool
+    message: str
+
+
 class CheckPathRequest(BaseModel):
     """Request to check if a file path exists on the server."""
 
