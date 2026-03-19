@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Loader2, Save } from "lucide-react"
+import { Eye, EyeOff, Loader2, Save } from "lucide-react"
 
 import {
   AlertDialog,
@@ -218,11 +218,13 @@ function PowerDnsSettingsSection({
   onSave,
   saving,
 }: {
-  values: { ip: string; port: string; api_key: string; server_id: string }
+  values: { ip: string; port: string; api_key: string; server_id: string; admin_url: string }
   onChange: (key: string, value: string) => void
   onSave: () => void
   saving: boolean
 }) {
+  const [showApiKey, setShowApiKey] = useState(false)
+
   const ipTrimmed = values.ip.trim()
   const portTrimmed = values.port.trim()
   const apiKeyTrimmed = values.api_key.trim()
@@ -299,13 +301,29 @@ function PowerDnsSettingsSection({
             <Label htmlFor="pdns-api-key">
               API Key <span className="text-destructive">*</span>
             </Label>
-            <Input
-              id="pdns-api-key"
-              type="password"
-              value={values.api_key}
-              onChange={(e) => onChange("api_key", e.target.value)}
-              placeholder="PowerDNS API key"
-            />
+            <div className="relative">
+              <Input
+                id="pdns-api-key"
+                type={showApiKey ? "text" : "password"}
+                value={values.api_key}
+                onChange={(e) => onChange("api_key", e.target.value)}
+                placeholder="PowerDNS API key"
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowApiKey((prev) => !prev)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                tabIndex={-1}
+                aria-label={showApiKey ? "Hide API key" : "Show API key"}
+              >
+                {showApiKey ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
+            </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="pdns-server-id">Server ID</Label>
@@ -315,6 +333,18 @@ function PowerDnsSettingsSection({
               onChange={(e) => onChange("server_id", e.target.value)}
               placeholder="e.g. localhost"
             />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="pdns-admin-url">PowerDNS Admin URL</Label>
+            <Input
+              id="pdns-admin-url"
+              value={values.admin_url}
+              onChange={(e) => onChange("admin_url", e.target.value)}
+              placeholder="e.g. http://10.0.1.50:9191"
+            />
+            <p className="text-xs text-muted-foreground">
+              PowerDNS Admin 웹 UI 주소
+            </p>
           </div>
         </div>
       </CardContent>
@@ -338,7 +368,7 @@ export function DomainSettings() {
   const [dnsServers, setDnsServers] = useState<[string, string, string]>(["", "", ""])
 
   // PowerDNS state
-  const [pdns, setPdns] = useState({ ip: "", port: "", api_key: "", server_id: "" })
+  const [pdns, setPdns] = useState({ ip: "", port: "", api_key: "", server_id: "", admin_url: "" })
 
   // Status messages
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
@@ -364,6 +394,7 @@ export function DomainSettings() {
         port: powerdns.pdns_port ?? "",
         api_key: powerdns.pdns_api_key ?? "",
         server_id: powerdns.pdns_server_id ?? "",
+        admin_url: powerdns.pdns_admin_url ?? "",
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load configuration")
@@ -421,6 +452,7 @@ export function DomainSettings() {
         pdns_port: pdns.port,
         pdns_api_key: pdns.api_key,
         pdns_server_id: pdns.server_id,
+        pdns_admin_url: pdns.admin_url,
       })
       showStatus("success", "PowerDNS settings saved successfully")
       await loadConfig()
