@@ -2,22 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Database, Library, MoreHorizontal, Plus, Trash2 } from "lucide-react"
+import { Database, Plus, Trash2 } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@workspace/ui/components/dropdown-menu"
 import { UCBreadcrumbs } from "@/features/unity-catalog/components/uc-breadcrumbs"
 import { UCDescriptionBox } from "@/features/unity-catalog/components/uc-description-box"
 import { UCDetailsLayout } from "@/features/unity-catalog/components/uc-details-layout"
 import { UCTimestampMetadata } from "@/features/unity-catalog/components/uc-metadata-list"
 import { UCEntityTable } from "@/features/unity-catalog/components/uc-entity-table"
 import { CreateSchemaDialog } from "@/features/unity-catalog/components/uc-create-schema-dialog"
-import { UCDeleteDialog } from "@/features/unity-catalog/components/uc-delete-dialog"
+import { UCDeleteCatalogDialog } from "@/features/unity-catalog/components/uc-delete-catalog-dialog"
 import { getCatalog, listSchemas, updateCatalog, deleteCatalog } from "@/features/unity-catalog/api"
 import type { Catalog, Schema } from "@/features/unity-catalog/data/schema"
 
@@ -31,6 +25,8 @@ export default function CatalogDetailsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [createSchemaOpen, setCreateSchemaOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+
+  const isGlobal = catalogName === "global"
 
   const loadData = useCallback(async () => {
     setIsLoading(true)
@@ -65,18 +61,14 @@ export default function CatalogDetailsPage() {
             <Button size="sm" onClick={() => setCreateSchemaOpen(true)}>
               <Plus className="mr-1.5 h-4 w-4" /> Create Schema
             </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem className="text-destructive" onClick={() => setDeleteOpen(true)}>
-                  <Trash2 className="mr-2 h-4 w-4" /> Delete Catalog
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={isGlobal}
+              onClick={() => setDeleteOpen(true)}
+            >
+              <Trash2 className="mr-1.5 h-4 w-4" /> Delete Catalog
+            </Button>
           </div>
         </div>
 
@@ -114,11 +106,10 @@ export default function CatalogDetailsPage() {
         catalogName={catalogName}
         onSuccess={loadData}
       />
-      <UCDeleteDialog
+      <UCDeleteCatalogDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        entityType="catalog"
-        entityName={catalogName}
+        catalogName={catalogName}
         onConfirm={async () => {
           await deleteCatalog(catalogName)
           router.push("/dashboard/unity-catalog")
