@@ -311,3 +311,32 @@ export async function generateSelfSignedCa(
   }
   return res.json()
 }
+
+// --------------------------------------------------------------------------- //
+// Argus Settings
+// --------------------------------------------------------------------------- //
+
+export async function fetchArgusConfig(): Promise<Record<string, string>> {
+  return fetchCategory("argus")
+}
+
+export async function updateArgusConfig(items: Record<string, string>): Promise<void> {
+  return updateCategory("argus", items)
+}
+
+export async function testDockerRegistry(
+  url: string,
+  username: string,
+  password: string,
+): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${BASE}/docker-registry/test`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, username, password }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: `Test failed: ${res.status}` }))
+    throw new Error(data.detail || `Test failed: ${res.status}`)
+  }
+  return res.json()
+}

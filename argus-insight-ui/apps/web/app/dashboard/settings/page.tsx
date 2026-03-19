@@ -7,6 +7,7 @@ import { FileBrowserSettings } from "@/features/settings/components/file-browser
 import { DomainSettings } from "@/features/settings/components/domain-settings"
 import { LdapSettings } from "@/features/settings/components/ldap-settings"
 import { SecuritySettings } from "@/features/settings/components/security-settings"
+import { ArgusSettings } from "@/features/settings/components/argus-settings"
 
 export default function SettingsPage() {
   return (
@@ -20,6 +21,7 @@ export default function SettingsPage() {
             <TabsTrigger value="command" className="text-base">Command</TabsTrigger>
             <TabsTrigger value="file-browser" className="text-base">File Browser</TabsTrigger>
             <TabsTrigger value="security" className="text-base">Security</TabsTrigger>
+            <TabsTrigger value="argus" className="text-base">Argus</TabsTrigger>
           </TabsList>
           <TabsContent value="domain" className="mt-4">
             <DomainSettings />
@@ -35,6 +37,9 @@ export default function SettingsPage() {
           </TabsContent>
           <TabsContent value="security" className="mt-4">
             <SecuritySettings />
+          </TabsContent>
+          <TabsContent value="argus" className="mt-4">
+            <ArgusSettings />
           </TabsContent>
         </Tabs>
       </div>
