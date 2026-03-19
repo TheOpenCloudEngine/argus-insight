@@ -1,11 +1,11 @@
-"""Data models for user/group synchronization."""
+"""Data models for user/group synchronization to Argus platform database."""
 
 from dataclasses import dataclass, field
 
 
 @dataclass
 class UserInfo:
-    """Represents a user to be synced to Ranger."""
+    """Represents a user to be synced to the Argus database."""
 
     name: str
     first_name: str = ""
@@ -25,7 +25,7 @@ class UserInfo:
 
 @dataclass
 class GroupInfo:
-    """Represents a group to be synced to Ranger."""
+    """Represents a group from the sync source."""
 
     name: str
     description: str = ""

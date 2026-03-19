@@ -31,11 +31,13 @@ sync:
   min_uid: 1000
   min_gid: 1000
 
-ranger:
-  url: http://localhost:6080
-  username: admin
-  password: admin
-  timeout: 10
+database:
+  type: postgresql
+  host: localhost
+  port: 5432
+  name: argus
+  username: argus
+  password: argus
 
 file:
   users_path: ""

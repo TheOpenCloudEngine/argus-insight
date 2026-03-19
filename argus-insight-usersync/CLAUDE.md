@@ -1,26 +1,26 @@
 # Argus Insight UserSync
 
-Apache Ranger UserSync의 Python 구현체입니다. 외부 소스(LDAP/AD, Unix, 파일)에서 사용자와 그룹 정보를 읽어 Apache Ranger Admin에 동기화하는 배치 작업입니다.
+외부 소스(LDAP/AD, Unix, 파일)에서 사용자와 그룹 정보를 읽어 Argus 플랫폼 데이터베이스(argus_users 테이블)에 동기화하는 배치 작업입니다.
 
 ## 핵심 기능
 
-- **사용자/그룹 동기화**: 외부 소스에서 사용자/그룹을 가져와 Ranger Admin에 생성/업데이트
+- **사용자 동기화**: 외부 소스에서 사용자를 가져와 argus_users 테이블에 생성/업데이트
 - **다중 소스 지원**: LDAP/Active Directory, Unix (/etc/passwd, /etc/group), 파일(CSV/JSON)
-- **그룹 멤버십 동기화**: 사용자-그룹 매핑을 Ranger에 반영
-- **변경 감지**: 기존 Ranger 데이터와 비교하여 변경된 항목만 업데이트
-- **드라이런 모드**: Ranger를 수정하지 않고 동기화 대상을 미리 확인
+- **변경 감지**: 기존 DB 데이터와 비교하여 변경된 항목만 업데이트
+- **비활성화 처리**: 소스에서 제거된 사용자를 inactive로 변경 (soft-delete)
+- **드라이런 모드**: DB를 수정하지 않고 동기화 대상을 미리 확인
 
 ## 아키텍처
 
 ```
-External Source (LDAP/Unix/File)  →  SyncEngine  →  Ranger Admin REST API
+External Source (LDAP/Unix/File)  →  SyncEngine  →  Argus Database (argus_users)
                                          ↑
                                     config.yml
 ```
 
 - **SyncSource**: 소스별 사용자/그룹 조회 추상화 (LDAP, Unix, File)
-- **RangerClient**: Ranger Admin XUser REST API 클라이언트
-- **SyncEngine**: 소스 → Ranger 동기화 오케스트레이터
+- **DatabaseClient**: Argus 플랫폼 DB 직접 접근 클라이언트 (SQLAlchemy)
+- **SyncEngine**: 소스 → DB 동기화 오케스트레이터
 
 ## 운영 환경
 
@@ -36,7 +36,9 @@ External Source (LDAP/Unix/File)  →  SyncEngine  →  Ranger Admin REST API
 ## 기술 스택
 
 - Python 3.11+
-- httpx (Ranger Admin REST API 통신)
+- SQLAlchemy (Argus 플랫폼 DB 접근)
+- psycopg2 (PostgreSQL 드라이버)
+- pymysql (MariaDB/MySQL 드라이버)
 - python-ldap (LDAP/AD 소스)
 - PyYAML (설정 파일 파싱)
 - 빌드: setuptools
@@ -60,15 +62,15 @@ argus-insight-usersync/
 │   │   ├── ldap_source.py   # LDAP/AD 소스 (python-ldap, 페이지 검색)
 │   │   ├── unix_source.py   # Unix 소스 (/etc/passwd, /etc/group)
 │   │   └── file_source.py   # 파일 소스 (CSV, JSON)
-│   ├── ranger/              # Ranger Admin 클라이언트
-│   │   └── client.py        # XUser REST API 클라이언트 (사용자/그룹/멤버십 CRUD)
+│   ├── db/                  # 데이터베이스 클라이언트
+│   │   └── client.py        # Argus DB 직접 접근 (사용자 CRUD, SQLAlchemy)
 │   └── sync/                # 동기화 엔진
-│       └── engine.py        # SyncEngine (소스 → Ranger 오케스트레이션)
+│       └── engine.py        # SyncEngine (소스 → DB 오케스트레이션)
 ├── tests/
 │   ├── conftest.py          # 공통 fixtures
 │   ├── test_models.py       # 데이터 모델 테스트
 │   ├── test_file_source.py  # 파일 소스 테스트
-│   ├── test_ranger_client.py # Ranger 클라이언트 테스트
+│   ├── test_db_client.py    # DB 클라이언트 테스트
 │   └── test_sync_engine.py  # 동기화 엔진 테스트
 ├── packaging/
 │   ├── config/
@@ -109,10 +111,12 @@ Spring Boot 스타일의 `${변수:기본값}` 문법을 사용합니다.
 | file | users_path | file.users_path | (비어있음) | 사용자 파일 경로 |
 | file | groups_path | file.groups_path | (비어있음) | 그룹 파일 경로 |
 | file | format | file.format | csv | 파일 형식 (csv/json) |
-| ranger | url | ranger.url | http://localhost:6080 | Ranger Admin URL |
-| ranger | username | ranger.username | admin | Ranger Admin 사용자명 |
-| ranger | password | ranger.password | admin | Ranger Admin 비밀번호 |
-| ranger | timeout | ranger.timeout | 30 | Ranger API 타임아웃 (초) |
+| database | type | database.type | postgresql | DB 타입 (postgresql/mariadb/mysql) |
+| database | host | database.host | localhost | DB 호스트 |
+| database | port | database.port | 5432 | DB 포트 |
+| database | name | database.name | argus | DB 이름 |
+| database | username | database.username | argus | DB 사용자명 |
+| database | password | database.password | argus | DB 비밀번호 |
 
 ## CLI 실행 및 옵션
 
@@ -124,7 +128,7 @@ python -m app.main
 # 설정 파일 지정
 python -m app.main --config-yaml /path/to/config.yml --config-properties /path/to/config.properties
 
-# 드라이런 (Ranger 수정 없이 소스 데이터만 확인)
+# 드라이런 (DB 수정 없이 소스 데이터만 확인)
 python -m app.main --dry-run
 
 # pip install 후 명령어 실행
@@ -139,7 +143,7 @@ argus-insight-usersync --dry-run
 | `--help` | 도움말 출력 |
 | `--config-yaml PATH` | YAML 설정 파일 경로 지정 |
 | `--config-properties PATH` | Properties 변수 파일 경로 지정 |
-| `--dry-run` | Ranger를 수정하지 않고 소스 데이터만 출력 |
+| `--dry-run` | DB를 수정하지 않고 소스 데이터만 출력 |
 
 ## 주요 명령어
 
@@ -165,22 +169,8 @@ make lint
 make format
 ```
 
-## Ranger Admin REST API
-
-실제 Ranger UserSync와 동일한 Bulk UGSync API를 사용합니다:
-
-| Method | Path | 설명 |
-|--------|------|------|
-| GET | /service/xusers/ugsync/groupusers | 기존 그룹-사용자 매핑 조회 (캐시 빌드) |
-| POST | /service/xusers/ugsync/users | 사용자 벌크 생성/수정 (VXUserList) |
-| POST | /service/xusers/ugsync/groups | 그룹 벌크 생성/수정 (VXGroupList) |
-| POST | /service/xusers/ugsync/groupusers | 그룹 멤버십 벌크 동기화 (addUsers/delUsers) |
-| POST | /service/xusers/ugsync/users/visibility | 삭제된 사용자 비가시 처리 |
-| POST | /service/xusers/ugsync/groups/visibility | 삭제된 그룹 비가시 처리 |
-| POST | /service/xusers/ugsync/auditinfo | 동기화 감사 정보 전송 |
-
 ## 코딩 규칙
 
 - ruff 린터: `target-version = "py311"`, `line-length = 100`, 규칙 `E, F, I, N, W`
-- 테스트: pytest, httpx mock (respx)
-- 모듈 패턴: source/ (소스 추상화), ranger/ (API 클라이언트), sync/ (오케스트레이션)
+- 테스트: pytest, unittest.mock
+- 모듈 패턴: source/ (소스 추상화), db/ (DB 클라이언트), sync/ (오케스트레이션)

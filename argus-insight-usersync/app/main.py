@@ -1,7 +1,7 @@
 """Argus Insight UserSync - Standalone batch job entry point.
 
 Synchronizes users and groups from external sources (LDAP/Unix/File)
-to Apache Ranger Admin. Designed to run as a daily cron/systemd timer job.
+to the Argus platform database. Designed to run as a daily cron/systemd timer job.
 
 Usage:
     argus-insight-usersync
@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
         prog="argus-insight-usersync",
-        description="Sync users and groups from LDAP/Unix/File to Apache Ranger Admin",
+        description="Sync users and groups from LDAP/Unix/File to Argus platform database",
     )
     parser.add_argument(
         "--config-yaml",
@@ -37,14 +37,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Fetch from source and log what would be synced without modifying Ranger",
+        help="Fetch from source and log what would be synced without modifying database",
     )
     return parser.parse_args()
 
 
 def run_dry(source_type: str) -> None:
     """Execute a dry run: fetch from source and report without syncing."""
-    from app.core.config import settings
     from app.source.base import SyncSource
 
     def _create_source() -> SyncSource:
@@ -67,7 +66,6 @@ def run_dry(source_type: str) -> None:
 
     logger.info("=== DRY RUN RESULTS ===")
     logger.info("Source: %s", source_type)
-    logger.info("Ranger URL: %s", settings.ranger_url)
     logger.info("Users found: %d", len(users))
     for u in users:
         logger.info("  User: %s (groups: %s)", u.name, ", ".join(u.group_names))
@@ -96,10 +94,9 @@ def main() -> None:
     setup_logging()
 
     logger.info(
-        "Argus Insight UserSync %s starting (source=%s, ranger=%s)",
+        "Argus Insight UserSync %s starting (source=%s)",
         settings.app_version,
         settings.sync_source,
-        settings.ranger_url,
     )
 
     if args.dry_run:

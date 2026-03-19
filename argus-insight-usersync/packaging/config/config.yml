@@ -48,10 +48,11 @@ file:
   groups_path: ${file.groups_path:}
   format: ${file.format:csv}
 
-# Apache Ranger Admin
-ranger:
-  url: ${ranger.url:http://localhost:6080}
-  username: ${ranger.username:admin}
-  password: ${ranger.password:admin}
-  timeout: ${ranger.timeout:30}
-  ssl_verify: ${ranger.ssl_verify:true}
+# Argus Platform Database
+database:
+  type: ${database.type:postgresql}
+  host: ${database.host:localhost}
+  port: ${database.port:5432}
+  name: ${database.name:argus}
+  username: ${database.username:argus}
+  password: ${database.password:argus}

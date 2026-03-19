@@ -103,12 +103,13 @@ class Settings:
         self.file_groups_path: str = _get("file", "groups_path", "")
         self.file_format: str = _get("file", "format", "csv")
 
-        # Ranger Admin
-        self.ranger_url: str = _get("ranger", "url", "http://localhost:6080")
-        self.ranger_username: str = _get("ranger", "username", "admin")
-        self.ranger_password: str = _get("ranger", "password", "admin")
-        self.ranger_timeout: int = int(_get("ranger", "timeout", 30))
-        self.ranger_ssl_verify: bool = _to_bool(_get("ranger", "ssl_verify", True))
+        # Database (Argus platform DB)
+        self.db_type: str = _get("database", "type", "postgresql")
+        self.db_host: str = _get("database", "host", "localhost")
+        self.db_port: int = int(_get("database", "port", 5432))
+        self.db_name: str = _get("database", "name", "argus")
+        self.db_username: str = _get("database", "username", "argus")
+        self.db_password: str = _get("database", "password", "argus")
 
         # Config
         self.config_dir: Path = _CONFIG_DIR
