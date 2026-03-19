@@ -1,10 +1,11 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Database, Plus, Trash2 } from "lucide-react"
+import { Database, Plus, Search, Trash2 } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
+import { Input } from "@workspace/ui/components/input"
 import { UCBreadcrumbs } from "@/features/unity-catalog/components/uc-breadcrumbs"
 import { UCDescriptionBox } from "@/features/unity-catalog/components/uc-description-box"
 import { UCDetailsLayout } from "@/features/unity-catalog/components/uc-details-layout"
@@ -27,7 +28,36 @@ export default function CatalogDetailsPage() {
   const [createSchemaOpen, setCreateSchemaOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
+  const [filter, setFilter] = useState("")
+  const [appliedFilter, setAppliedFilter] = useState("")
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const hasDeletableSchemas = schemas.some((s) => s.name !== "default")
+
+  const filteredSchemas = useMemo(() => {
+    if (!appliedFilter) return schemas
+    const q = appliedFilter.toLowerCase()
+    return schemas.filter(
+      (s) => s.name.toLowerCase().includes(q) || (s.owner ?? "").toLowerCase().includes(q),
+    )
+  }, [schemas, appliedFilter])
+
+  function applyFilter(value: string) {
+    setAppliedFilter(value)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+  }
+
+  function handleFilterChange(value: string) {
+    setFilter(value)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => applyFilter(value), 3000)
+  }
+
+  function handleFilterKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") {
+      applyFilter(filter)
+    }
+  }
 
   const loadData = useCallback(async () => {
     setIsLoading(true)
@@ -90,12 +120,28 @@ export default function CatalogDetailsPage() {
 
           <div className="space-y-3">
             <h4 className="text-sm font-semibold">Schemas</h4>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Filter schemas..."
+                value={filter}
+                onChange={(e) => handleFilterChange(e.target.value)}
+                onKeyDown={handleFilterKeyDown}
+                className="pl-8"
+              />
+            </div>
             <UCEntityTable
-              data={schemas}
+              data={filteredSchemas}
               isLoading={isLoading}
-              emptyMessage="No schemas in this catalog."
+              emptyMessage={appliedFilter ? "No schemas matching the filter." : "No schemas in this catalog."}
               nameIcon={<Database className="h-4 w-4 text-muted-foreground" />}
               getHref={(s) => `/dashboard/unity-catalog/schemas/${catalogName}/${s.name}`}
+              extraColumns={[
+                {
+                  header: "Owner",
+                  cell: (s) => <span className="text-muted-foreground">{s.owner ?? "-"}</span>,
+                },
+              ]}
             />
           </div>
         </UCDetailsLayout>
@@ -105,7 +151,7 @@ export default function CatalogDetailsPage() {
         open={createSchemaOpen}
         onOpenChange={setCreateSchemaOpen}
         catalogName={catalogName}
-        onSuccess={loadData}
+        onSuccess={() => { loadData(); dispatchUcRefresh() }}
       />
       <UCDeleteSchemaDialog
         open={deleteOpen}

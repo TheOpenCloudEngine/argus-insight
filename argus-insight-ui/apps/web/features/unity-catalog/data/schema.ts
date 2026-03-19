@@ -12,6 +12,7 @@ export const schemaSchema = z.object({
   catalog_name: z.string(),
   name: z.string(),
   full_name: z.string(),
+  owner: z.string().nullable().optional(),
   comment: z.string().nullable().optional(),
   created_at: z.number().nullable().optional(),
   updated_at: z.number().nullable().optional(),
