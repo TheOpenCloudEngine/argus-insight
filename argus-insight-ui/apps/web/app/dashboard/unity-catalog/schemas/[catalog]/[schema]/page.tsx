@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams } from "next/navigation"
 import {
   Brain,
   ChevronDown,
@@ -9,7 +9,6 @@ import {
   FunctionSquare,
   HardDrive,
   Table2,
-  Trash2,
 } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
@@ -24,7 +23,6 @@ import { UCDescriptionBox } from "@/features/unity-catalog/components/uc-descrip
 import { UCDetailsLayout } from "@/features/unity-catalog/components/uc-details-layout"
 import { UCTimestampMetadata } from "@/features/unity-catalog/components/uc-metadata-list"
 import { UCEntityTable } from "@/features/unity-catalog/components/uc-entity-table"
-import { UCDeleteDialog } from "@/features/unity-catalog/components/uc-delete-dialog"
 import { CreateTableDialog } from "@/features/unity-catalog/components/uc-create-table-dialog"
 import {
   getSchema,
@@ -33,7 +31,6 @@ import {
   listFunctions,
   listModels,
   updateSchema,
-  deleteSchema,
 } from "@/features/unity-catalog/api"
 import { dispatchUcRefresh } from "@/features/unity-catalog/events"
 import type { Schema, UCTable, Volume, UCFunction, Model } from "@/features/unity-catalog/data/schema"
@@ -49,7 +46,6 @@ const tabs: { key: TabKey; label: string; icon: React.ReactNode }[] = [
 
 export default function SchemaDetailsPage() {
   const params = useParams<{ catalog: string; schema: string }>()
-  const router = useRouter()
   const { catalog: catalogName, schema: schemaName } = params
   const fullName = `${catalogName}.${schemaName}`
 
@@ -60,7 +56,6 @@ export default function SchemaDetailsPage() {
   const [functions, setFunctions] = useState<UCFunction[]>([])
   const [models, setModels] = useState<Model[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [deleteOpen, setDeleteOpen] = useState(false)
   const [createTableOpen, setCreateTableOpen] = useState(false)
 
   const loadData = useCallback(async () => {
@@ -96,29 +91,24 @@ export default function SchemaDetailsPage() {
             { label: catalogName, href: `${UC_BASE}/catalogs/${catalogName}` },
             { label: schemaName },
           ]} />
-          <div className="flex items-center gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm">
-                  Create <ChevronDown className="ml-1.5 h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setCreateTableOpen(true)}>
-                  <Table2 className="mr-2 h-4 w-4" /> Table
-                </DropdownMenuItem>
-                <DropdownMenuItem disabled>
-                  <HardDrive className="mr-2 h-4 w-4" /> Volume
-                </DropdownMenuItem>
-                <DropdownMenuItem disabled>
-                  <Brain className="mr-2 h-4 w-4" /> Model
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>
-              <Trash2 className="mr-1.5 h-4 w-4" /> Delete Schema
-            </Button>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm">
+                Create <ChevronDown className="ml-1.5 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setCreateTableOpen(true)}>
+                <Table2 className="mr-2 h-4 w-4" /> Table
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled>
+                <HardDrive className="mr-2 h-4 w-4" /> Volume
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled>
+                <Brain className="mr-2 h-4 w-4" /> Model
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <UCDetailsLayout
@@ -223,16 +213,6 @@ export default function SchemaDetailsPage() {
         </UCDetailsLayout>
       </div>
 
-      <UCDeleteDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        entityType="schema"
-        entityName={fullName}
-        onConfirm={async () => {
-          await deleteSchema(fullName)
-          router.push(`${UC_BASE}/catalogs/${catalogName}`)
-        }}
-      />
       <CreateTableDialog
         open={createTableOpen}
         onOpenChange={setCreateTableOpen}
