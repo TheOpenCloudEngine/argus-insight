@@ -33,9 +33,9 @@ export function ArgusSettings() {
       setLoading(true)
       setError(null)
       const config = await fetchArgusConfig()
-      setRegistryUrl(config.docker_registry_url ?? "")
-      setUsername(config.docker_registry_username ?? "")
-      setPassword(config.docker_registry_password ?? "")
+      setRegistryUrl(config.docker_registry_url ?? "http://10.1.0.50:30000")
+      setUsername(config.docker_registry_username ?? "admin")
+      setPassword(config.docker_registry_password ?? "Argus!insight2026")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load configuration")
     } finally {
