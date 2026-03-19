@@ -243,18 +243,111 @@ PowerDNS는 두 가지 방식으로 외부에 노출됩니다:
                                 └─────────────────────────────────────┘
 ```
 
-### DNS 레코드 등록
+### DNS Zone 및 레코드 등록
 
-외부에서 호스트명으로 접근하려면 DNS 또는 `/etc/hosts`에 레코드를 등록해야 합니다:
+Kubernetes 배포 후 Ingress 호스트명으로 접근하려면, PowerDNS에 DNS zone과 A 레코드를 등록해야 합니다. zone과 레코드가 없으면 `resolv.conf`에 PowerDNS를 추가하더라도 도메인 해석이 실패합니다.
+
+아래는 `argus-insight.dev.net` zone을 생성하고 Ingress 호스트에 대한 A 레코드를 등록하는 예시입니다.
+
+#### 1. External IP 확인
 
 ```bash
-# /etc/hosts 등록 예시 (LoadBalancer External-IP 확인 후)
+# LoadBalancer / Ingress External IP 확인
 kubectl get svc -n argus-insight powerdns-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 kubectl get ingress -n argus-insight powerdns -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+```
 
-# /etc/hosts에 추가
-# <LoadBalancer IP>  ns.argus-insight.dev.net
-# <Ingress IP>       powerdns-admin.argus-insight.dev.net
+#### 2. Zone 생성
+
+```bash
+# argus-insight.dev.net zone 생성 (Native 모드)
+curl -X POST \
+  -H "X-API-Key: <API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "argus-insight.dev.net.",
+    "kind": "Native",
+    "nameservers": ["ns.argus-insight.dev.net."]
+  }' \
+  http://<EXTERNAL_IP>:8081/api/v1/servers/localhost/zones
+```
+
+#### 3. NS 및 A 레코드 등록
+
+```bash
+# NS 레코드 + 서비스별 A 레코드를 한번에 등록
+curl -X PATCH \
+  -H "X-API-Key: <API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "rrsets": [
+      {
+        "name": "argus-insight.dev.net.",
+        "type": "NS",
+        "ttl": 3600,
+        "changetype": "REPLACE",
+        "records": [{"content": "ns.argus-insight.dev.net.", "disabled": false}]
+      },
+      {
+        "name": "ns.argus-insight.dev.net.",
+        "type": "A",
+        "ttl": 300,
+        "changetype": "REPLACE",
+        "records": [{"content": "<EXTERNAL_IP>", "disabled": false}]
+      },
+      {
+        "name": "powerdns-admin.argus-insight.dev.net.",
+        "type": "A",
+        "ttl": 300,
+        "changetype": "REPLACE",
+        "records": [{"content": "<EXTERNAL_IP>", "disabled": false}]
+      }
+    ]
+  }' \
+  http://<EXTERNAL_IP>:8081/api/v1/servers/localhost/zones/argus-insight.dev.net.
+```
+
+#### 4. 등록 확인
+
+```bash
+# DNS 질의로 레코드 확인
+dig @<EXTERNAL_IP> ns.argus-insight.dev.net A +short
+dig @<EXTERNAL_IP> powerdns-admin.argus-insight.dev.net A +short
+
+# 등록된 전체 레코드 조회 (API)
+curl -s -H "X-API-Key: <API_KEY>" \
+  http://<EXTERNAL_IP>:8081/api/v1/servers/localhost/zones/argus-insight.dev.net. | python3 -m json.tool
+```
+
+#### 5. resolv.conf 및 /etc/hosts 설정
+
+```bash
+# resolv.conf에 PowerDNS를 네임서버로 추가
+echo "nameserver <EXTERNAL_IP>" >> /etc/resolv.conf
+
+# /etc/hosts에도 추가 (DNS 못 타는 환경 대비 fallback)
+echo "<EXTERNAL_IP> powerdns-admin.argus-insight.dev.net ns.argus-insight.dev.net" >> /etc/hosts
+```
+
+#### 새 서비스 추가 시
+
+새로운 서비스의 Ingress 호스트를 추가할 때는 3단계의 PATCH 요청에 A 레코드 항목을 추가합니다:
+
+```bash
+# 예: grafana.argus-insight.dev.net 추가
+curl -X PATCH \
+  -H "X-API-Key: <API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "rrsets": [{
+      "name": "grafana.argus-insight.dev.net.",
+      "type": "A",
+      "ttl": 300,
+      "changetype": "REPLACE",
+      "records": [{"content": "<EXTERNAL_IP>", "disabled": false}]
+    }]
+  }' \
+  http://<EXTERNAL_IP>:8081/api/v1/servers/localhost/zones/argus-insight.dev.net.
 ```
 
 ### 배포 전 필수 설정
