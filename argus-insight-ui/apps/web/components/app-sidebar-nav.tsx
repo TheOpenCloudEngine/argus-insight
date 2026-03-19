@@ -32,7 +32,7 @@ export function AppSidebarNav({ groups }: AppSidebarNavProps) {
                 <SidebarMenuItem key={item.id}>
                   <SidebarMenuButton
                     asChild
-                    isActive={pathname === item.url}
+                    isActive={pathname === item.url || (item.url !== "/dashboard" && pathname.startsWith(item.url + "/"))}
                     tooltip={item.title}
                     className="text-sm"
                   >

@@ -73,6 +73,18 @@
       ]
     },
     {
+      "id": "unity-catalog",
+      "label": "Unity Catalog",
+      "items": [
+        {
+          "id": "catalogs",
+          "title": "Catalogs",
+          "url": "/dashboard/unity-catalog",
+          "icon": "Library"
+        }
+      ]
+    },
+    {
       "id": "admin",
       "label": "Administration",
       "items": [
