@@ -1,9 +1,18 @@
 /**
  * DNS Zone Data Table component.
  *
- * Renders the DNS records table with client-side filtering, sorting,
- * and row selection for bulk operations.
- * Search filters on name and content columns with 3-second debounce.
+ * Renders the DNS records table using TanStack React Table with:
+ * - **Global search filter**: Searches across `name` and `content` columns
+ *   simultaneously (not all columns, to avoid false matches on TTL numbers).
+ * - **Faceted filters**: Filter by record type (A, AAAA, CNAME, etc.) and
+ *   status (enabled/disabled) via multi-select dropdowns in the toolbar.
+ * - **Column sorting**: Click column headers to sort ascending/descending.
+ * - **Row selection**: Checkboxes for selecting records for bulk operations.
+ * - **Debounced search**: 3-second debounce on the global filter input to
+ *   avoid excessive re-renders while typing.
+ *
+ * The table data comes from the DnsZoneProvider context (fetched from the API).
+ * Selected rows are synced back to the provider for the bulk delete dialog.
  */
 
 "use client"
@@ -42,7 +51,13 @@ import { dnsZoneColumns as columns } from "./dns-zone-columns"
 import { DnsZoneAddButton, DnsZoneBindConfButton, DnsZoneDeleteButton } from "./dns-zone-add-button"
 import { useDnsZone } from "./dns-zone-provider"
 
-/** Custom global filter: match name or content fields only. */
+/**
+ * Custom global filter function that matches against name and content fields only.
+ *
+ * Unlike the default global filter which searches all columns, this restricts
+ * the search to the two most relevant fields for DNS records. This prevents
+ * unwanted matches on numeric fields (TTL) or short status strings.
+ */
 const nameContentFilter: FilterFn<DnsRecord> = (row, _columnId, filterValue) => {
   const search = (filterValue as string).toLowerCase()
   const name = (row.original.name ?? "").toLowerCase()
@@ -50,18 +65,31 @@ const nameContentFilter: FilterFn<DnsRecord> = (row, _columnId, filterValue) => 
   return name.includes(search) || content.includes(search)
 }
 
+/** Props for the DnsZoneTable component. */
 type DnsZoneTableProps = {
+  /** Array of DNS records to display in the table */
   data: DnsRecord[]
+  /** Whether data is currently being loaded (shows loading placeholder) */
   isLoading?: boolean
 }
 
+/**
+ * Main DNS zone data table component.
+ *
+ * Integrates TanStack React Table with the DNS zone toolbar, faceted filters,
+ * and bulk action bar. The table supports sorting, filtering, column visibility,
+ * and row selection for bulk operations.
+ */
 export function DnsZoneTable({ data, isLoading }: DnsZoneTableProps) {
   const { setSelectedRecords } = useDnsZone()
+
+  // Table state: managed locally since it is UI-only (not shared with other components)
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
   const [globalFilter, setGlobalFilter] = useState("")
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
+  // Timer ref for debouncing the global filter input
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const table = useReactTable({
@@ -88,12 +116,14 @@ export function DnsZoneTable({ data, isLoading }: DnsZoneTableProps) {
     getFacetedUniqueValues: getFacetedUniqueValues(),
   })
 
-  // Sync selected rows to provider context
+  // Sync the table's row selection state to the provider context so that
+  // the bulk delete dialog can access the selected records.
   useEffect(() => {
     setSelectedRecords(table.getSelectedRowModel().rows.map((row) => row.original))
   }, [rowSelection])
 
-  // Debounce: apply global filter 3 seconds after last input change
+  // Debounce the global filter to avoid re-filtering on every keystroke.
+  // The filter is applied 3 seconds after the user stops typing.
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
@@ -104,6 +134,7 @@ export function DnsZoneTable({ data, isLoading }: DnsZoneTableProps) {
     }
   }, [globalFilter])
 
+  /** Reset all filters (both column filters and the global search) when the user clicks "Clear". */
   const handleClear = useCallback(() => {
     table.resetColumnFilters()
     setGlobalFilter("")

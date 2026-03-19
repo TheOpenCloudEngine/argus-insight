@@ -1,7 +1,17 @@
 """DNS zone management service.
 
-Reads PowerDNS connection settings from the database and communicates
-with the PowerDNS Authoritative Server REST API.
+Reads PowerDNS connection settings from the application database and communicates
+with the PowerDNS Authoritative Server REST API to manage DNS zones and records.
+
+This service layer handles all interaction with the PowerDNS HTTP API, including:
+- Loading connection settings (IP, port, API key, domain) from the database
+- Health checking: verifying connectivity, authentication, and zone existence
+- Zone creation with automatic NS glue record setup
+- Fetching zone records and flattening RRsets into individual rows for the UI
+- Updating records via the PowerDNS PATCH endpoint (add, modify, delete)
+- Exporting zone data as BIND-compatible configuration files
+
+PowerDNS API reference: https://doc.powerdns.com/authoritative/http-api/
 """
 
 from __future__ import annotations
@@ -26,7 +36,8 @@ from app.settings.models import ArgusConfiguration
 
 logger = logging.getLogger(__name__)
 
-# Keys we need from the domain category.
+# Database config keys required to connect to PowerDNS.
+# These are stored in the argus_configuration table under category='domain'.
 _REQUIRED_KEYS = ("pdns_ip", "pdns_port", "pdns_api_key", "domain_name")
 
 
@@ -77,7 +88,26 @@ def _zone_id(domain_name: str) -> str:
 
 
 async def get_zone_records(session: AsyncSession) -> DnsZoneTableResponse:
-    """Fetch all records for the configured domain zone from PowerDNS."""
+    """Fetch all records for the configured domain zone from PowerDNS.
+
+    Calls ``GET /api/v1/servers/localhost/zones/{zone}`` to retrieve all RRsets,
+    then flattens them into individual record rows for the UI data table.
+
+    PowerDNS returns records grouped by RRset (name + type), but the UI needs
+    each record as a separate row. For example, if an RRset has 3 A records,
+    this produces 3 rows with the same name, type, and TTL.
+
+    Args:
+        session: Database session for loading PowerDNS connection settings.
+
+    Returns:
+        DnsZoneTableResponse with the zone name and flattened record list.
+
+    Raises:
+        HTTPException(503): If PowerDNS is unreachable.
+        HTTPException(404): If the configured zone does not exist.
+        HTTPException(502): If PowerDNS returns an unexpected error.
+    """
     cfg = await _get_pdns_settings(session)
     base_url = _build_base_url(cfg)
     zone = _zone_id(cfg["domain_name"])
@@ -112,12 +142,15 @@ async def get_zone_records(session: AsyncSession) -> DnsZoneTableResponse:
     rrsets = data.get("rrsets", [])
 
     # Flatten RRsets into individual record rows.
+    # Each RRset may contain multiple records (e.g. round-robin A records),
+    # but the UI displays each as a separate table row.
     rows: list[DnsRecordRow] = []
     for rrset in rrsets:
         name = rrset.get("name", "")
         rtype = rrset.get("type", "")
         ttl = rrset.get("ttl", 0)
         comments = rrset.get("comments", [])
+        # Use only the first comment since the UI shows a single comment column per row
         comment_text = comments[0]["content"] if comments else ""
 
         for record in rrset.get("records", []):
@@ -143,7 +176,24 @@ async def update_zone_records(
     session: AsyncSession,
     rrsets: list[DnsRRsetPatch],
 ) -> None:
-    """Update records in the configured domain zone via PATCH."""
+    """Update records in the configured domain zone via PowerDNS PATCH.
+
+    Sends a PATCH request to ``/api/v1/servers/localhost/zones/{zone}`` with
+    the provided RRset modifications. Each RRset in the list can either
+    REPLACE (add/update) or DELETE records.
+
+    Note: PowerDNS REPLACE is idempotent -- it sets the entire RRset to the
+    provided records, so the caller must include ALL records for that name+type
+    combination, not just the ones being changed.
+
+    Args:
+        session: Database session for loading PowerDNS connection settings.
+        rrsets: List of RRset patches to apply to the zone.
+
+    Raises:
+        HTTPException(503): If PowerDNS is unreachable.
+        HTTPException(502): If PowerDNS returns an error status.
+    """
     cfg = await _get_pdns_settings(session)
     base_url = _build_base_url(cfg)
     zone = _zone_id(cfg["domain_name"])
@@ -176,7 +226,28 @@ async def update_zone_records(
 
 
 async def check_health(session: AsyncSession) -> DnsHealthResponse:
-    """Check if PowerDNS is reachable and whether the configured zone exists."""
+    """Check if PowerDNS is reachable and whether the configured zone exists.
+
+    Performs a three-step health check:
+      1. **Connectivity check** (GET /api/v1/servers): Verifies the PowerDNS API
+         is reachable and the API key is valid (catches 401 Unauthorized).
+      2. **Zone listing** (GET /api/v1/servers/localhost/zones): Validates that
+         the server_id ('localhost') is correct and zones can be listed.
+      3. **Zone existence** (GET /api/v1/servers/localhost/zones/{zone}): Checks
+         whether the configured domain zone actually exists on the server.
+
+    The UI uses the health response to determine which view to show:
+    - not_configured / unreachable -> redirect to PowerDNS settings page
+    - zone_missing -> show "Create Zone" button
+    - ready -> show the DNS records table
+
+    Args:
+        session: Database session for loading PowerDNS connection settings.
+
+    Returns:
+        DnsHealthResponse indicating reachability, zone existence, and any errors.
+        This endpoint never raises HTTP exceptions; errors are returned in the response.
+    """
     logger.info("Starting PowerDNS health check")
     try:
         cfg = await _get_pdns_settings(session)
@@ -289,11 +360,32 @@ async def check_health(session: AsyncSession) -> DnsHealthResponse:
 
 
 async def create_zone(session: AsyncSession) -> DnsZoneCreateResponse:
-    """Create the configured domain zone on the PowerDNS server."""
+    """Create the configured domain zone on the PowerDNS server.
+
+    Performs two steps:
+      1. Creates the zone via POST /zones with kind="Native" and a single
+         nameserver (ns1.{domain}).
+      2. Adds a glue A record for ns1.{domain} pointing to the PowerDNS
+         server IP, so the nameserver record is resolvable.
+
+    The zone kind is set to "Native" which means PowerDNS handles replication
+    internally (no AXFR/IXFR zone transfers to secondary servers).
+
+    Args:
+        session: Database session for loading PowerDNS connection settings.
+
+    Returns:
+        DnsZoneCreateResponse with the zone name and creation status.
+
+    Raises:
+        HTTPException(503): If PowerDNS is unreachable.
+        HTTPException(502): If zone creation fails (e.g. zone already exists).
+    """
     cfg = await _get_pdns_settings(session)
     base_url = _build_base_url(cfg)
     zone = _zone_id(cfg["domain_name"])
 
+    # Set up the primary nameserver name (ns1.example.com.)
     ns1_name = f"ns1.{zone}"
     pdns_ip = cfg["pdns_ip"]
     headers = {"X-API-Key": cfg["pdns_api_key"]}
@@ -332,7 +424,9 @@ async def create_zone(session: AsyncSession) -> DnsZoneCreateResponse:
                    f"{resp.text[:200]}",
         )
 
-    # Add A record for ns1 pointing to the PowerDNS server IP.
+    # Add a glue A record for ns1 so the nameserver is resolvable.
+    # Without this, DNS resolvers cannot find ns1.{zone} because it is
+    # within the zone itself (in-bailiwick nameserver).
     glue_body = {
         "rrsets": [
             {
@@ -368,17 +462,32 @@ def _format_bind_record(name: str, ttl: int, rtype: str, content: str) -> str:
 
 
 async def export_bind_config(session: AsyncSession) -> BindConfigResponse:
-    """Export DNS zone records as BIND configuration files.
+    """Export DNS zone records as BIND-compatible configuration files.
 
-    Generates two files:
-    1. named.conf.local - Zone declaration
-    2. db.{zone} - Zone data file with all enabled records
+    Generates two files that can be used to configure a Linux BIND DNS server:
+
+    1. ``named.conf.local`` -- Zone declaration that tells BIND where to find
+       the zone data file. Should be included in the main BIND configuration.
+    2. ``db.{zone}`` -- Zone data file containing all enabled DNS records in
+       standard BIND zone file format. Disabled records are excluded.
+
+    Records are ordered for readability: SOA first, then grouped by record type
+    following the conventional order (NS, A, AAAA, CNAME, MX, TXT, PTR, SRV),
+    with any other types appended alphabetically.
+
+    Args:
+        session: Database session for loading PowerDNS connection settings.
+
+    Returns:
+        BindConfigResponse with the zone name and list of generated files.
     """
     cfg = await _get_pdns_settings(session)
     domain_name = cfg["domain_name"]
     zone_data = await get_zone_records(session)
 
     # --- named.conf.local ---
+    # This file tells BIND to serve this zone as a master and where to find
+    # the zone data file on the filesystem.
     named_conf = (
         f'zone "{domain_name}" {{\n'
         f"    type master;\n"
@@ -387,13 +496,13 @@ async def export_bind_config(session: AsyncSession) -> BindConfigResponse:
     )
 
     # --- db.{zone} ---
-    # Collect only enabled records
+    # Only include enabled records; disabled records should not be served.
     enabled = [r for r in zone_data.records if not r.disabled]
 
-    # Find SOA record
+    # Find the SOA record to extract the default TTL for the $TTL directive.
     soa_record = next((r for r in enabled if r.type == "SOA"), None)
 
-    # Determine default TTL from SOA or fallback
+    # The $TTL directive sets the default TTL for records that don't specify one.
     default_ttl = soa_record.ttl if soa_record else 3600
 
     lines: list[str] = []
@@ -403,18 +512,20 @@ async def export_bind_config(session: AsyncSession) -> BindConfigResponse:
     lines.append(f"$TTL {default_ttl}")
     lines.append(f"")
 
-    # SOA first
+    # SOA record must appear first in a zone file per RFC 1035.
     if soa_record:
         lines.append(
             _format_bind_record(soa_record.name, soa_record.ttl, "SOA", soa_record.content)
         )
         lines.append("")
 
-    # Group remaining records by type for readability
+    # Group remaining records by type for readability.
+    # This ordering follows common convention in BIND zone files.
     type_order = ["NS", "A", "AAAA", "CNAME", "MX", "TXT", "PTR", "SRV"]
     other_records = [r for r in enabled if r.type != "SOA"]
 
-    # Sort: known types first in order, then others alphabetically
+    # Sort: known types first in the conventional order, then unknown types alphabetically.
+    # Within each type group, records are sorted by name.
     def sort_key(r: DnsRecordRow) -> tuple[int, str, str]:
         try:
             idx = type_order.index(r.type)
@@ -424,11 +535,12 @@ async def export_bind_config(session: AsyncSession) -> BindConfigResponse:
 
     other_records.sort(key=sort_key)
 
+    # Write records grouped by type with section comment headers.
     current_type = ""
     for record in other_records:
         if record.type != current_type:
             if current_type:
-                lines.append("")
+                lines.append("")  # Blank line between type groups
             lines.append(f"; {record.type} Records")
             current_type = record.type
         lines.append(

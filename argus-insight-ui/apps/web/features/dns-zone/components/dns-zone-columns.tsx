@@ -1,7 +1,19 @@
 /**
- * TanStack Table column definitions for the DNS Zone table.
+ * TanStack Table column definitions for the DNS Zone data table.
  *
- * Columns: Select, Name, Type, Status, TTL, Data, Comment, Action.
+ * Defines 8 columns:
+ * 1. **Select** - Checkbox column for row selection (bulk operations)
+ * 2. **Name** - Fully qualified domain name (sortable, always visible)
+ * 3. **Type** - DNS record type badge with faceted filter (A, AAAA, CNAME, etc.)
+ * 4. **Status** - Enabled/disabled badge derived from the `disabled` boolean field
+ * 5. **TTL** - Time-to-live in seconds (sortable, center-aligned)
+ * 6. **Data** - Record content/value (not sortable, long text truncated)
+ * 7. **Comment** - Optional RRset comment (not sortable, shows dash if empty)
+ * 8. **Actions** - Row action dropdown menu (edit, delete, enable/disable)
+ *
+ * Column metadata (via `meta`) controls CSS class names for width constraints
+ * and alignment. The `filterFn` on Type and Status columns enables the
+ * faceted filter in the toolbar.
  */
 
 "use client"
@@ -17,7 +29,9 @@ import { statusStyles } from "../data/data"
 import { type DnsRecord } from "../data/schema"
 import { DataTableRowActions } from "./data-table-row-actions"
 
+/** Column definitions array for the DNS zone TanStack Table instance. */
 export const dnsZoneColumns: ColumnDef<DnsRecord>[] = [
+  // --- Checkbox column for row selection (used for bulk delete) ---
   {
     id: "select",
     header: ({ table }) => (
@@ -47,6 +61,7 @@ export const dnsZoneColumns: ColumnDef<DnsRecord>[] = [
     enableSorting: false,
     enableHiding: false,
   },
+  // --- Name column: FQDN of the DNS record (always visible, sortable) ---
   {
     accessorKey: "name",
     header: ({ column }) => (
@@ -58,6 +73,7 @@ export const dnsZoneColumns: ColumnDef<DnsRecord>[] = [
     },
     enableHiding: false,
   },
+  // --- Type column: DNS record type badge with faceted filtering ---
   {
     accessorKey: "type",
     header: ({ column }) => (
@@ -73,6 +89,8 @@ export const dnsZoneColumns: ColumnDef<DnsRecord>[] = [
     },
     enableHiding: false,
   },
+  // --- Status column: derived from the `disabled` boolean, shown as colored badge ---
+  // Uses accessorFn to transform the boolean into a string for faceted filtering.
   {
     id: "status",
     accessorFn: (row) => (row.disabled ? "disabled" : "enabled"),
@@ -95,6 +113,7 @@ export const dnsZoneColumns: ColumnDef<DnsRecord>[] = [
     },
     enableSorting: false,
   },
+  // --- TTL column: time-to-live in seconds (sortable, center-aligned, tabular nums) ---
   {
     accessorKey: "ttl",
     header: ({ column }) => (
@@ -104,6 +123,7 @@ export const dnsZoneColumns: ColumnDef<DnsRecord>[] = [
       <div className="text-center tabular-nums">{row.getValue("ttl")}</div>
     ),
   },
+  // --- Data column: the record's content value (e.g. IP address, hostname) ---
   {
     accessorKey: "content",
     header: ({ column }) => (
@@ -114,6 +134,7 @@ export const dnsZoneColumns: ColumnDef<DnsRecord>[] = [
     ),
     enableSorting: false,
   },
+  // --- Comment column: optional RRset comment, shows em-dash if empty ---
   {
     accessorKey: "comment",
     header: ({ column }) => (
@@ -126,6 +147,7 @@ export const dnsZoneColumns: ColumnDef<DnsRecord>[] = [
     },
     enableSorting: false,
   },
+  // --- Actions column: row-level dropdown menu (edit, delete, toggle status) ---
   {
     id: "actions",
     cell: DataTableRowActions,

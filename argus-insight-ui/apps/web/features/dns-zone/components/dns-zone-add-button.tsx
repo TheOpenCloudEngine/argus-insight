@@ -1,5 +1,18 @@
 /**
- * Add Record dropdown button and Delete Records button.
+ * Toolbar action buttons for the DNS Zone data table.
+ *
+ * Contains three button components that appear in the table toolbar:
+ *
+ * 1. **DnsZoneAddButton** - Dropdown menu for adding new DNS records.
+ *    Lists all supported record types (except SOA) with tooltips showing
+ *    what each type does. Selecting a type opens the Add Record dialog.
+ *
+ * 2. **DnsZoneDeleteButton** - Bulk delete button that is only enabled when
+ *    one or more records are selected via checkboxes. Opens the bulk delete
+ *    confirmation dialog.
+ *
+ * 3. **DnsZoneBindConfButton** - Opens the BIND configuration export sheet
+ *    dialog for previewing and downloading BIND-compatible zone files.
  */
 
 "use client"
@@ -22,6 +35,17 @@ import {
 import { recordTypes, recordTypeDescriptions } from "../data/data"
 import { useDnsZone } from "./dns-zone-provider"
 
+/**
+ * Dropdown button for adding a new DNS record.
+ *
+ * Renders a "+" button that opens a dropdown listing all DNS record types
+ * (A, AAAA, CNAME, MX, TXT, NS, PTR, SRV). SOA is excluded because SOA
+ * records are auto-managed by PowerDNS. Each menu item shows a tooltip
+ * with a description of the record type on hover.
+ *
+ * Selecting a type sets the selectedRecordType in the context and opens
+ * the "add" dialog.
+ */
 export function DnsZoneAddButton() {
   const { setOpen, setSelectedRecordType } = useDnsZone()
 
@@ -60,6 +84,12 @@ export function DnsZoneAddButton() {
   )
 }
 
+/**
+ * Button to open the BIND configuration export sheet dialog.
+ *
+ * Styled with a green background to visually distinguish it as an
+ * export/download action rather than a data modification.
+ */
 export function DnsZoneBindConfButton() {
   const { setOpen } = useDnsZone()
 
@@ -75,6 +105,13 @@ export function DnsZoneBindConfButton() {
   )
 }
 
+/**
+ * Bulk delete button for removing multiple selected DNS records.
+ *
+ * Disabled when no records are selected (hasSelection === false).
+ * When clicked, opens the "bulk-delete" confirmation dialog which
+ * shows the count of selected records and asks for confirmation.
+ */
 export function DnsZoneDeleteButton() {
   const { selectedRecords, setOpen } = useDnsZone()
   const hasSelection = selectedRecords.length > 0

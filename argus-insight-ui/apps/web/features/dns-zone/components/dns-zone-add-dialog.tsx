@@ -1,8 +1,22 @@
 /**
  * Add DNS Record Dialog.
  *
- * Renders a form dialog for adding a new DNS record.
- * The form fields change based on the selected record type.
+ * Renders a modal form dialog for adding a new DNS record to the zone.
+ * The form fields dynamically change based on the selected record type,
+ * as each DNS record type has different required fields:
+ *
+ * - A / AAAA:  name, TTL, IP address
+ * - CNAME:     name, TTL, target hostname
+ * - MX:        name, TTL, priority, mail server hostname
+ * - TXT:       name, TTL, text value (automatically quoted)
+ * - NS:        name, TTL, nameserver hostname
+ * - PTR:       name, TTL, pointer hostname
+ * - SRV:       name, TTL, priority, weight, port, target hostname
+ *
+ * On submit, the dialog builds the appropriate PowerDNS content string
+ * from the form values and sends a REPLACE patch via the API. The name
+ * field is automatically appended with a trailing dot if missing (required
+ * by DNS standards for fully qualified domain names).
  */
 
 "use client"
@@ -35,14 +49,16 @@ import { updateZoneRecords } from "../api"
 import { useDnsZone } from "./dns-zone-provider"
 
 // --------------------------------------------------------------------------- //
-// Schema
+// Zod Schemas (one per record type)
 // --------------------------------------------------------------------------- //
 
+// Base schema shared by all record types: every record needs a name and TTL.
 const baseSchema = z.object({
   name: z.string().min(1, "Name is required"),
   ttl: z.coerce.number().int().min(1).default(3600),
 })
 
+// Type-specific schemas extend the base with fields unique to each record type.
 const aSchema = baseSchema.extend({ address: z.string().min(1, "IP address is required") })
 const aaaaSchema = baseSchema.extend({ address: z.string().min(1, "IPv6 address is required") })
 const cnameSchema = baseSchema.extend({ target: z.string().min(1, "Target is required") })
@@ -64,13 +80,29 @@ const srvSchema = baseSchema.extend({
 // Helpers
 // --------------------------------------------------------------------------- //
 
-/** Ensure a DNS name has a trailing dot. */
+/**
+ * Ensure a DNS name has a trailing dot (FQDN format).
+ * PowerDNS requires all names to be fully qualified with a trailing dot.
+ */
 function ensureDot(name: string): string {
   const trimmed = name.trim()
   return trimmed.endsWith(".") ? trimmed : `${trimmed}.`
 }
 
-/** Build the content string for a record based on its type. */
+/**
+ * Build the PowerDNS content string for a record based on its type.
+ *
+ * Each DNS record type has a different content format:
+ * - A/AAAA: just the IP address (e.g. "10.0.1.50")
+ * - CNAME/NS/PTR: hostname with trailing dot (e.g. "www.example.com.")
+ * - MX: priority + hostname (e.g. "10 mail.example.com.")
+ * - TXT: quoted text (e.g. '"v=spf1 include:_spf.google.com ~all"')
+ * - SRV: priority weight port target (e.g. "10 0 443 svc.example.com.")
+ *
+ * @param type - The DNS record type (e.g. "A", "MX", "SRV")
+ * @param values - The form values containing the type-specific fields
+ * @returns The formatted content string for the PowerDNS API
+ */
 function buildContent(type: string, values: Record<string, unknown>): string {
   switch (type) {
     case "A":
@@ -94,6 +126,7 @@ function buildContent(type: string, values: Record<string, unknown>): string {
   }
 }
 
+/** Select the appropriate Zod schema based on the record type. */
 function getSchema(type: string) {
   switch (type) {
     case "A": return aSchema
@@ -112,12 +145,23 @@ function getSchema(type: string) {
 // Component
 // --------------------------------------------------------------------------- //
 
+/** Props for the DnsZoneAddDialog component. */
 type DnsZoneAddDialogProps = {
+  /** Whether the dialog is open */
   open: boolean
+  /** Callback to open/close the dialog */
   onOpenChange: (open: boolean) => void
+  /** The DNS record type to add (determines which form fields are shown) */
   recordType: string
 }
 
+/**
+ * Modal dialog component for adding a new DNS record.
+ *
+ * Renders type-specific form fields based on the recordType prop.
+ * On submit, constructs a PowerDNS REPLACE patch and sends it via the API.
+ * The dialog resets its form and refreshes the records table on success.
+ */
 export function DnsZoneAddDialog({ open, onOpenChange, recordType }: DnsZoneAddDialogProps) {
   const { zone, refreshRecords } = useDnsZone()
   const [saving, setSaving] = useState(false)
@@ -141,6 +185,12 @@ export function DnsZoneAddDialog({ open, onOpenChange, recordType }: DnsZoneAddD
     },
   })
 
+  /**
+   * Form submit handler.
+   * Builds the content string from form values and sends a REPLACE patch
+   * to the PowerDNS API via the backend. On success, closes the dialog
+   * and refreshes the records table.
+   */
   async function onSubmit(values: Record<string, unknown>) {
     setSaving(true)
     setError(null)
