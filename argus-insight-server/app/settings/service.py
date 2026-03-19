@@ -1,8 +1,10 @@
 """Infrastructure configuration service."""
 
+import base64
 import logging
 from collections import defaultdict
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,6 +53,36 @@ async def update_infra_category(
             ))
     await session.commit()
     logger.info("UpdateInfraCategory: category=%s keys=%s", category, list(items.keys()))
+
+
+async def test_docker_registry(url: str, username: str, password: str) -> dict[str, object]:
+    """Test connectivity to a Docker Registry by calling its /v2/ endpoint."""
+    base_url = url.rstrip("/")
+    v2_url = f"{base_url}/v2/"
+
+    headers: dict[str, str] = {}
+    if username and password:
+        credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
+        headers["Authorization"] = f"Basic {credentials}"
+
+    try:
+        async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
+            resp = await client.get(v2_url, headers=headers)
+    except httpx.ConnectError:
+        return {"success": False, "message": f"Cannot connect to {base_url}"}
+    except httpx.TimeoutException:
+        return {"success": False, "message": f"Connection to {base_url} timed out"}
+    except Exception as exc:
+        return {"success": False, "message": str(exc)}
+
+    if resp.status_code == 200:
+        return {"success": True, "message": "Docker Registry connection successful"}
+    if resp.status_code == 401:
+        return {
+            "success": False,
+            "message": "Authentication failed. Please check your username and password.",
+        }
+    return {"success": False, "message": f"Registry returned status {resp.status_code}"}
 
 
 async def seed_infra_config(session: AsyncSession) -> None:

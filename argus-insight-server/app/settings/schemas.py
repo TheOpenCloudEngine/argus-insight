@@ -37,6 +37,21 @@ class UpdateInfraCategoryRequest(BaseModel):
     )
 
 
+class DockerRegistryTestRequest(BaseModel):
+    """Request to test Docker Registry connectivity."""
+
+    url: str = Field(description="Docker Registry URL")
+    username: str = Field(default="", description="Registry username")
+    password: str = Field(default="", description="Registry password")
+
+
+class DockerRegistryTestResponse(BaseModel):
+    """Response from Docker Registry connectivity test."""
+
+    success: bool
+    message: str
+
+
 class CheckPathRequest(BaseModel):
     """Request to check if a file path exists on the server."""
 

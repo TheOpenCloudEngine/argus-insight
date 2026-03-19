@@ -11,6 +11,8 @@ from app.settings import service
 from app.settings.schemas import (
     CheckPathRequest,
     CheckPathResponse,
+    DockerRegistryTestRequest,
+    DockerRegistryTestResponse,
     InfraConfigResponse,
     UpdateInfraCategoryRequest,
 )
@@ -38,6 +40,13 @@ async def update_category(
         await service.update_infra_category(session, body.category, body.items)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/docker-registry/test", response_model=DockerRegistryTestResponse)
+async def test_docker_registry(body: DockerRegistryTestRequest) -> DockerRegistryTestResponse:
+    """Test connectivity to a Docker Registry."""
+    result = await service.test_docker_registry(body.url, body.username, body.password)
+    return DockerRegistryTestResponse(**result)
 
 
 @router.post("/check-path", response_model=CheckPathResponse)
