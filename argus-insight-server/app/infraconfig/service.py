@@ -40,7 +40,6 @@ async def update_infra_category(
         result = await session.execute(
             select(ArgusConfiguration).where(
                 ArgusConfiguration.config_key == key,
-                ArgusConfiguration.category == category,
             )
         )
         row = result.scalar_one_or_none()
