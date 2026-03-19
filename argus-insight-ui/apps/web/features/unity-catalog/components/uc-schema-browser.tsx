@@ -15,10 +15,39 @@ import {
   HardDrive,
 } from "lucide-react"
 import { cn } from "@workspace/ui/lib/utils"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@workspace/ui/components/tooltip"
 import { listCatalogs, listSchemas, listTables, listVolumes, listFunctions, listModels } from "../api"
 import type { Catalog, Schema, UCTable, Volume, UCFunction, Model } from "../data/schema"
 
 const UC_BASE = "/dashboard/unity-catalog"
+
+// --------------------------------------------------------------------------- //
+// Tooltip descriptions for each entity type
+// --------------------------------------------------------------------------- //
+
+const TOOLTIPS = {
+  catalog:
+    "Top-level isolation boundary. Separates data by department, project, or environment (Dev/Staging/Prod) with shared security policies.",
+  schema:
+    "Logical grouping within a catalog (like a database). Organizes tables and views by data stage (Raw/Refined/Gold) or function, with configurable storage location.",
+  tables:
+    "Structured row-and-column data. Supports Delta Lake format with SQL access. Managed tables have UC-controlled lifecycle; External tables register existing files.",
+  volumes:
+    "Governed non-tabular file storage for images, PDFs, CSVs, etc. Access files via catalog.schema.volume paths instead of raw cloud storage URIs.",
+  functions:
+    "Centralized, reusable user-defined functions (UDFs). Share business logic across users and pipelines for consistency.",
+  models:
+    "Registered ML models with version control, approval workflows, and access policies unified with data governance.",
+} as const
+
+// --------------------------------------------------------------------------- //
+// TreeNode
+// --------------------------------------------------------------------------- //
 
 type TreeNodeProps = {
   label: string
@@ -29,10 +58,11 @@ type TreeNodeProps = {
   expanded?: boolean
   onToggle?: () => void
   depth?: number
+  tooltip?: string
   children?: React.ReactNode
 }
 
-function TreeNode({ label, icon, href, isActive, expandable, expanded, onToggle, depth = 0, children }: TreeNodeProps) {
+function TreeNode({ label, icon, href, isActive, expandable, expanded, onToggle, depth = 0, tooltip, children }: TreeNodeProps) {
   const content = (
     <div
       className={cn(
@@ -53,21 +83,44 @@ function TreeNode({ label, icon, href, isActive, expandable, expanded, onToggle,
     </div>
   )
 
+  const wrappedContent = tooltip ? (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {href ? (
+          <Link href={href} className="block">
+            {content}
+          </Link>
+        ) : (
+          <div className="cursor-pointer" onClick={onToggle}>
+            {content}
+          </div>
+        )}
+      </TooltipTrigger>
+      <TooltipContent side="right" className="max-w-xs text-xs">
+        {tooltip}
+      </TooltipContent>
+    </Tooltip>
+  ) : href ? (
+    <Link href={href} className="block">
+      {content}
+    </Link>
+  ) : (
+    <div className="cursor-pointer" onClick={onToggle}>
+      {content}
+    </div>
+  )
+
   return (
     <div>
-      {href ? (
-        <Link href={href} className="block">
-          {content}
-        </Link>
-      ) : (
-        <div className="cursor-pointer" onClick={onToggle}>
-          {content}
-        </div>
-      )}
+      {wrappedContent}
       {expanded && children}
     </div>
   )
 }
+
+// --------------------------------------------------------------------------- //
+// EntityGroup
+// --------------------------------------------------------------------------- //
 
 type EntityGroupProps = {
   label: string
@@ -76,9 +129,10 @@ type EntityGroupProps = {
   loading?: boolean
   depth: number
   pathname: string
+  tooltip?: string
 }
 
-function EntityGroup({ label, icon, items, loading, depth, pathname }: EntityGroupProps) {
+function EntityGroup({ label, icon, items, loading, depth, pathname, tooltip }: EntityGroupProps) {
   const [expanded, setExpanded] = useState(false)
 
   return (
@@ -89,6 +143,7 @@ function EntityGroup({ label, icon, items, loading, depth, pathname }: EntityGro
       expanded={expanded}
       onToggle={() => setExpanded(!expanded)}
       depth={depth}
+      tooltip={tooltip}
     >
       {loading ? (
         <div className="flex items-center gap-2 py-1" style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}>
@@ -114,6 +169,10 @@ function EntityGroup({ label, icon, items, loading, depth, pathname }: EntityGro
     </TreeNode>
   )
 }
+
+// --------------------------------------------------------------------------- //
+// SchemaNode
+// --------------------------------------------------------------------------- //
 
 type SchemaNodeProps = {
   catalog: string
@@ -168,6 +227,7 @@ function SchemaNode({ catalog, schema, depth, pathname }: SchemaNodeProps) {
       expanded={expanded}
       onToggle={handleToggle}
       depth={depth}
+      tooltip={TOOLTIPS.schema}
     >
       {loading ? (
         <div className="flex items-center gap-2 py-1" style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}>
@@ -182,6 +242,7 @@ function SchemaNode({ catalog, schema, depth, pathname }: SchemaNodeProps) {
             items={tables.map((t) => ({ name: t.name, href: `${UC_BASE}/tables/${catalog}/${schema.name}/${t.name}` }))}
             depth={depth + 1}
             pathname={pathname}
+            tooltip={TOOLTIPS.tables}
           />
           <EntityGroup
             label="Volumes"
@@ -189,6 +250,7 @@ function SchemaNode({ catalog, schema, depth, pathname }: SchemaNodeProps) {
             items={volumes.map((v) => ({ name: v.name, href: `${UC_BASE}/volumes/${catalog}/${schema.name}/${v.name}` }))}
             depth={depth + 1}
             pathname={pathname}
+            tooltip={TOOLTIPS.volumes}
           />
           <EntityGroup
             label="Functions"
@@ -196,6 +258,7 @@ function SchemaNode({ catalog, schema, depth, pathname }: SchemaNodeProps) {
             items={functions.map((f) => ({ name: f.name, href: `${UC_BASE}/functions/${catalog}/${schema.name}/${f.name}` }))}
             depth={depth + 1}
             pathname={pathname}
+            tooltip={TOOLTIPS.functions}
           />
           <EntityGroup
             label="Models"
@@ -203,12 +266,17 @@ function SchemaNode({ catalog, schema, depth, pathname }: SchemaNodeProps) {
             items={models.map((m) => ({ name: m.name, href: `${UC_BASE}/models/${catalog}/${schema.name}/${m.name}` }))}
             depth={depth + 1}
             pathname={pathname}
+            tooltip={TOOLTIPS.models}
           />
         </>
       )}
     </TreeNode>
   )
 }
+
+// --------------------------------------------------------------------------- //
+// CatalogNode
+// --------------------------------------------------------------------------- //
 
 type CatalogNodeProps = {
   catalog: Catalog
@@ -251,6 +319,7 @@ function CatalogNode({ catalog, depth, pathname }: CatalogNodeProps) {
       expanded={expanded}
       onToggle={handleToggle}
       depth={depth}
+      tooltip={TOOLTIPS.catalog}
     >
       {loading ? (
         <div className="flex items-center gap-2 py-1" style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}>
@@ -276,6 +345,10 @@ function CatalogNode({ catalog, depth, pathname }: CatalogNodeProps) {
   )
 }
 
+// --------------------------------------------------------------------------- //
+// UCSchemaB (exported root component)
+// --------------------------------------------------------------------------- //
+
 export function UCSchemaB() {
   const pathname = usePathname()
   const [catalogs, setCatalogs] = useState<Catalog[]>([])
@@ -290,24 +363,26 @@ export function UCSchemaB() {
   }, [])
 
   return (
-    <div className="pr-2 text-black dark:text-white" style={{ fontSize: '120%' }}>
-      <div className="mb-2 px-2 text-sm font-semibold uppercase tracking-wider">
-        Schema Browser
-      </div>
-      {loading ? (
-        <div className="flex items-center gap-2 px-2 py-2">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          <span className="text-foreground/70 text-sm">Loading catalogs...</span>
+    <TooltipProvider delayDuration={400}>
+      <div className="pr-2 text-black dark:text-white" style={{ fontSize: '120%' }}>
+        <div className="mb-2 px-2 text-sm font-semibold uppercase tracking-wider">
+          Schema Browser
         </div>
-      ) : error ? (
-        <p className="text-destructive px-2 text-xs">{error}</p>
-      ) : catalogs.length > 0 ? (
-        catalogs.map((cat) => (
-          <CatalogNode key={cat.name} catalog={cat} depth={0} pathname={pathname} />
-        ))
-      ) : (
-        <p className="text-muted-foreground px-2 text-sm">No catalogs found.</p>
-      )}
-    </div>
+        {loading ? (
+          <div className="flex items-center gap-2 px-2 py-2">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <span className="text-foreground/70 text-sm">Loading catalogs...</span>
+          </div>
+        ) : error ? (
+          <p className="text-destructive px-2 text-xs">{error}</p>
+        ) : catalogs.length > 0 ? (
+          catalogs.map((cat) => (
+            <CatalogNode key={cat.name} catalog={cat} depth={0} pathname={pathname} />
+          ))
+        ) : (
+          <p className="text-muted-foreground px-2 text-sm">No catalogs found.</p>
+        )}
+      </div>
+    </TooltipProvider>
   )
 }
