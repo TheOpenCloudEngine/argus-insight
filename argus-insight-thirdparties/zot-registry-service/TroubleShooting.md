@@ -230,11 +230,11 @@ $ htpasswd -bB htpasswd <username> <password>
 
 ---
 
-## 5. Docker HTTPS 에러 - insecure-registries 없이 TLS 설정
+## 5. Docker HTTPS 에러 - NodePort TLS 설정
 
 ### 증상
 
-ClusterIP로 직접 Docker login 시 HTTPS 에러:
+Docker login 시 HTTPS 에러:
 
 ```bash
 $ docker login 10.43.234.67:5000 -u admin -p 'Argus!insight2026'
@@ -245,139 +245,162 @@ Error response from daemon: Get "https://10.43.234.67:5000/v2/":
 
 ### 원인
 
-Docker 클라이언트는 기본적으로 HTTPS로 레지스트리에 접속한다. Kubernetes ConfigMap의 `config.json`에는 TLS 설정이 제거되어 있어 Zot이 HTTP로만 동작하는데, Docker는 이를 거부한다.
+Docker 클라이언트는 기본적으로 HTTPS로 레지스트리에 접속한다. Zot에 TLS가 설정되지 않은 상태에서 직접 접근하면 HTTP 응답을 받아 거부한다.
 
-### 해결 (Production 권장 방식: Ingress TLS 종단)
+### 해결 (Production 권장 방식: NodePort + Zot 자체 TLS 종단)
 
-`insecure-registries`는 개발/테스트 환경에서만 사용하고, Production에서는 Nginx Ingress에서 TLS를 종단하는 방식을 사용한다.
+k3s 환경에서는 Ingress 없이 NodePort로 직접 노출하고, Zot 자체에서 TLS를 종단하는 방식을 사용한다.
 
-**Step 1.** Nginx Ingress Controller 설치:
+**Step 1.** TLS 인증서 생성 (`generate_certs.sh` 사용):
 
 ```bash
-$ kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.1/deploy/static/provider/cloud/deploy.yaml
-
-$ kubectl get pods -n ingress-nginx -l app.kubernetes.io/component=controller
-NAME                                        READY   STATUS    RESTARTS   AGE
-ingress-nginx-controller-5768fd7c75-b9575   1/1     Running   0          60s
+$ echo "zot.argus-insight.dev.net" > hosts.txt
+$ bash generate_certs.sh
 ```
 
-**Step 2.** TLS 인증서 생성 및 Secret 등록:
+**Step 2.** Kubernetes TLS Secret 생성:
 
 ```bash
-# 자체 서명 인증서 생성
-$ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-    -keyout /tmp/zot-tls.key -out /tmp/zot-tls.crt \
-    -subj "/CN=zot.argus-insight.dev.net" \
-    -addext "subjectAltName=DNS:zot.argus-insight.dev.net"
-
-# Kubernetes TLS Secret 생성
+$ HOST=zot.argus-insight.dev.net
+$ kubectl create namespace argus-insight --dry-run=client -o yaml | kubectl apply -f -
 $ kubectl create secret tls zot-registry-tls \
-    --cert=/tmp/zot-tls.crt --key=/tmp/zot-tls.key \
+    --cert=$HOST/$HOST.crt --key=$HOST/$HOST.key \
     -n argus-insight
 ```
 
-**Step 3.** `kubernetes/ingress.yaml` 생성:
+**Step 3.** ConfigMap에 TLS 설정 추가 (`kubernetes/configmap.yaml`):
+
+```json
+"http": {
+  "address": "0.0.0.0",
+  "port": "5000",
+  "tls": {
+    "cert": "/etc/zot/tls/tls.crt",
+    "key": "/etc/zot/tls/tls.key"
+  }
+}
+```
+
+**Step 4.** Deployment에 TLS Secret 볼륨 마운트 추가 (`kubernetes/zot-registry.yaml`):
 
 ```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: zot-registry
-  namespace: argus-insight
-  labels:
-    app.kubernetes.io/name: zot-registry
-    app.kubernetes.io/part-of: argus-insight
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "0"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
-spec:
-  ingressClassName: nginx
-  tls:
-    - hosts:
-        - zot.argus-insight.dev.net
+volumeMounts:
+  - name: tls
+    mountPath: /etc/zot/tls
+    readOnly: true
+volumes:
+  - name: tls
+    secret:
       secretName: zot-registry-tls
-  rules:
-    - host: zot.argus-insight.dev.net
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: zot-registry
-                port:
-                  number: 5000
 ```
 
-주요 annotation 설명:
-- `proxy-body-size: "0"`: 이미지 push 시 업로드 크기 제한 해제 (기본 1MB)
-- `proxy-read-timeout: "600"`: 대용량 이미지 pull 시 타임아웃 방지
-- `proxy-send-timeout: "600"`: 대용량 이미지 push 시 타임아웃 방지
-
-**Step 4.** `kubernetes/kustomization.yaml`에 ingress 추가:
+**Step 5.** Service를 NodePort로 변경 (`kubernetes/zot-registry.yaml`):
 
 ```yaml
-resources:
-  - namespace.yaml
-  - secret.yaml
-  - configmap.yaml
-  - pvc.yaml
-  - zot-registry.yaml
-  - ingress.yaml          # 추가
+spec:
+  type: NodePort
+  ports:
+    - port: 5000
+      targetPort: 5000
+      nodePort: 30000
+      protocol: TCP
 ```
 
-**Step 5.** 배포 및 확인:
+**Step 6.** 클라이언트에 CA 인증서 등록:
 
 ```bash
-$ kubectl apply -k kubernetes/
+$ NODEPORT=30000
 
-$ kubectl get ingress -n argus-insight
-NAME           CLASS   HOSTS                       PORTS     AGE
-zot-registry   nginx   zot.argus-insight.dev.net   80, 443   4s
+# Docker 클라이언트
+$ mkdir -p /etc/docker/certs.d/zot.argus-insight.dev.net:$NODEPORT
+$ cp ca/ca.crt /etc/docker/certs.d/zot.argus-insight.dev.net:$NODEPORT/ca.crt
+
+# OS 신뢰 저장소 (RHEL/Rocky Linux)
+$ sudo cp ca/ca.crt /etc/pki/ca-trust/source/anchors/argus-insight-ca.crt
+$ sudo update-ca-trust
 ```
 
-**Step 6.** DNS/호스트 등록:
+**Step 7.** 접속 테스트:
 
 ```bash
-# /etc/hosts에 호스트명 등록
-$ echo "10.0.1.50 zot.argus-insight.dev.net" >> /etc/hosts
+$ curl -sk -u 'admin:Argus!insight2026' https://zot.argus-insight.dev.net:30000/v2/_catalog
+{"repositories":[]}
 ```
 
-**Step 7.** Nginx Ingress의 HTTPS NodePort 확인:
+---
+
+## 6. htpasswd 해시 생성 시 `!` 문자가 변환되어 인증 실패
+
+### 증상
+
+올바른 비밀번호(`Argus!insight2026`)로 레지스트리에 접근하면 curl에서는 성공하지만, Python httpx 등 프로그래밍 언어의 HTTP 클라이언트에서는 `401 UNAUTHORIZED`가 반환된다:
 
 ```bash
-$ kubectl get svc -n ingress-nginx ingress-nginx-controller
+# curl은 성공 (bash가 ! 를 동일하게 변환)
+$ curl -sk -u 'admin:Argus!insight2026' https://zot.argus-insight.dev.net:30000/v2/_catalog
+{"repositories":[]}
 
-NAME                       TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)
-ingress-nginx-controller   LoadBalancer   10.43.191.29   <pending>     80:32655/TCP,443:31274/TCP
+# Python httpx는 실패 (정확한 비밀번호를 전송)
+import httpx
+resp = httpx.get(url, auth=('admin', 'Argus!insight2026'), verify=False)
+# Status: 401 UNAUTHORIZED
 ```
 
-ExternalIP가 `<pending>`인 경우 NodePort(`31274`)를 사용한다.
+### 원인
 
-**Step 8.** Docker 클라이언트에 자체 서명 CA 등록:
+bash의 **history expansion** 기능이 `!` 문자를 특수하게 처리한다. `htpasswd -nbB admin 'Argus!insight2026'` 실행 시, bash가 `!`를 `\!`로 변환하여 실제로는 `Argus\!insight2026`(백슬래시 포함) 비밀번호의 해시가 생성된다.
 
 ```bash
-$ mkdir -p /etc/docker/certs.d/zot.argus-insight.dev.net:31274
-$ cp /tmp/zot-tls.crt /etc/docker/certs.d/zot.argus-insight.dev.net:31274/ca.crt
+# history expansion이 활성화된 상태에서 생성
+$ htpasswd -nbB admin 'Argus!insight2026'
+admin:$2y$05$...  # 실제로는 "Argus\!insight2026" 비밀번호의 해시
+
+# curl도 동일한 bash 환경에서 ! 를 \! 로 변환하므로 우연히 성공
+# 하지만 Python, Java 등 프로그래밍 언어는 정확한 "Argus!insight2026"을 전송하여 실패
 ```
 
-**Step 9.** 접속 테스트:
+검증:
 
 ```bash
-# Docker login
-$ echo 'Argus!insight2026' | docker login zot.argus-insight.dev.net:31274 -u admin --password-stdin
-Login Succeeded
+# curl이 보낸 Base64 디코딩
+$ echo 'YWRtaW46QXJndXNcIWluc2lnaHQyMDI2' | base64 -d
+admin:Argus\!insight2026    # 백슬래시 포함!
 
-# 이미지 push
-$ docker tag hello-world:latest zot.argus-insight.dev.net:31274/library/hello-world:latest
-$ docker push zot.argus-insight.dev.net:31274/library/hello-world:latest
-latest: digest: sha256:2771e37a12b7bcb... size: 1035
-
-# 레지스트리 카탈로그 확인
-$ curl -sk -u admin:'Argus!insight2026' https://zot.argus-insight.dev.net:31274/v2/_catalog
-{"repositories":["library/hello-world"]}
+# httpx가 보낸 Base64 디코딩
+$ echo 'YWRtaW46QXJndXMhaW5zaWdodDIwMjY=' | base64 -d
+admin:Argus!insight2026     # 올바른 비밀번호
 ```
+
+### 해결
+
+**`set +H`로 bash의 history expansion을 비활성화**한 후 htpasswd 해시를 재생성한다:
+
+```bash
+# 1. history expansion 비활성화
+$ set +H
+
+# 2. 올바른 해시 생성
+$ htpasswd -nbB admin 'Argus!insight2026'
+admin:$2y$05$zOX0mfN...
+
+# 3. 해시 검증 (반드시 확인)
+$ echo 'admin:$2y$05$zOX0mfN...' > /tmp/verify_htpasswd
+$ htpasswd -vb /tmp/verify_htpasswd admin 'Argus!insight2026'
+Password for user admin correct.
+
+# 4. htpasswd 파일 및 kubernetes/secret.yaml 업데이트
+
+# 5. Secret 재적용 및 Pod 재시작
+$ kubectl apply -f kubernetes/secret.yaml
+$ kubectl rollout restart deployment/zot-registry -n argus-insight
+```
+
+### 참고
+
+- `set +H`는 현재 셸 세션에만 적용된다. 영구 적용하려면 `~/.bashrc`에 추가한다.
+- 비밀번호에 `!`, `^`, `{`, `}` 등 bash 특수문자가 포함된 경우 항상 `set +H`를 먼저 실행하는 것이 안전하다.
+- `zsh`에서는 이 문제가 발생하지 않는다 (history expansion 기본 비활성화).
+- htpasswd 해시 생성 후에는 **반드시 `htpasswd -vb`로 검증**하는 것을 권장한다.
 
 ---
 
@@ -385,30 +408,27 @@ $ curl -sk -u admin:'Argus!insight2026' https://zot.argus-insight.dev.net:31274/
 
 | 파일 | 변경 내용 |
 |---|---|
-| `kubernetes/zot-registry.yaml` | `imagePullPolicy: IfNotPresent` 추가, probe를 `tcpSocket`으로 변경, `strategy: Recreate` 추가 |
+| `kubernetes/zot-registry.yaml` | `imagePullPolicy: IfNotPresent` 추가, probe를 `tcpSocket`으로 변경, `strategy: Recreate` 추가, TLS 볼륨 마운트, `NodePort:30000` |
 | `kubernetes/secret.yaml` | htpasswd placeholder를 실제 bcrypt 해시로 교체 |
-| `kubernetes/ingress.yaml` | **신규** - Nginx Ingress 리소스 (TLS 종단, body-size 제한 해제) |
-| `kubernetes/kustomization.yaml` | `ingress.yaml` 리소스 추가 |
+| `kubernetes/configmap.yaml` | TLS 설정 추가 (Zot 자체 TLS 종단) |
+| `kubernetes/kustomization.yaml` | `ingress.yaml` 제거 (NodePort 방식 사용) |
 
 ## 최종 리소스 상태
 
 ```bash
-$ kubectl get all,ingress,pvc -n argus-insight -l app.kubernetes.io/name=zot-registry
+$ kubectl get all,pvc -n argus-insight -l app.kubernetes.io/name=zot-registry
 
 NAME                                READY   STATUS    RESTARTS   AGE
-pod/zot-registry-54d747498b-6jknq   1/1     Running   0          5m
+pod/zot-registry-dcd856d5f-hb5nj    1/1     Running   0          5m
 
-NAME                   TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)    AGE
-service/zot-registry   ClusterIP   10.43.234.67   <none>        5000/TCP   5m
+NAME                   TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+service/zot-registry   NodePort   10.43.240.199   <none>        5000:30000/TCP   5m
 
 NAME                           READY   UP-TO-DATE   AVAILABLE   AGE
 deployment.apps/zot-registry   1/1     1            1           5m
 
 NAME                                      DESIRED   CURRENT   READY   AGE
-replicaset.apps/zot-registry-54d747498b   1         1         1       5m
-
-NAME                                        CLASS   HOSTS                       PORTS     AGE
-ingress.networking.k8s.io/zot-registry      nginx   zot.argus-insight.dev.net   80, 443   3m
+replicaset.apps/zot-registry-5dfdb487f5   1         1         1       5m
 
 NAME                             STATUS   VOLUME   CAPACITY   ACCESS MODES   AGE
 persistentvolumeclaim/argus-zot-data   Bound    ...      50Gi       RWO            5m

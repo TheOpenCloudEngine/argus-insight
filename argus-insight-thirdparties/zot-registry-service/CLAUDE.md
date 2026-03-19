@@ -48,9 +48,12 @@ zot-registry-service/
 | 기본 패스워드 | `Argus!insight2026` |
 
 ```bash
-# 사용자 추가
+# 사용자 추가 (비밀번호에 !가 포함된 경우 반드시 set +H 먼저 실행)
+set +H
 htpasswd -bB htpasswd <username> <password>
 ```
+
+> **주의**: bash의 history expansion 기능이 `!` 문자를 변환하여 잘못된 해시가 생성될 수 있습니다. 비밀번호에 `!`가 포함된 경우 반드시 `set +H`로 history expansion을 비활성화한 후 htpasswd 명령을 실행하세요. 자세한 내용은 `TroubleShooting.md`의 6번 항목을 참고하세요.
 
 ## 빌드
 
@@ -165,7 +168,8 @@ kubectl create secret tls zot-registry-tls \
 `kubernetes/secret.yaml`의 placeholder를 실제 값으로 변경합니다:
 
 ```bash
-# htpasswd 해시 생성
+# htpasswd 해시 생성 (! 문자 때문에 set +H 필수)
+set +H
 htpasswd -nbB admin 'Argus!insight2026'
 ```
 
