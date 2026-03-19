@@ -7,6 +7,7 @@ import { Button } from "@workspace/ui/components/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@workspace/ui/components/card"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@workspace/ui/components/select"
 
 import {
   fetchArgusConfig,
@@ -28,6 +29,11 @@ export function ArgusSettings() {
   const [osAccessKey, setOsAccessKey] = useState("")
   const [osSecretKey, setOsSecretKey] = useState("")
   const [osRegion, setOsRegion] = useState("us-east-1")
+  const [osStorageType, setOsStorageType] = useState("minio")
+  const [osUseSsl, setOsUseSsl] = useState("false")
+  const [osMultipartThreshold, setOsMultipartThreshold] = useState("8388608")
+  const [osMultipartChunksize, setOsMultipartChunksize] = useState("8388608")
+  const [osPresignedUrlExpiry, setOsPresignedUrlExpiry] = useState("3600")
   const [osSaving, setOsSaving] = useState(false)
   const [osTesting, setOsTesting] = useState(false)
   const [showOsSecretKey, setShowOsSecretKey] = useState(false)
@@ -59,6 +65,11 @@ export function ArgusSettings() {
       setOsAccessKey(config.object_storage_access_key ?? "")
       setOsSecretKey(config.object_storage_secret_key ?? "")
       setOsRegion(config.object_storage_region ?? "us-east-1")
+      setOsStorageType(config.object_storage_type ?? "minio")
+      setOsUseSsl(config.object_storage_use_ssl ?? "false")
+      setOsMultipartThreshold(config.object_storage_multipart_threshold ?? "8388608")
+      setOsMultipartChunksize(config.object_storage_multipart_chunksize ?? "8388608")
+      setOsPresignedUrlExpiry(config.object_storage_presigned_url_expiry ?? "3600")
       setRegistryUrl(config.docker_registry_url ?? "https://zot.argus-insight.dev.net:30000")
       setUsername(config.docker_registry_username ?? "admin")
       setPassword(config.docker_registry_password ?? "Argus!insight2026")
@@ -88,12 +99,20 @@ export function ArgusSettings() {
   async function handleOsSave() {
     setOsSaving(true)
     try {
-      await updateArgusConfig({
+      const osConfig: Record<string, string> = {
         object_storage_endpoint: osEndpoint,
         object_storage_access_key: osAccessKey,
         object_storage_secret_key: osSecretKey,
         object_storage_region: osRegion,
-      })
+        object_storage_type: osStorageType,
+      }
+      if (osStorageType === "minio") {
+        osConfig.object_storage_use_ssl = osUseSsl
+        osConfig.object_storage_multipart_threshold = osMultipartThreshold
+        osConfig.object_storage_multipart_chunksize = osMultipartChunksize
+        osConfig.object_storage_presigned_url_expiry = osPresignedUrlExpiry
+      }
+      await updateArgusConfig(osConfig)
       showOsStatus("success", "Object Storage settings saved successfully")
       await loadConfig()
     } catch (err) {
@@ -360,6 +379,67 @@ export function ArgusSettings() {
                 placeholder="us-east-1"
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="os-storage-type">Storage Type</Label>
+              <Select value={osStorageType} onValueChange={setOsStorageType}>
+                <SelectTrigger id="os-storage-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="aws-s3">AWS S3</SelectItem>
+                  <SelectItem value="minio">Minio</SelectItem>
+                  <SelectItem value="apache-ozone">Apache Ozone</SelectItem>
+                  <SelectItem value="others">Others</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {osStorageType === "minio" && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="os-use-ssl">Use SSL</Label>
+                  <Select value={osUseSsl} onValueChange={setOsUseSsl}>
+                    <SelectTrigger id="os-use-ssl">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="true">true</SelectItem>
+                      <SelectItem value="false">false</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">s3.use_ssl</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="os-multipart-threshold">Multipart Threshold</Label>
+                  <Input
+                    id="os-multipart-threshold"
+                    value={osMultipartThreshold}
+                    onChange={(e) => setOsMultipartThreshold(e.target.value)}
+                    placeholder="8388608"
+                  />
+                  <p className="text-xs text-muted-foreground">s3.multipart_threshold (bytes)</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="os-multipart-chunksize">Multipart Chunk Size</Label>
+                  <Input
+                    id="os-multipart-chunksize"
+                    value={osMultipartChunksize}
+                    onChange={(e) => setOsMultipartChunksize(e.target.value)}
+                    placeholder="8388608"
+                  />
+                  <p className="text-xs text-muted-foreground">s3.multipart_chunksize (bytes)</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="os-presigned-url-expiry">Presigned URL Expiry</Label>
+                  <Input
+                    id="os-presigned-url-expiry"
+                    value={osPresignedUrlExpiry}
+                    onChange={(e) => setOsPresignedUrlExpiry(e.target.value)}
+                    placeholder="3600"
+                  />
+                  <p className="text-xs text-muted-foreground">s3.presigned_url_expiry (seconds)</p>
+                </div>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>
