@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Eye, EyeOff, Loader2, Save } from "lucide-react"
+import { ExternalLink, Eye, EyeOff, Loader2, Save } from "lucide-react"
 
 import {
   AlertDialog,
@@ -45,6 +45,15 @@ function isValidIp(value: string): boolean {
 function isValidPort(value: string): boolean {
   const n = parseInt(value, 10)
   return Number.isInteger(n) && n >= 1 && n <= 65535 && String(n) === value
+}
+
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === "http:" || url.protocol === "https:"
+  } catch {
+    return false
+  }
 }
 
 // --------------------------------------------------------------------------- //
@@ -336,14 +345,27 @@ function PowerDnsSettingsSection({
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="pdns-admin-url">PowerDNS Admin URL</Label>
-            <Input
-              id="pdns-admin-url"
-              value={values.admin_url}
-              onChange={(e) => onChange("admin_url", e.target.value)}
-              placeholder="e.g. http://10.0.1.50:9191"
-            />
+            <div className="flex gap-2">
+              <Input
+                id="pdns-admin-url"
+                value={values.admin_url}
+                onChange={(e) => onChange("admin_url", e.target.value)}
+                placeholder="e.g. http://10.0.1.50:9191"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0 px-3"
+                disabled={!isValidHttpUrl(values.admin_url.trim())}
+                onClick={() => window.open(values.admin_url.trim(), "_blank", "noopener,noreferrer")}
+              >
+                <ExternalLink className="h-4 w-4 mr-1.5" />
+                Go
+              </Button>
+            </div>
             <p className="text-xs text-muted-foreground">
-              PowerDNS Admin 웹 UI 주소
+              PowerDNS Admin Web UI URL
             </p>
           </div>
         </div>
