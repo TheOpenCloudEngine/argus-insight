@@ -65,10 +65,10 @@ metadata:
     app.kubernetes.io/name: powerdns-admin
     app.kubernetes.io/part-of: argus-insight
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   ports:
     - name: http
-      port: 80
+      port: 8082
       targetPort: http
       protocol: TCP
   selector:
