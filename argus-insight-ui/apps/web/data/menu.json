@@ -45,6 +45,12 @@
           "title": "My Notes",
           "url": "/dashboard/notes",
           "icon": "BookOpen"
+        },
+        {
+          "id": "catalogs",
+          "title": "Catalog",
+          "url": "/dashboard/unity-catalog",
+          "icon": "Library"
         }
       ]
     },
