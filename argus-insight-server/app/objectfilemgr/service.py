@@ -18,20 +18,23 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
-from app.core.s3 import get_s3_client
+from app.core.s3 import get_s3_client, get_s3_settings
 from app.objectfilemgr.models import (
     ArgusConfigurationFilebrowser,
     ArgusConfigurationFilebrowserExtension,
     ArgusConfigurationFilebrowserPreview,
 )
+from app.usermgr.models import ArgusUser
 from app.objectfilemgr.schemas import (
+    BucketInfo,
+    BucketListResponse,
     CompletedPart,
     CompleteMultipartResponse,
     CopyObjectResponse,
     CreateFolderResponse,
     DeleteObjectsResponse,
     DocumentPreviewResponse,
+    EnsureUserBucketsResponse,
     FilebrowserConfigResponse,
     FolderInfo,
     HeadObjectResponse,
@@ -50,6 +53,49 @@ from app.objectfilemgr.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# =========================================================================== #
+# Bucket management
+# =========================================================================== #
+
+
+async def list_buckets() -> BucketListResponse:
+    """List all S3 buckets."""
+    async with get_s3_client() as s3:
+        resp = await s3.list_buckets()
+    buckets = []
+    for b in resp.get("Buckets", []):
+        creation_date = b.get("CreationDate")
+        buckets.append(BucketInfo(
+            name=b["Name"],
+            creation_date=creation_date.isoformat() if creation_date else None,
+        ))
+    return BucketListResponse(buckets=buckets)
+
+
+async def ensure_user_buckets(db: AsyncSession) -> EnsureUserBucketsResponse:
+    """Ensure a user-<username> bucket exists for every user."""
+    result = await db.execute(select(ArgusUser.username))
+    usernames = [row[0] for row in result.all()]
+
+    async with get_s3_client() as s3:
+        resp = await s3.list_buckets()
+        existing_buckets = {b["Name"] for b in resp.get("Buckets", [])}
+
+        created: list[str] = []
+        existing: list[str] = []
+
+        for username in usernames:
+            bucket_name = f"user-{username}"
+            if bucket_name in existing_buckets:
+                existing.append(bucket_name)
+            else:
+                await s3.create_bucket(Bucket=bucket_name)
+                created.append(bucket_name)
+                logger.info("Created user bucket: %s", bucket_name)
+
+    return EnsureUserBucketsResponse(created=created, existing=existing)
 
 
 def _format_dt(dt: datetime | str | None) -> str:
@@ -346,6 +392,12 @@ async def initiate_multipart_upload(
     return MultipartUploadInitResponse(upload_id=upload_id, key=key)
 
 
+async def _presigned_url_expiry() -> int:
+    """Get the presigned URL expiry from DB settings."""
+    cfg = await get_s3_settings()
+    return int(cfg.get("object_storage_presigned_url_expiry", "3600"))
+
+
 async def get_multipart_upload_urls(
     bucket: str,
     key: str,
@@ -353,6 +405,7 @@ async def get_multipart_upload_urls(
     part_numbers: list[int],
 ) -> MultipartUploadUrlsResponse:
     """Generate presigned URLs for uploading individual parts."""
+    expiry = await _presigned_url_expiry()
     parts: list[MultipartUploadPartUrl] = []
     async with get_s3_client() as s3:
         for pn in part_numbers:
@@ -364,7 +417,7 @@ async def get_multipart_upload_urls(
                     "UploadId": upload_id,
                     "PartNumber": pn,
                 },
-                ExpiresIn=settings.s3_presigned_url_expiry,
+                ExpiresIn=expiry,
             )
             parts.append(MultipartUploadPartUrl(part_number=pn, url=url))
     return MultipartUploadUrlsResponse(parts=parts)
@@ -412,13 +465,14 @@ async def abort_multipart_upload(bucket: str, key: str, upload_id: str) -> None:
 
 async def generate_download_url(bucket: str, key: str) -> PresignedUrlResponse:
     """Generate a presigned GET URL for downloading an object."""
+    expiry = await _presigned_url_expiry()
     async with get_s3_client() as s3:
         url = await s3.generate_presigned_url(
             "get_object",
             Params={"Bucket": bucket, "Key": key},
-            ExpiresIn=settings.s3_presigned_url_expiry,
+            ExpiresIn=expiry,
         )
-    return PresignedUrlResponse(url=url, expires_in=settings.s3_presigned_url_expiry)
+    return PresignedUrlResponse(url=url, expires_in=expiry)
 
 
 async def generate_upload_url(
@@ -427,6 +481,7 @@ async def generate_upload_url(
     content_type: str = "application/octet-stream",
 ) -> PresignedUploadUrlResponse:
     """Generate a presigned PUT URL for uploading an object directly."""
+    expiry = await _presigned_url_expiry()
     async with get_s3_client() as s3:
         url = await s3.generate_presigned_url(
             "put_object",
@@ -435,12 +490,12 @@ async def generate_upload_url(
                 "Key": key,
                 "ContentType": content_type,
             },
-            ExpiresIn=settings.s3_presigned_url_expiry,
+            ExpiresIn=expiry,
         )
     return PresignedUploadUrlResponse(
         url=url,
         key=key,
-        expires_in=settings.s3_presigned_url_expiry,
+        expires_in=expiry,
     )
 
 

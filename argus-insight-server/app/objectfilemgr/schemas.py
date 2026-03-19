@@ -2,6 +2,32 @@
 
 from pydantic import BaseModel, Field
 
+
+# --------------------------------------------------------------------------- #
+# Bucket management
+# --------------------------------------------------------------------------- #
+
+
+class BucketInfo(BaseModel):
+    """Info about a single S3 bucket."""
+
+    name: str
+    creation_date: str | None = None
+
+
+class BucketListResponse(BaseModel):
+    """Response containing categorized bucket lists."""
+
+    buckets: list[BucketInfo]
+
+
+class EnsureUserBucketsResponse(BaseModel):
+    """Response from ensuring user buckets exist."""
+
+    created: list[str]
+    existing: list[str]
+
+
 # --------------------------------------------------------------------------- #
 # Common
 # --------------------------------------------------------------------------- #

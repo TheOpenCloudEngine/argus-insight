@@ -86,6 +86,48 @@ export async function updatePreviewCategory(
   if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to update preview category"))
 }
 
+// --------------------------------------------------------------------------- //
+// Bucket Management
+// --------------------------------------------------------------------------- //
+
+export type BucketInfo = {
+  name: string
+  creation_date: string | null
+}
+
+export type BucketListResponse = {
+  buckets: BucketInfo[]
+}
+
+export type EnsureUserBucketsResponse = {
+  created: string[]
+  existing: string[]
+}
+
+/**
+ * List all S3 buckets.
+ */
+export async function listBuckets(): Promise<BucketListResponse> {
+  const res = await fetch(`${BASE}/buckets`)
+  if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to list buckets"))
+  return res.json()
+}
+
+/**
+ * Ensure user-<username> buckets exist for all users.
+ */
+export async function ensureUserBuckets(): Promise<EnsureUserBucketsResponse> {
+  const res = await fetch(`${BASE}/buckets/ensure-user-buckets`, {
+    method: "POST",
+  })
+  if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to ensure user buckets"))
+  return res.json()
+}
+
+// --------------------------------------------------------------------------- //
+// Objects
+// --------------------------------------------------------------------------- //
+
 /**
  * List objects and folders under a prefix.
  * Maps the server response to the UI's ListObjectsResponse shape.
