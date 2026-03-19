@@ -9,4 +9,3 @@ resources:
   - configmap.yaml
   - pvc.yaml
   - zot-registry.yaml
-  - ingress.yaml
