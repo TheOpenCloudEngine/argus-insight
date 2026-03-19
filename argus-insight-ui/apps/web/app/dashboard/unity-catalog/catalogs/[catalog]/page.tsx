@@ -11,8 +11,8 @@ import { UCDetailsLayout } from "@/features/unity-catalog/components/uc-details-
 import { UCTimestampMetadata } from "@/features/unity-catalog/components/uc-metadata-list"
 import { UCEntityTable } from "@/features/unity-catalog/components/uc-entity-table"
 import { CreateSchemaDialog } from "@/features/unity-catalog/components/uc-create-schema-dialog"
-import { UCDeleteCatalogDialog } from "@/features/unity-catalog/components/uc-delete-catalog-dialog"
-import { getCatalog, listSchemas, updateCatalog, deleteCatalog } from "@/features/unity-catalog/api"
+import { UCDeleteSchemaDialog } from "@/features/unity-catalog/components/uc-delete-schema-dialog"
+import { getCatalog, listSchemas, updateCatalog, deleteSchema } from "@/features/unity-catalog/api"
 import type { Catalog, Schema } from "@/features/unity-catalog/data/schema"
 
 export default function CatalogDetailsPage() {
@@ -26,7 +26,7 @@ export default function CatalogDetailsPage() {
   const [createSchemaOpen, setCreateSchemaOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
-  const isGlobal = catalogName === "global"
+  const hasDeletableSchemas = schemas.some((s) => s.name !== "default")
 
   const loadData = useCallback(async () => {
     setIsLoading(true)
@@ -64,7 +64,7 @@ export default function CatalogDetailsPage() {
             <Button
               variant="destructive"
               size="sm"
-              disabled={isGlobal}
+              disabled={!hasDeletableSchemas}
               onClick={() => setDeleteOpen(true)}
             >
               <Trash2 className="mr-1.5 h-4 w-4" /> Delete Schema
@@ -106,13 +106,13 @@ export default function CatalogDetailsPage() {
         catalogName={catalogName}
         onSuccess={loadData}
       />
-      <UCDeleteCatalogDialog
+      <UCDeleteSchemaDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        catalogName={catalogName}
-        onConfirm={async () => {
-          await deleteCatalog(catalogName)
-          router.push("/dashboard/unity-catalog")
+        schemas={schemas}
+        onConfirm={async (schemaFullName) => {
+          await deleteSchema(schemaFullName)
+          loadData()
         }}
       />
     </>
