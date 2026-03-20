@@ -1,0 +1,230 @@
+"use client"
+
+import { useCallback, useEffect, useState } from "react"
+import { AlertCircle, ExternalLink, Loader2, Play, Trash2 } from "lucide-react"
+import { Button } from "@workspace/ui/components/button"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@workspace/ui/components/card"
+import { Badge } from "@workspace/ui/components/badge"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@workspace/ui/components/alert-dialog"
+import {
+  type VscodeStatus,
+  fetchVscodeStatus,
+  launchVscode,
+  destroyVscode,
+  getAuthCookieUrl,
+} from "../api"
+
+const STATUS_BADGE_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  deploying: "secondary",
+  running: "default",
+  failed: "destructive",
+  deleting: "secondary",
+  deleted: "outline",
+}
+
+export function VscodeLauncher() {
+  const [status, setStatus] = useState<VscodeStatus | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const refresh = useCallback(async () => {
+    try {
+      const data = await fetchVscodeStatus()
+      setStatus(data)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load status")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
+
+  // Auto-refresh while deploying or deleting
+  useEffect(() => {
+    if (
+      status?.exists &&
+      (status.status === "deploying" || status.status === "deleting")
+    ) {
+      const interval = setInterval(refresh, 5000)
+      return () => clearInterval(interval)
+    }
+  }, [status, refresh])
+
+  const handleLaunch = async () => {
+    setActionLoading(true)
+    setError(null)
+    try {
+      await launchVscode()
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to launch")
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleDestroy = async () => {
+    setActionLoading(true)
+    setError(null)
+    try {
+      await destroyVscode()
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to destroy")
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleOpen = () => {
+    // Use auth-cookie endpoint to set cookie and redirect
+    window.open(getAuthCookieUrl(), "_blank")
+  }
+
+  if (loading) {
+    return (
+      <Card className="max-w-xl">
+        <CardContent className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const isDeploying = status?.status === "deploying"
+  const isRunning = status?.status === "running"
+  const isFailed = status?.status === "failed"
+  const isDeleting = status?.status === "deleting"
+  const hasInstance = status?.exists && status.status !== "deleted"
+
+  return (
+    <Card className="max-w-xl">
+      <CardHeader>
+        <CardTitle>VS Code Server</CardTitle>
+        <CardDescription>
+          Your personal VS Code development environment with S3 workspace storage.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {error && (
+          <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {hasInstance && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Status:</span>
+              <Badge variant={STATUS_BADGE_VARIANT[status.status ?? ""] ?? "outline"}>
+                {isDeploying && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+                {isDeleting && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+                {status.status}
+              </Badge>
+            </div>
+            {status.hostname && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Hostname:</span>
+                <code className="text-sm">{status.hostname}</code>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex gap-2 pt-2">
+          {!hasInstance && (
+            <Button onClick={handleLaunch} disabled={actionLoading}>
+              {actionLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="mr-2 h-4 w-4" />
+              )}
+              Launch VS Code
+            </Button>
+          )}
+
+          {isDeploying && (
+            <p className="text-sm text-muted-foreground pt-2">
+              Deploying your VS Code Server. This may take a minute...
+            </p>
+          )}
+
+          {isRunning && (
+            <>
+              <Button onClick={handleOpen}>
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Open VS Code
+              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" disabled={actionLoading}>
+                    {actionLoading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="mr-2 h-4 w-4" />
+                    )}
+                    Destroy
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Destroy VS Code Server?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will remove your VS Code Server instance. Your files
+                      in the S3 bucket will be preserved.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDestroy}>
+                      Destroy
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </>
+          )}
+
+          {isFailed && (
+            <Button onClick={handleLaunch} disabled={actionLoading}>
+              {actionLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="mr-2 h-4 w-4" />
+              )}
+              Retry
+            </Button>
+          )}
+
+          {isDeleting && (
+            <p className="text-sm text-muted-foreground pt-2">
+              Destroying your VS Code Server...
+            </p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}

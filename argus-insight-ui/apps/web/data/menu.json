@@ -51,6 +51,12 @@
           "title": "Catalog",
           "url": "/dashboard/unity-catalog",
           "icon": "Library"
+        },
+        {
+          "id": "vscode",
+          "title": "VS Code",
+          "url": "/dashboard/vscode",
+          "icon": "Code"
         }
       ]
     },
