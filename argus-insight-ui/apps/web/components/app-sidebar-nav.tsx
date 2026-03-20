@@ -36,7 +36,7 @@ export function AppSidebarNav({ groups }: AppSidebarNavProps) {
                     tooltip={item.title}
                     className="text-sm"
                   >
-                    <Link href={item.url}>
+                    <Link href={item.url} prefetch={false}>
                       <Icon />
                       <span>{item.title}</span>
                     </Link>
