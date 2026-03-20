@@ -342,6 +342,11 @@ async def push_prometheus_config_to_agents(
         logger.info("No REGISTERED agents to push Prometheus config to")
         return
 
+    hostnames = [a.hostname for a in agents]
+    logger.info(
+        "Pushing Prometheus config to %d REGISTERED agent(s): %s", len(agents), hostnames,
+    )
+
     payload = {
         "prometheus_enable_push": items.get("prometheus_enable_push", "true"),
         "prometheus_push_cron": items.get("prometheus_push_cron", "* * * * *"),

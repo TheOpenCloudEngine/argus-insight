@@ -125,6 +125,15 @@ async def _sync_prometheus_config_from_server() -> None:
             ),
         )
 
+        logger.info(
+            "Prometheus config synced from server: "
+            "enable_push=%s, cron=%s, gateway=%s:%s",
+            settings.prometheus_enable_push,
+            settings.prometheus_push_cron,
+            settings.prometheus_pushgateway_host,
+            settings.prometheus_pushgateway_port,
+        )
+
     except httpx.ConnectError:
         logger.warning(
             "Cannot connect to server at %s:%s, using local Prometheus config",

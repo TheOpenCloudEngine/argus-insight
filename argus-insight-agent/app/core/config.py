@@ -15,10 +15,13 @@ Override with ARGUS_CONFIG_DIR environment variable.
 Override individual files with --config-yaml / --config-properties CLI arguments.
 """
 
+import logging
 import os
 from pathlib import Path
 
 from app.core.config_loader import load_config
+
+logger = logging.getLogger(__name__)
 
 _CONFIG_DIR = Path(os.environ.get("ARGUS_CONFIG_DIR", "/etc/argus-insight-agent"))
 _yaml_path: Path = _CONFIG_DIR / "config.yml"
@@ -126,6 +129,14 @@ class Settings:
         pushgateway_port: str,
     ) -> None:
         """Update Prometheus settings in memory."""
+        logger.info(
+            "Updating in-memory Prometheus settings: "
+            "enable_push=%s -> %s, cron='%s' -> '%s', host=%s -> %s, port=%s -> %s",
+            self.prometheus_enable_push, _to_bool(enable_push),
+            self.prometheus_push_cron, push_cron,
+            self.prometheus_pushgateway_host, pushgateway_host,
+            self.prometheus_pushgateway_port, pushgateway_port,
+        )
         self.prometheus_enable_push = _to_bool(enable_push)
         self.prometheus_push_cron = push_cron
         self.prometheus_pushgateway_host = pushgateway_host

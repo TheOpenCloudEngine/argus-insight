@@ -53,6 +53,11 @@ async def update_category(
 
     # If argus category contains prometheus keys, push config to all REGISTERED agents
     if body.category == "argus" and service._PROMETHEUS_KEYS & body.items.keys():
+        changed_keys = service._PROMETHEUS_KEYS & body.items.keys()
+        logger.info(
+            "Prometheus config updated via UI, pushing to agents: %s",
+            {k: body.items[k] for k in changed_keys},
+        )
         # Fetch the full argus config to send complete prometheus values
         argus_config = await service.get_infra_category_items(session, "argus")
         argus_config.update(body.items)
