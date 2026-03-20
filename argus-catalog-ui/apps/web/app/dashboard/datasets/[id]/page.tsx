@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   AlertTriangle,
@@ -230,6 +230,7 @@ function generateAvroSchema(datasetName: string, namespace: string, fields: Sche
 // ---------------------------------------------------------------------------
 export default function DatasetDetailPage() {
   const params = useParams()
+  const router = useRouter()
   const datasetId = Number(params.id)
   const [dataset, setDataset] = useState<DatasetDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -585,11 +586,9 @@ export default function DatasetDetailPage() {
         <DashboardHeader title="Dataset" />
         <div className="flex flex-col items-center justify-center gap-4 p-8">
           <p className="text-destructive">{error || "Dataset not found"}</p>
-          <Button variant="outline" asChild>
-            <Link href="/dashboard/datasets">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Datasets
-            </Link>
+          <Button variant="outline" onClick={() => router.back()}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back
           </Button>
         </div>
       </>
@@ -602,11 +601,9 @@ export default function DatasetDetailPage() {
       <div className="flex flex-1 flex-col gap-4 p-4">
         {/* Back button */}
         <div>
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/dashboard/datasets">
-              <ArrowLeft className="mr-1 h-4 w-4" />
-              Back
-            </Link>
+          <Button variant="ghost" size="sm" onClick={() => router.back()}>
+            <ArrowLeft className="mr-1 h-4 w-4" />
+            Back
           </Button>
         </div>
 
