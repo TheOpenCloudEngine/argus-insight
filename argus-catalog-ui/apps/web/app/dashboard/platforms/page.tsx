@@ -450,7 +450,7 @@ export default function PlatformsPage() {
             </p>
           ) : (
             platforms.map((p) => (
-              <Card key={p.id} className="transition-colors hover:bg-muted/50">
+              <Card key={p.id} className="transition-colors hover:bg-muted">
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 min-w-0">
