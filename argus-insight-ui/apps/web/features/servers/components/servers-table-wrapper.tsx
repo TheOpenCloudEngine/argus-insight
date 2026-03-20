@@ -2,7 +2,12 @@
 
 import { ServersInspectDialog } from "./servers-inspect-dialog"
 import { ServersRegisterDialog } from "./servers-register-dialog"
-import { ServersTerminalDialog } from "./servers-terminal-dialog"
+import dynamic from "next/dynamic"
+
+const ServersTerminalDialog = dynamic(
+  () => import("./servers-terminal-dialog").then((mod) => mod.ServersTerminalDialog),
+  { ssr: false },
+)
 import { ServersTerminalWarningDialog } from "./servers-terminal-warning-dialog"
 import { ServersTopDialog } from "./servers-top-dialog"
 import { ServersProcessesDialog } from "./servers-processes-dialog"
