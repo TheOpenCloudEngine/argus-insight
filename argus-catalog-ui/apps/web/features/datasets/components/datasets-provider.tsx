@@ -12,6 +12,7 @@ type SearchParams = {
   search: string
   platform: string
   origin: string
+  status: string
   tag: string
 }
 
@@ -50,6 +51,7 @@ export function DatasetsProvider({
     search: "",
     platform: "",
     origin: "",
+    status: "",
     tag: "",
   })
 
@@ -60,6 +62,7 @@ export function DatasetsProvider({
       search: string
       platform: string
       origin: string
+      status: string
       tag: string
     }) => {
       try {
@@ -70,6 +73,7 @@ export function DatasetsProvider({
           search: params.search || undefined,
           platform: params.platform || undefined,
           origin: params.origin || undefined,
+          status: params.status || undefined,
           tag: params.tag || undefined,
         })
         setDatasets(data.items)
@@ -90,6 +94,7 @@ export function DatasetsProvider({
       search: "",
       platform: "",
       origin: "",
+      status: "",
       tag: "",
     })
   }, [loadDatasets, pageSize])

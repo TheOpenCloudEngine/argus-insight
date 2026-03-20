@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   type ColumnFiltersState,
   type SortingState,
@@ -21,7 +21,8 @@ import {
   TableRow,
 } from "@workspace/ui/components/table"
 import { DataTablePagination, DataTableToolbar } from "@/components/data-table"
-import { type DatasetSummary } from "../data/schema"
+import { fetchPlatforms } from "../api"
+import { type DatasetSummary, type Platform } from "../data/schema"
 import { datasetsColumns as columns } from "./datasets-columns"
 import { DatasetsPrimaryButtons } from "./datasets-primary-buttons"
 import { useDatasets } from "./datasets-provider"
@@ -38,6 +39,27 @@ export function DatasetsTable({ data, isLoading }: DatasetsTableProps) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [platforms, setPlatforms] = useState<Platform[]>([])
+
+  // Fetch platforms for filter options
+  useEffect(() => {
+    fetchPlatforms().then(setPlatforms).catch(() => {})
+  }, [])
+
+  const platformOptions = useMemo(
+    () =>
+      platforms.map((p) => ({
+        label: p.display_name,
+        value: p.name,
+      })),
+    [platforms]
+  )
+
+  const statusOptions = [
+    { label: "Active", value: "active" },
+    { label: "Inactive", value: "inactive" },
+    { label: "Deprecated", value: "deprecated" },
+  ]
 
   const pageCount = useMemo(
     () => Math.ceil(total / pageSize),
@@ -76,30 +98,37 @@ export function DatasetsTable({ data, isLoading }: DatasetsTableProps) {
 
   const handleSearch = useCallback(() => {
     const searchVal = columnFilters.find((f) => f.id === "name")?.value
-    const originVal = columnFilters.find((f) => f.id === "origin")?.value
     const platformVal = columnFilters.find(
       (f) => f.id === "platform_display_name"
     )?.value
+    const originVal = columnFilters.find((f) => f.id === "origin")?.value
+    const statusVal = columnFilters.find((f) => f.id === "status")?.value
 
-    let origin = ""
-    if (Array.isArray(originVal) && originVal.length === 1) {
-      origin = originVal[0]
-    }
+    const search = typeof searchVal === "string" ? searchVal : ""
 
     let platform = ""
     if (Array.isArray(platformVal) && platformVal.length === 1) {
       platform = platformVal[0]
     }
 
-    const search = typeof searchVal === "string" ? searchVal : ""
+    let origin = ""
+    if (Array.isArray(originVal) && originVal.length === 1) {
+      origin = originVal[0]
+    }
 
-    searchDatasets({ search, platform, origin, tag: "" })
+    let status = ""
+    if (Array.isArray(statusVal) && statusVal.length === 1) {
+      status = statusVal[0]
+    }
+
+    searchDatasets({ search, platform, origin, status, tag: "" })
   }, [columnFilters, searchDatasets])
 
   const handleClear = useCallback(() => {
     table.resetColumnFilters()
     table.setGlobalFilter("")
-  }, [table])
+    searchDatasets({ search: "", platform: "", origin: "", status: "", tag: "" })
+  }, [table, searchDatasets])
 
   return (
     <div className={cn("flex flex-1 flex-col gap-4")}>
@@ -109,6 +138,11 @@ export function DatasetsTable({ data, isLoading }: DatasetsTableProps) {
         searchKey="name"
         filters={[
           {
+            columnId: "platform_display_name",
+            title: "Platform",
+            options: platformOptions,
+          },
+          {
             columnId: "origin",
             title: "Environment",
             options: [
@@ -116,6 +150,11 @@ export function DatasetsTable({ data, isLoading }: DatasetsTableProps) {
               { label: "DEV", value: "DEV" },
               { label: "STAGING", value: "STAGING" },
             ],
+          },
+          {
+            columnId: "status",
+            title: "Status",
+            options: statusOptions,
           },
         ]}
         onSearch={handleSearch}

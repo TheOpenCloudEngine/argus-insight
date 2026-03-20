@@ -61,14 +61,15 @@ export const datasetsColumns: ColumnDef<DatasetSummary>[] = [
       const status = row.original.status
       return (
         <Badge
-          variant={
+          className={
             status === "active"
-              ? "default"
-              : status === "deprecated"
-                ? "secondary"
-                : "destructive"
+              ? "bg-primary text-primary-foreground text-xs"
+              : status === "inactive"
+                ? "bg-amber-500 text-white text-xs"
+                : status === "deprecated"
+                  ? "bg-zinc-600 text-white text-xs"
+                  : "bg-destructive text-destructive-foreground text-xs"
           }
-          className="text-xs"
         >
           {status}
         </Badge>

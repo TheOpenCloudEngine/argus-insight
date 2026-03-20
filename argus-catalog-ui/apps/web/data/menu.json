@@ -41,6 +41,18 @@
           "icon": "Tags"
         }
       ]
+    },
+    {
+      "id": "admin",
+      "label": "Administration",
+      "items": [
+        {
+          "id": "users",
+          "title": "User Management",
+          "url": "/dashboard/users",
+          "icon": "Users"
+        }
+      ]
     }
   ]
 }

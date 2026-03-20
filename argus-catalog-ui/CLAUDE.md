@@ -40,4 +40,4 @@ pnpm lint      # ESLint
 ## 백엔드 연동
 
 - API 프록시: `middleware.ts`에서 `/api/v1/*` 요청을 `API_BASE_URL`로 프록시
-- 기본 백엔드: `http://localhost:4600` (catalog-server)
+- 기본 백엔드: `http://localhost:4600` (argus-catalog-server)

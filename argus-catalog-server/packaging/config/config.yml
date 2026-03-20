@@ -1,0 +1,35 @@
+app:
+  name: argus-catalog-server
+  version: 0.1.0
+  debug: ${app.debug:false}
+
+server:
+  host: ${server.host:0.0.0.0}
+  port: ${server.port:4600}
+
+logging:
+  level: ${log.level:INFO}
+  dir: ${log.dir:/var/log/argus-catalog-server}
+  filename: ${log.filename:argus-catalog-server.log}
+  rolling:
+    type: daily
+    backup_count: 30
+
+data:
+  dir: ${data.dir:/var/lib/argus-catalog-server}
+
+cors:
+  origins: ${cors.origins:*}
+
+database:
+  type: ${db.type:postgresql}
+  host: ${db.host:localhost}
+  port: ${db.port:5432}
+  name: ${db.name:argus_catalog}
+  username: ${db.username:argus}
+  password: ${db.password:argus}
+  pool:
+    size: ${db.pool.size:5}
+    max_overflow: ${db.pool.max_overflow:10}
+    recycle: ${db.pool.recycle:3600}
+  echo: ${db.echo:false}

@@ -1,5 +1,6 @@
 import "@workspace/ui/globals.css"
 import localFont from "next/font/local"
+import { Toaster } from "sonner"
 import { ThemeProvider } from "@/components/theme-provider"
 
 const robotoCondensed = localFont({
@@ -29,7 +30,10 @@ export default function RootLayout({
       className={`antialiased ${robotoCondensed.variable} ${d2coding.variable}`}
     >
       <body className="font-[family-name:var(--font-roboto-condensed)]">
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          {children}
+          <Toaster richColors position="top-center" />
+        </ThemeProvider>
       </body>
     </html>
   )

@@ -1,31 +1,50 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Plus, Trash2 } from "lucide-react"
+import Link from "next/link"
+import { AlertTriangle, Database, Plus, Trash2 } from "lucide-react"
 
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@workspace/ui/components/dialog"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import { Separator } from "@workspace/ui/components/separator"
 import { DashboardHeader } from "@/components/dashboard-header"
-import { createTag, deleteTag, fetchTags } from "@/features/tags/api"
+import {
+  createTag,
+  deleteTag,
+  fetchTags,
+  fetchTagUsage,
+  type TagUsage,
+} from "@/features/tags/api"
 import type { Tag } from "@/features/datasets/data/schema"
 
 export default function TagsPage() {
   const [tags, setTags] = useState<Tag[]>([])
   const [isLoading, setIsLoading] = useState(true)
+
+  // Create dialog
   const [dialogOpen, setDialogOpen] = useState(false)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [color, setColor] = useState("#3b82f6")
   const [saving, setSaving] = useState(false)
+
+  // Delete confirm dialog
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<TagUsage | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -63,17 +82,36 @@ export default function TagsPage() {
     }
   }, [name, description, color, load])
 
-  const handleDelete = useCallback(
-    async (tagId: number) => {
-      try {
-        await deleteTag(tagId)
-        await load()
-      } catch {
-        // ignore
-      }
-    },
-    [load]
-  )
+  // Open delete dialog: fetch usage first
+  const handleDeleteClick = useCallback(async (tagId: number) => {
+    setDeleteLoading(true)
+    setDeleteDialogOpen(true)
+    setDeleteTarget(null)
+    try {
+      const usage = await fetchTagUsage(tagId)
+      setDeleteTarget(usage)
+    } catch {
+      setDeleteDialogOpen(false)
+    } finally {
+      setDeleteLoading(false)
+    }
+  }, [])
+
+  // Confirm delete
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await deleteTag(deleteTarget.tag.id)
+      setDeleteDialogOpen(false)
+      setDeleteTarget(null)
+      await load()
+    } catch {
+      // ignore
+    } finally {
+      setDeleting(false)
+    }
+  }, [deleteTarget, load])
 
   return (
     <>
@@ -114,7 +152,7 @@ export default function TagsPage() {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
-                      onClick={() => handleDelete(tag.id)}
+                      onClick={() => handleDeleteClick(tag.id)}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -131,6 +169,7 @@ export default function TagsPage() {
         </div>
       </div>
 
+      {/* Create Tag Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -188,6 +227,97 @@ export default function TagsPage() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirm Dialog with Usage Info */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Delete Tag
+            </DialogTitle>
+            {deleteTarget && (
+              <DialogDescription>
+                Are you sure you want to delete the tag{" "}
+                <Badge
+                  style={{
+                    backgroundColor: deleteTarget.tag.color,
+                    color: "#fff",
+                  }}
+                  className="text-xs mx-0.5"
+                >
+                  {deleteTarget.tag.name}
+                </Badge>
+                ?
+              </DialogDescription>
+            )}
+          </DialogHeader>
+
+          {deleteLoading ? (
+            <div className="py-6 text-center text-sm text-muted-foreground">
+              Checking tag usage...
+            </div>
+          ) : deleteTarget ? (
+            <div className="space-y-3">
+              {deleteTarget.total_datasets > 0 ? (
+                <>
+                  <div className="rounded-md border border-destructive/20 bg-destructive/5 p-3">
+                    <p className="text-sm font-medium text-destructive">
+                      This tag is used in {deleteTarget.total_datasets} dataset
+                      {deleteTarget.total_datasets !== 1 ? "s" : ""}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Deleting this tag will remove it from all datasets below.
+                    </p>
+                  </div>
+
+                  <div className="max-h-[200px] overflow-y-auto rounded-md border">
+                    {deleteTarget.datasets.map((ds) => (
+                      <div
+                        key={ds.id}
+                        className="flex items-center gap-2 px-3 py-2 text-sm border-b last:border-b-0"
+                      >
+                        <Database className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <Link
+                          href={`/dashboard/datasets/${ds.id}`}
+                          className="font-medium hover:underline truncate"
+                          onClick={() => setDeleteDialogOpen(false)}
+                        >
+                          {ds.name}
+                        </Link>
+                        <Badge variant="outline" className="text-xs shrink-0 ml-auto">
+                          {ds.platform_display_name}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-md border bg-muted/30 p-3">
+                  <p className="text-sm text-muted-foreground">
+                    This tag is not used by any datasets. It can be safely deleted.
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline" disabled={deleting}>
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={deleting || deleteLoading || !deleteTarget}
+            >
+              {deleting ? "Deleting..." : "Delete Tag"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

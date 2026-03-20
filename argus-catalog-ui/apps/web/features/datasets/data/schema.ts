@@ -9,6 +9,7 @@ export type DatasetOrigin = z.infer<typeof datasetOriginSchema>
 
 export const datasetStatusSchema = z.union([
   z.literal("active"),
+  z.literal("inactive"),
   z.literal("deprecated"),
   z.literal("removed"),
 ])
@@ -87,6 +88,13 @@ export const datasetSummarySchema = z.object({
 })
 export type DatasetSummary = z.infer<typeof datasetSummarySchema>
 
+export const datasetPropertySchema = z.object({
+  id: z.number(),
+  property_key: z.string(),
+  property_value: z.string(),
+})
+export type DatasetProperty = z.infer<typeof datasetPropertySchema>
+
 export const datasetDetailSchema = z.object({
   id: z.number(),
   urn: z.string(),
@@ -95,11 +103,14 @@ export const datasetDetailSchema = z.object({
   description: z.string().nullable().optional(),
   origin: z.string(),
   qualified_name: z.string().nullable().optional(),
+  table_type: z.string().nullable().optional(),
+  storage_format: z.string().nullable().optional(),
   status: z.string(),
   schema_fields: z.array(schemaFieldSchema),
   tags: z.array(tagSchema),
   owners: z.array(ownerSchema),
   glossary_terms: z.array(glossaryTermSchema),
+  properties: z.array(datasetPropertySchema).optional(),
   created_at: z.coerce.date(),
   updated_at: z.coerce.date(),
 })

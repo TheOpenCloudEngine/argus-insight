@@ -1,4 +1,10 @@
-import type { Tag } from "@/features/datasets/data/schema"
+import type { DatasetSummary, Tag } from "@/features/datasets/data/schema"
+
+export type TagUsage = {
+  tag: Tag
+  datasets: DatasetSummary[]
+  total_datasets: number
+}
 
 const BASE = "/api/v1/catalog"
 
@@ -22,6 +28,12 @@ export async function createTag(payload: {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.detail || `Failed to create tag: ${res.status}`)
   }
+  return res.json()
+}
+
+export async function fetchTagUsage(tagId: number): Promise<TagUsage> {
+  const res = await fetch(`${BASE}/tags/${tagId}/usage`)
+  if (!res.ok) throw new Error(`Failed to fetch tag usage: ${res.status}`)
   return res.json()
 }
 

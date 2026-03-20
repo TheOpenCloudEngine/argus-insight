@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   Server,
   Tags,
+  Users,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
@@ -14,6 +15,7 @@ const iconMap: Record<string, LucideIcon> = {
   LayoutDashboard,
   Server,
   Tags,
+  Users,
 }
 
 export function getIcon(name: string): LucideIcon {
