@@ -1,7 +1,6 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect, useState } from "react"
 import {
   ChevronUp,
   Loader2,
@@ -36,8 +35,14 @@ import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@workspace/ui/c
 import { Separator } from "@workspace/ui/components/separator"
 import type { SessionUser } from "@/lib/session"
 
-interface AppSidebarUserProps {
-  user: SessionUser
+const FALLBACK_USER: SessionUser = {
+  id: 0,
+  firstName: "",
+  lastName: "",
+  username: "",
+  email: "",
+  phone: "",
+  role: "user",
 }
 
 function getDisplayName(user: SessionUser): string {
@@ -48,12 +53,36 @@ function isAdmin(user: SessionUser): boolean {
   return user.role.toLowerCase() === "admin"
 }
 
-export function AppSidebarUser({ user }: AppSidebarUserProps) {
-  const router = useRouter()
+export function AppSidebarUser() {
+  const [user, setUser] = useState<SessionUser>(FALLBACK_USER)
   const [profileOpen, setProfileOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Fetch session data client-side to avoid making the dashboard layout
+  // dynamic. In Next.js dev mode, server-side fetch() ignores the Data Cache,
+  // which turns the layout dynamic and causes periodic full-screen refreshes.
+  useEffect(() => {
+    fetch("/api/v1/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) {
+          setUser({
+            id: data.id,
+            firstName: data.first_name,
+            lastName: data.last_name,
+            username: data.username,
+            email: data.email,
+            phone: data.phone_number || "",
+            role: data.role,
+          })
+        }
+      })
+      .catch(() => {
+        /* keep fallback */
+      })
+  }, [])
 
   // Form state for account settings
   const [formData, setFormData] = useState({
@@ -96,9 +125,15 @@ export function AppSidebarUser({ user }: AppSidebarUserProps) {
         const data = await res.json().catch(() => null)
         throw new Error(data?.detail || "Failed to update profile")
       }
+      // Update local user state instead of triggering a full page refresh
+      setUser((prev) => ({
+        ...prev,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+      }))
       setSettingsOpen(false)
-      // Refresh the page to reload session data from the server
-      router.refresh()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update profile")
     } finally {
