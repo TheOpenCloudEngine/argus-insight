@@ -17,6 +17,7 @@ from app.catalog.models import (
     GlossaryTerm,
     Owner,
     Platform,
+    PlatformConfiguration,
     PlatformDataType,
     PlatformFeature,
     PlatformStorageFormat,
@@ -66,9 +67,11 @@ async def list_platforms(session: AsyncSession) -> list[PlatformResponse]:
 
 
 async def create_platform(session: AsyncSession, req: PlatformCreate) -> PlatformResponse:
+    import uuid
     platform = Platform(
+        platform_id=str(uuid.uuid4()),
         name=req.name,
-        display_name=req.display_name,
+        type=req.type,
         logo_url=req.logo_url,
     )
     session.add(platform)
@@ -94,6 +97,76 @@ async def delete_platform(session: AsyncSession, platform_id: int) -> bool:
     await session.delete(platform)
     await session.commit()
     return True
+
+
+async def get_platform_configuration(
+    session: AsyncSession, platform_id: int
+) -> dict | None:
+    """Return the configuration dict for a platform, or None if not found."""
+    import json as _json
+
+    result = await session.execute(
+        select(PlatformConfiguration).where(
+            PlatformConfiguration.platform_id == platform_id
+        )
+    )
+    row = result.scalars().first()
+    if not row:
+        return None
+    return {
+        "id": row.id,
+        "platform_id": row.platform_id,
+        "config": _json.loads(row.config_json),
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+async def save_platform_configuration(
+    session: AsyncSession, platform_id: int, config_dict: dict
+) -> dict:
+    """Upsert the configuration for a platform and return the saved record."""
+    import json as _json
+
+    result = await session.execute(
+        select(PlatformConfiguration).where(
+            PlatformConfiguration.platform_id == platform_id
+        )
+    )
+    row = result.scalars().first()
+
+    config_text = _json.dumps(config_dict, ensure_ascii=False)
+
+    if row:
+        row.config_json = config_text
+    else:
+        row = PlatformConfiguration(
+            platform_id=platform_id,
+            config_json=config_text,
+        )
+        session.add(row)
+
+    await session.commit()
+    await session.refresh(row)
+    logger.info("Platform configuration saved: platform_id=%d", platform_id)
+    return {
+        "id": row.id,
+        "platform_id": row.platform_id,
+        "config": _json.loads(row.config_json),
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+async def get_platform_dataset_count(session: AsyncSession, platform_id: int) -> int:
+    """Count datasets that belong to the given platform."""
+    result = await session.execute(
+        select(func.count()).select_from(Dataset).where(
+            Dataset.platform_id == platform_id,
+            Dataset.status != "removed",
+        )
+    )
+    return result.scalar() or 0
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +203,7 @@ async def get_tag_usage(session: AsyncSession, tag_id: int) -> TagUsage | None:
             Dataset.urn,
             Dataset.name,
             Platform.name.label("platform_name"),
-            Platform.display_name.label("platform_display_name"),
+            Platform.type.label("platform_type"),
             Dataset.description,
             Dataset.origin,
             Dataset.status,
@@ -154,7 +227,7 @@ async def get_tag_usage(session: AsyncSession, tag_id: int) -> TagUsage | None:
             urn=row.urn,
             name=row.name,
             platform_name=row.platform_name,
-            platform_display_name=row.platform_display_name,
+            platform_type=row.platform_type,
             description=row.description,
             origin=row.origin,
             status=row.status,
@@ -419,7 +492,7 @@ async def list_datasets(
             Dataset.urn,
             Dataset.name,
             Platform.name.label("platform_name"),
-            Platform.display_name.label("platform_display_name"),
+            Platform.type.label("platform_type"),
             Dataset.description,
             Dataset.origin,
             Dataset.status,
@@ -489,7 +562,7 @@ async def list_datasets(
             urn=row.urn,
             name=row.name,
             platform_name=row.platform_name,
-            platform_display_name=row.platform_display_name,
+            platform_type=row.platform_type,
             description=row.description,
             origin=row.origin,
             status=row.status,
@@ -638,10 +711,10 @@ async def get_catalog_stats(session: AsyncSession) -> CatalogStats:
 
     # Datasets by platform
     result = await session.execute(
-        select(Platform.display_name, func.count(Dataset.id))
+        select(Platform.name, func.count(Dataset.id))
         .join(Dataset, Dataset.platform_id == Platform.id)
         .where(Dataset.status != "removed")
-        .group_by(Platform.display_name)
+        .group_by(Platform.name)
         .order_by(func.count(Dataset.id).desc())
     )
     datasets_by_platform = [
@@ -697,11 +770,16 @@ async def seed_platforms(session: AsyncSession) -> None:
         ("kudu", "Apache Kudu"),
         ("unity_catalog", "Unity Catalog"),
     ]
-    for name, display_name in defaults:
-        existing = await session.execute(select(Platform).where(Platform.name == name))
+    import uuid as _uuid
+    for type_name, display_name in defaults:
+        existing = await session.execute(select(Platform).where(Platform.type == type_name))
         if not existing.scalars().first():
-            session.add(Platform(name=name, display_name=display_name))
-            logger.info("Seeded platform: %s", name)
+            session.add(Platform(
+                platform_id=str(_uuid.uuid4()),
+                name=display_name,
+                type=type_name,
+            ))
+            logger.info("Seeded platform: %s", type_name)
     await session.commit()
 
 
@@ -711,7 +789,7 @@ async def seed_platform_metadata(session: AsyncSession) -> None:
 
     for platform_name, meta in PLATFORM_METADATA.items():
         result = await session.execute(
-            select(Platform).where(Platform.name == platform_name)
+            select(Platform).where(Platform.type == platform_name)
         )
         platform = result.scalars().first()
         if not platform:

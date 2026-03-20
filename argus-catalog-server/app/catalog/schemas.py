@@ -34,19 +34,32 @@ class OwnerType(str, Enum):
 # ---------------------------------------------------------------------------
 
 class PlatformCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
-    display_name: str = Field(..., min_length=1, max_length=200)
+    name: str = Field(..., min_length=1, max_length=200)
+    type: str = Field(..., min_length=1, max_length=100)
     logo_url: str | None = None
 
 
 class PlatformResponse(BaseModel):
     id: int
+    platform_id: str
     name: str
-    display_name: str
+    type: str
     logo_url: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PlatformConfigurationSave(BaseModel):
+    config: dict
+
+
+class PlatformConfigurationResponse(BaseModel):
+    id: int
+    platform_id: str
+    config: dict
+    created_at: datetime
+    updated_at: datetime
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +216,7 @@ class DatasetSummary(BaseModel):
     urn: str
     name: str
     platform_name: str
-    platform_display_name: str
+    platform_type: str
     description: str | None = None
     origin: str
     status: str

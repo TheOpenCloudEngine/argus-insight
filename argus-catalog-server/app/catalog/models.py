@@ -18,10 +18,24 @@ class Platform(Base):
     __tablename__ = "catalog_platforms"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(100), nullable=False, unique=True)
-    display_name = Column(String(200), nullable=False)
+    platform_id = Column(String(36), nullable=False, unique=True)
+    name = Column(String(200), nullable=False)
+    type = Column(String(100), nullable=False)
     logo_url = Column(String(500))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class PlatformConfiguration(Base):
+    """Connection and configuration settings for a platform instance."""
+
+    __tablename__ = "catalog_platform_configurations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    platform_id = Column(Integer, ForeignKey("catalog_platforms.id", ondelete="CASCADE"),
+                         nullable=False, unique=True)
+    config_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class Dataset(Base):

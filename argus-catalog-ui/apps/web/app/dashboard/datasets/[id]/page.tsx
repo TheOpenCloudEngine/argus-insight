@@ -690,7 +690,7 @@ export default function DatasetDetailPage() {
                 <span className="text-muted-foreground">Platform</span>
                 <div className="flex items-center gap-1.5 mt-1 font-medium">
                   <Database className="h-4 w-4" />
-                  {dataset.platform.display_name}
+                  {dataset.platform.name}
                 </div>
               </div>
               <div>
@@ -903,7 +903,7 @@ export default function DatasetDetailPage() {
                         <Separator className="my-4" />
                         <div className="space-y-3">
                           <p className="text-xs font-medium text-muted-foreground">
-                            Platform Features ({dataset.platform.display_name})
+                            Platform Features ({dataset.platform.name})
                           </p>
                           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                             {featuresMeta.map((feat) => {

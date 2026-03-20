@@ -20,6 +20,8 @@ from app.catalog.schemas import (
     OwnerCreate,
     OwnerResponse,
     PaginatedDatasets,
+    PlatformConfigurationResponse,
+    PlatformConfigurationSave,
     PlatformCreate,
     PlatformMetadataResponse,
     PlatformResponse,
@@ -73,9 +75,51 @@ async def get_platform_metadata(
     return metadata
 
 
+@router.get("/platforms/{platform_id}/configuration", response_model=PlatformConfigurationResponse)
+async def get_platform_configuration(
+    platform_id: int, session: AsyncSession = Depends(get_session)
+):
+    """Get connection/configuration settings for a platform."""
+    config = await service.get_platform_configuration(session, platform_id)
+    if not config:
+        raise HTTPException(status_code=404, detail="Platform configuration not found")
+    return config
+
+
+@router.put("/platforms/{platform_id}/configuration", response_model=PlatformConfigurationResponse)
+async def save_platform_configuration(
+    platform_id: int,
+    req: PlatformConfigurationSave,
+    session: AsyncSession = Depends(get_session),
+):
+    """Save or update connection/configuration settings for a platform."""
+    platform = await service.get_platform(session, platform_id)
+    if not platform:
+        raise HTTPException(status_code=404, detail="Platform not found")
+    return await service.save_platform_configuration(session, platform_id, req.config)
+
+
+@router.get("/platforms/{platform_id}/dataset-count")
+async def get_platform_dataset_count(
+    platform_id: int, session: AsyncSession = Depends(get_session)
+):
+    """Get the number of datasets using this platform."""
+    platform = await service.get_platform(session, platform_id)
+    if not platform:
+        raise HTTPException(status_code=404, detail="Platform not found")
+    count = await service.get_platform_dataset_count(session, platform_id)
+    return {"platform_id": platform_id, "dataset_count": count}
+
+
 @router.delete("/platforms/{platform_id}")
 async def delete_platform(platform_id: int, session: AsyncSession = Depends(get_session)):
     """Remove a data platform."""
+    count = await service.get_platform_dataset_count(session, platform_id)
+    if count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot delete platform: {count} dataset(s) are using this platform.",
+        )
     if not await service.delete_platform(session, platform_id):
         raise HTTPException(status_code=404, detail="Platform not found")
     return {"status": "ok", "message": "Platform deleted"}

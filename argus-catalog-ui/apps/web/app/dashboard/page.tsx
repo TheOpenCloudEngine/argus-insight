@@ -24,7 +24,7 @@ type CatalogStats = {
     id: number
     name: string
     platform_name: string
-    platform_display_name: string
+    platform_type: string
     description: string | null
     origin: string
     status: string
@@ -159,7 +159,7 @@ export default function DashboardPage() {
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium truncate">{ds.name}</p>
                         <p className="text-xs text-muted-foreground truncate">
-                          {ds.platform_display_name}
+                          {ds.platform_name}
                         </p>
                       </div>
                       <Badge variant="outline" className="ml-2 shrink-0">

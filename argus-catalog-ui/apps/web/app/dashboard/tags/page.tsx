@@ -288,7 +288,7 @@ export default function TagsPage() {
                           {ds.name}
                         </Link>
                         <Badge variant="outline" className="text-xs shrink-0 ml-auto">
-                          {ds.platform_display_name}
+                          {ds.platform_name}
                         </Badge>
                       </div>
                     ))}

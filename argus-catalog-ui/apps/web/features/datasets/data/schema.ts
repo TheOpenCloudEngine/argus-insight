@@ -64,8 +64,9 @@ export type Owner = z.infer<typeof ownerSchema>
 
 export const platformSchema = z.object({
   id: z.number(),
+  platform_id: z.string(),
   name: z.string(),
-  display_name: z.string(),
+  type: z.string(),
   logo_url: z.string().nullable().optional(),
   created_at: z.string(),
 })
@@ -76,7 +77,7 @@ export const datasetSummarySchema = z.object({
   urn: z.string(),
   name: z.string(),
   platform_name: z.string(),
-  platform_display_name: z.string(),
+  platform_type: z.string(),
   description: z.string().nullable().optional(),
   origin: z.string(),
   status: z.string(),

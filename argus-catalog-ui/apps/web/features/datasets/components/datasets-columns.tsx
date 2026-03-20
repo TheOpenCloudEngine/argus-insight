@@ -34,12 +34,12 @@ export const datasetsColumns: ColumnDef<DatasetSummary>[] = [
     ),
   },
   {
-    accessorKey: "platform_display_name",
+    accessorKey: "platform_name",
     header: "Platform",
     cell: ({ row }) => (
       <div className="flex items-center gap-1.5">
         <Database className="h-3.5 w-3.5 text-muted-foreground" />
-        <span className="text-sm">{row.original.platform_display_name}</span>
+        <span className="text-sm">{row.original.platform_name}</span>
       </div>
     ),
     meta: { className: "w-[150px]" },

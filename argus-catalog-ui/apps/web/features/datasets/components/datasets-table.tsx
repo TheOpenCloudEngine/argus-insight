@@ -49,8 +49,8 @@ export function DatasetsTable({ data, isLoading }: DatasetsTableProps) {
   const platformOptions = useMemo(
     () =>
       platforms.map((p) => ({
-        label: p.display_name,
-        value: p.name,
+        label: p.name,
+        value: p.type,
       })),
     [platforms]
   )
@@ -99,7 +99,7 @@ export function DatasetsTable({ data, isLoading }: DatasetsTableProps) {
   const handleSearch = useCallback(() => {
     const searchVal = columnFilters.find((f) => f.id === "name")?.value
     const platformVal = columnFilters.find(
-      (f) => f.id === "platform_display_name"
+      (f) => f.id === "platform_name"
     )?.value
     const originVal = columnFilters.find((f) => f.id === "origin")?.value
     const statusVal = columnFilters.find((f) => f.id === "status")?.value
@@ -138,7 +138,7 @@ export function DatasetsTable({ data, isLoading }: DatasetsTableProps) {
         searchKey="name"
         filters={[
           {
-            columnId: "platform_display_name",
+            columnId: "platform_name",
             title: "Platform",
             options: platformOptions,
           },

@@ -89,7 +89,7 @@ export function DatasetsAddDialog() {
               <SelectContent>
                 {platforms.map((p) => (
                   <SelectItem key={p.id} value={String(p.id)}>
-                    {p.display_name}
+                    {p.name}
                   </SelectItem>
                 ))}
               </SelectContent>
