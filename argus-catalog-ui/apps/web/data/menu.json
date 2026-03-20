@@ -1,0 +1,46 @@
+{
+  "groups": [
+    {
+      "id": "catalog",
+      "label": "Data Catalog",
+      "items": [
+        {
+          "id": "dashboard",
+          "title": "Dashboard",
+          "url": "/dashboard",
+          "icon": "LayoutDashboard"
+        },
+        {
+          "id": "datasets",
+          "title": "Datasets",
+          "url": "/dashboard/datasets",
+          "icon": "Database"
+        },
+        {
+          "id": "platforms",
+          "title": "Platforms",
+          "url": "/dashboard/platforms",
+          "icon": "Server"
+        }
+      ]
+    },
+    {
+      "id": "governance",
+      "label": "Governance",
+      "items": [
+        {
+          "id": "glossary",
+          "title": "Glossary",
+          "url": "/dashboard/glossary",
+          "icon": "BookOpen"
+        },
+        {
+          "id": "tags",
+          "title": "Tags",
+          "url": "/dashboard/tags",
+          "icon": "Tags"
+        }
+      ]
+    }
+  ]
+}
