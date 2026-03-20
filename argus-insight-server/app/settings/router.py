@@ -18,6 +18,8 @@ from app.settings.schemas import (
     ObjectStorageInitResponse,
     ObjectStorageTestRequest,
     ObjectStorageTestResponse,
+    PrometheusTestRequest,
+    PrometheusTestResponse,
     UnityCatalogInitRequest,
     UnityCatalogInitResponse,
     UnityCatalogTestRequest,
@@ -66,6 +68,13 @@ async def initialize_object_storage(body: ObjectStorageInitRequest) -> ObjectSto
         body.endpoint, body.access_key, body.secret_key, body.region,
     )
     return ObjectStorageInitResponse(**result)
+
+
+@router.post("/prometheus/test", response_model=PrometheusTestResponse)
+async def test_prometheus(body: PrometheusTestRequest) -> PrometheusTestResponse:
+    """Test connectivity to Prometheus Push Gateway."""
+    result = await service.test_prometheus(body.host, body.port)
+    return PrometheusTestResponse(**result)
 
 
 @router.post("/docker-registry/test", response_model=DockerRegistryTestResponse)

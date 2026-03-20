@@ -15,6 +15,7 @@ import {
   initializeUnityCatalog,
   testDockerRegistry,
   testObjectStorage,
+  testPrometheus,
   testUnityCatalog,
   updateArgusConfig,
 } from "@/features/settings/api"
@@ -53,6 +54,15 @@ export function ArgusSettings() {
   const [ucInitializing, setUcInitializing] = useState(false)
   const [showUcToken, setShowUcToken] = useState(false)
 
+  const [promEnablePush, setPromEnablePush] = useState("true")
+  const [promPushCron, setPromPushCron] = useState("* * * * *")
+  const [promHost, setPromHost] = useState("localhost")
+  const [promPort, setPromPort] = useState("9091")
+  const [promSaving, setPromSaving] = useState(false)
+  const [promTesting, setPromTesting] = useState(false)
+  const [promStatusMessage, setPromStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [promTestResult, setPromTestResult] = useState<{ type: "success" | "error"; text: string } | null>(null)
+
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const [testResult, setTestResult] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const [ucStatusMessage, setUcStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
@@ -72,6 +82,10 @@ export function ArgusSettings() {
       setOsMultipartThreshold(config.object_storage_multipart_threshold ?? "8388608")
       setOsMultipartChunksize(config.object_storage_multipart_chunksize ?? "8388608")
       setOsPresignedUrlExpiry(config.object_storage_presigned_url_expiry ?? "3600")
+      setPromEnablePush(config.prometheus_enable_push ?? "true")
+      setPromPushCron(config.prometheus_push_cron ?? "* * * * *")
+      setPromHost(config.prometheus_pushgateway_host ?? "localhost")
+      setPromPort(config.prometheus_pushgateway_port ?? "9091")
       setRegistryUrl(config.docker_registry_url ?? "https://zot.argus-insight.dev.net:30000")
       setUsername(config.docker_registry_username ?? "admin")
       setPassword(config.docker_registry_password ?? "Argus!insight2026")
@@ -155,6 +169,48 @@ export function ArgusSettings() {
       setOsTestResult({ type: "error", text: err instanceof Error ? err.message : "Initialization failed" })
     } finally {
       setOsInitializing(false)
+    }
+  }
+
+  // -- Prometheus handlers --
+
+  function showPromStatus(type: "success" | "error", text: string) {
+    setPromStatusMessage({ type, text })
+    setTimeout(() => setPromStatusMessage(null), 3000)
+  }
+
+  async function handlePromSave() {
+    setPromSaving(true)
+    try {
+      await updateArgusConfig({
+        prometheus_enable_push: promEnablePush,
+        prometheus_push_cron: promPushCron,
+        prometheus_pushgateway_host: promHost,
+        prometheus_pushgateway_port: promPort,
+      })
+      showPromStatus("success", "Prometheus settings saved successfully")
+      await loadConfig()
+    } catch (err) {
+      showPromStatus("error", err instanceof Error ? err.message : "Failed to save")
+    } finally {
+      setPromSaving(false)
+    }
+  }
+
+  async function handlePromTest() {
+    setPromTesting(true)
+    setPromTestResult(null)
+    try {
+      const result = await testPrometheus(promHost.trim(), promPort.trim())
+      if (result.success) {
+        setPromTestResult({ type: "success", text: result.message || "Push Gateway connection successful" })
+      } else {
+        setPromTestResult({ type: "error", text: result.message || "Connection failed" })
+      }
+    } catch (err) {
+      setPromTestResult({ type: "error", text: err instanceof Error ? err.message : "Test failed" })
+    } finally {
+      setPromTesting(false)
     }
   }
 
@@ -467,6 +523,107 @@ export function ArgusSettings() {
                 </div>
               </>
             )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {promStatusMessage && (
+        <div
+          className={`rounded-md px-4 py-2 text-sm ${
+            promStatusMessage.type === "success"
+              ? "bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-200"
+              : "bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200"
+          }`}
+        >
+          {promStatusMessage.text}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Prometheus</CardTitle>
+              <CardDescription>
+                Prometheus Push Gateway connection settings
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handlePromSave} disabled={promSaving}>
+                {promSaving ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                ) : (
+                  <Save className="h-4 w-4 mr-1.5" />
+                )}
+                Save
+              </Button>
+              <Button size="sm" variant="outline" onClick={handlePromTest} disabled={promTesting}>
+                {promTesting ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                ) : (
+                  <Play className="h-4 w-4 mr-1.5" />
+                )}
+                Test
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {promTestResult && (
+            <div
+              className={`mb-4 rounded-md px-4 py-2 text-sm ${
+                promTestResult.type === "success"
+                  ? "bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-200"
+                  : "bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200"
+              }`}
+            >
+              {promTestResult.text}
+            </div>
+          )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="prom-enable-push">Enable Push</Label>
+              <Select value={promEnablePush} onValueChange={setPromEnablePush}>
+                <SelectTrigger id="prom-enable-push">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">true</SelectItem>
+                  <SelectItem value="false">false</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">prometheus.enable-push</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="prom-push-cron">Push Cron</Label>
+              <Input
+                id="prom-push-cron"
+                value={promPushCron}
+                onChange={(e) => setPromPushCron(e.target.value)}
+                placeholder="* * * * *"
+              />
+              <p className="text-xs text-muted-foreground">prometheus.push-cron</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="prom-host">Push Gateway Host</Label>
+              <Input
+                id="prom-host"
+                value={promHost}
+                onChange={(e) => setPromHost(e.target.value)}
+                placeholder="localhost"
+              />
+              <p className="text-xs text-muted-foreground">prometheus.pushgateway.host</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="prom-port">Push Gateway Port</Label>
+              <Input
+                id="prom-port"
+                value={promPort}
+                onChange={(e) => setPromPort(e.target.value)}
+                placeholder="9091"
+              />
+              <p className="text-xs text-muted-foreground">prometheus.pushgateway.port</p>
+            </div>
           </div>
         </CardContent>
       </Card>

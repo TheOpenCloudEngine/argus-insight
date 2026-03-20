@@ -112,6 +112,20 @@ class ObjectStorageInitResponse(BaseModel):
     message: str
 
 
+class PrometheusTestRequest(BaseModel):
+    """Request to test Prometheus Push Gateway connectivity."""
+
+    host: str = Field(description="Push Gateway host")
+    port: int = Field(default=9091, description="Push Gateway port")
+
+
+class PrometheusTestResponse(BaseModel):
+    """Response from Prometheus Push Gateway connectivity test."""
+
+    success: bool
+    message: str
+
+
 class CheckPathRequest(BaseModel):
     """Request to check if a file path exists on the server."""
 

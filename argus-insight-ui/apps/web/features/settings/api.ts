@@ -392,6 +392,22 @@ export async function initializeObjectStorage(
   return res.json()
 }
 
+export async function testPrometheus(
+  host: string,
+  port: string,
+): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${BASE}/prometheus/test`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ host, port: parseInt(port, 10) }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: `Test failed: ${res.status}` }))
+    throw new Error(data.detail || `Test failed: ${res.status}`)
+  }
+  return res.json()
+}
+
 export async function testDockerRegistry(
   url: string,
   username: string,

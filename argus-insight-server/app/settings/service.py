@@ -173,6 +173,27 @@ async def test_docker_registry(url: str, username: str, password: str) -> dict[s
         return {"success": False, "message": str(exc)}
 
 
+async def test_prometheus(host: str, port: int) -> dict[str, object]:
+    """Test connectivity to Prometheus Push Gateway."""
+    base_url = f"http://{host}:{port}"
+
+    try:
+        async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
+            resp = await client.get(f"{base_url}/metrics")
+            if resp.status_code == 200:
+                return {"success": True, "message": "Push Gateway connection successful"}
+            return {
+                "success": False,
+                "message": f"Push Gateway returned status {resp.status_code}",
+            }
+    except httpx.ConnectError:
+        return {"success": False, "message": f"Cannot connect to {base_url}"}
+    except httpx.TimeoutException:
+        return {"success": False, "message": f"Connection to {base_url} timed out"}
+    except Exception as exc:
+        return {"success": False, "message": str(exc)}
+
+
 async def test_unity_catalog(url: str, access_token: str) -> dict[str, object]:
     """Test connectivity to a Unity Catalog server."""
     base_url = url.rstrip("/")
