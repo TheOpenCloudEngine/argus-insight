@@ -1,4 +1,8 @@
-"""ML Model Registry API endpoints."""
+"""ML Model Registry API endpoints.
+
+Native Argus Catalog API for model management under /api/v1/models.
+For MLflow integration, use the UC-compatible API in uc_compat.py instead.
+"""
 
 import logging
 
@@ -33,9 +37,11 @@ async def create_registered_model(
     req: RegisteredModelCreate, session: AsyncSession = Depends(get_session),
 ):
     """Register a new ML model."""
+    logger.info("POST /models: name=%s", req.name)
     try:
         return await service.create_registered_model(session, req)
     except ValueError as e:
+        logger.warning("POST /models conflict: %s", e)
         raise HTTPException(status_code=409, detail=str(e))
 
 
@@ -98,11 +104,13 @@ async def create_model_version(
     session: AsyncSession = Depends(get_session),
 ):
     """Create a new model version (status: PENDING_REGISTRATION)."""
+    logger.info("POST /models/%s/versions: source=%s, run_id=%s", model_name, req.source, req.run_id)
     # Override model_name from path
     req.model_name = model_name
     try:
         return await service.create_model_version(session, req)
     except ValueError as e:
+        logger.warning("POST /models/%s/versions failed: %s", model_name, e)
         raise HTTPException(status_code=404, detail=str(e))
 
 
@@ -153,9 +161,11 @@ async def finalize_model_version(
     session: AsyncSession = Depends(get_session),
 ):
     """Finalize a model version (transition from PENDING_REGISTRATION to READY or FAILED)."""
+    logger.info("PATCH /models/%s/versions/%d/finalize: status=%s", model_name, version, req.status)
     try:
         return await service.finalize_model_version(session, model_name, version, req)
     except ValueError as e:
+        logger.warning("Finalize failed for %s v%d: %s", model_name, version, e)
         raise HTTPException(status_code=409, detail=str(e))
 
 

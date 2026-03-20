@@ -1,4 +1,9 @@
-"""Pydantic schemas for ML Model Registry."""
+"""Pydantic schemas for ML Model Registry.
+
+Request/response models for the /api/v1/models endpoints.
+The UC-compatible API (uc_compat.py) converts between UC protobuf format
+and these schemas internally.
+"""
 
 from datetime import datetime
 from enum import Enum
@@ -80,6 +85,7 @@ class ModelVersionFinalize(BaseModel):
     status: ModelVersionStatus = Field(
         ..., description="READY or FAILED_REGISTRATION"
     )
+    status_message: str | None = None
 
 
 class ModelVersionResponse(BaseModel):
@@ -92,7 +98,11 @@ class ModelVersionResponse(BaseModel):
     run_link: str | None = None
     description: str | None = None
     status: str
+    status_message: str | None = None
     storage_location: str | None = None
+    artifact_count: int = 0
+    artifact_size: int = 0
+    finished_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     created_by: str | None = None
