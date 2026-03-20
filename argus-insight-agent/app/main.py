@@ -9,14 +9,18 @@ import uvicorn
 from fastapi import FastAPI
 
 from app import __version__
+import httpx
+
 from app.certmgr.router import router as certmgr_router
 from app.command.router import router as command_router
 from app.core.config import settings
+from app.core.config_loader import load_properties, update_properties
 from app.core.logging import setup_logging
 from app.core.security import SecurityHeadersMiddleware
 from app.filemgr.router import router as filemgr_router
 from app.heartbeat.scheduler import heartbeat_scheduler
 from app.hostmgr.router import router as hostmgr_router
+from app.metrics.router import router as metrics_router
 from app.metrics.scheduler import metrics_scheduler
 from app.monitor.router import router as monitor_router
 from app.package.router import router as package_router
@@ -48,12 +52,95 @@ def _print_banner() -> None:
     logger.info("Config Server Properties : %s", settings.config_server_properties_path)
 
 
+async def _sync_prometheus_config_from_server() -> None:
+    """Fetch Prometheus settings from Argus Insight Server and apply if changed."""
+    server_url = (
+        f"http://{settings.insight_server_ip}:{settings.insight_server_port}"
+        f"/api/v1/settings/configuration"
+    )
+    logger.info("Fetching Prometheus config from server: %s", server_url)
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(server_url)
+            if resp.status_code != 200:
+                logger.warning(
+                    "Failed to fetch config from server: status=%d", resp.status_code,
+                )
+                return
+
+        data = resp.json()
+        categories = data.get("categories", [])
+        argus_items: dict[str, str] = {}
+        for cat in categories:
+            if cat.get("category") == "argus":
+                argus_items = cat.get("items", {})
+                break
+
+        # Extract prometheus keys from server config
+        key_map = {
+            "prometheus_enable_push": "prometheus.enable-push",
+            "prometheus_push_cron": "prometheus.push-cron",
+            "prometheus_pushgateway_host": "prometheus.pushgateway.host",
+            "prometheus_pushgateway_port": "prometheus.pushgateway.port",
+        }
+        server_values: dict[str, str] = {}
+        for db_key, prop_key in key_map.items():
+            if db_key in argus_items:
+                server_values[prop_key] = argus_items[db_key]
+
+        if not server_values:
+            logger.info("No Prometheus config found on server, using local config")
+            return
+
+        # Compare with local config.properties
+        local_props = load_properties(settings.config_properties_path)
+        changed: dict[str, str] = {}
+        for key, server_val in server_values.items():
+            if local_props.get(key, "") != server_val:
+                changed[key] = server_val
+
+        if not changed:
+            logger.info("Prometheus config is up-to-date, no changes needed")
+            return
+
+        logger.info("Prometheus config changed, updating: %s", changed)
+
+        # Update config.properties with changed values
+        update_properties(settings.config_properties_path, changed)
+
+        # Update in-memory settings
+        settings.update_prometheus(
+            enable_push=server_values.get(
+                "prometheus.enable-push", str(settings.prometheus_enable_push),
+            ),
+            push_cron=server_values.get(
+                "prometheus.push-cron", settings.prometheus_push_cron,
+            ),
+            pushgateway_host=server_values.get(
+                "prometheus.pushgateway.host", settings.prometheus_pushgateway_host,
+            ),
+            pushgateway_port=server_values.get(
+                "prometheus.pushgateway.port", str(settings.prometheus_pushgateway_port),
+            ),
+        )
+
+    except httpx.ConnectError:
+        logger.warning(
+            "Cannot connect to server at %s:%s, using local Prometheus config",
+            settings.insight_server_ip, settings.insight_server_port,
+        )
+    except Exception:
+        logger.exception("Failed to sync Prometheus config from server, using local config")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     setup_logging()
     _print_banner()
     logger.info("Argus Server Agent %s starting", __version__)
+    await _sync_prometheus_config_from_server()
     await metrics_scheduler.start()
     await heartbeat_scheduler.start()
     terminal_manager.start_reaper()
@@ -85,6 +172,7 @@ app.include_router(usermgr_router, prefix="/api/v1")
 app.include_router(certmgr_router, prefix="/api/v1")
 app.include_router(filemgr_router, prefix="/api/v1")
 app.include_router(processmgr_router, prefix="/api/v1")
+app.include_router(metrics_router, prefix="/api/v1")
 
 
 @app.get("/health")

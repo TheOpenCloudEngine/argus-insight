@@ -1,5 +1,6 @@
 """Infrastructure configuration service."""
 
+import asyncio
 import logging
 from collections import defaultdict
 
@@ -7,10 +8,22 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.models import ArgusAgent
 from app.settings.models import ArgusConfiguration
 from app.settings.schemas import InfraCategoryResponse, InfraConfigResponse
 
 logger = logging.getLogger(__name__)
+
+# Default agent port (agents register via heartbeat, port not stored in DB)
+_AGENT_PORT = 4501
+
+# Prometheus config keys in the argus category
+_PROMETHEUS_KEYS = {
+    "prometheus_enable_push",
+    "prometheus_push_cron",
+    "prometheus_pushgateway_host",
+    "prometheus_pushgateway_port",
+}
 
 
 async def get_infra_config(session: AsyncSession) -> InfraConfigResponse:
@@ -29,6 +42,17 @@ async def get_infra_config(session: AsyncSession) -> InfraConfigResponse:
 
     logger.info("InfraConfig: categories=%d total_keys=%d", len(categories), len(rows))
     return InfraConfigResponse(categories=categories)
+
+
+async def get_infra_category_items(
+    session: AsyncSession, category: str,
+) -> dict[str, str]:
+    """Get all items for a specific infrastructure category."""
+    result = await session.execute(
+        select(ArgusConfiguration).where(ArgusConfiguration.category == category)
+    )
+    rows = result.scalars().all()
+    return {row.config_key: row.config_value for row in rows}
 
 
 async def update_infra_category(
@@ -303,6 +327,50 @@ async def initialize_unity_catalog(url: str, access_token: str) -> dict[str, obj
         return {"success": False, "message": str(exc)}
 
     return {"success": True, "message": ". ".join(steps)}
+
+
+async def push_prometheus_config_to_agents(
+    session: AsyncSession, items: dict[str, str],
+) -> None:
+    """Push Prometheus configuration to all REGISTERED agents."""
+    result = await session.execute(
+        select(ArgusAgent).where(ArgusAgent.status == "REGISTERED")
+    )
+    agents = result.scalars().all()
+
+    if not agents:
+        logger.info("No REGISTERED agents to push Prometheus config to")
+        return
+
+    payload = {
+        "prometheus_enable_push": items.get("prometheus_enable_push", "true"),
+        "prometheus_push_cron": items.get("prometheus_push_cron", "* * * * *"),
+        "prometheus_pushgateway_host": items.get("prometheus_pushgateway_host", "localhost"),
+        "prometheus_pushgateway_port": items.get("prometheus_pushgateway_port", "9091"),
+    }
+
+    async def _push_to_agent(agent: ArgusAgent) -> None:
+        url = f"http://{agent.ip_address}:{_AGENT_PORT}/api/v1/metrics/config"
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.put(url, json=payload)
+                if resp.status_code == 200:
+                    logger.info(
+                        "Pushed Prometheus config to agent %s (%s)",
+                        agent.hostname, agent.ip_address,
+                    )
+                else:
+                    logger.warning(
+                        "Failed to push Prometheus config to agent %s: status=%d",
+                        agent.hostname, resp.status_code,
+                    )
+        except Exception as exc:
+            logger.warning(
+                "Failed to push Prometheus config to agent %s (%s): %s",
+                agent.hostname, agent.ip_address, exc,
+            )
+
+    await asyncio.gather(*[_push_to_agent(agent) for agent in agents])
 
 
 async def seed_infra_config(session: AsyncSession) -> None:

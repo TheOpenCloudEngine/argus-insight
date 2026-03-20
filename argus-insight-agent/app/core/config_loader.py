@@ -52,6 +52,51 @@ def load_properties(path: Path) -> dict[str, str]:
     return props
 
 
+def update_properties(path: Path, updates: dict[str, str]) -> None:
+    """Update specific keys in a .properties file, preserving comments and order.
+
+    If a key exists, its value is replaced in-place.
+    If a key does not exist, it is appended at the end of the file.
+    """
+    if not path.is_file():
+        logger.warning("Properties file not found for update: %s", path)
+        return
+
+    lines: list[str] = []
+    updated_keys: set[str] = set()
+
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            raw = line.rstrip("\n")
+            stripped = raw.strip()
+
+            if stripped and not stripped.startswith("#") and not stripped.startswith("!"):
+                for sep in ("=", ":"):
+                    idx = stripped.find(sep)
+                    if idx >= 0:
+                        key = stripped[:idx].strip()
+                        if key in updates:
+                            lines.append(f"{key}={updates[key]}")
+                            updated_keys.add(key)
+                        else:
+                            lines.append(raw)
+                        break
+                else:
+                    lines.append(raw)
+            else:
+                lines.append(raw)
+
+    # Append keys that were not found in the file
+    for key, value in updates.items():
+        if key not in updated_keys:
+            lines.append(f"{key}={value}")
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+    logger.info("Updated properties file %s: keys=%s", path, list(updates.keys()))
+
+
 def _resolve_value(value: str, props: dict[str, str]) -> str:
     """Replace ${variable} or ${variable:default} placeholders.
 

@@ -118,6 +118,19 @@ class Settings:
         )
         self.prometheus_push_cron: str = _get("prometheus", "push-cron", "* * * * *")
 
+    def update_prometheus(
+        self,
+        enable_push: str,
+        push_cron: str,
+        pushgateway_host: str,
+        pushgateway_port: str,
+    ) -> None:
+        """Update Prometheus settings in memory."""
+        self.prometheus_enable_push = _to_bool(enable_push)
+        self.prometheus_push_cron = push_cron
+        self.prometheus_pushgateway_host = pushgateway_host
+        self.prometheus_pushgateway_port = int(pushgateway_port)
+
     def _load_server_properties(self) -> dict[str, str]:
         """Load server.properties from the configured path."""
         from app.core.config_loader import load_properties

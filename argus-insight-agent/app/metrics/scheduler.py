@@ -66,17 +66,26 @@ class MetricsScheduler:
 
     async def start(self) -> None:
         """Start the scheduler background task."""
-        if not settings.prometheus_enable_push:
-            logger.info("Prometheus push disabled, metrics scheduler not started")
-            return
-
         self._running = True
         self._task = asyncio.create_task(self._run())
         logger.info(
-            "Metrics scheduler started (cron=%s, gateway=%s:%s)",
+            "Metrics scheduler started (cron=%s, gateway=%s:%s, push=%s)",
             settings.prometheus_push_cron,
             settings.prometheus_pushgateway_host,
             settings.prometheus_pushgateway_port,
+            settings.prometheus_enable_push,
+        )
+
+    async def reschedule(self) -> None:
+        """Stop the current scheduler task and restart with updated settings."""
+        await self.stop()
+        await self.start()
+        logger.info(
+            "Metrics scheduler rescheduled (cron=%s, gateway=%s:%s, push=%s)",
+            settings.prometheus_push_cron,
+            settings.prometheus_pushgateway_host,
+            settings.prometheus_pushgateway_port,
+            settings.prometheus_enable_push,
         )
 
     async def stop(self) -> None:

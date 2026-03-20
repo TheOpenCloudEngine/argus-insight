@@ -51,6 +51,13 @@ async def update_category(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    # If argus category contains prometheus keys, push config to all REGISTERED agents
+    if body.category == "argus" and service._PROMETHEUS_KEYS & body.items.keys():
+        # Fetch the full argus config to send complete prometheus values
+        argus_config = await service.get_infra_category_items(session, "argus")
+        argus_config.update(body.items)
+        await service.push_prometheus_config_to_agents(session, argus_config)
+
 
 @router.post("/object-storage/test", response_model=ObjectStorageTestResponse)
 async def test_object_storage(body: ObjectStorageTestRequest) -> ObjectStorageTestResponse:
