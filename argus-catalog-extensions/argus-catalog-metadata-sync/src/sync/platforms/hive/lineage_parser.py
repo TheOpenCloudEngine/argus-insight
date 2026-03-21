@@ -101,6 +101,10 @@ class HiveLineageParser:
         result.joins = self._extract_joins(ast)
         result.column_lineages = self._extract_column_lineage(ast, result.target_tables)
 
+        # Extract JOIN key columns and add as JOIN_KEY lineage entries
+        join_key_entries = self._extract_join_key_columns(ast)
+        result.column_lineages.extend(join_key_entries)
+
         return result
 
     def _is_lineage_relevant(self, ast: exp.Expression) -> bool:
@@ -186,6 +190,39 @@ class HiveLineageParser:
             ))
 
         return joins
+
+    def _extract_join_key_columns(self, ast: exp.Expression) -> list[ColumnLineageEntry]:
+        """Extract JOIN ON columns as JOIN_KEY lineage entries.
+
+        For ``... FROM a JOIN b ON a.id = b.id``, produces:
+        ColumnLineageEntry(source=a.id, target=b.id, transform_type='JOIN_KEY')
+        """
+        entries: list[ColumnLineageEntry] = []
+        alias_map = self._build_alias_map(ast)
+
+        for join_node in ast.find_all(exp.Join):
+            on_clause = join_node.args.get("on")
+            if on_clause is None:
+                continue
+
+            # Find all EQ comparisons in the ON clause
+            for eq in on_clause.find_all(exp.EQ):
+                left_expr = eq.left
+                right_expr = eq.right
+
+                if not isinstance(left_expr, exp.Column) or not isinstance(right_expr, exp.Column):
+                    continue
+
+                left_table = self._resolve_table(left_expr, alias_map)
+                right_table = self._resolve_table(right_expr, alias_map)
+
+                entries.append(ColumnLineageEntry(
+                    source=ColumnRef(table=left_table, column=left_expr.name),
+                    target=ColumnRef(table=right_table, column=right_expr.name),
+                    transform_type="JOIN_KEY",
+                ))
+
+        return entries
 
     def _extract_column_lineage(
         self, ast: exp.Expression, target_tables: list[str],
