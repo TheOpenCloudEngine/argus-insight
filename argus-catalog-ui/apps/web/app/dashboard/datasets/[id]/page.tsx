@@ -92,6 +92,7 @@ import { SchemaHistoryTab } from "@/features/datasets/components/schema-history-
 import { PlatformSpecificCard } from "@/features/datasets/components/platform-specific-card"
 import { NiFiFlowTab } from "@/features/datasets/components/nifi-flow-tab"
 import { KestraFlowTab } from "@/features/datasets/components/kestra-flow-tab"
+import { AirflowDagTab } from "@/features/datasets/components/airflow-dag-tab"
 
 // ---------------------------------------------------------------------------
 // Schema field type for editing (no id yet)
@@ -961,11 +962,15 @@ export default function DatasetDetailPage() {
             </TabsTrigger>
             <TabsTrigger value="nifi" className="gap-1.5">
               <Workflow className="h-4 w-4" />
-              NiFi
+              NiFi 2
             </TabsTrigger>
             <TabsTrigger value="kestra" className="gap-1.5">
               <Workflow className="h-4 w-4" />
               Kestra
+            </TabsTrigger>
+            <TabsTrigger value="airflow" className="gap-1.5">
+              <Workflow className="h-4 w-4" />
+              Airflow
             </TabsTrigger>
             <TabsTrigger value="history" className="gap-1.5">
               <History className="h-4 w-4" />
@@ -1530,6 +1535,11 @@ export default function DatasetDetailPage() {
           {/* =============== Kestra tab =============== */}
           <TabsContent value="kestra" className="mt-4">
             <KestraFlowTab dataset={dataset} />
+          </TabsContent>
+
+          {/* =============== Airflow tab =============== */}
+          <TabsContent value="airflow" className="mt-4">
+            <AirflowDagTab dataset={dataset} />
           </TabsContent>
 
           {/* =============== History tab =============== */}
