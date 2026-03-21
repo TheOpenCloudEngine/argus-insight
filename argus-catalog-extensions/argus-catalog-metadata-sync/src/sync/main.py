@@ -12,7 +12,7 @@ import logging
 import sys
 
 from sync.core.catalog_client import CatalogClient
-from sync.core.config import load_config
+from sync.core.config import settings, init_settings
 from sync.platforms.hive.sync import HiveMetastoreSync
 
 
@@ -24,21 +24,21 @@ def setup_logging() -> None:
     )
 
 
-def run_server(config) -> None:
+def run_server() -> None:
     """Start the FastAPI sync API server."""
     import uvicorn
 
     uvicorn.run(
         "sync.api:app",
-        host=config.server.host,
-        port=config.server.port,
+        host=settings.host,
+        port=settings.port,
         reload=False,
     )
 
 
-def run_batch(config, platform: str | None = None) -> int:
+def run_batch(platform: str | None = None) -> int:
     """Run a one-shot sync and exit. Returns 0 on success, 1 on failure."""
-    client = CatalogClient(config.catalog)
+    client = CatalogClient(settings)
     exit_code = 0
 
     platforms_to_sync = []
@@ -46,7 +46,7 @@ def run_batch(config, platform: str | None = None) -> int:
         platforms_to_sync = [platform]
     else:
         # Sync all enabled platforms
-        if config.platforms.hive.enabled:
+        if settings.hive_enabled:
             platforms_to_sync.append("hive")
 
     if not platforms_to_sync:
@@ -55,7 +55,7 @@ def run_batch(config, platform: str | None = None) -> int:
 
     for p in platforms_to_sync:
         if p == "hive":
-            sync = HiveMetastoreSync(client, config.platforms.hive)
+            sync = HiveMetastoreSync(client, settings)
             logging.info("Starting batch sync for Hive Metastore")
             try:
                 if not sync.connect():
@@ -92,17 +92,22 @@ def main() -> None:
     )
     parser.add_argument(
         "--config",
-        help="Path to config YAML file",
+        help="Path to config directory containing config.yml and config.properties",
     )
     args = parser.parse_args()
 
     setup_logging()
-    config = load_config(args.config)
+
+    if args.config:
+        init_settings(
+            yaml_path=f"{args.config}/config.yml",
+            properties_path=f"{args.config}/config.properties",
+        )
 
     if args.mode == "server":
-        run_server(config)
+        run_server()
     elif args.mode == "batch":
-        code = run_batch(config, args.platform)
+        code = run_batch(args.platform)
         sys.exit(code)
 
 

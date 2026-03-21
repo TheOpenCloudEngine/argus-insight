@@ -3,6 +3,7 @@
 import argparse
 import logging
 import sys
+import time
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -20,6 +21,7 @@ from app.core.logging import setup_logging
 from app.core.security import SecurityHeadersMiddleware
 
 logger = logging.getLogger(__name__)
+_start_time: float = 0.0
 
 BANNER = r"""
 _______                                  _________      _____       ______                  ________
@@ -41,6 +43,8 @@ def _print_banner() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _start_time
+    _start_time = time.monotonic()
     setup_logging()
     _print_banner()
     logger.info("Catalog Server %s starting", __version__)
@@ -92,7 +96,14 @@ app.include_router(usermgr_router, prefix="/api/v1")
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": __version__}
+    """Health check endpoint."""
+    uptime_seconds = int(time.monotonic() - _start_time)
+    return {
+        "status": "ok",
+        "service": "argus-catalog-server",
+        "uptime": uptime_seconds,
+        "version": __version__,
+    }
 
 
 def run() -> None:

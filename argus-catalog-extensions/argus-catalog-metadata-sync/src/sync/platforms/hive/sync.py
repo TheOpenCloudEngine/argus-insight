@@ -7,7 +7,6 @@ from datetime import datetime
 
 from sync.core.base import BasePlatformSync, SyncResult
 from sync.core.catalog_client import CatalogClient
-from sync.core.config import HivePlatformConfig
 
 logger = logging.getLogger(__name__)
 
@@ -37,23 +36,25 @@ class HiveMetastoreSync(BasePlatformSync):
 
     platform_name = "hive"
 
-    def __init__(self, client: CatalogClient, config: HivePlatformConfig):
+    def __init__(self, client: CatalogClient, settings):
         super().__init__(client)
-        self.config = config
+        self.settings = settings
         self._hms_client = None
 
     def _init_kerberos(self) -> None:
         """Initialize Kerberos authentication if configured."""
-        krb = self.config.kerberos
-        if not krb.enabled:
+        if not self.settings.hive_kerberos_enabled:
             return
 
-        if not os.path.isfile(krb.keytab):
-            raise FileNotFoundError(f"Keytab file not found: {krb.keytab}")
+        keytab = self.settings.hive_kerberos_keytab
+        principal = self.settings.hive_kerberos_principal
 
-        logger.info("Initializing Kerberos: principal=%s, keytab=%s", krb.principal, krb.keytab)
+        if not os.path.isfile(keytab):
+            raise FileNotFoundError(f"Keytab file not found: {keytab}")
+
+        logger.info("Initializing Kerberos: principal=%s, keytab=%s", principal, keytab)
         result = subprocess.run(
-            ["kinit", "-kt", krb.keytab, krb.principal],
+            ["kinit", "-kt", keytab, principal],
             capture_output=True,
             text=True,
         )
@@ -69,16 +70,16 @@ class HiveMetastoreSync(BasePlatformSync):
             from hmsclient import HMSClient
 
             self._hms_client = HMSClient(
-                host=self.config.metastore_host,
-                port=self.config.metastore_port,
+                host=self.settings.hive_metastore_host,
+                port=self.settings.hive_metastore_port,
             )
             self._hms_client.open()
             # Test connection by listing databases
             self._hms_client.get_all_databases()
             logger.info(
                 "Connected to Hive Metastore at %s:%d",
-                self.config.metastore_host,
-                self.config.metastore_port,
+                self.settings.hive_metastore_host,
+                self.settings.hive_metastore_port,
             )
             return True
         except Exception as e:
@@ -98,12 +99,12 @@ class HiveMetastoreSync(BasePlatformSync):
         """Get list of databases to sync."""
         all_dbs = self._hms_client.get_all_databases()
 
-        if self.config.databases:
+        if self.settings.hive_databases:
             # Only sync specified databases
-            return [db for db in all_dbs if db in self.config.databases]
+            return [db for db in all_dbs if db in self.settings.hive_databases]
 
         # Sync all except excluded
-        return [db for db in all_dbs if db not in self.config.exclude_databases]
+        return [db for db in all_dbs if db not in self.settings.hive_exclude_databases]
 
     def _map_hive_type(self, hive_type: str) -> str:
         """Map Hive column type to a normalized type name."""
@@ -194,7 +195,7 @@ class HiveMetastoreSync(BasePlatformSync):
         """Sync a single Hive table to Argus Catalog."""
         table = self._hms_client.get_table(db_name, table_name)
         qualified_name = f"{db_name}.{table_name}"
-        urn = self._generate_urn(qualified_name, self.config.origin)
+        urn = self._generate_urn(qualified_name, self.settings.hive_origin)
 
         # Build schema fields from columns + partition keys
         schema_fields = []
@@ -268,7 +269,7 @@ class HiveMetastoreSync(BasePlatformSync):
                 "name": table_name,
                 "platform_id": platform_id,
                 "description": description,
-                "origin": self.config.origin,
+                "origin": self.settings.hive_origin,
                 "qualified_name": qualified_name,
                 "table_type": table_type,
                 "storage_format": storage_format,

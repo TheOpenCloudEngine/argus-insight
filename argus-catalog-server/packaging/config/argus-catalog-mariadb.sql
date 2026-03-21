@@ -257,3 +257,24 @@ CREATE TABLE IF NOT EXISTS models_model_versions (
     UNIQUE KEY uq_model_version (model_id, version),
     FOREIGN KEY (model_id) REFERENCES models_registered_models(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Collector - Hive Query History
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_collector_hive_query_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    query_id VARCHAR(256) NOT NULL,
+    short_username VARCHAR(128),
+    username VARCHAR(256),
+    operation_name VARCHAR(64),
+    start_time BIGINT,
+    end_time BIGINT,
+    duration_ms BIGINT,
+    query TEXT,
+    status VARCHAR(16) NOT NULL,
+    error_msg TEXT,
+    received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_hive_query_history_query_id (query_id),
+    INDEX idx_hive_query_history_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

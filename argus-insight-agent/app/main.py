@@ -3,6 +3,7 @@
 import argparse
 import logging
 import sys
+import time
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -32,6 +33,7 @@ from app.usermgr.router import router as usermgr_router
 from app.yum.router import router as yum_router
 
 logger = logging.getLogger(__name__)
+_start_time: float = 0.0
 
 BANNER = r"""
 _______                                  ________             _____        ______ _____     _______                    _____
@@ -146,6 +148,8 @@ async def _sync_prometheus_config_from_server() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
+    global _start_time
+    _start_time = time.monotonic()
     setup_logging()
     _print_banner()
     logger.info("Argus Server Agent %s starting", __version__)
@@ -187,7 +191,13 @@ app.include_router(metrics_router, prefix="/api/v1")
 @app.get("/health")
 async def health():
     """Health check endpoint."""
-    return {"status": "ok", "version": __version__}
+    uptime_seconds = int(time.monotonic() - _start_time)
+    return {
+        "status": "ok",
+        "service": "argus-insight-agent",
+        "uptime": uptime_seconds,
+        "version": __version__,
+    }
 
 
 def run() -> None:

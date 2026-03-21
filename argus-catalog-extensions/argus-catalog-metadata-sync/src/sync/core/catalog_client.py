@@ -4,17 +4,15 @@ import logging
 
 import requests
 
-from sync.core.config import CatalogConfig
-
 logger = logging.getLogger(__name__)
 
 
 class CatalogClient:
     """Thin wrapper around the Argus Catalog Server REST API."""
 
-    def __init__(self, config: CatalogConfig):
-        self.base_url = config.base_url.rstrip("/")
-        self.timeout = config.timeout
+    def __init__(self, settings):
+        self.base_url = settings.catalog_base_url.rstrip("/")
+        self.timeout = settings.catalog_timeout
         self.session = requests.Session()
 
     # ----- Platforms -----

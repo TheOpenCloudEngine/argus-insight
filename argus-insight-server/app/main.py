@@ -3,6 +3,7 @@
 import argparse
 import logging
 import sys
+import time
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -32,6 +33,7 @@ from workspace_provisioner.router import router as workspace_router
 from workspace_provisioner.router import init_gitlab_client
 
 logger = logging.getLogger(__name__)
+_start_time: float = 0.0
 
 BANNER = r"""
 _______                                  ________             _____        ______ _____     ________
@@ -54,6 +56,8 @@ def _print_banner() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
+    global _start_time
+    _start_time = time.monotonic()
     setup_logging()
     _print_banner()
     logger.info("Argus Insight Server %s starting", __version__)
@@ -134,7 +138,13 @@ app.include_router(workspace_router, prefix="/api/v1")
 @app.get("/health")
 async def health():
     """Health check endpoint."""
-    return {"status": "ok", "version": __version__}
+    uptime_seconds = int(time.monotonic() - _start_time)
+    return {
+        "status": "ok",
+        "service": "argus-insight-server",
+        "uptime": uptime_seconds,
+        "version": __version__,
+    }
 
 
 def run() -> None:

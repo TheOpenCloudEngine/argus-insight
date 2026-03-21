@@ -1,0 +1,54 @@
+app:
+  name: argus-catalog-metadata-sync
+  version: 0.1.0
+  debug: ${app.debug:false}
+
+server:
+  host: ${server.host:0.0.0.0}
+  port: ${server.port:4610}
+
+logging:
+  level: ${log.level:INFO}
+  dir: ${log.dir:/var/log/argus-catalog-metadata-sync}
+  filename: ${log.filename:argus-catalog-metadata-sync.log}
+  rolling:
+    type: daily
+    backup_count: 30
+
+cors:
+  origins: ${cors.origins:*}
+
+database:
+  type: ${db.type:postgresql}
+  host: ${db.host:localhost}
+  port: ${db.port:5432}
+  name: ${db.name:argus_catalog}
+  username: ${db.username:argus}
+  password: ${db.password:argus}
+  pool:
+    size: ${db.pool.size:5}
+    max_overflow: ${db.pool.max_overflow:10}
+    recycle: ${db.pool.recycle:3600}
+  echo: ${db.echo:false}
+
+catalog:
+  base_url: ${catalog.base_url:http://localhost:4600/api/v1/catalog}
+  timeout: ${catalog.timeout:30}
+
+platforms:
+  hive:
+    enabled: ${hive.enabled:true}
+    metastore_host: ${hive.metastore_host:localhost}
+    metastore_port: ${hive.metastore_port:9083}
+    kerberos:
+      enabled: ${hive.kerberos.enabled:false}
+      principal: ${hive.kerberos.principal:hive/_HOST@REALM}
+      keytab: ${hive.kerberos.keytab:/etc/security/keytabs/hive.service.keytab}
+    databases: []
+    exclude_databases:
+      - sys
+      - information_schema
+    schedule:
+      interval_minutes: ${hive.schedule.interval_minutes:60}
+      enabled: ${hive.schedule.enabled:true}
+    origin: ${hive.origin:PROD}
