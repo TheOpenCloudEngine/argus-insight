@@ -274,7 +274,87 @@ CREATE TABLE IF NOT EXISTS argus_collector_hive_query_history (
     query TEXT,
     status VARCHAR(16) NOT NULL,
     error_msg TEXT,
+    platform_id VARCHAR(100),
     received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_hive_query_history_query_id (query_id),
-    INDEX idx_hive_query_history_status (status)
+    INDEX idx_hive_query_history_status (status),
+    INDEX idx_hive_query_history_platform_id (platform_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Collector - Impala Query History
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_collector_impala_query_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    query_id VARCHAR(256) NOT NULL UNIQUE,
+    query_type VARCHAR(32),
+    query_state VARCHAR(32),
+    statement TEXT,
+    `database` VARCHAR(256),
+    username VARCHAR(256),
+    coordinator_host VARCHAR(512),
+    start_time TIMESTAMP NULL,
+    end_time TIMESTAMP NULL,
+    duration_ms BIGINT,
+    rows_produced BIGINT,
+    platform_id VARCHAR(100),
+    received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_impala_query_history_query_id (query_id),
+    INDEX idx_impala_query_history_platform_id (platform_id),
+    INDEX idx_impala_query_history_username (username)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Lineage - Query Lineage (per-query source→target table mapping)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_query_lineage (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    query_hist_id INT,
+    source_table VARCHAR(512) NOT NULL,
+    target_table VARCHAR(512) NOT NULL,
+    source_dataset_id INT,
+    target_dataset_id INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_query_lineage_query_hist_id (query_hist_id),
+    INDEX idx_query_lineage_source_table (source_table),
+    INDEX idx_query_lineage_target_table (target_table),
+    FOREIGN KEY (query_hist_id) REFERENCES argus_collector_hive_query_history(id) ON DELETE SET NULL,
+    FOREIGN KEY (source_dataset_id) REFERENCES catalog_datasets(id) ON DELETE SET NULL,
+    FOREIGN KEY (target_dataset_id) REFERENCES catalog_datasets(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Lineage - Column Lineage (per-query source→target column mapping)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_column_lineage (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    query_lineage_id INT NOT NULL,
+    source_column VARCHAR(256) NOT NULL,
+    target_column VARCHAR(256) NOT NULL,
+    transform_type VARCHAR(64) NOT NULL DEFAULT 'DIRECT',
+    INDEX idx_column_lineage_query_lineage_id (query_lineage_id),
+    FOREIGN KEY (query_lineage_id) REFERENCES argus_query_lineage(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Lineage - Dataset Lineage (aggregated dataset-to-dataset relationships)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_dataset_lineage (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    source_dataset_id INT NOT NULL,
+    target_dataset_id INT NOT NULL,
+    relation_type VARCHAR(32) NOT NULL DEFAULT 'READ_WRITE',
+    query_count INT NOT NULL DEFAULT 1,
+    last_query_id VARCHAR(256),
+    last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_dataset_lineage (source_dataset_id, target_dataset_id, relation_type),
+    INDEX idx_dataset_lineage_source (source_dataset_id),
+    INDEX idx_dataset_lineage_target (target_dataset_id),
+    FOREIGN KEY (source_dataset_id) REFERENCES catalog_datasets(id) ON DELETE CASCADE,
+    FOREIGN KEY (target_dataset_id) REFERENCES catalog_datasets(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

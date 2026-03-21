@@ -8,13 +8,19 @@ import org.apache.hadoop.security.UserGroupInformation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.apache.hadoop.hive.ql.hooks.ReadEntity;
+import org.apache.hadoop.hive.ql.hooks.WriteEntity;
+
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Hive Query를 Hive Server에서 수신하여, Endpoint로 발송하는 Hook.
@@ -29,6 +35,7 @@ public class QueryAuditHook implements ExecuteWithHookContext {
 
     public static final String PROP_TARGET_URL = "QueryAuditHook.target.url";
     public static final String PROP_ENABLED = "QueryAuditHook.enabled";
+    public static final String PROP_PLATFORM_ID = "QueryAuditHook.platform.id";
 
     private HttpRequestHelper helper;
 
@@ -53,6 +60,8 @@ public class QueryAuditHook implements ExecuteWithHookContext {
             return;
         }
 
+        String platformId = conf.getTrimmed(PROP_PLATFORM_ID, ""); // 카탈로그 플랫폼 식별자
+
         QueryPlan queryPlan = context.getQueryPlan();
         if (queryPlan == null) {
             LOG.warn("QueryPlan is null for hook type: {}", context.getHookType());
@@ -66,6 +75,10 @@ public class QueryAuditHook implements ExecuteWithHookContext {
         String operationName = context.getOperationName();
         long eventTimestamp = System.currentTimeMillis();
 
+        // HookContext에서 입출력 테이블 추출
+        List<String> inputs = extractTableNames(context.getInputs());
+        List<String> outputs = extractTableNames(context.getOutputs());
+
         HookContext.HookType hookType = context.getHookType();
 
         switch (hookType) {
@@ -73,15 +86,17 @@ public class QueryAuditHook implements ExecuteWithHookContext {
                 long queryStartTime = queryPlan.getQueryStartTime();
                 String startTimeStr = formatTimestamp(queryStartTime);
 
-                Map pre = Map.of(
-                        "queryId", queryId,
-                        "shortUsername", shortUsername,
-                        "username", username,
-                        "operationName", operationName,
-                        "startTime", String.valueOf(queryStartTime),
-                        "query", queryString,
-                        "status", "RUNNING"
-                );
+                Map<String, Object> pre = new java.util.HashMap<>();
+                pre.put("queryId", queryId);
+                pre.put("shortUsername", shortUsername);
+                pre.put("username", username);
+                pre.put("operationName", operationName);
+                pre.put("startTime", String.valueOf(queryStartTime));
+                pre.put("query", queryString);
+                pre.put("status", "RUNNING");
+                pre.put("platformId", platformId);
+                pre.put("inputs", inputs);
+                pre.put("outputs", outputs);
 
                 LOG.debug("Hive Query Audit을 송신할 메시지: {}", pre);
 
@@ -100,19 +115,19 @@ public class QueryAuditHook implements ExecuteWithHookContext {
                 long postDuration = (postStartTime > 0) ? (postEndTime - postStartTime) : -1;
                 String postEndTimeStr = formatTimestamp(postEndTime);
 
-                Map success = Map.of(
-                        "queryId", queryId,
-                        "shortUsername", shortUsername,
-                        "username", username,
-                        "operationName", operationName,
-                        "startTime", String.valueOf(postStartTime),
-                        "endTime", String.valueOf(postEndTime),
-                        "durationMs", String.valueOf(postDuration),
-                        "query", queryString
-                );
-                // Map.of()는 최대 10개 key-value 쌍까지 지원하므로 HashMap으로 status 추가
-                Map successWithStatus = new java.util.HashMap<>(success);
+                Map<String, Object> successWithStatus = new java.util.HashMap<>();
+                successWithStatus.put("queryId", queryId);
+                successWithStatus.put("shortUsername", shortUsername);
+                successWithStatus.put("username", username);
+                successWithStatus.put("operationName", operationName);
+                successWithStatus.put("startTime", String.valueOf(postStartTime));
+                successWithStatus.put("endTime", String.valueOf(postEndTime));
+                successWithStatus.put("durationMs", String.valueOf(postDuration));
+                successWithStatus.put("query", queryString);
                 successWithStatus.put("status", "SUCCESS");
+                successWithStatus.put("platformId", platformId);
+                successWithStatus.put("inputs", inputs);
+                successWithStatus.put("outputs", outputs);
 
                 LOG.debug("Hive Query Audit을 송신할 메시지: {}", successWithStatus);
 
@@ -135,20 +150,20 @@ public class QueryAuditHook implements ExecuteWithHookContext {
                     errorMsg = context.getException().getMessage();
                 }
 
-                Map failed = Map.of(
-                        "queryId", queryId,
-                        "shortUsername", shortUsername,
-                        "username", username,
-                        "operationName", operationName,
-                        "startTime", String.valueOf(failStartTime),
-                        "endTime", String.valueOf(failEndTime),
-                        "durationMs", String.valueOf(failDuration),
-                        "errorMsg", errorMsg,
-                        "query", queryString
-                );
-                // Map.of()는 최대 10개 key-value 쌍까지 지원하므로 HashMap으로 status 추가
-                Map failedWithStatus = new java.util.HashMap<>(failed);
+                Map<String, Object> failedWithStatus = new java.util.HashMap<>();
+                failedWithStatus.put("queryId", queryId);
+                failedWithStatus.put("shortUsername", shortUsername);
+                failedWithStatus.put("username", username);
+                failedWithStatus.put("operationName", operationName);
+                failedWithStatus.put("startTime", String.valueOf(failStartTime));
+                failedWithStatus.put("endTime", String.valueOf(failEndTime));
+                failedWithStatus.put("durationMs", String.valueOf(failDuration));
+                failedWithStatus.put("errorMsg", errorMsg);
+                failedWithStatus.put("query", queryString);
                 failedWithStatus.put("status", "FAILED");
+                failedWithStatus.put("platformId", platformId);
+                failedWithStatus.put("inputs", inputs);
+                failedWithStatus.put("outputs", outputs);
 
                 LOG.debug("Hive Query Audit을 송신할 메시지: {}", failedWithStatus);
 
@@ -175,5 +190,34 @@ public class QueryAuditHook implements ExecuteWithHookContext {
     private String formatTimestamp(long timestampMillis) {
         if (timestampMillis <= 0) return "N/A";
         return LocalDateTime.ofInstant(Instant.ofEpochMilli(timestampMillis), ZoneId.systemDefault()).format(formatter);
+    }
+
+    /**
+     * ReadEntity/WriteEntity Set에서 TABLE 타입인 항목의 "db.table" 이름을 추출한다.
+     */
+    @SuppressWarnings("rawtypes")
+    private List<String> extractTableNames(Set entities) {
+        List<String> names = new ArrayList<>();
+        if (entities == null) {
+            return names;
+        }
+        for (Object entity : entities) {
+            try {
+                if (entity instanceof ReadEntity) {
+                    ReadEntity re = (ReadEntity) entity;
+                    if (re.getType() == ReadEntity.Type.TABLE && re.getTable() != null) {
+                        names.add(re.getTable().getDbName() + "." + re.getTable().getTableName());
+                    }
+                } else if (entity instanceof WriteEntity) {
+                    WriteEntity we = (WriteEntity) entity;
+                    if (we.getType() == WriteEntity.Type.TABLE && we.getTable() != null) {
+                        names.add(we.getTable().getDbName() + "." + we.getTable().getTableName());
+                    }
+                }
+            } catch (Exception e) {
+                LOG.debug("Failed to extract table name from entity: {}", entity, e);
+            }
+        }
+        return names;
     }
 }

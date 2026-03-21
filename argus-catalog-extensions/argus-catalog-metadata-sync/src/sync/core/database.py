@@ -26,6 +26,7 @@ def init_db(settings) -> None:
 
     # Import models to ensure they are registered with Base.metadata
     import sync.platforms.hive.models  # noqa: F401
+    import sync.platforms.impala.models  # noqa: F401
 
     engine_kwargs = {"echo": settings.db_echo}
     if settings.db_type in ("postgresql", "mariadb", "mysql"):
