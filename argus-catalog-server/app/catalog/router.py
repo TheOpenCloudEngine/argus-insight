@@ -6,6 +6,7 @@ import logging
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.catalog import service
@@ -305,6 +306,149 @@ async def delete_dataset(dataset_id: int, session: AsyncSession = Depends(get_se
     if not await service.delete_dataset(session, dataset_id):
         raise HTTPException(status_code=404, detail="Dataset not found")
     return {"status": "ok", "message": "Dataset deleted"}
+
+
+# ---------------------------------------------------------------------------
+# Lineage
+# ---------------------------------------------------------------------------
+
+@router.get("/datasets/{dataset_id}/lineage")
+async def get_dataset_lineage(dataset_id: int, session: AsyncSession = Depends(get_session)):
+    """Get upstream and downstream lineage for a dataset.
+
+    Returns nodes (datasets) and edges (source→target relationships) suitable
+    for rendering a lineage DAG in the UI.
+    """
+    # Verify dataset exists
+    dataset = await service.get_dataset(session, dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    # Collect all connected dataset IDs via query_lineage (upstream + downstream)
+    upstream_rows = (await session.execute(text("""
+        SELECT DISTINCT source_table, source_dataset_id
+        FROM argus_query_lineage
+        WHERE target_dataset_id = :ds_id AND source_dataset_id IS NOT NULL
+    """), {"ds_id": dataset_id})).fetchall()
+
+    downstream_rows = (await session.execute(text("""
+        SELECT DISTINCT target_table, target_dataset_id
+        FROM argus_query_lineage
+        WHERE source_dataset_id = :ds_id AND target_dataset_id IS NOT NULL
+    """), {"ds_id": dataset_id})).fetchall()
+
+    # Collect all related dataset IDs (to find indirect lineage)
+    related_ids = set()
+    related_ids.add(dataset_id)
+    for row in upstream_rows:
+        related_ids.add(row[1])
+    for row in downstream_rows:
+        related_ids.add(row[1])
+
+    # Fetch second-level upstream (upstream of upstream)
+    if upstream_rows:
+        up_ids = [row[1] for row in upstream_rows]
+        placeholders = ", ".join(f":id{i}" for i in range(len(up_ids)))
+        params = {f"id{i}": uid for i, uid in enumerate(up_ids)}
+        rows2 = (await session.execute(text(f"""
+            SELECT DISTINCT source_dataset_id
+            FROM argus_query_lineage
+            WHERE target_dataset_id IN ({placeholders}) AND source_dataset_id IS NOT NULL
+        """), params)).fetchall()
+        for row in rows2:
+            related_ids.add(row[0])
+
+    # Fetch second-level downstream
+    if downstream_rows:
+        down_ids = [row[1] for row in downstream_rows]
+        placeholders = ", ".join(f":id{i}" for i in range(len(down_ids)))
+        params = {f"id{i}": did for i, did in enumerate(down_ids)}
+        rows2 = (await session.execute(text(f"""
+            SELECT DISTINCT target_dataset_id
+            FROM argus_query_lineage
+            WHERE source_dataset_id IN ({placeholders}) AND target_dataset_id IS NOT NULL
+        """), params)).fetchall()
+        for row in rows2:
+            related_ids.add(row[0])
+
+    # Build nodes: fetch dataset info for all related IDs
+    nodes = []
+    if related_ids:
+        placeholders = ", ".join(f":id{i}" for i in range(len(related_ids)))
+        params = {f"id{i}": rid for i, rid in enumerate(related_ids)}
+        ds_rows = (await session.execute(text(f"""
+            SELECT d.id, d.name, d.urn, p.type AS platform_type, p.name AS platform_name
+            FROM catalog_datasets d
+            JOIN catalog_platforms p ON d.platform_id = p.id
+            WHERE d.id IN ({placeholders})
+        """), params)).fetchall()
+        for row in ds_rows:
+            nodes.append({
+                "id": row[0],
+                "name": row[1],
+                "urn": row[2],
+                "platformType": row[3],
+                "platformName": row[4],
+                "isCurrent": row[0] == dataset_id,
+            })
+
+    # Build edges: all lineage edges among related datasets
+    edges = []
+    if related_ids:
+        placeholders = ", ".join(f":id{i}" for i in range(len(related_ids)))
+        params = {f"id{i}": rid for i, rid in enumerate(related_ids)}
+        edge_rows = (await session.execute(text(f"""
+            SELECT DISTINCT source_dataset_id, target_dataset_id, source_table, target_table
+            FROM argus_query_lineage
+            WHERE source_dataset_id IN ({placeholders})
+              AND target_dataset_id IN ({placeholders})
+              AND source_dataset_id IS NOT NULL
+              AND target_dataset_id IS NOT NULL
+        """), params)).fetchall()
+        for row in edge_rows:
+            edges.append({
+                "source": row[0],
+                "target": row[1],
+                "sourceTable": row[2],
+                "targetTable": row[3],
+            })
+
+    # Column lineage for direct connections
+    column_lineage = []
+    direct_ids = [dataset_id]
+    for row in upstream_rows:
+        direct_ids.append(row[1])
+    for row in downstream_rows:
+        direct_ids.append(row[1])
+
+    if direct_ids:
+        placeholders = ", ".join(f":id{i}" for i in range(len(direct_ids)))
+        params = {f"id{i}": did for i, did in enumerate(direct_ids)}
+        cl_rows = (await session.execute(text(f"""
+            SELECT ql.source_dataset_id, ql.target_dataset_id,
+                   cl.source_column, cl.target_column, cl.transform_type
+            FROM argus_column_lineage cl
+            JOIN argus_query_lineage ql ON cl.query_lineage_id = ql.id
+            WHERE ql.source_dataset_id IN ({placeholders})
+              AND ql.target_dataset_id IN ({placeholders})
+              AND ql.source_dataset_id IS NOT NULL
+              AND ql.target_dataset_id IS NOT NULL
+        """), params)).fetchall()
+        for row in cl_rows:
+            column_lineage.append({
+                "sourceDatasetId": row[0],
+                "targetDatasetId": row[1],
+                "sourceColumn": row[2],
+                "targetColumn": row[3],
+                "transformType": row[4],
+            })
+
+    return {
+        "datasetId": dataset_id,
+        "nodes": nodes,
+        "edges": edges,
+        "columnLineage": column_lineage,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -166,7 +166,7 @@ export function SampleDataTab({ datasetId, isSynced = false }: SampleDataTabProp
 
         const parseConfig: Papa.ParseConfig = {
           delimiter: delim,
-          newline: lineDelim,
+          newline: lineDelim as "\n" | "\r\n" | "\r" | undefined,
           header: false,
           skipEmptyLines: true,
         }

@@ -95,6 +95,8 @@ import { SchemaEditGrid, type EditableField } from "@/features/datasets/componen
 import { NiFiFlowTab } from "@/features/datasets/components/nifi-flow-tab"
 import { KestraFlowTab } from "@/features/datasets/components/kestra-flow-tab"
 import { AirflowDagTab } from "@/features/datasets/components/airflow-dag-tab"
+import { LineageTab } from "@/features/datasets/components/lineage-tab"
+import { GitBranch } from "lucide-react"
 
 // ---------------------------------------------------------------------------
 // Schema field helpers for editing
@@ -944,25 +946,33 @@ export default function DatasetDetailPage() {
               <Code2 className="h-4 w-4" />
               Avro
             </TabsTrigger>
-            <TabsTrigger value="spark" className="gap-1.5">
-              <Flame className="h-4 w-4" />
-              PySpark
-            </TabsTrigger>
-            <TabsTrigger value="nifi" className="gap-1.5">
-              <Workflow className="h-4 w-4" />
-              NiFi 2
-            </TabsTrigger>
-            <TabsTrigger value="kestra" className="gap-1.5">
-              <Workflow className="h-4 w-4" />
-              Kestra
-            </TabsTrigger>
-            <TabsTrigger value="airflow" className="gap-1.5">
-              <Workflow className="h-4 w-4" />
-              Airflow
-            </TabsTrigger>
+            {!["hive", "impala"].includes(dataset.platform.type) && (
+              <>
+                <TabsTrigger value="spark" className="gap-1.5">
+                  <Flame className="h-4 w-4" />
+                  PySpark
+                </TabsTrigger>
+                <TabsTrigger value="nifi" className="gap-1.5">
+                  <Workflow className="h-4 w-4" />
+                  NiFi 2
+                </TabsTrigger>
+                <TabsTrigger value="kestra" className="gap-1.5">
+                  <Workflow className="h-4 w-4" />
+                  Kestra
+                </TabsTrigger>
+                <TabsTrigger value="airflow" className="gap-1.5">
+                  <Workflow className="h-4 w-4" />
+                  Airflow
+                </TabsTrigger>
+              </>
+            )}
             <TabsTrigger value="history" className="gap-1.5">
               <History className="h-4 w-4" />
               History
+            </TabsTrigger>
+            <TabsTrigger value="lineage" className="gap-1.5">
+              <GitBranch className="h-4 w-4" />
+              Lineage
             </TabsTrigger>
           </TabsList>
 
@@ -1434,28 +1444,41 @@ export default function DatasetDetailPage() {
           </TabsContent>
 
           {/* =============== Spark tab =============== */}
-          <TabsContent value="spark" className="mt-4">
-            <SparkCodeCard dataset={dataset} />
-          </TabsContent>
+          {!["hive", "impala"].includes(dataset.platform.type) && (
+            <TabsContent value="spark" className="mt-4">
+              <SparkCodeCard dataset={dataset} />
+            </TabsContent>
+          )}
 
           {/* =============== NiFi tab =============== */}
-          <TabsContent value="nifi" className="mt-4">
-            <NiFiFlowTab dataset={dataset} />
-          </TabsContent>
+          {!["hive", "impala"].includes(dataset.platform.type) && (
+            <TabsContent value="nifi" className="mt-4">
+              <NiFiFlowTab dataset={dataset} />
+            </TabsContent>
+          )}
 
           {/* =============== Kestra tab =============== */}
-          <TabsContent value="kestra" className="mt-4">
-            <KestraFlowTab dataset={dataset} />
-          </TabsContent>
+          {!["hive", "impala"].includes(dataset.platform.type) && (
+            <TabsContent value="kestra" className="mt-4">
+              <KestraFlowTab dataset={dataset} />
+            </TabsContent>
+          )}
 
           {/* =============== Airflow tab =============== */}
-          <TabsContent value="airflow" className="mt-4">
-            <AirflowDagTab dataset={dataset} />
-          </TabsContent>
+          {!["hive", "impala"].includes(dataset.platform.type) && (
+            <TabsContent value="airflow" className="mt-4">
+              <AirflowDagTab dataset={dataset} />
+            </TabsContent>
+          )}
 
           {/* =============== History tab =============== */}
           <TabsContent value="history" className="mt-4">
             <SchemaHistoryTab datasetId={datasetId} />
+          </TabsContent>
+
+          {/* =============== Lineage tab =============== */}
+          <TabsContent value="lineage" className="mt-4">
+            <LineageTab datasetId={datasetId} datasetName={dataset.name} />
           </TabsContent>
         </Tabs>
 

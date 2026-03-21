@@ -61,8 +61,8 @@ const nodeTypes = { processor: ProcessorNode }
 
 function getDatasetParts(dataset: DatasetDetail) {
   const parts = dataset.name.split(".")
-  const dbName = parts.length > 1 ? parts[0] : "<database>"
-  const tblName = parts.length > 1 ? parts[1] : parts[0]
+  const dbName = parts.length > 1 ? parts[0]! : "<database>"
+  const tblName = parts.length > 1 ? parts[1]! : parts[0]!
   return { dbName, tblName, platformType: dataset.platform.type, platformId: dataset.platform.platform_id }
 }
 
