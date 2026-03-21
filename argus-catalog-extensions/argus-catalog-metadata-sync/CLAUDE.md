@@ -21,10 +21,15 @@ argus-catalog-metadata-sync/
 │   │   ├── base.py          # BasePlatformSync 추상 클래스
 │   │   ├── catalog_client.py # Argus Catalog Server REST 클라이언트
 │   │   ├── config.py        # YAML 설정 로더
+│   │   ├── database.py      # SQLAlchemy 엔진/세션 관리
 │   │   └── scheduler.py     # 주기적 동기화 스케줄러
 │   └── platforms/
 │       └── hive/
-│           └── sync.py      # Hive Metastore 동기화 구현
+│           ├── sync.py           # Hive Metastore 동기화 구현
+│           ├── models.py         # ORM 모델 (쿼리 이력, lineage)
+│           ├── query_history.py  # 쿼리 이벤트 수신/저장
+│           ├── lineage_parser.py # SQLGlot 기반 Hive SQL lineage 파서
+│           └── lineage_service.py # Lineage 저장 로직
 ├── config/
 │   └── sync.yml             # 설정 파일
 ├── tests/
@@ -61,6 +66,7 @@ metadata-sync --mode batch --platform hive
 | GET | /sync/{platform}/schedule | 동기화 주기 조회 |
 | PUT | /sync/hive/connection | Hive 연결 설정 변경 |
 | POST | /sync/hive/test | Hive 연결 테스트 |
+| POST | /collector/hive/query | Hive 쿼리 이벤트 수집 (Hook → lineage 파싱 포함) |
 
 ## 새 플랫폼 추가 방법
 

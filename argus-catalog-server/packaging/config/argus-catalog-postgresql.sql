@@ -256,6 +256,7 @@ CREATE TABLE IF NOT EXISTS argus_collector_hive_query_history (
     query TEXT,
     status VARCHAR(16) NOT NULL,
     error_msg TEXT,
+    platform_id VARCHAR(100),
     received_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -264,3 +265,66 @@ CREATE INDEX IF NOT EXISTS idx_hive_query_history_query_id
 
 CREATE INDEX IF NOT EXISTS idx_hive_query_history_status
     ON argus_collector_hive_query_history (status);
+
+CREATE INDEX IF NOT EXISTS idx_hive_query_history_platform_id
+    ON argus_collector_hive_query_history (platform_id);
+
+-- ---------------------------------------------------------------------------
+-- Lineage - Query Lineage (per-query source→target table mapping)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_query_lineage (
+    id SERIAL PRIMARY KEY,
+    query_hist_id INTEGER REFERENCES argus_collector_hive_query_history(id) ON DELETE SET NULL,
+    source_table VARCHAR(512) NOT NULL,
+    target_table VARCHAR(512) NOT NULL,
+    source_dataset_id INTEGER REFERENCES catalog_datasets(id) ON DELETE SET NULL,
+    target_dataset_id INTEGER REFERENCES catalog_datasets(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_query_lineage_query_hist_id
+    ON argus_query_lineage (query_hist_id);
+
+CREATE INDEX IF NOT EXISTS idx_query_lineage_source_table
+    ON argus_query_lineage (source_table);
+
+CREATE INDEX IF NOT EXISTS idx_query_lineage_target_table
+    ON argus_query_lineage (target_table);
+
+-- ---------------------------------------------------------------------------
+-- Lineage - Column Lineage (per-query source→target column mapping)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_column_lineage (
+    id SERIAL PRIMARY KEY,
+    query_lineage_id INTEGER NOT NULL REFERENCES argus_query_lineage(id) ON DELETE CASCADE,
+    source_column VARCHAR(256) NOT NULL,
+    target_column VARCHAR(256) NOT NULL,
+    transform_type VARCHAR(64) NOT NULL DEFAULT 'DIRECT'
+);
+
+CREATE INDEX IF NOT EXISTS idx_column_lineage_query_lineage_id
+    ON argus_column_lineage (query_lineage_id);
+
+-- ---------------------------------------------------------------------------
+-- Lineage - Dataset Lineage (aggregated dataset-to-dataset relationships)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_dataset_lineage (
+    id SERIAL PRIMARY KEY,
+    source_dataset_id INTEGER NOT NULL REFERENCES catalog_datasets(id) ON DELETE CASCADE,
+    target_dataset_id INTEGER NOT NULL REFERENCES catalog_datasets(id) ON DELETE CASCADE,
+    relation_type VARCHAR(32) NOT NULL DEFAULT 'READ_WRITE',
+    query_count INTEGER NOT NULL DEFAULT 1,
+    last_query_id VARCHAR(256),
+    last_seen_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (source_dataset_id, target_dataset_id, relation_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_dataset_lineage_source
+    ON argus_dataset_lineage (source_dataset_id);
+
+CREATE INDEX IF NOT EXISTS idx_dataset_lineage_target
+    ON argus_dataset_lineage (target_dataset_id);

@@ -227,10 +227,30 @@ async def collect_hive_query(event: HiveQueryEvent):
     """Receive a Hive query audit event from QueryAuditHook and save it immediately."""
     try:
         record = save_query_event(event)
+        lineage_count = 0
+
+        # Parse lineage for successful queries that have SQL text
+        if event.status == "SUCCESS" and event.query:
+            try:
+                from sync.platforms.hive.lineage_service import process_query_lineage
+
+                lineage_records = process_query_lineage(
+                    query_hist_id=record.id,
+                    query_id=event.queryId,
+                    sql=event.query,
+                    hook_inputs=event.inputs,
+                    hook_outputs=event.outputs,
+                )
+                lineage_count = len(lineage_records)
+            except Exception as e:
+                # Lineage failure should not block query history collection
+                logger.warning("Lineage parsing failed for query %s: %s", event.queryId, e)
+
         return {
             "status": "ok",
             "id": record.id,
             "queryId": record.query_id,
+            "lineageCount": lineage_count,
         }
     except Exception as e:
         logger.error("Failed to save Hive query event: %s", e)

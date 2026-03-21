@@ -23,6 +23,9 @@ class HiveQueryEvent(BaseModel):
     query: str | None = None
     status: str
     errorMsg: str | None = None
+    platformId: str | None = None     # catalog platform ID from hive-site.xml
+    inputs: list[str] | None = None   # source tables from HookContext.getInputs()
+    outputs: list[str] | None = None  # target tables from HookContext.getOutputs()
 
 
 def save_query_event(event: HiveQueryEvent) -> HiveQueryHistory:
@@ -41,6 +44,7 @@ def save_query_event(event: HiveQueryEvent) -> HiveQueryHistory:
         query=event.query,
         status=event.status,
         error_msg=event.errorMsg,
+        platform_id=event.platformId,
     )
 
     session = get_session()
