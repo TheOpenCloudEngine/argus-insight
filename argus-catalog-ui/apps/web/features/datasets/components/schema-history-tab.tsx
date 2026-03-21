@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { ChevronRight, History, Loader2, Minus, Plus, RefreshCw } from "lucide-react"
 
-import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
-import { Button } from "@workspace/ui/components/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@workspace/ui/components/card"
 import {
   fetchSchemaHistory,
   type SchemaSnapshot,
@@ -13,6 +12,19 @@ import {
 
 type SchemaHistoryTabProps = {
   datasetId: number
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  })
 }
 
 function ChangeTypeBadge({ type }: { type: string }) {
@@ -39,7 +51,7 @@ function ChangeTypeBadge({ type }: { type: string }) {
 
 function ChangeDetail({ change }: { change: SchemaChangeEntry }) {
   return (
-    <div className="flex items-start gap-3 py-1.5 px-2 text-xs font-[family-name:var(--font-d2coding)]">
+    <div className="flex items-start gap-3 py-1 px-2 text-xs font-[family-name:var(--font-d2coding)]">
       <ChangeTypeBadge type={change.type} />
       <span className="font-medium min-w-[120px]">{change.field}</span>
       <div className="flex-1">
@@ -73,49 +85,52 @@ function ChangeDetail({ change }: { change: SchemaChangeEntry }) {
   )
 }
 
-function SnapshotItem({ snapshot }: { snapshot: SchemaSnapshot }) {
+function SnapshotRow({ snapshot }: { snapshot: SchemaSnapshot }) {
   const [open, setOpen] = useState(false)
-  const date = new Date(snapshot.synced_at)
-  const dateStr = date.toLocaleDateString("ko-KR", {
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-  })
 
   return (
-    <div className="border-l-2 border-muted pl-4 pb-4 relative">
-      <div className="absolute -left-[5px] top-1 h-2 w-2 rounded-full bg-primary" />
-      <button
-        type="button"
-        className="flex items-center gap-2 text-sm hover:text-primary transition-colors w-full text-left"
+    <>
+      <tr
+        className="hover:bg-muted/30 cursor-pointer"
         onClick={() => setOpen(!open)}
       >
-        <ChevronRight
-          className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
-        />
-        <span className="font-medium font-[family-name:var(--font-d2coding)]">{dateStr}</span>
-        <span className="text-muted-foreground text-xs">{snapshot.field_count} fields</span>
-        {snapshot.change_summary && (
-          <span className="text-xs px-1.5 py-0.5 rounded bg-muted">
-            {snapshot.change_summary}
-          </span>
-        )}
-      </button>
+        <td className="px-3 py-2 text-sm whitespace-nowrap">
+          <div className="flex items-center gap-1.5">
+            <ChevronRight
+              className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`}
+            />
+            <span className="font-[family-name:var(--font-d2coding)]">
+              {formatDate(snapshot.synced_at)}
+            </span>
+          </div>
+        </td>
+        <td className="px-3 py-2 text-sm text-center">{snapshot.field_count}</td>
+        <td className="px-3 py-2 text-sm">{snapshot.change_summary || "-"}</td>
+        <td className="px-3 py-2 text-sm text-center text-muted-foreground">
+          {snapshot.changes.length}
+        </td>
+      </tr>
       {open && snapshot.changes.length > 0 && (
-        <div className="mt-2 border rounded bg-muted/20">
-          {snapshot.changes.map((c, i) => (
-            <div
-              key={`${c.field}-${i}`}
-              className={i > 0 ? "border-t" : ""}
-            >
-              <ChangeDetail change={c} />
+        <tr>
+          <td colSpan={4} className="p-0">
+            <div className="border-t border-b bg-muted/10 py-1">
+              {snapshot.changes.map((c, i) => (
+                <ChangeDetail key={`${c.field}-${i}`} change={c} />
+              ))}
             </div>
-          ))}
-        </div>
+          </td>
+        </tr>
       )}
       {open && snapshot.changes.length === 0 && (
-        <p className="mt-2 text-xs text-muted-foreground ml-6">Initial sync — no prior state to compare</p>
+        <tr>
+          <td colSpan={4} className="p-0">
+            <div className="border-t border-b bg-muted/10 py-2 px-3">
+              <p className="text-xs text-muted-foreground">Initial sync — no prior state to compare</p>
+            </div>
+          </td>
+        </tr>
       )}
-    </div>
+    </>
   )
 }
 
@@ -123,13 +138,11 @@ export function SchemaHistoryTab({ datasetId }: SchemaHistoryTabProps) {
   const [snapshots, setSnapshots] = useState<SchemaSnapshot[]>([])
   const [total, setTotal] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
-  const [page, setPage] = useState(1)
-  const pageSize = 20
 
   const load = useCallback(async () => {
     setIsLoading(true)
     try {
-      const data = await fetchSchemaHistory(datasetId, page, pageSize)
+      const data = await fetchSchemaHistory(datasetId, 1, 20)
       setSnapshots(data.items)
       setTotal(data.total)
     } catch {
@@ -137,22 +150,27 @@ export function SchemaHistoryTab({ datasetId }: SchemaHistoryTabProps) {
     } finally {
       setIsLoading(false)
     }
-  }, [datasetId, page])
+  }, [datasetId])
 
   useEffect(() => {
     load()
   }, [load])
 
-  const totalPages = Math.ceil(total / pageSize)
-
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between py-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <History className="h-4 w-4" />
-          Schema Change History
-        </CardTitle>
-        <span className="text-xs text-muted-foreground">{total} snapshot(s)</span>
+        <div>
+          <CardTitle className="text-base flex items-center gap-2">
+            <History className="h-4 w-4" />
+            Schema Change History
+          </CardTitle>
+          <CardDescription className="text-xs mt-1">
+            Only the latest 20 snapshots are retained.
+          </CardDescription>
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {snapshots.length} / {total} snapshot(s)
+        </span>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -164,36 +182,23 @@ export function SchemaHistoryTab({ datasetId }: SchemaHistoryTabProps) {
             No schema history available. Run a sync to start tracking changes.
           </p>
         ) : (
-          <>
-            <div className="ml-1 mt-1">
-              {snapshots.map((snap) => (
-                <SnapshotItem key={snap.id} snapshot={snap} />
-              ))}
-            </div>
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 mt-4">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage(page - 1)}
-                >
-                  Previous
-                </Button>
-                <span className="text-xs text-muted-foreground">
-                  Page {page} of {totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage(page + 1)}
-                >
-                  Next
-                </Button>
-              </div>
-            )}
-          </>
+          <div className="border rounded overflow-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/60">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold">Synced At</th>
+                  <th className="px-3 py-2 text-center font-semibold w-[80px]">Fields</th>
+                  <th className="px-3 py-2 text-left font-semibold">Changes</th>
+                  <th className="px-3 py-2 text-center font-semibold w-[80px]">Count</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {snapshots.map((snap) => (
+                  <SnapshotRow key={snap.id} snapshot={snap} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </CardContent>
     </Card>

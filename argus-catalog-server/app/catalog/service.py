@@ -961,6 +961,25 @@ async def save_schema_snapshot(
         changes_json=_json.dumps(changes, ensure_ascii=False) if changes else "[]",
     )
     session.add(snapshot)
+    await session.flush()
+
+    # Keep only the latest 20 snapshots per dataset
+    max_snapshots = 20
+    count_result = await session.execute(
+        select(func.count()).where(SchemaSnapshot.dataset_id == dataset_id)
+    )
+    total = count_result.scalar() or 0
+    if total > max_snapshots:
+        old_snaps = await session.execute(
+            select(SchemaSnapshot)
+            .where(SchemaSnapshot.dataset_id == dataset_id)
+            .order_by(SchemaSnapshot.synced_at.asc())
+            .limit(total - max_snapshots)
+        )
+        for old in old_snaps.scalars().all():
+            await session.delete(old)
+        logger.info("Pruned %d old snapshot(s) for dataset_id=%d", total - max_snapshots, dataset_id)
+
     logger.info("Schema snapshot saved: dataset_id=%d, %s, fields=%d",
                 dataset_id, summary, len(schema_entries))
     return snapshot
