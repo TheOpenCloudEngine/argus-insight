@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.catalog.router import router as catalog_router
+from app.filesystemmgr.router import router as filesystem_router
 from app.models.router import router as models_router
 from app.models.uc_compat import router as uc_compat_router
 from app.usermgr.router import router as usermgr_router
@@ -89,6 +90,7 @@ app.add_middleware(
 )
 
 app.include_router(catalog_router, prefix="/api/v1")
+app.include_router(filesystem_router, prefix="/api/v1")
 app.include_router(models_router, prefix="/api/v1")
 app.include_router(uc_compat_router)  # /api/2.0/mlflow/unity-catalog (no extra prefix)
 app.include_router(usermgr_router, prefix="/api/v1")

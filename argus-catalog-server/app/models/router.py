@@ -16,6 +16,7 @@ from app.models.schemas import (
     ModelVersionFinalize,
     ModelVersionResponse,
     ModelVersionUpdate,
+    PaginatedModelSummaries,
     PaginatedModelVersions,
     PaginatedRegisteredModels,
     RegisteredModelCreate,
@@ -32,7 +33,7 @@ router = APIRouter(prefix="/models", tags=["models"])
 # RegisteredModel endpoints
 # ---------------------------------------------------------------------------
 
-@router.post("/", response_model=RegisteredModelResponse)
+@router.post("", response_model=RegisteredModelResponse)
 async def create_registered_model(
     req: RegisteredModelCreate, session: AsyncSession = Depends(get_session),
 ):
@@ -45,15 +46,15 @@ async def create_registered_model(
         raise HTTPException(status_code=409, detail=str(e))
 
 
-@router.get("/", response_model=PaginatedRegisteredModels)
+@router.get("", response_model=PaginatedModelSummaries)
 async def list_registered_models(
     search: str | None = Query(None, description="Search by model name"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
 ):
-    """List registered models with optional search and pagination."""
-    return await service.list_registered_models(session, search=search, page=page, page_size=page_size)
+    """List registered models with latest version status and metadata."""
+    return await service.list_model_summaries(session, search=search, page=page, page_size=page_size)
 
 
 @router.get("/{model_name}", response_model=RegisteredModelResponse)
@@ -91,6 +92,28 @@ async def delete_registered_model(
     if not await service.delete_registered_model(session, model_name):
         raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
     return {"status": "ok", "message": f"Model '{model_name}' deleted"}
+
+
+@router.post("/hard-delete")
+async def hard_delete_models(
+    body: dict,
+    session: AsyncSession = Depends(get_session),
+):
+    """Permanently delete models: DB records + disk artifacts."""
+    names: list[str] = body.get("names", [])
+    if not names:
+        raise HTTPException(status_code=400, detail="No model names provided")
+
+    deleted: list[str] = []
+    not_found: list[str] = []
+    for name in names:
+        if await service.hard_delete_registered_model(session, name):
+            deleted.append(name)
+        else:
+            not_found.append(name)
+
+    logger.info("Hard-deleted %d models: %s", len(deleted), deleted)
+    return {"deleted": deleted, "not_found": not_found}
 
 
 # ---------------------------------------------------------------------------

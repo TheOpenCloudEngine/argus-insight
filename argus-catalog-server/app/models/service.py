@@ -20,19 +20,23 @@ Audit fields (set at finalize time):
   - status_message: failure reason (if any)
 """
 
+import datetime as _dt
 import logging
 from pathlib import Path
 
+import yaml
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models.models import ModelVersion, RegisteredModel
+from app.models.models import CatalogModel, ModelVersion, RegisteredModel
 from app.models.schemas import (
+    ModelSummary,
     ModelVersionCreate,
     ModelVersionFinalize,
     ModelVersionResponse,
     ModelVersionUpdate,
+    PaginatedModelSummaries,
     PaginatedModelVersions,
     PaginatedRegisteredModels,
     RegisteredModelCreate,
@@ -143,6 +147,60 @@ async def list_registered_models(
     return PaginatedRegisteredModels(items=items, total=total, page=page, page_size=page_size)
 
 
+async def list_model_summaries(
+    session: AsyncSession,
+    search: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> PaginatedModelSummaries:
+    """List models with latest version status and catalog_models metadata joined."""
+    base = select(RegisteredModel).where(RegisteredModel.status != "deleted")
+    if search:
+        base = base.where(RegisteredModel.name.ilike(f"%{search}%"))
+
+    # Count
+    count_query = select(func.count()).select_from(base.subquery())
+    total = (await session.execute(count_query)).scalar() or 0
+
+    # Paginate
+    offset = (page - 1) * page_size
+    query = base.order_by(RegisteredModel.updated_at.desc()).offset(offset).limit(page_size)
+    result = await session.execute(query)
+    models = result.scalars().all()
+
+    items: list[ModelSummary] = []
+    for m in models:
+        # Get latest version status
+        latest_ver = (await session.execute(
+            select(ModelVersion.status).where(
+                ModelVersion.model_id == m.id,
+            ).order_by(ModelVersion.version.desc()).limit(1)
+        )).scalar()
+
+        # Get catalog_models for latest version
+        cm = (await session.execute(
+            select(CatalogModel).where(
+                CatalogModel.model_name == m.name,
+            ).order_by(CatalogModel.version.desc()).limit(1)
+        )).scalars().first()
+
+        items.append(ModelSummary(
+            id=m.id,
+            name=m.name,
+            description=m.description,
+            owner=m.owner,
+            max_version_number=m.max_version_number,
+            status=m.status,
+            latest_version_status=latest_ver,
+            sklearn_version=cm.sklearn_version if cm else None,
+            python_version=cm.python_version if cm else None,
+            model_size_bytes=cm.model_size_bytes if cm else None,
+            updated_at=m.updated_at,
+        ))
+
+    return PaginatedModelSummaries(items=items, total=total, page=page, page_size=page_size)
+
+
 async def update_registered_model(
     session: AsyncSession, name: str, req: RegisteredModelUpdate,
 ) -> RegisteredModelResponse | None:
@@ -203,6 +261,45 @@ async def delete_registered_model(session: AsyncSession, name: str) -> bool:
 
     await session.commit()
     logger.info("RegisteredModel deleted (soft): %s (id=%d)", model.name, model.id)
+    return True
+
+
+async def hard_delete_registered_model(session: AsyncSession, name: str) -> bool:
+    """Permanently delete a model: DB records (all 3 tables) + disk artifacts."""
+    import shutil
+
+    result = await session.execute(
+        select(RegisteredModel).where(RegisteredModel.name == name)
+    )
+    model = result.scalars().first()
+    if not model:
+        return False
+
+    # Delete catalog_models rows
+    cm_result = await session.execute(
+        select(CatalogModel).where(CatalogModel.model_name == name)
+    )
+    for cm in cm_result.scalars().all():
+        await session.delete(cm)
+
+    # Delete model_versions rows
+    mv_result = await session.execute(
+        select(ModelVersion).where(ModelVersion.model_id == model.id)
+    )
+    for mv in mv_result.scalars().all():
+        await session.delete(mv)
+
+    # Delete registered model
+    await session.delete(model)
+    await session.commit()
+
+    # Delete artifact directory from disk
+    art_dir = _model_artifacts_root() / name
+    if art_dir.exists():
+        shutil.rmtree(art_dir)
+        logger.info("Deleted artifact directory: %s", art_dir)
+
+    logger.info("RegisteredModel hard-deleted: %s (id=%d)", name, model.id)
     return True
 
 
@@ -399,19 +496,22 @@ async def finalize_model_version(
     if req.status.value not in ("READY", "FAILED_REGISTRATION"):
         raise ValueError(f"Invalid finalize status: {req.status.value}")
 
-    import datetime as _dt
-
     ver.status = req.status.value
     ver.status_message = req.status_message
     ver.finished_at = _dt.datetime.now(_dt.timezone.utc)
 
     # Count artifacts on disk
+    art_path = None
     if ver.storage_location:
         art_path = Path(ver.storage_location.replace("file://", ""))
         if art_path.exists():
             files = [f for f in art_path.rglob("*") if f.is_file()]
             ver.artifact_count = len(files)
             ver.artifact_size = sum(f.stat().st_size for f in files)
+
+    # Parse artifact files and insert into catalog_models (READY only)
+    if req.status.value == "READY" and art_path and art_path.exists():
+        await _save_catalog_model(session, model.name, version, ver.id, art_path)
 
     await session.commit()
     await session.refresh(ver)
@@ -442,3 +542,112 @@ async def delete_model_version(
     await session.commit()
     logger.info("ModelVersion deleted: %s v%d", model.name, version)
     return True
+
+
+# ---------------------------------------------------------------------------
+# Catalog model metadata extraction
+# ---------------------------------------------------------------------------
+
+def _read_file_text(path: Path) -> str | None:
+    """Read a text file, returning None if it doesn't exist."""
+    if path.is_file():
+        return path.read_text(encoding="utf-8")
+    return None
+
+
+def _parse_utc_to_local(utc_str: str | None) -> _dt.datetime | None:
+    """Convert a UTC datetime string (e.g. '2026-03-20 19:40:55.665301') to local timezone."""
+    if not utc_str:
+        return None
+    try:
+        utc_dt = _dt.datetime.strptime(utc_str, "%Y-%m-%d %H:%M:%S.%f").replace(
+            tzinfo=_dt.timezone.utc,
+        )
+        return utc_dt.astimezone()
+    except (ValueError, TypeError):
+        logger.warning("Failed to parse utc_time_created: %s", utc_str)
+        return None
+
+
+def _extract_mlmodel_fields(art_path: Path) -> dict:
+    """Parse MLmodel YAML and extract metadata fields."""
+    mlmodel_path = art_path / "MLmodel"
+    if not mlmodel_path.is_file():
+        logger.warning("MLmodel file not found in %s", art_path)
+        return {}
+
+    try:
+        data = yaml.safe_load(mlmodel_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        logger.warning("Failed to parse MLmodel YAML in %s: %s", art_path, e)
+        return {}
+
+    if not isinstance(data, dict):
+        return {}
+
+    # Top-level fields
+    utc_time_created = data.get("utc_time_created")
+    model_size_bytes = data.get("model_size_bytes")
+    mlflow_version = data.get("mlflow_version")
+    model_id = data.get("model_uuid") or data.get("model_id")
+
+    # Flavors — extract from sklearn or python_function
+    flavors = data.get("flavors", {})
+
+    sklearn_flavor = flavors.get("sklearn", {})
+    sklearn_version = sklearn_flavor.get("sklearn_version")
+    serialization_format = sklearn_flavor.get("serialization_format")
+
+    python_fn = flavors.get("python_function", {})
+    predict_fn = python_fn.get("predict_fn")
+    python_version = python_fn.get("python_version")
+
+    return {
+        "predict_fn": predict_fn,
+        "python_version": python_version,
+        "serialization_format": serialization_format,
+        "sklearn_version": sklearn_version,
+        "mlflow_version": mlflow_version,
+        "mlflow_model_id": model_id,
+        "model_size_bytes": int(model_size_bytes) if model_size_bytes is not None else None,
+        "utc_time_created": utc_time_created,
+        "time_created": _parse_utc_to_local(utc_time_created),
+    }
+
+
+async def _save_catalog_model(
+    session: AsyncSession,
+    model_name: str,
+    version: int,
+    model_version_id: int,
+    art_path: Path,
+) -> None:
+    """Extract metadata from artifact files and save to catalog_models table."""
+    try:
+        # Read raw text files
+        requirements = _read_file_text(art_path / "requirements.txt")
+        conda = _read_file_text(art_path / "conda.yaml")
+        python_env = _read_file_text(art_path / "python_env.yaml")
+
+        # Parse MLmodel YAML
+        ml_fields = _extract_mlmodel_fields(art_path)
+
+        catalog_model = CatalogModel(
+            model_version_id=model_version_id,
+            model_name=model_name,
+            version=version,
+            requirements=requirements,
+            conda=conda,
+            python_env=python_env,
+            **ml_fields,
+        )
+        session.add(catalog_model)
+        logger.info(
+            "CatalogModel saved: %s v%d (predict_fn=%s, sklearn=%s, mlflow=%s)",
+            model_name, version,
+            ml_fields.get("predict_fn"),
+            ml_fields.get("sklearn_version"),
+            ml_fields.get("mlflow_version"),
+        )
+    except Exception as e:
+        logger.error("Failed to save catalog_model for %s v%d: %s", model_name, version, e)

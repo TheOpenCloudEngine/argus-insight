@@ -5,8 +5,8 @@ MLflow uses the UC-compatible API (/api/2.1/unity-catalog/) to register models,
 which internally maps to these tables.
 
 Tables:
-  - models_registered_models: ML model metadata with version counter
-  - models_model_versions: Versioned model artifacts with status lifecycle
+  - catalog_registered_models: ML model metadata with version counter
+  - catalog_model_versions: Versioned model artifacts with status lifecycle
 
 Status lifecycle:
   PENDING_REGISTRATION → READY (success) or FAILED_REGISTRATION (failure)
@@ -18,7 +18,7 @@ Naming convention:
 """
 
 from sqlalchemy import (
-    Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func,
+    BigInteger, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func,
 )
 
 from app.core.database import Base
@@ -36,7 +36,7 @@ class RegisteredModel(Base):
     while preserving referential integrity.
     """
 
-    __tablename__ = "models_registered_models"
+    __tablename__ = "catalog_registered_models"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     # 3-part name: catalog.schema.model (e.g. "argus.ml.iris_classifier")
@@ -79,11 +79,11 @@ class ModelVersion(Base):
       PENDING + finished_at=NULL + old created_at → stuck/abandoned
     """
 
-    __tablename__ = "models_model_versions"
+    __tablename__ = "catalog_model_versions"
     __table_args__ = (UniqueConstraint("model_id", "version"),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    model_id = Column(Integer, ForeignKey("models_registered_models.id", ondelete="CASCADE"),
+    model_id = Column(Integer, ForeignKey("catalog_registered_models.id", ondelete="CASCADE"),
                       nullable=False)
     # Auto-incremented per model (1, 2, 3, ...)
     version = Column(Integer, nullable=False)
@@ -110,3 +110,49 @@ class ModelVersion(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     created_by = Column(String(200))
     updated_by = Column(String(200))
+
+
+class CatalogModel(Base):
+    """Parsed model metadata extracted from MLflow artifact files at finalize time.
+
+    When a model version transitions to READY, the server reads MLmodel (YAML),
+    requirements.txt, conda.yaml, and python_env.yaml from the artifact directory
+    and stores their contents and key metadata fields in this table.
+
+    Columns from MLmodel YAML:
+      predict_fn, python_version, serialization_format, sklearn_version,
+      mlflow_version, mlflow_model_id, model_size_bytes, utc_time_created, time_created
+    Columns from text files:
+      requirements, conda, python_env
+    """
+
+    __tablename__ = "catalog_models"
+    __table_args__ = (UniqueConstraint("model_name", "version"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    model_version_id = Column(
+        Integer,
+        ForeignKey("catalog_model_versions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    model_name = Column(String(255), nullable=False)
+    version = Column(Integer, nullable=False)
+
+    # --- Fields parsed from MLmodel YAML ---
+    predict_fn = Column(String(100))
+    python_version = Column(String(20))
+    serialization_format = Column(String(50))
+    sklearn_version = Column(String(20))
+    mlflow_version = Column(String(20))
+    mlflow_model_id = Column(String(100))
+    model_size_bytes = Column(BigInteger)
+    utc_time_created = Column(String(50))
+    # utc_time_created converted to server local timezone
+    time_created = Column(DateTime(timezone=True))
+
+    # --- Raw file contents ---
+    requirements = Column(Text)
+    conda = Column(Text)
+    python_env = Column(Text)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

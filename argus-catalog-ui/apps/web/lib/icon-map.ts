@@ -1,6 +1,8 @@
 import {
   BookOpen,
+  Box,
   Database,
+  FolderOpen,
   HelpCircle,
   LayoutDashboard,
   Server,
@@ -11,7 +13,9 @@ import type { LucideIcon } from "lucide-react"
 
 const iconMap: Record<string, LucideIcon> = {
   BookOpen,
+  Box,
   Database,
+  FolderOpen,
   LayoutDashboard,
   Server,
   Tags,

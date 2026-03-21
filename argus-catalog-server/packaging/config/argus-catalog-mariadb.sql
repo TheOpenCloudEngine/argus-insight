@@ -219,7 +219,7 @@ CREATE TABLE IF NOT EXISTS catalog_owners (
 -- ML Model Registry
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS models_registered_models (
+CREATE TABLE IF NOT EXISTS catalog_registered_models (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
     urn VARCHAR(500) NOT NULL UNIQUE,
@@ -236,7 +236,7 @@ CREATE TABLE IF NOT EXISTS models_registered_models (
     FOREIGN KEY (platform_id) REFERENCES catalog_platforms(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS models_model_versions (
+CREATE TABLE IF NOT EXISTS catalog_model_versions (
     id INT AUTO_INCREMENT PRIMARY KEY,
     model_id INT NOT NULL,
     version INT NOT NULL,
@@ -255,7 +255,29 @@ CREATE TABLE IF NOT EXISTS models_model_versions (
     created_by VARCHAR(200),
     updated_by VARCHAR(200),
     UNIQUE KEY uq_model_version (model_id, version),
-    FOREIGN KEY (model_id) REFERENCES models_registered_models(id) ON DELETE CASCADE
+    FOREIGN KEY (model_id) REFERENCES catalog_registered_models(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS catalog_models (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    model_version_id INT NOT NULL,
+    model_name VARCHAR(255) NOT NULL,
+    version INT NOT NULL,
+    predict_fn VARCHAR(100),
+    python_version VARCHAR(20),
+    serialization_format VARCHAR(50),
+    sklearn_version VARCHAR(20),
+    mlflow_version VARCHAR(20),
+    mlflow_model_id VARCHAR(100),
+    model_size_bytes BIGINT,
+    utc_time_created VARCHAR(50),
+    time_created TIMESTAMP NULL,
+    requirements TEXT,
+    conda TEXT,
+    python_env TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_catalog_model (model_name, version),
+    FOREIGN KEY (model_version_id) REFERENCES catalog_model_versions(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------------

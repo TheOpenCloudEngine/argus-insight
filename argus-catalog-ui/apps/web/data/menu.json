@@ -25,6 +25,24 @@
       ]
     },
     {
+      "id": "model-catalog",
+      "label": "Model Catalog",
+      "items": [
+        {
+          "id": "models",
+          "title": "Models",
+          "url": "/dashboard/models",
+          "icon": "Box"
+        },
+        {
+          "id": "filesystem",
+          "title": "File Browser",
+          "url": "/dashboard/filesystem",
+          "icon": "FolderOpen"
+        }
+      ]
+    },
+    {
       "id": "governance",
       "label": "Governance",
       "items": [

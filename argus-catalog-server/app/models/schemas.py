@@ -64,6 +64,31 @@ class PaginatedRegisteredModels(BaseModel):
     page_size: int
 
 
+class ModelSummary(BaseModel):
+    """Joined summary for model list view (registered_models + latest version + catalog_models)."""
+
+    id: int
+    name: str
+    description: str | None = None
+    owner: str | None = None
+    max_version_number: int
+    status: str
+    # Latest version info
+    latest_version_status: str | None = None
+    # From catalog_models (latest version)
+    sklearn_version: str | None = None
+    python_version: str | None = None
+    model_size_bytes: int | None = None
+    updated_at: datetime
+
+
+class PaginatedModelSummaries(BaseModel):
+    items: list[ModelSummary]
+    total: int
+    page: int
+    page_size: int
+
+
 # ---------------------------------------------------------------------------
 # ModelVersion schemas
 # ---------------------------------------------------------------------------
