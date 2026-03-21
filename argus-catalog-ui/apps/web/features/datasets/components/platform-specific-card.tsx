@@ -1,8 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { ChevronRight, Settings2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
+import { AgGridReact } from "ag-grid-react"
+import { AllCommunityModule, ModuleRegistry, type ColDef } from "ag-grid-community"
+import dynamic from "next/dynamic"
+
+ModuleRegistry.registerModules([AllCommunityModule])
+const MonacoEditor = dynamic(() => import("@monaco-editor/react").then(m => m.default), { ssr: false })
 
 // ---------------------------------------------------------------------------
 // Collapsible section
@@ -98,121 +104,160 @@ function pgTableProps(table: Record<string, unknown>): PropItem[] {
 }
 
 // ---------------------------------------------------------------------------
-// Column-level detail renderers
+// COLUMNS (AG Grid)
 // ---------------------------------------------------------------------------
 
-function renderColumnDetails(
-  platformType: string,
-  columns: Record<string, Record<string, unknown>>,
-) {
+function ColumnsGrid({
+  platformType,
+  columns,
+}: {
+  platformType: string
+  columns: Record<string, Record<string, unknown>>
+}) {
   const entries = Object.entries(columns)
   if (entries.length === 0) return null
 
+  const isMySQL = platformType === "mysql"
+
+  const columnDefs = useMemo<ColDef[]>(() => {
+    const defs: ColDef[] = [
+      { headerName: "Column", field: "column", pinned: "left", minWidth: 120, sortable: true, filter: true },
+    ]
+    if (isMySQL) {
+      defs.push(
+        { headerName: "Key", field: "key", width: 70, sortable: true },
+        { headerName: "Default", field: "default", minWidth: 120 },
+        { headerName: "Extra", field: "extra", minWidth: 120 },
+        { headerName: "Charset", field: "charset", width: 100 },
+        { headerName: "Collation", field: "collation", minWidth: 140 },
+      )
+    } else {
+      defs.push(
+        { headerName: "Default", field: "default", minWidth: 150 },
+        { headerName: "Constraints", field: "constraints", minWidth: 200 },
+      )
+    }
+    return defs
+  }, [isMySQL])
+
+  const rowData = useMemo(() =>
+    entries.map(([colName, props]) => {
+      if (isMySQL) {
+        return {
+          column: colName,
+          key: String(props.key ?? ""),
+          default: String(props.default ?? ""),
+          extra: String(props.extra ?? ""),
+          charset: String(props.charset ?? ""),
+          collation: String(props.collation ?? ""),
+        }
+      }
+      const constraints = Array.isArray(props.constraints)
+        ? (props.constraints as { type: string; references?: string }[])
+            .map(c => c.references ? `${c.type} → ${c.references}` : c.type)
+            .join(", ")
+        : ""
+      return {
+        column: colName,
+        default: String(props.default ?? ""),
+        constraints,
+      }
+    }),
+    [entries, isMySQL],
+  )
+
   return (
-    <CollapsibleSection title={`Column Details (${entries.length})`}>
-      <div className="border rounded overflow-auto max-h-[300px]">
-        <table className="w-full text-xs font-[family-name:var(--font-d2coding)]">
-          <thead className="bg-muted/60 sticky top-0">
-            <tr>
-              <th className="px-2 py-1.5 text-left font-semibold border-r">Column</th>
-              {platformType === "mysql" ? (
-                <>
-                  <th className="px-2 py-1.5 text-left font-semibold border-r">Key</th>
-                  <th className="px-2 py-1.5 text-left font-semibold border-r">Default</th>
-                  <th className="px-2 py-1.5 text-left font-semibold border-r">Extra</th>
-                  <th className="px-2 py-1.5 text-left font-semibold border-r">Charset</th>
-                  <th className="px-2 py-1.5 text-left font-semibold">Collation</th>
-                </>
-              ) : (
-                <>
-                  <th className="px-2 py-1.5 text-left font-semibold border-r">Default</th>
-                  <th className="px-2 py-1.5 text-left font-semibold">Constraints</th>
-                </>
-              )}
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {entries.map(([colName, props]) => (
-              <tr key={colName} className="hover:bg-muted/30">
-                <td className="px-2 py-1 border-r font-medium">{colName}</td>
-                {platformType === "mysql" ? (
-                  <>
-                    <td className="px-2 py-1 border-r">{String(props.key ?? "")}</td>
-                    <td className="px-2 py-1 border-r text-muted-foreground">{String(props.default ?? "")}</td>
-                    <td className="px-2 py-1 border-r text-muted-foreground">{String(props.extra ?? "")}</td>
-                    <td className="px-2 py-1 border-r">{String(props.charset ?? "")}</td>
-                    <td className="px-2 py-1">{String(props.collation ?? "")}</td>
-                  </>
-                ) : (
-                  <>
-                    <td className="px-2 py-1 border-r text-muted-foreground truncate max-w-[200px]" title={String(props.default ?? "")}>
-                      {String(props.default ?? "")}
-                    </td>
-                    <td className="px-2 py-1">
-                      {Array.isArray(props.constraints)
-                        ? (props.constraints as { type: string; references?: string }[]).map((c, i) => (
-                            <span key={i} className="inline-block mr-1.5">
-                              <span className="text-primary font-medium">{c.type}</span>
-                              {c.references && (
-                                <span className="text-muted-foreground"> &rarr; {c.references}</span>
-                              )}
-                            </span>
-                          ))
-                        : ""}
-                    </td>
-                  </>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <CollapsibleSection title={`COLUMNS (${entries.length})`}>
+      <div
+        className="border rounded ag-theme-alpine"
+        style={{
+          height: Math.min(entries.length * 32 + 40, 300),
+          "--ag-font-family": "var(--font-d2coding), 'D2Coding', Consolas, monospace",
+          "--ag-font-size": "12px",
+        } as React.CSSProperties}
+      >
+        <AgGridReact
+          columnDefs={columnDefs}
+          rowData={rowData}
+          defaultColDef={{ resizable: true, sortable: false, filter: false, minWidth: 60 }}
+          headerHeight={30}
+          rowHeight={26}
+          suppressCellFocus
+          rowSelection={{ mode: "singleRow", enableClickSelection: false }}
+          animateRows={false}
+        />
       </div>
     </CollapsibleSection>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Index renderers (PostgreSQL)
+// INDEXES (AG Grid)
 // ---------------------------------------------------------------------------
 
-function renderIndexes(indexes: { name: string; definition: string }[]) {
+function IndexesGrid({ indexes }: { indexes: { name: string; definition: string }[] }) {
   if (!indexes || indexes.length === 0) return null
 
+  const columnDefs = useMemo<ColDef[]>(() => [
+    { headerName: "Name", field: "name", minWidth: 150, sortable: true, filter: true },
+    { headerName: "Definition", field: "definition", minWidth: 300, flex: 1 },
+  ], [])
+
   return (
-    <CollapsibleSection title={`Indexes (${indexes.length})`}>
-      <div className="border rounded overflow-auto max-h-[200px]">
-        <table className="w-full text-xs font-[family-name:var(--font-d2coding)]">
-          <thead className="bg-muted/60 sticky top-0">
-            <tr>
-              <th className="px-2 py-1.5 text-left font-semibold border-r">Name</th>
-              <th className="px-2 py-1.5 text-left font-semibold">Definition</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {indexes.map((idx) => (
-              <tr key={idx.name} className="hover:bg-muted/30">
-                <td className="px-2 py-1 border-r font-medium whitespace-nowrap">{idx.name}</td>
-                <td className="px-2 py-1 text-muted-foreground">{idx.definition}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <CollapsibleSection title={`INDEXES (${indexes.length})`}>
+      <div
+        className="border rounded ag-theme-alpine"
+        style={{
+          height: Math.min(indexes.length * 32 + 40, 250),
+          "--ag-font-family": "var(--font-d2coding), 'D2Coding', Consolas, monospace",
+          "--ag-font-size": "12px",
+        } as React.CSSProperties}
+      >
+        <AgGridReact
+          columnDefs={columnDefs}
+          rowData={indexes}
+          defaultColDef={{ resizable: true, sortable: false, filter: false, minWidth: 60 }}
+          headerHeight={30}
+          rowHeight={26}
+          suppressCellFocus
+          rowSelection={{ mode: "singleRow", enableClickSelection: false }}
+          animateRows={false}
+        />
       </div>
     </CollapsibleSection>
   )
 }
 
 // ---------------------------------------------------------------------------
-// DDL (CREATE TABLE) renderer
+// DDL (Monaco Editor, SQL syntax highlight)
 // ---------------------------------------------------------------------------
 
-function renderDDL(ddl: string) {
+function DDLViewer({ ddl }: { ddl: string }) {
+  const lineCount = useMemo(() => ddl.split("\n").length, [ddl])
+
   return (
     <CollapsibleSection title="CREATE TABLE DDL">
-      <div className="border rounded overflow-auto max-h-[400px] bg-muted/30">
-        <pre className="p-3 text-xs font-[family-name:var(--font-d2coding)] whitespace-pre-wrap select-all">
-          {ddl}
-        </pre>
+      <div className="border rounded overflow-hidden">
+        <MonacoEditor
+          height={Math.min(lineCount * 20 + 20, 400)}
+          language="sql"
+          value={ddl}
+          theme="vs"
+          options={{
+            readOnly: true,
+            minimap: { enabled: false },
+            scrollBeyondLastLine: false,
+            fontSize: 13,
+            fontFamily: "var(--font-d2coding), 'D2Coding', Consolas, 'Courier New', monospace",
+            lineNumbers: "on",
+            renderLineHighlight: "none",
+            overviewRulerLanes: 0,
+            hideCursorInOverviewRuler: true,
+            wordWrap: "off",
+            domReadOnly: true,
+            padding: { top: 8, bottom: 8 },
+          }}
+        />
       </div>
     </CollapsibleSection>
   )
@@ -261,14 +306,14 @@ export function PlatformSpecificCard({ platformType, properties }: PlatformSpeci
           </div>
         )}
 
-        {/* Column details (collapsed) */}
-        {renderColumnDetails(platformType, columns)}
+        {/* COLUMNS (AG Grid, collapsed) */}
+        <ColumnsGrid platformType={platformType} columns={columns} />
 
-        {/* Indexes - PostgreSQL (collapsed) */}
-        {!isMySQL && renderIndexes(indexes)}
+        {/* INDEXES (AG Grid, collapsed) — PostgreSQL only */}
+        {!isMySQL && <IndexesGrid indexes={indexes} />}
 
-        {/* CREATE TABLE DDL (collapsed) */}
-        {ddl && renderDDL(ddl)}
+        {/* CREATE TABLE DDL (Monaco Editor, collapsed) */}
+        {ddl && <DDLViewer ddl={ddl} />}
       </CardContent>
     </Card>
   )

@@ -8,7 +8,7 @@ const nextConfig = {
   },
   allowedDevOrigins: process.env.ALLOWED_DEV_ORIGINS
     ? process.env.ALLOWED_DEV_ORIGINS.split(",")
-    : [],
+    : ["10.0.1.50"],
   async headers() {
     return [
       {

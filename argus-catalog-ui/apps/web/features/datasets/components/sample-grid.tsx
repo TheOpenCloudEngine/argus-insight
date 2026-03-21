@@ -81,7 +81,7 @@ export function SampleGrid({ columns, rows }: SampleGridProps) {
         headerHeight={32}
         rowHeight={28}
         suppressCellFocus
-        suppressRowClickSelection
+        rowSelection={{ mode: "singleRow", enableClickSelection: false }}
         animateRows={false}
       />
     </div>

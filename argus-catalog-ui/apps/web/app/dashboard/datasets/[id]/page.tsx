@@ -49,7 +49,7 @@ import {
 } from "@workspace/ui/components/command"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
-import { Textarea } from "@workspace/ui/components/textarea"
+// Textarea removed — replaced by Tiptap MarkdownEditor
 import { Popover, PopoverContent, PopoverTrigger } from "@workspace/ui/components/popover"
 import {
   Select,
@@ -90,43 +90,47 @@ import type { DatasetDetail, GlossaryTerm, SchemaField, Tag } from "@/features/d
 import { SampleDataTab } from "@/features/datasets/components/sample-data-tab"
 import { SchemaHistoryTab } from "@/features/datasets/components/schema-history-tab"
 import { PlatformSpecificCard } from "@/features/datasets/components/platform-specific-card"
+import { MarkdownEditor, MarkdownViewer } from "@/features/datasets/components/markdown-editor"
+import { SchemaEditGrid, type EditableField } from "@/features/datasets/components/schema-edit-grid"
 import { NiFiFlowTab } from "@/features/datasets/components/nifi-flow-tab"
 import { KestraFlowTab } from "@/features/datasets/components/kestra-flow-tab"
 import { AirflowDagTab } from "@/features/datasets/components/airflow-dag-tab"
 
 // ---------------------------------------------------------------------------
-// Schema field type for editing (no id yet)
+// Schema field helpers for editing
 // ---------------------------------------------------------------------------
-type EditableField = {
-  key: string
-  field_path: string
-  field_type: string
-  native_type: string
-  description: string
-  nullable: string
-  ordinal: number
+
+let _idCounter = 0
+function genId(): string {
+  return `f-${Date.now()}-${++_idCounter}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 function newField(ordinal: number): EditableField {
   return {
-    key: crypto.randomUUID(),
+    key: genId(),
     field_path: "",
     field_type: "STRING",
     native_type: "",
     description: "",
     nullable: "true",
+    is_primary_key: "false",
+    is_unique: "false",
+    is_indexed: "false",
     ordinal,
   }
 }
 
 function toEditable(f: SchemaField): EditableField {
   return {
-    key: crypto.randomUUID(),
+    key: genId(),
     field_path: f.field_path,
     field_type: f.field_type,
     native_type: f.native_type ?? "",
     description: f.description ?? "",
     nullable: f.nullable,
+    is_primary_key: f.is_primary_key ?? "false",
+    is_unique: f.is_unique ?? "false",
+    is_indexed: f.is_indexed ?? "false",
     ordinal: f.ordinal,
   }
 }
@@ -442,7 +446,6 @@ export default function DatasetDetailPage() {
   const [descEditing, setDescEditing] = useState(false)
   const [descDraft, setDescDraft] = useState("")
   const [descSaving, setDescSaving] = useState(false)
-  const descRef = useRef<HTMLTextAreaElement>(null)
 
   const load = useCallback(async (showLoading = true) => {
     try {
@@ -561,7 +564,6 @@ export default function DatasetDetailPage() {
   const startDescEdit = () => {
     setDescDraft(dataset?.description ?? "")
     setDescEditing(true)
-    setTimeout(() => descRef.current?.focus(), 0)
   }
 
   const cancelDescEdit = () => {
@@ -588,12 +590,11 @@ export default function DatasetDetailPage() {
     }
   }
 
-  const handleDescKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") {
-      cancelDescEdit()
-    } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-      saveDesc()
-    }
+  // Keyboard shortcuts removed — Tiptap editor handles its own input.
+  // Save/Cancel are done via buttons.
+  const _unused_handleDescKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") cancelDescEdit()
+    else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveDesc()
   }
 
   // -------------------------------------------------------------------------
@@ -614,20 +615,6 @@ export default function DatasetDetailPage() {
     setEditFields([])
   }
 
-  const updateField = (key: string, prop: keyof EditableField, value: string | number) => {
-    setEditFields((prev) =>
-      prev.map((f) => (f.key === key ? { ...f, [prop]: value } : f))
-    )
-  }
-
-  const removeField = (key: string) => {
-    setEditFields((prev) => prev.filter((f) => f.key !== key))
-  }
-
-  const addField = () => {
-    setEditFields((prev) => [...prev, newField(prev.length)])
-  }
-
   const saveSchema = async () => {
     const valid = editFields.filter((f) => f.field_path.trim() && f.field_type.trim())
     const payload = valid.map((f, idx) => ({
@@ -636,6 +623,9 @@ export default function DatasetDetailPage() {
       native_type: f.native_type.trim() || undefined,
       description: f.description.trim() || undefined,
       nullable: f.nullable,
+      is_primary_key: f.is_primary_key,
+      is_unique: f.is_unique,
+      is_indexed: f.is_indexed,
       ordinal: idx,
     }))
     try {
@@ -895,14 +885,11 @@ export default function DatasetDetailPage() {
               <span className="text-sm text-muted-foreground">Description</span>
               {descEditing ? (
                 <div className="mt-1 space-y-2">
-                  <Textarea
-                    ref={descRef}
+                  <MarkdownEditor
                     value={descDraft}
-                    onChange={(e) => setDescDraft(e.target.value)}
-                    onKeyDown={handleDescKeyDown}
-                    placeholder="Enter description..."
-                    className="text-sm min-h-[60px]"
-                    disabled={descSaving}
+                    onChange={setDescDraft}
+                    editable={!descSaving}
+                    placeholder="Write description in Markdown..."
                   />
                   <div className="flex items-center gap-2">
                     <Button size="sm" onClick={saveDesc} disabled={descSaving}>
@@ -911,18 +898,19 @@ export default function DatasetDetailPage() {
                     <Button size="sm" variant="outline" onClick={cancelDescEdit} disabled={descSaving}>
                       Cancel
                     </Button>
-                    <span className="text-xs text-muted-foreground">
-                      Ctrl+Enter to save · Esc to cancel
-                    </span>
                   </div>
+                </div>
+              ) : dataset.description ? (
+                <div className="mt-1">
+                  <MarkdownViewer value={dataset.description} onClick={startDescEdit} />
                 </div>
               ) : (
                 <p
-                  className="mt-1 text-sm cursor-pointer rounded-md px-2 py-1 -mx-2 hover:bg-muted transition-colors"
+                  className="mt-1 text-sm cursor-pointer rounded-md px-2 py-1 -mx-2 hover:bg-muted transition-colors text-muted-foreground italic"
                   onClick={startDescEdit}
                   title="Click to edit"
                 >
-                  {dataset.description || <span className="text-muted-foreground italic">No description. Click to add.</span>}
+                  No description. Click to add.
                 </p>
               )}
             </div>
@@ -997,7 +985,7 @@ export default function DatasetDetailPage() {
                       onClick={saveSchema}
                       disabled={schemaSaving}
                     >
-                      {schemaSaving ? "Saving..." : "Save"}
+                      {schemaSaving ? "Updating..." : "Update"}
                     </Button>
                   </div>
                 ) : (
@@ -1009,90 +997,13 @@ export default function DatasetDetailPage() {
               </div>
               <CardContent className="p-0">
                 {schemaEditing ? (
-                  /* ---------- Inline edit mode ---------- */
-                  <div className="p-4 space-y-3">
-                    {/* Column headers */}
-                    <div className="grid grid-cols-[1fr_140px_140px_80px_1fr_40px] gap-2 text-xs font-medium text-muted-foreground px-1">
-                      <span>Field Path *</span>
-                      <span>Type *</span>
-                      <span>Native Type</span>
-                      <span>Nullable</span>
-                      <span>Description</span>
-                      <span />
-                    </div>
-
-                    {editFields.map((field) => (
-                      <div key={field.key} className="space-y-2">
-                        <div className="grid grid-cols-[1fr_140px_140px_80px_1fr_40px] gap-2 items-center">
-                          <Input
-                            placeholder="e.g. user_id"
-                            value={field.field_path}
-                            onChange={(e) => updateField(field.key, "field_path", e.target.value)}
-                            className="h-8 text-sm font-mono"
-                          />
-                          {dataTypeOptions.length > 0 ? (
-                            <Select
-                              value={field.field_type}
-                              onValueChange={(v) => updateField(field.key, "field_type", v)}
-                            >
-                              <SelectTrigger size="sm" className="h-8 text-sm w-full">
-                                <SelectValue placeholder="Type" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {dataTypeOptions.map((dt) => (
-                                  <SelectItem key={dt.type_name} value={dt.type_name}>
-                                    {dt.type_name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <Input
-                              placeholder="STRING"
-                              value={field.field_type}
-                              onChange={(e) => updateField(field.key, "field_type", e.target.value)}
-                              className="h-8 text-sm"
-                            />
-                          )}
-                          <Input
-                            placeholder="VARCHAR"
-                            value={field.native_type}
-                            onChange={(e) => updateField(field.key, "native_type", e.target.value)}
-                            className="h-8 text-sm"
-                          />
-                          <Select
-                            value={field.nullable}
-                            onValueChange={(v) => updateField(field.key, "nullable", v)}
-                          >
-                            <SelectTrigger size="sm" className="h-8 text-sm w-full">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="true">Yes</SelectItem>
-                              <SelectItem value="false">No</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Input
-                            placeholder="Description"
-                            value={field.description}
-                            onChange={(e) => updateField(field.key, "description", e.target.value)}
-                            className="h-8 text-sm"
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            onClick={() => removeField(field.key)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-
-                    <Button variant="outline" size="sm" onClick={addField}>
-                      <Plus className="mr-1 h-3.5 w-3.5" />
-                      Add Field
-                    </Button>
+                  /* ---------- AG Grid edit mode ---------- */
+                  <div>
+                    <SchemaEditGrid
+                      fields={editFields}
+                      onChange={setEditFields}
+                      dataTypeOptions={dataTypeOptions.map(dt => dt.type_name)}
+                    />
 
                     {/* Platform features section */}
                     {featuresMeta.length > 0 && (
