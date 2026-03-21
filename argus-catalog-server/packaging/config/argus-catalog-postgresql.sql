@@ -239,3 +239,28 @@ CREATE TABLE IF NOT EXISTS models_model_versions (
     updated_by VARCHAR(200),
     UNIQUE (model_id, version)
 );
+
+-- ---------------------------------------------------------------------------
+-- Collector - Hive Query History
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_collector_hive_query_history (
+    id SERIAL PRIMARY KEY,
+    query_id VARCHAR(256) NOT NULL,
+    short_username VARCHAR(128),
+    username VARCHAR(256),
+    operation_name VARCHAR(64),
+    start_time BIGINT,
+    end_time BIGINT,
+    duration_ms BIGINT,
+    query TEXT,
+    status VARCHAR(16) NOT NULL,
+    error_msg TEXT,
+    received_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_hive_query_history_query_id
+    ON argus_collector_hive_query_history (query_id);
+
+CREATE INDEX IF NOT EXISTS idx_hive_query_history_status
+    ON argus_collector_hive_query_history (status);
