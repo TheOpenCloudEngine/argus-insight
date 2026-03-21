@@ -91,6 +91,25 @@ class DatasetSchema(Base):
     ordinal = Column(Integer, nullable=False, default=0)
 
 
+class SchemaSnapshot(Base):
+    """Schema change history snapshot.
+
+    Records a full schema snapshot each time sync detects changes.
+    Only saved when actual changes (ADD/MODIFY/DROP) are detected.
+    """
+
+    __tablename__ = "catalog_schema_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dataset_id = Column(Integer, ForeignKey("catalog_datasets.id", ondelete="CASCADE"),
+                        nullable=False)
+    synced_at = Column(DateTime(timezone=True), server_default=func.now())
+    schema_json = Column(Text, nullable=False)       # Full schema as JSON array
+    field_count = Column(Integer, default=0)
+    change_summary = Column(String(500))              # e.g. "Added 2, Modified 1, Dropped 1"
+    changes_json = Column(Text)                       # Individual changes as JSON array
+
+
 class Tag(Base):
     """Tag for categorizing datasets."""
 

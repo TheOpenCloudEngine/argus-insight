@@ -139,6 +139,16 @@ CREATE TABLE IF NOT EXISTS catalog_dataset_schemas (
     ordinal INT NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS catalog_schema_snapshots (
+    id SERIAL PRIMARY KEY,
+    dataset_id INT NOT NULL REFERENCES catalog_datasets(id) ON DELETE CASCADE,
+    synced_at TIMESTAMPTZ DEFAULT NOW(),
+    schema_json TEXT NOT NULL,
+    field_count INT DEFAULT 0,
+    change_summary VARCHAR(500),
+    changes_json TEXT
+);
+
 -- ---------------------------------------------------------------------------
 -- Catalog - Tags
 -- ---------------------------------------------------------------------------

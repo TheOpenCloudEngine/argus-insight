@@ -15,6 +15,7 @@ import {
   Database,
   FlaskConical,
   Globe,
+  History,
   Pencil,
   Plus,
   Rocket,
@@ -84,6 +85,7 @@ import { fetchUsers } from "@/features/users/api"
 import type { User } from "@/features/users/data/schema"
 import type { DatasetDetail, GlossaryTerm, SchemaField, Tag } from "@/features/datasets/data/schema"
 import { SampleDataTab } from "@/features/datasets/components/sample-data-tab"
+import { SchemaHistoryTab } from "@/features/datasets/components/schema-history-tab"
 import { PlatformSpecificCard } from "@/features/datasets/components/platform-specific-card"
 
 // ---------------------------------------------------------------------------
@@ -782,6 +784,10 @@ export default function DatasetDetailPage() {
               <Code2 className="h-4 w-4" />
               Avro
             </TabsTrigger>
+            <TabsTrigger value="history" className="gap-1.5">
+              <History className="h-4 w-4" />
+              History
+            </TabsTrigger>
           </TabsList>
 
           {/* =============== Schema tab =============== */}
@@ -1327,6 +1333,11 @@ export default function DatasetDetailPage() {
           {/* =============== Avro tab =============== */}
           <TabsContent value="avro" className="mt-4">
             <AvroSchemaCard dataset={dataset} />
+          </TabsContent>
+
+          {/* =============== History tab =============== */}
+          <TabsContent value="history" className="mt-4">
+            <SchemaHistoryTab datasetId={datasetId} />
           </TabsContent>
         </Tabs>
 

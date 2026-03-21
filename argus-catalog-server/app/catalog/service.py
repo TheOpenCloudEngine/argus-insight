@@ -24,6 +24,7 @@ from app.catalog.models import (
     PlatformFeature,
     PlatformStorageFormat,
     PlatformTableType,
+    SchemaSnapshot,
     Tag,
 )
 from app.catalog.schemas import (
@@ -47,6 +48,9 @@ from app.catalog.schemas import (
     PlatformStorageFormatResponse,
     PlatformTableTypeResponse,
     SchemaFieldResponse,
+    PaginatedSchemaSnapshots,
+    SchemaChangeEntry,
+    SchemaSnapshotResponse,
     TagCreate,
     TagResponse,
     TagUsage,
@@ -799,6 +803,201 @@ async def get_catalog_stats(session: AsyncSession) -> CatalogStats:
         datasets_by_origin=datasets_by_origin,
         recent_datasets=recent.items,
     )
+
+
+# ---------------------------------------------------------------------------
+# Schema history
+# ---------------------------------------------------------------------------
+
+def _schema_field_to_dict(f) -> dict:
+    """Convert a DatasetSchema ORM object to a comparable dict."""
+    return {
+        "field_type": f.field_type,
+        "native_type": f.native_type or "",
+        "nullable": f.nullable or "true",
+        "is_primary_key": f.is_primary_key or "false",
+        "is_unique": f.is_unique or "false",
+        "is_indexed": f.is_indexed or "false",
+    }
+
+
+def _schema_field_to_snapshot(f) -> dict:
+    """Convert a DatasetSchema ORM object to a full snapshot entry."""
+    return {
+        "field_path": f.field_path,
+        "field_type": f.field_type,
+        "native_type": f.native_type or "",
+        "nullable": f.nullable or "true",
+        "is_primary_key": f.is_primary_key or "false",
+        "is_unique": f.is_unique or "false",
+        "is_indexed": f.is_indexed or "false",
+        "ordinal": f.ordinal,
+    }
+
+
+def _col_info_to_dict(col) -> dict:
+    """Convert a sync ColumnInfo to a comparable dict."""
+    return {
+        "field_type": col.data_type,
+        "native_type": col.native_type or "",
+        "nullable": "true" if col.nullable else "false",
+        "is_primary_key": "true" if col.is_primary_key else "false",
+        "is_unique": "true" if col.is_unique else "false",
+        "is_indexed": "true" if col.is_indexed else "false",
+    }
+
+
+def _col_info_to_snapshot(col) -> dict:
+    """Convert a sync ColumnInfo to a full snapshot entry."""
+    return {
+        "field_path": col.name,
+        "field_type": col.data_type,
+        "native_type": col.native_type or "",
+        "nullable": "true" if col.nullable else "false",
+        "is_primary_key": "true" if col.is_primary_key else "false",
+        "is_unique": "true" if col.is_unique else "false",
+        "is_indexed": "true" if col.is_indexed else "false",
+        "ordinal": col.ordinal,
+    }
+
+
+def detect_schema_changes(
+    old_fields: list, new_columns: list, from_sync: bool = False,
+) -> list[dict]:
+    """Detect ADD/MODIFY/DROP changes between old schema fields and new columns.
+
+    Args:
+        old_fields: list of DatasetSchema ORM objects (existing)
+        new_columns: list of DatasetSchema ORM objects or sync ColumnInfo objects
+        from_sync: if True, new_columns are ColumnInfo objects from sync
+
+    Returns:
+        list of change dicts: [{type, field, before, after}, ...]
+    """
+    if from_sync:
+        old_map = {f.field_path: _schema_field_to_dict(f) for f in old_fields}
+        new_map = {c.name: _col_info_to_dict(c) for c in new_columns}
+    else:
+        old_map = {f.field_path: _schema_field_to_dict(f) for f in old_fields}
+        new_map = {f.field_path: _schema_field_to_dict(f) for f in new_columns}
+
+    changes = []
+    old_keys = set(old_map.keys())
+    new_keys = set(new_map.keys())
+
+    # Added
+    for key in sorted(new_keys - old_keys):
+        changes.append({"type": "ADD", "field": key, "before": None, "after": new_map[key]})
+
+    # Dropped
+    for key in sorted(old_keys - new_keys):
+        changes.append({"type": "DROP", "field": key, "before": old_map[key], "after": None})
+
+    # Modified
+    for key in sorted(old_keys & new_keys):
+        old_val = old_map[key]
+        new_val = new_map[key]
+        if old_val != new_val:
+            # Record only changed attributes
+            before_diff = {k: v for k, v in old_val.items() if v != new_val.get(k)}
+            after_diff = {k: v for k, v in new_val.items() if v != old_val.get(k)}
+            changes.append({
+                "type": "MODIFY", "field": key,
+                "before": before_diff, "after": after_diff,
+            })
+
+    return changes
+
+
+async def save_schema_snapshot(
+    session: AsyncSession,
+    dataset_id: int,
+    old_fields: list,
+    new_columns: list,
+    from_sync: bool = False,
+) -> SchemaSnapshot | None:
+    """Compare old and new schema, save a snapshot if there are changes.
+
+    Returns the saved snapshot, or None if no changes detected.
+    """
+    import json as _json
+
+    changes = detect_schema_changes(old_fields, new_columns, from_sync=from_sync)
+
+    # Check if this is the first snapshot for this dataset
+    existing_snapshots = await session.execute(
+        select(func.count()).where(SchemaSnapshot.dataset_id == dataset_id)
+    )
+    has_prior_snapshot = (existing_snapshots.scalar() or 0) > 0
+
+    # Save if: changes detected, or no prior snapshot exists (initial baseline)
+    if not changes and has_prior_snapshot:
+        return None
+
+    # Build snapshot JSON from new columns
+    if from_sync:
+        schema_entries = [_col_info_to_snapshot(c) for c in new_columns]
+    else:
+        schema_entries = [_schema_field_to_snapshot(f) for f in new_columns]
+
+    # Build change summary
+    added = sum(1 for c in changes if c["type"] == "ADD")
+    modified = sum(1 for c in changes if c["type"] == "MODIFY")
+    dropped = sum(1 for c in changes if c["type"] == "DROP")
+    parts = []
+    if added:
+        parts.append(f"Added {added}")
+    if modified:
+        parts.append(f"Modified {modified}")
+    if dropped:
+        parts.append(f"Dropped {dropped}")
+    summary = ", ".join(parts) if parts else ("Initial sync" if not has_prior_snapshot else "No changes")
+
+    snapshot = SchemaSnapshot(
+        dataset_id=dataset_id,
+        schema_json=_json.dumps(schema_entries, ensure_ascii=False),
+        field_count=len(schema_entries),
+        change_summary=summary,
+        changes_json=_json.dumps(changes, ensure_ascii=False) if changes else "[]",
+    )
+    session.add(snapshot)
+    logger.info("Schema snapshot saved: dataset_id=%d, %s, fields=%d",
+                dataset_id, summary, len(schema_entries))
+    return snapshot
+
+
+async def get_schema_history(
+    session: AsyncSession,
+    dataset_id: int,
+    page: int = 1,
+    page_size: int = 20,
+) -> PaginatedSchemaSnapshots:
+    """Get schema change history for a dataset."""
+    import json as _json
+
+    base = select(SchemaSnapshot).where(SchemaSnapshot.dataset_id == dataset_id)
+
+    count_query = select(func.count()).select_from(base.subquery())
+    total = (await session.execute(count_query)).scalar() or 0
+
+    offset = (page - 1) * page_size
+    query = base.order_by(SchemaSnapshot.synced_at.desc()).offset(offset).limit(page_size)
+    result = await session.execute(query)
+
+    items = []
+    for snap in result.scalars().all():
+        changes_raw = _json.loads(snap.changes_json) if snap.changes_json else []
+        changes = [SchemaChangeEntry(**c) for c in changes_raw]
+        items.append(SchemaSnapshotResponse(
+            id=snap.id,
+            dataset_id=snap.dataset_id,
+            synced_at=snap.synced_at,
+            field_count=snap.field_count,
+            change_summary=snap.change_summary,
+            changes=changes,
+        ))
+
+    return PaginatedSchemaSnapshots(items=items, total=total, page=page, page_size=page_size)
 
 
 # ---------------------------------------------------------------------------

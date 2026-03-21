@@ -186,6 +186,45 @@ export async function updateDatasetSchema(
   return res.json()
 }
 
+// ---------------------------------------------------------------------------
+// Schema history
+// ---------------------------------------------------------------------------
+
+export type SchemaChangeEntry = {
+  type: "ADD" | "MODIFY" | "DROP"
+  field: string
+  before: Record<string, string> | null
+  after: Record<string, string> | null
+}
+
+export type SchemaSnapshot = {
+  id: number
+  dataset_id: number
+  synced_at: string
+  field_count: number
+  change_summary: string | null
+  changes: SchemaChangeEntry[]
+}
+
+export type PaginatedSchemaSnapshots = {
+  items: SchemaSnapshot[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export async function fetchSchemaHistory(
+  datasetId: number,
+  page: number = 1,
+  pageSize: number = 20,
+): Promise<PaginatedSchemaSnapshots> {
+  const res = await fetch(
+    `${BASE}/datasets/${datasetId}/schema/history?page=${page}&page_size=${pageSize}`,
+  )
+  if (!res.ok) throw new Error(`Failed to fetch schema history: ${res.status}`)
+  return res.json()
+}
+
 export async function addDatasetGlossaryTerm(
   datasetId: number,
   termId: number

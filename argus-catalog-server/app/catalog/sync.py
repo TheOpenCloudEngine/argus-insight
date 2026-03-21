@@ -810,11 +810,19 @@ async def sync_platform_metadata(
             logger.info("Sync upsert [CREATE]: %s (id=%d)", urn, dataset.id)
             result.tables_created += 1
 
-        # Sync schema fields: delete existing and re-insert
-        existing_fields = await session.execute(
+        # Sync schema fields: detect changes, save snapshot, then delete and re-insert
+        existing_fields_result = await session.execute(
             select(DatasetSchema).where(DatasetSchema.dataset_id == dataset.id)
         )
-        for f in existing_fields.scalars().all():
+        existing_fields = existing_fields_result.scalars().all()
+
+        # Save schema snapshot if changes detected
+        from app.catalog.service import save_schema_snapshot
+        await save_schema_snapshot(
+            session, dataset.id, existing_fields, table.columns, from_sync=True,
+        )
+
+        for f in existing_fields:
             await session.delete(f)
 
         for col in table.columns:

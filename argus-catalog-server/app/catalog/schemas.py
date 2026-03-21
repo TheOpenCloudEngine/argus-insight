@@ -248,6 +248,35 @@ class PaginatedDatasets(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Schema history schemas
+# ---------------------------------------------------------------------------
+
+class SchemaChangeEntry(BaseModel):
+    type: str  # ADD, MODIFY, DROP
+    field: str
+    before: dict | None = None
+    after: dict | None = None
+
+
+class SchemaSnapshotResponse(BaseModel):
+    id: int
+    dataset_id: int
+    synced_at: datetime
+    field_count: int
+    change_summary: str | None = None
+    changes: list[SchemaChangeEntry] = Field(default_factory=list)
+
+    model_config = {"from_attributes": True}
+
+
+class PaginatedSchemaSnapshots(BaseModel):
+    items: list[SchemaSnapshotResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+# ---------------------------------------------------------------------------
 # Search schemas
 # ---------------------------------------------------------------------------
 

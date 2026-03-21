@@ -385,6 +385,17 @@ async def update_schema_fields(
     )
 
 
+@router.get("/datasets/{dataset_id}/schema/history")
+async def get_schema_history(
+    dataset_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+):
+    """Get schema change history snapshots for a dataset."""
+    return await service.get_schema_history(session, dataset_id, page=page, page_size=page_size)
+
+
 # ---------------------------------------------------------------------------
 # Sample data endpoints
 # ---------------------------------------------------------------------------

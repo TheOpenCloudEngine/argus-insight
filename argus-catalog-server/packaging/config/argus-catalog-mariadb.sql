@@ -148,6 +148,17 @@ CREATE TABLE IF NOT EXISTS catalog_dataset_schemas (
     FOREIGN KEY (dataset_id) REFERENCES catalog_datasets(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS catalog_schema_snapshots (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    dataset_id INT NOT NULL,
+    synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    schema_json TEXT NOT NULL,
+    field_count INT DEFAULT 0,
+    change_summary VARCHAR(500),
+    changes_json TEXT,
+    FOREIGN KEY (dataset_id) REFERENCES catalog_datasets(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ---------------------------------------------------------------------------
 -- Catalog - Tags
 -- ---------------------------------------------------------------------------
