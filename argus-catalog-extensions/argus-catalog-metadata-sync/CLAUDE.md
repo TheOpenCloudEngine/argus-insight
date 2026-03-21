@@ -7,6 +7,8 @@
 - Python 3.11+
 - FastAPI (원격 제어 API)
 - hmsclient (Hive Metastore Thrift)
+- requests (Cloudera Manager API 통신)
+- sqlglot (SQL lineage 파싱)
 - schedule (주기적 동기화)
 - Pydantic v2
 
@@ -24,12 +26,17 @@ argus-catalog-metadata-sync/
 │   │   ├── database.py      # SQLAlchemy 엔진/세션 관리
 │   │   └── scheduler.py     # 주기적 동기화 스케줄러
 │   └── platforms/
-│       └── hive/
-│           ├── sync.py           # Hive Metastore 동기화 구현
-│           ├── models.py         # ORM 모델 (쿼리 이력, lineage)
-│           ├── query_history.py  # 쿼리 이벤트 수신/저장
-│           ├── lineage_parser.py # SQLGlot 기반 Hive SQL lineage 파서
-│           └── lineage_service.py # Lineage 저장 로직
+│       ├── hive/
+│       │   ├── sync.py           # Hive Metastore 동기화 구현
+│       │   ├── models.py         # ORM 모델 (쿼리 이력, lineage)
+│       │   ├── query_history.py  # 쿼리 이벤트 수신/저장
+│       │   ├── lineage_parser.py # SQLGlot 기반 Hive SQL lineage 파서
+│       │   └── lineage_service.py # Lineage 저장 로직
+│       └── impala/
+│           ├── models.py          # ImpalaQueryHistory ORM 모델
+│           ├── collector.py       # Cloudera Manager API 쿼리 수집기
+│           ├── scheduler.py       # 주기적 수집 스케줄러
+│           └── lineage_service.py # Impala lineage 파싱/저장
 ├── config/
 │   └── sync.yml             # 설정 파일
 ├── tests/

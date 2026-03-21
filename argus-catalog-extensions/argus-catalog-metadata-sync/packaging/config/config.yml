@@ -52,3 +52,21 @@ platforms:
       interval_minutes: ${hive.schedule.interval_minutes:60}
       enabled: ${hive.schedule.enabled:true}
     origin: ${hive.origin:PROD}
+
+  impala:
+    enabled: ${impala.enabled:false}
+    platform_id: ${impala.platform_id:}
+    cloudera_manager:
+      host: ${impala.cm.host:localhost}
+      port: ${impala.cm.port:7180}
+      username: ${impala.cm.username:admin}
+      password: ${impala.cm.password:admin}
+      cluster_name: ${impala.cm.cluster_name:cluster}
+      service_name: ${impala.cm.service_name:impala}
+      api_version: ${impala.cm.api_version:19}
+      tls:
+        enabled: ${impala.cm.tls.enabled:false}
+        verify: ${impala.cm.tls.verify:true}
+    schedule:
+      interval_minutes: ${impala.schedule.interval_minutes:5}
+      enabled: ${impala.schedule.enabled:true}

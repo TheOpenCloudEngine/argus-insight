@@ -98,6 +98,27 @@ class Settings:
         self.hive_schedule_enabled: bool = _to_bool(sched.get("enabled", True))
         self.hive_origin: str = hive_raw.get("origin", "PROD")
 
+        # Impala Platform (query collection via Cloudera Manager API)
+        impala_raw = _raw.get("platforms", {}).get("impala", {})
+        self.impala_enabled: bool = _to_bool(impala_raw.get("enabled", False))
+        self.impala_platform_id: str = impala_raw.get("platform_id", "")
+        cm = impala_raw.get("cloudera_manager", {})
+        self.impala_cm_host: str = cm.get("host", "localhost")
+        self.impala_cm_port: int = int(cm.get("port", 7180))
+        self.impala_cm_username: str = cm.get("username", "admin")
+        self.impala_cm_password: str = cm.get("password", "admin")
+        self.impala_cm_cluster_name: str = cm.get("cluster_name", "cluster")
+        self.impala_cm_service_name: str = cm.get("service_name", "impala")
+        self.impala_cm_api_version: int = int(cm.get("api_version", 19))
+        tls = cm.get("tls", {})
+        self.impala_cm_tls_enabled: bool = _to_bool(tls.get("enabled", False))
+        self.impala_cm_tls_verify: bool = _to_bool(tls.get("verify", True))
+        impala_sched = impala_raw.get("schedule", {})
+        self.impala_schedule_interval_minutes: int = int(
+            impala_sched.get("interval_minutes", 5)
+        )
+        self.impala_schedule_enabled: bool = _to_bool(impala_sched.get("enabled", True))
+
     @property
     def database_url(self) -> str:
         """Build SQLAlchemy database URL from config."""

@@ -19,11 +19,13 @@ logger = logging.getLogger(__name__)
 
 # Global state
 _scheduler = SyncScheduler()
+_impala_scheduler = None
 _start_time: float = 0.0
 
 
 def _init_platforms() -> None:
     """Initialize and register all enabled platform syncs."""
+    global _impala_scheduler
     client = CatalogClient(settings)
 
     # Hive
@@ -35,6 +37,28 @@ def _init_platforms() -> None:
             enabled=settings.hive_schedule_enabled,
         )
 
+    # Impala (query collection via Cloudera Manager API)
+    if settings.impala_enabled:
+        from sync.platforms.impala.collector import ImpalaQueryCollector
+        from sync.platforms.impala.scheduler import ImpalaCollectorScheduler
+
+        collector = ImpalaQueryCollector(
+            cm_host=settings.impala_cm_host,
+            cm_port=settings.impala_cm_port,
+            cm_username=settings.impala_cm_username,
+            cm_password=settings.impala_cm_password,
+            cluster_name=settings.impala_cm_cluster_name,
+            service_name=settings.impala_cm_service_name,
+            platform_id=settings.impala_platform_id,
+            tls_enabled=settings.impala_cm_tls_enabled,
+            tls_verify=settings.impala_cm_tls_verify,
+            api_version=settings.impala_cm_api_version,
+        )
+        _impala_scheduler = ImpalaCollectorScheduler(
+            collector=collector,
+            interval_minutes=settings.impala_schedule_interval_minutes,
+        )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -43,7 +67,11 @@ async def lifespan(app: FastAPI):
     init_db(settings)
     _init_platforms()
     _scheduler.start()
+    if _impala_scheduler and settings.impala_schedule_enabled:
+        _impala_scheduler.start()
     yield
+    if _impala_scheduler:
+        _impala_scheduler.stop()
     _scheduler.stop()
 
 

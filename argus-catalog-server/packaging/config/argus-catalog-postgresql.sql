@@ -270,6 +270,36 @@ CREATE INDEX IF NOT EXISTS idx_hive_query_history_platform_id
     ON argus_collector_hive_query_history (platform_id);
 
 -- ---------------------------------------------------------------------------
+-- Collector - Impala Query History
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_collector_impala_query_history (
+    id SERIAL PRIMARY KEY,
+    query_id VARCHAR(256) NOT NULL UNIQUE,
+    query_type VARCHAR(32),
+    query_state VARCHAR(32),
+    statement TEXT,
+    database VARCHAR(256),
+    username VARCHAR(256),
+    coordinator_host VARCHAR(512),
+    start_time TIMESTAMPTZ,
+    end_time TIMESTAMPTZ,
+    duration_ms BIGINT,
+    rows_produced BIGINT,
+    platform_id VARCHAR(100),
+    received_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_impala_query_history_query_id
+    ON argus_collector_impala_query_history (query_id);
+
+CREATE INDEX IF NOT EXISTS idx_impala_query_history_platform_id
+    ON argus_collector_impala_query_history (platform_id);
+
+CREATE INDEX IF NOT EXISTS idx_impala_query_history_username
+    ON argus_collector_impala_query_history (username);
+
+-- ---------------------------------------------------------------------------
 -- Lineage - Query Lineage (per-query source→target table mapping)
 -- ---------------------------------------------------------------------------
 

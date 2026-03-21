@@ -282,6 +282,30 @@ CREATE TABLE IF NOT EXISTS argus_collector_hive_query_history (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------------
+-- Collector - Impala Query History
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_collector_impala_query_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    query_id VARCHAR(256) NOT NULL UNIQUE,
+    query_type VARCHAR(32),
+    query_state VARCHAR(32),
+    statement TEXT,
+    `database` VARCHAR(256),
+    username VARCHAR(256),
+    coordinator_host VARCHAR(512),
+    start_time TIMESTAMP NULL,
+    end_time TIMESTAMP NULL,
+    duration_ms BIGINT,
+    rows_produced BIGINT,
+    platform_id VARCHAR(100),
+    received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_impala_query_history_query_id (query_id),
+    INDEX idx_impala_query_history_platform_id (platform_id),
+    INDEX idx_impala_query_history_username (username)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
 -- Lineage - Query Lineage (per-query source→target table mapping)
 -- ---------------------------------------------------------------------------
 
