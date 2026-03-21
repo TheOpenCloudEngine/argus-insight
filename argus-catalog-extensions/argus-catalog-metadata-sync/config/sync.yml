@@ -1,6 +1,10 @@
 # Argus Catalog Metadata Sync Configuration
 # -------------------------------------------
 
+# Database for collected data (SQLAlchemy URL)
+database:
+  url: "sqlite:///data/metadata_sync.db"
+
 # Argus Catalog Server connection
 catalog:
   base_url: "http://localhost:4600/api/v1/catalog"

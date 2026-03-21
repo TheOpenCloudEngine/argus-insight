@@ -11,6 +11,10 @@ logger = logging.getLogger(__name__)
 CONFIG_FILE = Path(__file__).resolve().parents[3] / "config" / "sync.yml"
 
 
+class DatabaseConfig(BaseModel):
+    url: str = "sqlite:///data/metadata_sync.db"
+
+
 class CatalogConfig(BaseModel):
     base_url: str = "http://localhost:4600/api/v1/catalog"
     timeout: int = 30
@@ -48,6 +52,7 @@ class PlatformsConfig(BaseModel):
 
 
 class SyncConfig(BaseModel):
+    database: DatabaseConfig = DatabaseConfig()
     catalog: CatalogConfig = CatalogConfig()
     server: ServerConfig = ServerConfig()
     platforms: PlatformsConfig = PlatformsConfig()

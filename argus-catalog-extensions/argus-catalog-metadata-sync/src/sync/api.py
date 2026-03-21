@@ -8,7 +8,9 @@ from pydantic import BaseModel
 
 from sync.core.catalog_client import CatalogClient
 from sync.core.config import load_config, save_config
+from sync.core.database import init_db
 from sync.core.scheduler import SyncScheduler
+from sync.platforms.hive.query_history import HiveQueryEvent, save_query_event
 from sync.platforms.hive.sync import HiveMetastoreSync
 
 logger = logging.getLogger(__name__)
@@ -35,6 +37,7 @@ def _init_platforms() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    init_db(_config.database.url)
     _init_platforms()
     _scheduler.start()
     yield
@@ -212,3 +215,22 @@ async def test_hive_connection():
         raise HTTPException(status_code=502, detail=str(e))
     finally:
         hive_sync.disconnect()
+
+
+# ---------------------------------------------------------------------------
+# Hive Query History Collection
+# ---------------------------------------------------------------------------
+
+@app.post("/collector/hive/query")
+async def collect_hive_query(event: HiveQueryEvent):
+    """Receive a Hive query audit event from QueryAuditHook and save it immediately."""
+    try:
+        record = save_query_event(event)
+        return {
+            "status": "ok",
+            "id": record.id,
+            "queryId": record.query_id,
+        }
+    except Exception as e:
+        logger.error("Failed to save Hive query event: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to save query event: {e}")

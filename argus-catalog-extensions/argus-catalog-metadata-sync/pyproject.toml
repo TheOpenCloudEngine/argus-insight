@@ -15,6 +15,7 @@ dependencies = [
     "fastapi>=0.100",
     "uvicorn[standard]>=0.24",
     "hmsclient>=0.1",
+    "sqlalchemy>=2.0",
 ]
 
 [project.optional-dependencies]
