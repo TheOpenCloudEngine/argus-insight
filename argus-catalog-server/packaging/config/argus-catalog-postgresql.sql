@@ -210,7 +210,9 @@ CREATE TABLE IF NOT EXISTS catalog_registered_models (
     platform_id INT REFERENCES catalog_platforms(id) ON DELETE SET NULL,
     description TEXT,
     owner VARCHAR(200),
+    storage_type VARCHAR(20) NOT NULL DEFAULT 'local',
     storage_location VARCHAR(1000),
+    bucket_name VARCHAR(255),
     max_version_number INT NOT NULL DEFAULT 0,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -257,6 +259,10 @@ CREATE TABLE IF NOT EXISTS catalog_models (
     requirements TEXT,
     conda TEXT,
     python_env TEXT,
+    manifest TEXT,
+    config TEXT,
+    content_digest VARCHAR(100),
+    source_type VARCHAR(50),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE (model_name, version)
 );

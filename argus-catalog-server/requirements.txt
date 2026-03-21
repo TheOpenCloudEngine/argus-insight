@@ -12,6 +12,10 @@ python-multipart==0.0.22
 # File preview
 pyarrow==20.0.0
 
+# Object Storage (S3/MinIO)
+aioboto3>=13.0.0
+huggingface_hub>=0.28.0
+
 # uvicorn[standard] extras
 httptools==0.7.1
 python-dotenv==1.2.2

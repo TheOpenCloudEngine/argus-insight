@@ -48,8 +48,12 @@ class RegisteredModel(Base):
                          nullable=True)
     description = Column(Text)
     owner = Column(String(200))
-    # Base artifact storage path (file:///var/lib/.../model-artifacts/{name}/)
+    # "local" (file://) or "s3" (s3://)
+    storage_type = Column(String(20), nullable=False, default="local")
+    # Base artifact storage path (file:///var/lib/... or s3://bucket/prefix)
     storage_location = Column(String(1000))
+    # S3 bucket name (when storage_type="s3")
+    bucket_name = Column(String(255))
     # Tracks the highest version number created (auto-incremented per version)
     max_version_number = Column(Integer, nullable=False, default=0)
     # "active" or "deleted" (soft delete)
@@ -154,5 +158,13 @@ class CatalogModel(Base):
     requirements = Column(Text)
     conda = Column(Text)
     python_env = Column(Text)
+
+    # --- OCI manifest ---
+    manifest = Column(Text)
+    config = Column(Text)
+    content_digest = Column(String(100))
+
+    # --- Source info ---
+    source_type = Column(String(50))  # mlflow, huggingface, local, oras
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())

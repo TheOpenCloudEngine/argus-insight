@@ -14,6 +14,7 @@ from app import __version__
 from app.catalog.router import router as catalog_router
 from app.filesystemmgr.router import router as filesystem_router
 from app.models.router import router as models_router
+from app.models.store_router import router as model_store_router
 from app.models.uc_compat import router as uc_compat_router
 from app.usermgr.router import router as usermgr_router
 from app.core.config import settings
@@ -69,6 +70,14 @@ async def lifespan(app: FastAPI):
         await seed_platform_metadata(session)
         await seed_roles(session)
 
+    # Ensure S3 bucket exists
+    try:
+        from app.core.s3 import ensure_bucket
+        await ensure_bucket()
+        logger.info("S3 model-artifacts bucket verified")
+    except Exception as e:
+        logger.warning("S3 bucket check skipped (MinIO may not be available): %s", e)
+
     yield
     await close_database()
     logger.info("Catalog Server shutting down")
@@ -92,6 +101,7 @@ app.add_middleware(
 app.include_router(catalog_router, prefix="/api/v1")
 app.include_router(filesystem_router, prefix="/api/v1")
 app.include_router(models_router, prefix="/api/v1")
+app.include_router(model_store_router, prefix="/api/v1")
 app.include_router(uc_compat_router)  # /api/2.0/mlflow/unity-catalog (no extra prefix)
 app.include_router(usermgr_router, prefix="/api/v1")
 
