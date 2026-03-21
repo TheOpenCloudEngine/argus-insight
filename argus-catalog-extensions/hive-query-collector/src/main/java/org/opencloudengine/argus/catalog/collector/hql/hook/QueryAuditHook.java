@@ -57,7 +57,8 @@ public class QueryAuditHook implements ExecuteWithHookContext {
 
         String queryId = queryPlan.getQueryId();
         String queryString = queryPlan.getQueryString();
-        String user = getUser(context);
+        String shortUsername = getUser(context);
+        String username = context.getUserName();
         String operationName = context.getOperationName();
         long eventTimestamp = System.currentTimeMillis();
 
@@ -67,7 +68,7 @@ public class QueryAuditHook implements ExecuteWithHookContext {
             case PRE_EXEC_HOOK: // 쿼리 시작 시점 기록 (QueryPlan에 기록된 시작 시각 사용)
                 long queryStartTime = queryPlan.getQueryStartTime();
                 String startTimeStr = formatTimestamp(queryStartTime);
-                LOG.info("[PRE] QueryId: {}, User: {}, Operation: {}, StartTime: {}, Query: {}", queryId, user, operationName, startTimeStr, queryString);
+                LOG.info("[PRE] QueryId: {}, Short Username: {}, Username: {}, Operation: {}, StartTime: {}, Query: {}", queryId, shortUsername, username, operationName, startTimeStr, queryString);
                 break;
 
             case POST_EXEC_HOOK: // 쿼리 성공 종료 시점 및 소요 시간 기록
@@ -78,7 +79,8 @@ public class QueryAuditHook implements ExecuteWithHookContext {
 
                 Map success = Map.of(
                         "queryId", queryId,
-                        "user", user,
+                        "shortUsername", shortUsername,
+                        "username", username,
                         "startTime", String.valueOf(postStartTime),
                         "endTime", String.valueOf(postEndTime),
                         "durationMs", postDuration,
@@ -90,7 +92,7 @@ public class QueryAuditHook implements ExecuteWithHookContext {
 
                 try {
                     helper.post(targetUrl, success, Map.class);
-                    LOG.info("[SUCCESS] QueryId: {}, User: {}, EndTime: {}, DurationMs: {}, Query: {}", queryId, user, postEndTimeStr, postDuration, queryString);
+                    LOG.info("[SUCCESS] QueryId: {}, Short Username: {}, Username: {}, EndTime: {}, DurationMs: {}, Query: {}", queryId, shortUsername, username, postEndTimeStr, postDuration, queryString);
                 } catch (Exception e) {
                     LOG.warn("Hive Query Audit을 송신할 수 없습니다. 원인: {}", e.getMessage(), e);
                 }
@@ -109,7 +111,8 @@ public class QueryAuditHook implements ExecuteWithHookContext {
 
                 Map failed = Map.of(
                         "queryId", queryId,
-                        "user", user,
+                        "shortUsername", shortUsername,
+                        "username", username,
                         "startTime", String.valueOf(failStartTime),
                         "endTime", String.valueOf(failEndTime),
                         "durationMs", failDuration,
@@ -122,7 +125,7 @@ public class QueryAuditHook implements ExecuteWithHookContext {
 
                 try {
                     helper.post(targetUrl, failed, Map.class);
-                    LOG.warn("[FAILURE] QueryId: {}, User: {}, EndTime: {}, DurationMs: {}, Error: {}, Query: {}", queryId, user, failEndTimeStr, failDuration, errorMsg, queryString);
+                    LOG.warn("[FAILURE] QueryId: {}, Short Username: {}, Username: {}, EndTime: {}, DurationMs: {}, Error: {}, Query: {}", queryId, shortUsername, username, failEndTimeStr, failDuration, errorMsg, queryString);
                 } catch(Exception e) {
                     LOG.warn("Hive Query Audit을 송신할 수 없습니다. 원인: {}", e.getMessage(), e);
                 }
