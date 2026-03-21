@@ -15,7 +15,7 @@ import java.net.http.HttpResponse;
  * HTTP 요청을 처리하기 위한 Helper 클래스.
  * RESTful API 호출을 위한 GET, POST, PUT, PATCH, DELETE 메소드를 제공합니다.
  *
- * @author KIM BYOUNG GON (support@data-dynamics.io)
+ * @author KIM BYOUNG GON (fharenheit@gmail.com)
  */
 public class HttpRequestHelper {
 
