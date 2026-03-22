@@ -44,14 +44,17 @@ Argus Catalog uses **Keycloak** as the Identity Provider (IdP) for Single Sign-O
 
 ### Docker Compose
 
-Location: `/root/projects/argus-insight/keycloak/docker-compose.yml`
+Location: `argus-insight-thirdparties/keycloak/`
 
 ```bash
 # Start Keycloak
-cd keycloak && docker compose up -d
+cd argus-insight-thirdparties/keycloak && docker compose up -d
+
+# Initial setup (realm, client, roles, admin user)
+./setup-realm.sh
 
 # Stop Keycloak
-cd keycloak && docker compose down
+docker compose down
 
 # View logs
 docker logs -f argus-keycloak
