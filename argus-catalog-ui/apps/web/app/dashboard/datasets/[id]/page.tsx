@@ -1151,21 +1151,75 @@ export default function DatasetDetailPage() {
                         ))}
                       </TableBody>
                     </Table>
-                    {/* Platform features read-only */}
-                    {dataset.properties && dataset.properties.length > 0 && (
-                      <div className="p-4 border-t">
-                        <p className="text-xs font-medium text-muted-foreground mb-2">
-                          Platform Features
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {dataset.properties.map((p) => (
-                            <Badge key={p.id} variant="outline" className="text-xs font-mono">
-                              {p.property_key}: {p.property_value}
-                            </Badge>
-                          ))}
+                    {/* Platform-specific properties (read-only) */}
+                    {dataset.properties && dataset.properties.length > 0 && (() => {
+                      // Separate platform features from general properties
+                      const platformProps = dataset.properties.filter((p) => p.property_key.includes("."))
+                      const featureProps = dataset.properties.filter((p) => !p.property_key.includes("."))
+
+                      // Map feature_key to platform feature display name
+                      const featureDisplayMap = new Map(
+                        featuresMeta.map((f) => [f.feature_key, f.display_name])
+                      )
+
+                      // Format property display name: strip prefix, humanize
+                      const formatKey = (key: string) => {
+                        const parts = key.split(".")
+                        const name = parts[parts.length - 1]
+                        return name.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2")
+                      }
+
+                      // Format large numbers
+                      const formatValue = (key: string, value: string) => {
+                        if (key.endsWith("numRows") || key.endsWith("totalSize") || key.endsWith("rawDataSize")) {
+                          const n = parseInt(value, 10)
+                          if (!isNaN(n)) {
+                            if (key.endsWith("numRows")) return n.toLocaleString()
+                            if (n >= 1073741824) return `${(n / 1073741824).toFixed(1)} GB`
+                            if (n >= 1048576) return `${(n / 1048576).toFixed(1)} MB`
+                            if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`
+                            return `${n} B`
+                          }
+                        }
+                        return value
+                      }
+
+                      return (
+                        <div className="p-4 border-t space-y-3">
+                          {/* Platform features mapped by feature_key */}
+                          {featureProps.length > 0 && (
+                            <div>
+                              <p className="text-xs font-medium text-muted-foreground mb-2">Platform Features</p>
+                              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                                {featureProps.map((p) => (
+                                  <div key={p.id} className="text-sm">
+                                    <span className="text-muted-foreground">{featureDisplayMap.get(p.property_key) || p.property_key}: </span>
+                                    <span className="font-medium">{p.property_value}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Platform-specific properties (hive.*, etc.) */}
+                          {platformProps.length > 0 && (
+                            <div>
+                              <p className="text-xs font-medium text-muted-foreground mb-2">Properties</p>
+                              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                {platformProps.map((p) => (
+                                  <div key={p.id} className="text-sm flex items-baseline gap-1.5">
+                                    <span className="text-muted-foreground capitalize">{formatKey(p.property_key)}:</span>
+                                    <span className="font-mono text-xs truncate max-w-[300px]" title={p.property_value}>
+                                      {formatValue(p.property_key, p.property_value)}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    )}
+                      )
+                    })()}
                   </>
                 ) : (
                   <div className="flex items-center justify-center p-8">
