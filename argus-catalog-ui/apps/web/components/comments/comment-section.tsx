@@ -31,9 +31,7 @@ export function CommentSection({
   pageSize = 5,
 }: CommentSectionProps) {
   const { user } = useAuth()
-  const currentUser = user
-    ? `${user.first_name} ${user.last_name} (${user.username})`
-    : "anonymous"
+  const currentUser = user?.username ?? "anonymous"
   const [comments, setComments] = useState<CommentData[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
