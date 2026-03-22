@@ -379,6 +379,7 @@ function FilesTab({ modelName, latestVersion }: { modelName: string; latestVersi
 function ModelDetail({
   name, onBack,
 }: { name: string; onBack: () => void }) {
+  const { user } = useAuth()
   const [detail, setDetail] = useState<OciModelDetail | null>(null)
   const [versions, setVersions] = useState<OciModelVersion[]>([])
   const [loading, setLoading] = useState(true)
@@ -467,13 +468,15 @@ function ModelDetail({
         {/* Info Tab (README + Edit) */}
         <TabsContent value="info" className="mt-4">
           <div className="flex justify-end mb-2">
-            {readmeEdit ? (
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => { setReadmeEdit(false); setReadmeText(detail.readme || "") }} disabled={savingReadme}>Cancel</Button>
-                <Button size="sm" onClick={handleSaveReadme} disabled={savingReadme}>{savingReadme ? "Saving..." : "Save"}</Button>
-              </div>
-            ) : (
-              <Button variant="outline" size="sm" onClick={() => setReadmeEdit(true)}>Edit</Button>
+            {user?.is_admin && (
+              readmeEdit ? (
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => { setReadmeEdit(false); setReadmeText(detail.readme || "") }} disabled={savingReadme}>Cancel</Button>
+                  <Button size="sm" onClick={handleSaveReadme} disabled={savingReadme}>{savingReadme ? "Saving..." : "Save"}</Button>
+                </div>
+              ) : (
+                <Button variant="outline" size="sm" onClick={() => setReadmeEdit(true)}>Edit</Button>
+              )
             )}
           </div>
           {readmeEdit ? (
