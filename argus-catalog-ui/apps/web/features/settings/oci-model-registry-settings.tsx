@@ -1,19 +1,45 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Eye, EyeOff, Loader2, Play, Save } from "lucide-react"
+import { Check, CheckCircle2, Eye, EyeOff, Loader2, Play, Rocket, Save, SkipForward, X, XCircle } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@workspace/ui/components/card"
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@workspace/ui/components/dialog"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@workspace/ui/components/select"
 
 import {
   fetchObjectStorageConfig,
+  initializeObjectStorage,
   testObjectStorage,
   updateObjectStorageConfig,
+  type InitStep,
 } from "./api"
+
+function StepIcon({ status }: { status: string }) {
+  if (status === "ok") return <CheckCircle2 className="h-4 w-4 text-blue-500" />
+  if (status === "created") return <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+  if (status === "skip") return <SkipForward className="h-4 w-4 text-muted-foreground" />
+  return <XCircle className="h-4 w-4 text-red-500" />
+}
+
+function StepBadge({ status }: { status: string }) {
+  const colors: Record<string, string> = {
+    ok: "bg-blue-50 text-blue-700 border-blue-200",
+    created: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    skip: "bg-muted text-muted-foreground border-muted",
+    error: "bg-red-50 text-red-700 border-red-200",
+  }
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${colors[status] || colors.error}`}>
+      {status.toUpperCase()}
+    </span>
+  )
+}
 
 export function OciModelRegistrySettings() {
   const [loading, setLoading] = useState(true)
@@ -32,6 +58,11 @@ export function OciModelRegistrySettings() {
   const [testing, setTesting] = useState(false)
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const [testResult, setTestResult] = useState<{ type: "success" | "error"; text: string } | null>(null)
+
+  // Initialize dialog
+  const [initOpen, setInitOpen] = useState(false)
+  const [initRunning, setInitRunning] = useState(false)
+  const [initSteps, setInitSteps] = useState<InitStep[]>([])
 
   const loadConfig = useCallback(async () => {
     try {
@@ -100,6 +131,35 @@ export function OciModelRegistrySettings() {
     }
   }
 
+  function handleOpenInit() {
+    const missing: string[] = []
+    if (!endpoint.trim()) missing.push("Endpoint")
+    if (!accessKey.trim()) missing.push("Access Key")
+    if (!secretKey.trim()) missing.push("Secret Key")
+    if (!bucket.trim()) missing.push("Bucket")
+    if (missing.length > 0) {
+      showStatus("error", `Required fields missing: ${missing.join(", ")}`)
+      return
+    }
+    setInitSteps([])
+    setInitOpen(true)
+  }
+
+  async function handleInitialize() {
+    setInitRunning(true)
+    setInitSteps([])
+    try {
+      const result = await initializeObjectStorage(
+        endpoint.trim(), accessKey.trim(), secretKey.trim(), region.trim(), bucket.trim(),
+      )
+      setInitSteps(result.steps)
+    } catch (e) {
+      setInitSteps([{ step: "Initialize", status: "error", message: e instanceof Error ? e.message : "Failed" }])
+    } finally {
+      setInitRunning(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -120,16 +180,20 @@ export function OciModelRegistrySettings() {
     )
   }
 
+  const hasErrors = initSteps.some((s) => s.status === "error")
+  const createdCount = initSteps.filter((s) => s.status === "created").length
+
   return (
     <div className="space-y-6">
       {statusMessage && (
         <div
-          className={`rounded-md px-4 py-2 text-sm ${
+          className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm ${
             statusMessage.type === "success"
-              ? "bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-200"
-              : "bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200"
+              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+              : "bg-red-50 text-red-700 border border-red-200"
           }`}
         >
+          {statusMessage.type === "success" ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
           {statusMessage.text}
         </div>
       )}
@@ -145,20 +209,16 @@ export function OciModelRegistrySettings() {
             </div>
             <div className="flex gap-2">
               <Button size="sm" onClick={handleSave} disabled={saving || !canSave}>
-                {saving ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
-                ) : (
-                  <Save className="h-4 w-4 mr-1.5" />
-                )}
+                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Save className="h-4 w-4 mr-1.5" />}
                 Save
               </Button>
               <Button size="sm" variant="outline" onClick={handleTest} disabled={testing || !canSave}>
-                {testing ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
-                ) : (
-                  <Play className="h-4 w-4 mr-1.5" />
-                )}
+                {testing ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Play className="h-4 w-4 mr-1.5" />}
                 Test
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleOpenInit}>
+                <Rocket className="h-4 w-4 mr-1.5" />
+                Initialize
               </Button>
             </div>
           </div>
@@ -166,12 +226,13 @@ export function OciModelRegistrySettings() {
         <CardContent>
           {testResult && (
             <div
-              className={`mb-4 rounded-md px-4 py-2 text-sm ${
+              className={`mb-4 flex items-center gap-2 rounded-md px-4 py-2 text-sm ${
                 testResult.type === "success"
-                  ? "bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-200"
-                  : "bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200"
+                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                  : "bg-red-50 text-red-700 border border-red-200"
               }`}
             >
+              {testResult.type === "success" ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
               {testResult.text}
             </div>
           )}
@@ -268,6 +329,82 @@ export function OciModelRegistrySettings() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Initialize Dialog */}
+      <Dialog open={initOpen} onOpenChange={(open) => { if (!initRunning) setInitOpen(open) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Rocket className="h-5 w-5" />
+              Initialize Object Storage
+            </DialogTitle>
+            <DialogDescription>
+              Check if the bucket exists and create it if necessary.
+            </DialogDescription>
+          </DialogHeader>
+
+          {initSteps.length === 0 && !initRunning && (
+            <div className="py-2 text-sm text-muted-foreground">
+              <p>This will connect to <strong>{endpoint}</strong> and ensure the bucket <strong>{bucket}</strong> exists.</p>
+            </div>
+          )}
+
+          {initSteps.length > 0 && (
+            <div className="space-y-2 py-2">
+              {initSteps.map((s, i) => (
+                <div key={i} className="flex items-start gap-2 text-sm">
+                  <StepIcon status={s.status} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{s.step}</span>
+                      <StepBadge status={s.status} />
+                    </div>
+                    <p className="text-xs text-muted-foreground">{s.message}</p>
+                  </div>
+                </div>
+              ))}
+
+              {!initRunning && (
+                <div className={`mt-3 rounded-md px-3 py-2 text-sm ${
+                  hasErrors
+                    ? "bg-red-50 text-red-700 border border-red-200"
+                    : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                }`}>
+                  {hasErrors
+                    ? "Initialization completed with errors."
+                    : createdCount > 0
+                      ? `Initialization complete. Bucket '${bucket}' is ready.`
+                      : `Bucket '${bucket}' already exists. Nothing to do.`
+                  }
+                </div>
+              )}
+            </div>
+          )}
+
+          {initRunning && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Initializing...
+            </div>
+          )}
+
+          <DialogFooter>
+            {initSteps.length === 0 && !initRunning ? (
+              <>
+                <Button variant="outline" onClick={() => setInitOpen(false)}>Cancel</Button>
+                <Button onClick={handleInitialize}>
+                  <Rocket className="h-4 w-4 mr-1" />
+                  Start
+                </Button>
+              </>
+            ) : (
+              <Button onClick={() => { setInitOpen(false); setInitSteps([]) }}>
+                Close
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

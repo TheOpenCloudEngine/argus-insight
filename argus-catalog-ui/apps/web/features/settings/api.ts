@@ -29,6 +29,24 @@ export async function updateObjectStorageConfig(
   if (!res.ok) throw new Error(`Failed to update config: ${res.status}`)
 }
 
+export type InitStep = {
+  step: string
+  status: "ok" | "skip" | "created" | "error"
+  message: string
+}
+
+export async function initializeObjectStorage(
+  endpoint: string, accessKey: string, secretKey: string, region: string, bucket: string,
+): Promise<{ steps: InitStep[] }> {
+  const res = await authFetch(`${BASE}/object-storage/initialize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ endpoint, access_key: accessKey, secret_key: secretKey, region, bucket }),
+  })
+  if (!res.ok) throw new Error(`Initialize failed: ${res.status}`)
+  return res.json()
+}
+
 export async function testObjectStorage(
   endpoint: string,
   accessKey: string,
@@ -167,12 +185,6 @@ export type KeycloakInitRequest = {
   client_id: string
   client_secret: string
   roles: string[]
-}
-
-export type InitStep = {
-  step: string
-  status: "ok" | "skip" | "created" | "error"
-  message: string
 }
 
 export async function initializeKeycloak(

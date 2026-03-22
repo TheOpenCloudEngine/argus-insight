@@ -132,6 +132,43 @@ async def test_object_storage(body: ObjectStorageTestRequest):
         return TestResponse(success=False, message=msg)
 
 
+@router.post("/object-storage/initialize")
+async def initialize_object_storage(body: ObjectStorageTestRequest):
+    """Check if the S3 bucket exists and create it if not."""
+    logger.info("Object Storage initialize: endpoint=%s, bucket=%s", body.endpoint, body.bucket)
+    steps: list[dict] = []
+
+    try:
+        session = aioboto3.Session()
+        async with session.client(
+            "s3",
+            endpoint_url=body.endpoint,
+            aws_access_key_id=body.access_key,
+            aws_secret_access_key=body.secret_key,
+            region_name=body.region,
+        ) as s3:
+            # Step 1: Check connectivity
+            steps.append({"step": "S3 Connection", "status": "ok", "message": f"Connected to {body.endpoint}"})
+
+            # Step 2: Check bucket
+            try:
+                await s3.head_bucket(Bucket=body.bucket)
+                steps.append({"step": f"Bucket '{body.bucket}'", "status": "skip", "message": "Already exists"})
+            except Exception:
+                # Bucket does not exist — create it
+                try:
+                    await s3.create_bucket(Bucket=body.bucket)
+                    steps.append({"step": f"Bucket '{body.bucket}'", "status": "created", "message": "Created successfully"})
+                except Exception as create_err:
+                    steps.append({"step": f"Bucket '{body.bucket}'", "status": "error", "message": str(create_err)})
+
+    except Exception as e:
+        steps.append({"step": "S3 Connection", "status": "error", "message": str(e)})
+
+    logger.info("Object Storage initialize: %d steps", len(steps))
+    return {"steps": steps}
+
+
 # ---------------------------------------------------------------------------
 # Embedding configuration
 # ---------------------------------------------------------------------------
