@@ -89,26 +89,49 @@ async def hybrid_search(
     threshold: float = 0.3,
     keyword_weight: float = 0.3,
     semantic_weight: float = 0.7,
-) -> list[tuple[int, float]]:
+) -> list[tuple[int, float, str]]:
     """Combine keyword and semantic search with weighted scoring.
 
-    Returns list of (dataset_id, combined_score) ordered by relevance.
+    Returns list of (dataset_id, combined_score, match_type) ordered by relevance.
+    Falls back to keyword-only search when embedding provider is not available.
     """
-    # Semantic results
-    semantic_results = await semantic_search(session, query, limit=limit * 2, threshold=threshold)
-    semantic_map = {ds_id: score for ds_id, score in semantic_results}
+    provider = await get_provider()
+
+    # Semantic results (skip if provider not available)
+    semantic_map: dict[int, float] = {}
+    if provider is not None:
+        try:
+            semantic_results = await semantic_search(session, query, limit=limit * 2, threshold=threshold)
+            semantic_map = {ds_id: score for ds_id, score in semantic_results}
+        except Exception as e:
+            logger.warning("Semantic search unavailable, falling back to keyword: %s", e)
+    else:
+        logger.info("Embedding provider not available, using keyword-only search")
 
     # Keyword results
     keyword_ids = await keyword_search_ids(session, query, limit=limit * 2)
 
-    # Combine scores
+    # Combine scores with match_type tracking
     all_ids = set(semantic_map.keys()) | keyword_ids
-    scored = []
+    scored: list[tuple[int, float, str]] = []
     for ds_id in all_ids:
         sem_score = semantic_map.get(ds_id, 0.0)
         kw_score = 1.0 if ds_id in keyword_ids else 0.0
-        combined = semantic_weight * sem_score + keyword_weight * kw_score
-        scored.append((ds_id, combined))
+
+        if semantic_map:
+            combined = semantic_weight * sem_score + keyword_weight * kw_score
+        else:
+            # Keyword-only fallback (no semantic available)
+            combined = kw_score
+
+        if sem_score > 0 and kw_score > 0:
+            match_type = "hybrid"
+        elif sem_score > 0:
+            match_type = "semantic"
+        else:
+            match_type = "keyword"
+
+        scored.append((ds_id, combined, match_type))
 
     scored.sort(key=lambda x: x[1], reverse=True)
     logger.info(
