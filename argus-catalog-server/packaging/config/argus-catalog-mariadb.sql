@@ -62,6 +62,26 @@ CREATE TABLE IF NOT EXISTS argus_users (
     FOREIGN KEY (role_id) REFERENCES argus_roles(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+INSERT IGNORE INTO argus_roles (role_id, name, description)
+VALUES
+    ('argus-admin', 'Admin', 'Administrator with full access'),
+    ('argus-superuser', 'Superuser', 'Superuser with elevated access'),
+    ('argus-user', 'User', 'Standard user with limited access');
+
+INSERT INTO argus_users (username, email, first_name, last_name, password_hash, status, role_id)
+VALUES (
+    'admin',
+    'admin@argus.local',
+    'Admin',
+    'User',
+    '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918',
+    'active',
+    (SELECT id FROM argus_roles WHERE role_id = 'argus-admin')
+)
+ON DUPLICATE KEY UPDATE
+    password_hash = VALUES(password_hash),
+    role_id = VALUES(role_id);
+
 -- ---------------------------------------------------------------------------
 -- Catalog - Platforms
 -- ---------------------------------------------------------------------------

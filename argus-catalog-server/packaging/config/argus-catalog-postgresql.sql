@@ -64,6 +64,27 @@ CREATE TABLE IF NOT EXISTS argus_users (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+INSERT INTO argus_roles (role_id, name, description)
+VALUES
+    ('argus-admin', 'Admin', 'Administrator with full access'),
+    ('argus-superuser', 'Superuser', 'Superuser with elevated access'),
+    ('argus-user', 'User', 'Standard user with limited access')
+ON CONFLICT (role_id) DO NOTHING;
+
+INSERT INTO argus_users (username, email, first_name, last_name, password_hash, status, role_id)
+VALUES (
+    'admin',
+    'admin@argus.local',
+    'Admin',
+    'User',
+    '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918',
+    'active',
+    (SELECT id FROM argus_roles WHERE role_id = 'argus-admin')
+)
+ON CONFLICT (username) DO UPDATE SET
+    password_hash = EXCLUDED.password_hash,
+    role_id = EXCLUDED.role_id;
+
 -- ---------------------------------------------------------------------------
 -- Catalog - Platforms
 -- ---------------------------------------------------------------------------
