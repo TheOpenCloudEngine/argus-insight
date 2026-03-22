@@ -11,6 +11,9 @@ python-multipart==0.0.22
 
 # File preview
 pyarrow==20.0.0
+openpyxl>=3.1.0
+mammoth>=1.8.0
+python-pptx>=1.0.0
 
 # Object Storage (S3/MinIO)
 aioboto3>=13.0.0

@@ -31,10 +31,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.models import CatalogModel, ModelVersion, RegisteredModel
 from app.models.schemas import (
+    AccessDataPoint,
+    ModelSizeInfo,
+    ModelStats,
     ModelSummary,
+    ModelVersionCount,
     ModelVersionCreate,
     ModelVersionFinalize,
     ModelVersionResponse,
+    ModelVersionStatusCount,
     ModelVersionUpdate,
     PaginatedModelSummaries,
     PaginatedModelVersions,
@@ -150,25 +155,32 @@ async def list_registered_models(
 async def list_model_summaries(
     session: AsyncSession,
     search: str | None = None,
+    status: str | None = None,
+    python_version: str | None = None,
+    sklearn_version: str | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> PaginatedModelSummaries:
-    """List models with latest version status and catalog_models metadata joined."""
+    """List models with latest version status and catalog_models metadata joined.
+
+    Filters (status, python_version, sklearn_version) are applied post-query
+    since they require joining catalog_model_versions / catalog_models.
+    """
     base = select(RegisteredModel).where(RegisteredModel.status != "deleted")
     if search:
         base = base.where(RegisteredModel.name.ilike(f"%{search}%"))
 
-    # Count
-    count_query = select(func.count()).select_from(base.subquery())
-    total = (await session.execute(count_query)).scalar() or 0
-
-    # Paginate
-    offset = (page - 1) * page_size
-    query = base.order_by(RegisteredModel.updated_at.desc()).offset(offset).limit(page_size)
+    # Fetch all matching models (before post-filters)
+    query = base.order_by(RegisteredModel.updated_at.desc())
     result = await session.execute(query)
     models = result.scalars().all()
 
-    items: list[ModelSummary] = []
+    # Pre-load access counts for all models
+    from app.models.access_log import get_access_count_by_model
+    access_counts = await get_access_count_by_model(session)
+
+    # Build summaries with joined data
+    all_items: list[ModelSummary] = []
     for m in models:
         # Get latest version status
         latest_ver = (await session.execute(
@@ -184,7 +196,7 @@ async def list_model_summaries(
             ).order_by(CatalogModel.version.desc()).limit(1)
         )).scalars().first()
 
-        items.append(ModelSummary(
+        summary = ModelSummary(
             id=m.id,
             name=m.name,
             description=m.description,
@@ -195,10 +207,183 @@ async def list_model_summaries(
             sklearn_version=cm.sklearn_version if cm else None,
             python_version=cm.python_version if cm else None,
             model_size_bytes=cm.model_size_bytes if cm else None,
+            access_count=access_counts.get(m.name, 0),
             updated_at=m.updated_at,
-        ))
+        )
+
+        # Apply post-query filters
+        if status and latest_ver != status:
+            continue
+        if python_version and (summary.python_version or "") != python_version:
+            continue
+        if sklearn_version and (summary.sklearn_version or "") != sklearn_version:
+            continue
+
+        all_items.append(summary)
+
+    # Manual pagination on filtered results
+    total = len(all_items)
+    offset = (page - 1) * page_size
+    items = all_items[offset:offset + page_size]
 
     return PaginatedModelSummaries(items=items, total=total, page=page, page_size=page_size)
+
+
+async def get_model_stats(session: AsyncSession) -> ModelStats:
+    """Get dashboard statistics for MLFlow Models page.
+
+    Only counts active (non-deleted) models and their versions.
+    """
+    # Active model IDs
+    active_ids_q = select(RegisteredModel.id).where(RegisteredModel.status != "deleted")
+    active_ids = (await session.execute(active_ids_q)).scalars().all()
+
+    total_models = len(active_ids)
+
+    if not active_ids:
+        return ModelStats(
+            total_models=0, total_versions=0,
+            ready_models=0, ready_versions=0,
+            pending_count=0, failed_count=0, total_access=0,
+            status_distribution=[], model_sizes=[], versions_per_model=[],
+            daily_access_1d=[], daily_access_7d=[], daily_access_30d=[],
+            access_by_model={},
+            total_publish=0,
+            daily_publish_1d=[], daily_publish_7d=[], daily_publish_30d=[],
+        )
+
+    # Versions of active models only
+    active_ver_base = select(ModelVersion).where(ModelVersion.model_id.in_(active_ids))
+
+    total_versions = (await session.execute(
+        select(func.count()).select_from(active_ver_base.subquery())
+    )).scalar() or 0
+
+    # Status counts (active models only)
+    ready_versions = (await session.execute(
+        select(func.count()).where(
+            ModelVersion.model_id.in_(active_ids),
+            ModelVersion.status == "READY",
+        )
+    )).scalar() or 0
+
+    pending = (await session.execute(
+        select(func.count()).where(
+            ModelVersion.model_id.in_(active_ids),
+            ModelVersion.status == "PENDING_REGISTRATION",
+        )
+    )).scalar() or 0
+
+    failed = (await session.execute(
+        select(func.count()).where(
+            ModelVersion.model_id.in_(active_ids),
+            ModelVersion.status == "FAILED_REGISTRATION",
+        )
+    )).scalar() or 0
+
+    # Ready models: models that have at least one READY version
+    ready_model_ids = (await session.execute(
+        select(ModelVersion.model_id).where(
+            ModelVersion.model_id.in_(active_ids),
+            ModelVersion.status == "READY",
+        ).group_by(ModelVersion.model_id)
+    )).scalars().all()
+    ready_models = len(ready_model_ids)
+
+    status_distribution = [
+        ModelVersionStatusCount(status="READY", count=ready_versions),
+        ModelVersionStatusCount(status="PENDING", count=pending),
+        ModelVersionStatusCount(status="FAILED", count=failed),
+    ]
+
+    # Model sizes (from catalog_models, active models only)
+    active_names = (await session.execute(
+        select(RegisteredModel.name).where(RegisteredModel.status != "deleted")
+    )).scalars().all()
+
+    cm_result = await session.execute(
+        select(CatalogModel.model_name, CatalogModel.model_size_bytes)
+        .where(
+            CatalogModel.model_name.in_(active_names),
+            CatalogModel.model_size_bytes.is_not(None),
+        )
+        .order_by(CatalogModel.model_size_bytes.desc())
+    )
+    seen: set[str] = set()
+    model_sizes = []
+    for name, size in cm_result.all():
+        if name not in seen and size:
+            seen.add(name)
+            model_sizes.append(ModelSizeInfo(model_name=name, model_size_bytes=size))
+
+    # Versions per model (active only)
+    ver_result = await session.execute(
+        select(RegisteredModel.name, RegisteredModel.max_version_number)
+        .where(RegisteredModel.status != "deleted")
+        .order_by(RegisteredModel.max_version_number.desc())
+    )
+    versions_per_model = [
+        ModelVersionCount(model_name=name, version_count=count)
+        for name, count in ver_result.all()
+    ]
+
+    # Access stats
+    from app.models.access_log import (
+        get_total_access_count,
+        get_hourly_access,
+        get_daily_access,
+        get_access_count_by_model,
+    )
+    total_access = await get_total_access_count(session)
+
+    hourly_raw = await get_hourly_access(session, hours=24)
+    daily_1d = [AccessDataPoint(date=d["date"], count=d["count"]) for d in hourly_raw]
+
+    daily_7d_raw = await get_daily_access(session, days=7)
+    daily_7d = [AccessDataPoint(date=d["date"], count=d["count"]) for d in daily_7d_raw]
+
+    daily_30d_raw = await get_daily_access(session, days=30)
+    daily_30d = [AccessDataPoint(date=d["date"], count=d["count"]) for d in daily_30d_raw]
+
+    access_by_model = await get_access_count_by_model(session)
+
+    # Publish stats
+    from app.models.access_log import (
+        get_total_publish_count,
+        get_hourly_publish,
+        get_daily_publish,
+    )
+    total_publish = await get_total_publish_count(session)
+
+    pub_1d_raw = await get_hourly_publish(session, hours=24)
+    pub_1d = [AccessDataPoint(date=d["date"], count=d["count"]) for d in pub_1d_raw]
+
+    pub_7d_raw = await get_daily_publish(session, days=7)
+    pub_7d = [AccessDataPoint(date=d["date"], count=d["count"]) for d in pub_7d_raw]
+
+    pub_30d_raw = await get_daily_publish(session, days=30)
+    pub_30d = [AccessDataPoint(date=d["date"], count=d["count"]) for d in pub_30d_raw]
+
+    return ModelStats(
+        total_models=total_models,
+        total_versions=total_versions,
+        ready_models=ready_models,
+        ready_versions=ready_versions,
+        pending_count=pending,
+        failed_count=failed,
+        total_access=total_access,
+        status_distribution=status_distribution,
+        model_sizes=model_sizes,
+        versions_per_model=versions_per_model,
+        daily_access_1d=daily_1d,
+        daily_access_7d=daily_7d,
+        daily_access_30d=daily_30d,
+        access_by_model=access_by_model,
+        total_publish=total_publish,
+        daily_publish_1d=pub_1d,
+        daily_publish_7d=pub_7d,
+        daily_publish_30d=pub_30d,
+    )
 
 
 async def update_registered_model(

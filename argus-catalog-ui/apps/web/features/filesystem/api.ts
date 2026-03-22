@@ -56,11 +56,22 @@ function toFile(f: {
   }
 }
 
-/** Create a FilesystemDataSource that talks to the catalog server. */
-export function createFilesystemDataSource(): FilesystemDataSource {
+/** Append root_sub to URL params if provided. */
+function withRootSub(params: URLSearchParams, rootSub?: string): URLSearchParams {
+  if (rootSub) params.set("root_sub", rootSub)
+  return params
+}
+
+/**
+ * Create a FilesystemDataSource that talks to the catalog server.
+ *
+ * @param rootSub - Optional subdirectory of data_dir to scope the browser.
+ *   e.g. "model-artifacts" for MLflow, "oci-artifacts" for OCI.
+ */
+export function createFilesystemDataSource(rootSub?: string): FilesystemDataSource {
   return {
     async listDirectory(path: string): Promise<ListDirectoryResponse> {
-      const params = new URLSearchParams({ path })
+      const params = withRootSub(new URLSearchParams({ path }), rootSub)
       const data = await apiFetch<{
         folders: Array<{
           key: string
@@ -89,7 +100,8 @@ export function createFilesystemDataSource(): FilesystemDataSource {
     },
 
     async deletePaths(paths: string[]): Promise<void> {
-      await apiFetch(`${API_BASE}/delete`, {
+      const params = withRootSub(new URLSearchParams(), rootSub)
+      await apiFetch(`${API_BASE}/delete?${params}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paths }),
@@ -97,7 +109,8 @@ export function createFilesystemDataSource(): FilesystemDataSource {
     },
 
     async createFolder(path: string): Promise<void> {
-      await apiFetch(`${API_BASE}/folders`, {
+      const params = withRootSub(new URLSearchParams(), rootSub)
+      await apiFetch(`${API_BASE}/folders?${params}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path }),
@@ -108,7 +121,7 @@ export function createFilesystemDataSource(): FilesystemDataSource {
       for (const file of files) {
         const formData = new FormData()
         formData.append("file", file)
-        const params = new URLSearchParams({ path: directoryPath })
+        const params = withRootSub(new URLSearchParams({ path: directoryPath }), rootSub)
         await apiFetch(`${API_BASE}/upload?${params}`, {
           method: "POST",
           body: formData,
@@ -117,12 +130,13 @@ export function createFilesystemDataSource(): FilesystemDataSource {
     },
 
     async getDownloadUrl(path: string): Promise<string> {
-      const params = new URLSearchParams({ path })
+      const params = withRootSub(new URLSearchParams({ path }), rootSub)
       return `${API_BASE}/download?${params}`
     },
 
     async renamePath(sourcePath: string, destinationPath: string): Promise<void> {
-      await apiFetch(`${API_BASE}/rename`, {
+      const params = withRootSub(new URLSearchParams(), rootSub)
+      await apiFetch(`${API_BASE}/rename?${params}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -136,7 +150,7 @@ export function createFilesystemDataSource(): FilesystemDataSource {
       path: string,
       options?: { sheet?: string; maxRows?: number },
     ): Promise<unknown> {
-      const params = new URLSearchParams({ path })
+      const params = withRootSub(new URLSearchParams({ path }), rootSub)
       if (options?.sheet) params.set("sheet", options.sheet)
       if (options?.maxRows) params.set("max_rows", String(options.maxRows))
       return apiFetch(`${API_BASE}/preview?${params}`)

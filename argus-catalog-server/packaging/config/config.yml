@@ -21,15 +21,6 @@ data:
 cors:
   origins: ${cors.origins:*}
 
-object_storage:
-  endpoint: ${os.endpoint:http://localhost:9000}
-  access_key: ${os.access_key:minioadmin}
-  secret_key: ${os.secret_key:minioadmin}
-  region: ${os.region:us-east-1}
-  use_ssl: ${os.use_ssl:false}
-  bucket: ${os.bucket:model-artifacts}
-  presigned_url_expiry: ${os.presigned_url_expiry:3600}
-
 database:
   type: ${db.type:postgresql}
   host: ${db.host:localhost}

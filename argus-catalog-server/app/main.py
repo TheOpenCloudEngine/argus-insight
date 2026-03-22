@@ -16,6 +16,7 @@ from app.filesystemmgr.router import router as filesystem_router
 from app.models.router import router as models_router
 from app.models.store_router import router as model_store_router
 from app.models.uc_compat import router as uc_compat_router
+from app.settings.router import router as settings_router
 from app.usermgr.router import router as usermgr_router
 from app.core.config import settings
 from app.core.database import Base, close_database, engine, init_database
@@ -54,6 +55,7 @@ async def lifespan(app: FastAPI):
 
     import app.catalog.models  # noqa: F401
     import app.models.models  # noqa: F401
+    import app.settings.models  # noqa: F401
     import app.usermgr.models  # noqa: F401
 
     async with engine.begin() as conn:
@@ -63,12 +65,15 @@ async def lifespan(app: FastAPI):
     # Seed default data
     from app.core.database import async_session
     from app.catalog.service import seed_platforms, seed_platform_metadata
+    from app.settings.service import seed_configuration, load_os_settings
     from app.usermgr.service import seed_roles
 
     async with async_session() as session:
         await seed_platforms(session)
         await seed_platform_metadata(session)
         await seed_roles(session)
+        await seed_configuration(session)
+        await load_os_settings(session)
 
     # Ensure S3 bucket exists
     try:
@@ -103,6 +108,7 @@ app.include_router(filesystem_router, prefix="/api/v1")
 app.include_router(models_router, prefix="/api/v1")
 app.include_router(model_store_router, prefix="/api/v1")
 app.include_router(uc_compat_router)  # /api/2.0/mlflow/unity-catalog (no extra prefix)
+app.include_router(settings_router, prefix="/api/v1")
 app.include_router(usermgr_router, prefix="/api/v1")
 
 

@@ -12,7 +12,7 @@ Provides REST API for:
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -131,9 +131,17 @@ async def get_download_url(
     model_name: str,
     version: int,
     filename: str = Query(..., description="File to download"),
+    request: Request = None,
+    session: AsyncSession = Depends(get_session),
 ):
     """Generate a presigned download URL for a file."""
     try:
+        from app.models.access_log import log_access
+        await log_access(
+            session, model_name, version, "download",
+            client_ip=request.client.host if request and request.client else None,
+            user_agent=request.headers.get("user-agent") if request else None,
+        )
         return await model_store.generate_download_url(model_name, version, filename)
     except Exception as e:
         logger.error("Download URL error: %s", e)
@@ -144,9 +152,17 @@ async def get_download_url(
 async def get_download_urls(
     model_name: str,
     version: int,
+    request: Request = None,
+    session: AsyncSession = Depends(get_session),
 ):
     """Generate presigned download URLs for all files in a version."""
     try:
+        from app.models.access_log import log_access
+        await log_access(
+            session, model_name, version, "pull",
+            client_ip=request.client.host if request and request.client else None,
+            user_agent=request.headers.get("user-agent") if request else None,
+        )
         urls = await model_store.generate_download_urls(model_name, version)
         return {"files": urls}
     except Exception as e:

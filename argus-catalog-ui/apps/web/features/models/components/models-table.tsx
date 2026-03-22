@@ -1,8 +1,7 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
-  type ColumnFiltersState,
   type SortingState,
   type VisibilityState,
   flexRender,
@@ -10,8 +9,18 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table"
+import { Search, X } from "lucide-react"
 
 import { cn } from "@workspace/ui/lib/utils"
+import { Button } from "@workspace/ui/components/button"
+import { Input } from "@workspace/ui/components/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
 import {
   Table,
   TableBody,
@@ -20,7 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from "@workspace/ui/components/table"
-import { DataTablePagination, DataTableToolbar } from "@/components/data-table"
+import { DataTablePagination } from "@/components/data-table"
 import { type ModelSummary } from "../data/schema"
 import { modelsColumns as columns } from "./models-columns"
 import { ModelsPrimaryButtons } from "./models-primary-buttons"
@@ -39,13 +48,77 @@ export function ModelsTable({ data, isLoading }: ModelsTableProps) {
 
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
 
-  const statusOptions = [
-    { label: "Active", value: "active" },
-    { label: "Deleted", value: "deleted" },
-  ]
+  // --- Filter state ---
+  const [searchQuery, setSearchQuery] = useState("")
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [pythonFilter, setPythonFilter] = useState("all")
+  const [sklearnFilter, setSklearnFilter] = useState("all")
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Derive unique filter values from data
+  const pythonVersions = useMemo(() => {
+    const set = new Set<string>()
+    data.forEach((m) => { if (m.python_version) set.add(m.python_version) })
+    return Array.from(set).sort()
+  }, [data])
+
+  const sklearnVersions = useMemo(() => {
+    const set = new Set<string>()
+    data.forEach((m) => { if (m.sklearn_version) set.add(m.sklearn_version) })
+    return Array.from(set).sort()
+  }, [data])
+
+  // --- Search helpers ---
+  const doSearch = useCallback(() => {
+    searchModels({
+      search: searchQuery,
+      status: statusFilter === "all" ? "" : statusFilter,
+      python_version: pythonFilter === "all" ? "" : pythonFilter,
+      sklearn_version: sklearnFilter === "all" ? "" : sklearnFilter,
+    })
+  }, [searchQuery, statusFilter, pythonFilter, sklearnFilter, searchModels])
+
+  // Debounce search on text change (3s)
+  function handleSearchChange(value: string) {
+    setSearchQuery(value)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      searchModels({
+        search: value,
+        status: statusFilter === "all" ? "" : statusFilter,
+        python_version: pythonFilter === "all" ? "" : pythonFilter,
+        sklearn_version: sklearnFilter === "all" ? "" : sklearnFilter,
+      })
+    }, 3000)
+  }
+
+  function handleSearchKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      doSearch()
+    }
+  }
+
+  // Trigger search immediately on filter dropdown change
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    doSearch()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, pythonFilter, sklearnFilter])
+
+  function handleClear() {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    setSearchQuery("")
+    setStatusFilter("all")
+    setPythonFilter("all")
+    setSklearnFilter("all")
+    searchModels({ search: "", status: "", python_version: "", sklearn_version: "" })
+  }
+
+  const hasFilters = searchQuery || statusFilter !== "all" || pythonFilter !== "all" || sklearnFilter !== "all"
+
+  // --- Table ---
   const pageCount = useMemo(
     () => Math.ceil(total / pageSize),
     [total, pageSize],
@@ -58,7 +131,6 @@ export function ModelsTable({ data, isLoading }: ModelsTableProps) {
     state: {
       sorting,
       pagination: { pageIndex: page - 1, pageSize },
-      columnFilters,
       columnVisibility,
       rowSelection,
     },
@@ -77,43 +149,80 @@ export function ModelsTable({ data, isLoading }: ModelsTableProps) {
         setPage(next.pageIndex + 1)
       }
     },
-    onColumnFiltersChange: setColumnFilters,
     onSortingChange: setSorting,
     onColumnVisibilityChange: setColumnVisibility,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
   })
 
-  const handleSearch = useCallback(() => {
-    const searchVal = columnFilters.find((f) => f.id === "name")?.value
-    const search = typeof searchVal === "string" ? searchVal : ""
-    searchModels({ search })
-  }, [columnFilters, searchModels])
-
-  const handleClear = useCallback(() => {
-    table.resetColumnFilters()
-    table.setGlobalFilter("")
-    searchModels({ search: "" })
-  }, [table, searchModels])
-
   return (
     <div className={cn("flex flex-1 flex-col gap-4")}>
-      <DataTableToolbar
-        table={table}
-        searchPlaceholder="Search models..."
-        searchKey="name"
-        filters={[
-          {
-            columnId: "status",
-            title: "Status",
-            options: statusOptions,
-          },
-        ]}
-        onSearch={handleSearch}
-        onClear={handleClear}
-        extraActions={<ModelsPrimaryButtons />}
-      />
+      {/* Custom Toolbar */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-1 items-center gap-2">
+          {/* Search input */}
+          <div className="relative max-w-xs flex-1">
+            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search MLflow models..."
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              className="pl-8 h-9"
+            />
+          </div>
 
+          {/* Status filter */}
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger size="sm" className="w-[140px]">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="READY">READY</SelectItem>
+              <SelectItem value="PENDING_REGISTRATION">PENDING</SelectItem>
+              <SelectItem value="FAILED_REGISTRATION">FAILED</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Python filter */}
+          <Select value={pythonFilter} onValueChange={setPythonFilter}>
+            <SelectTrigger size="sm" className="w-[130px]">
+              <SelectValue placeholder="Python" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Python</SelectItem>
+              {pythonVersions.map((v) => (
+                <SelectItem key={v} value={v}>{v}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* sklearn filter */}
+          <Select value={sklearnFilter} onValueChange={setSklearnFilter}>
+            <SelectTrigger size="sm" className="w-[130px]">
+              <SelectValue placeholder="sklearn" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All sklearn</SelectItem>
+              {sklearnVersions.map((v) => (
+                <SelectItem key={v} value={v}>{v}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleClear}>
+            <X className="mr-1 h-3.5 w-3.5" />
+            Clear
+          </Button>
+          <ModelsPrimaryButtons />
+        </div>
+      </div>
+
+      {/* Table */}
       <div className="overflow-hidden rounded-md border">
         <Table>
           <TableHeader>

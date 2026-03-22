@@ -11,6 +11,9 @@ type ModelsDialogType = "add" | "edit" | "delete"
 
 type SearchParams = {
   search: string
+  status: string
+  python_version: string
+  sklearn_version: string
 }
 
 type ModelsContextType = {
@@ -56,7 +59,9 @@ export function ModelsProvider({
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [deleteTargetNames, setDeleteTargetNames] = useState<string[]>([])
 
-  const appliedFiltersRef = useRef<SearchParams>({ search: "" })
+  const appliedFiltersRef = useRef<SearchParams>({
+    search: "", status: "", python_version: "", sklearn_version: "",
+  })
 
   const selectedNames = useMemo(() => {
     return Object.keys(rowSelection)
@@ -71,13 +76,19 @@ export function ModelsProvider({
   }, [])
 
   const loadModels = useCallback(
-    async (params: { page: number; pageSize: number; search: string }) => {
+    async (params: {
+      page: number; pageSize: number;
+      search: string; status: string; python_version: string; sklearn_version: string;
+    }) => {
       try {
         setIsLoading(true)
         const data: PaginatedModels = await fetchModels({
           page: params.page,
           pageSize: params.pageSize,
           search: params.search || undefined,
+          status: params.status || undefined,
+          python_version: params.python_version || undefined,
+          sklearn_version: params.sklearn_version || undefined,
         })
         setModels(data.items)
         setTotal(data.total)
@@ -91,7 +102,7 @@ export function ModelsProvider({
   )
 
   useEffect(() => {
-    loadModels({ page: 1, pageSize, search: "" })
+    loadModels({ page: 1, pageSize, search: "", status: "", python_version: "", sklearn_version: "" })
   }, [loadModels, pageSize])
 
   const handleSetPage = useCallback(

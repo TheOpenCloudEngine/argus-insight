@@ -6,6 +6,11 @@ Provides REST API for browsing and managing the local Linux filesystem:
   - File upload and download
   - File preview (parquet, xlsx, docx, pptx)
   - File metadata (stat)
+
+The `root_sub` query parameter scopes the browser to a subdirectory of data_dir.
+  - root_sub=model-artifacts → MLFlow Model File Browser
+  - root_sub=oci-artifacts   → OCI Model File Browser
+  - (none)                   → Full data directory
 """
 
 import logging
@@ -40,11 +45,12 @@ router = APIRouter(prefix="/filesystem", tags=["filesystem"])
 
 @router.get("/list", response_model=ListDirectoryResponse)
 async def list_directory(
-    path: str = Query("/", description="Absolute directory path"),
+    path: str = Query("/", description="Directory path"),
+    root_sub: str | None = Query(None, description="Subdirectory of data_dir to use as root"),
 ):
     """List files and directories under the given path."""
     try:
-        return await service.list_directory(path)
+        return await service.list_directory(path, root_sub=root_sub)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except NotADirectoryError as e:
@@ -65,11 +71,12 @@ async def list_directory(
 
 @router.get("/stat", response_model=FileStatResponse)
 async def file_stat(
-    path: str = Query(..., description="Absolute file or directory path"),
+    path: str = Query(..., description="File or directory path"),
+    root_sub: str | None = Query(None),
 ):
     """Get detailed metadata for a file or directory."""
     try:
-        return await service.file_stat(path)
+        return await service.file_stat(path, root_sub=root_sub)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
@@ -86,11 +93,12 @@ async def file_stat(
 
 @router.get("/download")
 async def download_file(
-    path: str = Query(..., description="Absolute file path"),
+    path: str = Query(..., description="File path"),
+    root_sub: str | None = Query(None),
 ):
     """Download a file."""
     try:
-        data, filename = await service.read_file(path)
+        data, filename = await service.read_file(path, root_sub=root_sub)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except IsADirectoryError as e:
@@ -118,12 +126,13 @@ async def download_file(
 async def upload_file(
     file: UploadFile,
     path: str = Query(..., description="Destination directory path"),
+    root_sub: str | None = Query(None),
 ):
     """Upload a file to the specified directory."""
     try:
         content = await file.read()
         filename = file.filename or "uploaded_file"
-        saved_path = await service.save_uploaded_file(path, filename, content)
+        saved_path = await service.save_uploaded_file(path, filename, content, root_sub=root_sub)
         return {"path": saved_path, "size": len(content)}
     except NotADirectoryError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -140,10 +149,13 @@ async def upload_file(
 
 
 @router.post("/folders", response_model=CreateFolderResponse)
-async def create_folder(body: CreateFolderRequest):
+async def create_folder(
+    body: CreateFolderRequest,
+    root_sub: str | None = Query(None),
+):
     """Create a new directory."""
     try:
-        return await service.create_folder(body.path)
+        return await service.create_folder(body.path, root_sub=root_sub)
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
@@ -157,10 +169,13 @@ async def create_folder(body: CreateFolderRequest):
 
 
 @router.post("/delete", response_model=DeleteResponse)
-async def delete_paths(body: DeleteRequest):
+async def delete_paths(
+    body: DeleteRequest,
+    root_sub: str | None = Query(None),
+):
     """Delete files or directories."""
     try:
-        return await service.delete_paths(body.paths)
+        return await service.delete_paths(body.paths, root_sub=root_sub)
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
@@ -174,10 +189,13 @@ async def delete_paths(body: DeleteRequest):
 
 
 @router.post("/rename", response_model=RenameResponse)
-async def rename(body: RenameRequest):
+async def rename(
+    body: RenameRequest,
+    root_sub: str | None = Query(None),
+):
     """Rename or move a file/directory."""
     try:
-        return await service.rename(body.source_path, body.destination_path)
+        return await service.rename(body.source_path, body.destination_path, root_sub=root_sub)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except FileExistsError as e:
@@ -207,18 +225,12 @@ _PREVIEW_FORMATS = {
     response_model=TablePreviewResponse | DocumentPreviewResponse,
 )
 async def preview_file(
-    path: str = Query(..., description="Absolute file path"),
+    path: str = Query(..., description="File path"),
     sheet: str | None = Query(None, description="Sheet name (xlsx/xls only)"),
-    max_rows: int = Query(1000, ge=1, le=10000, description="Max rows for tabular preview"),
+    max_rows: int = Query(1000, ge=1, le=10000),
+    root_sub: str | None = Query(None),
 ):
-    """Preview a file by converting it on the server.
-
-    Supported formats:
-      - **parquet** -> tabular JSON (columns + rows)
-      - **xlsx / xls** -> tabular JSON with sheet selection
-      - **docx** -> HTML
-      - **pptx** -> HTML with slide data
-    """
+    """Preview a file by converting it on the server."""
     ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
     if ext not in _PREVIEW_FORMATS:
         raise HTTPException(
@@ -229,13 +241,13 @@ async def preview_file(
 
     try:
         if ext == "parquet":
-            return await service.preview_parquet(path, max_rows=max_rows)
+            return await service.preview_parquet(path, max_rows=max_rows, root_sub=root_sub)
         if ext in ("xlsx", "xls"):
-            return await service.preview_xlsx(path, sheet=sheet, max_rows=max_rows)
+            return await service.preview_xlsx(path, sheet=sheet, max_rows=max_rows, root_sub=root_sub)
         if ext == "docx":
-            return await service.preview_docx(path)
+            return await service.preview_docx(path, root_sub=root_sub)
         if ext == "pptx":
-            return await service.preview_pptx(path)
+            return await service.preview_pptx(path, root_sub=root_sub)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:

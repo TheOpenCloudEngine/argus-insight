@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_session
 from app.models import service
 from app.models.schemas import (
+    ModelStats,
     ModelVersionCreate,
     ModelVersionFinalize,
     ModelVersionResponse,
@@ -27,6 +28,16 @@ from app.models.schemas import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/models", tags=["models"])
+
+
+# ---------------------------------------------------------------------------
+# Stats
+# ---------------------------------------------------------------------------
+
+@router.get("/stats", response_model=ModelStats)
+async def get_model_stats(session: AsyncSession = Depends(get_session)):
+    """Get dashboard statistics for MLFlow Models page."""
+    return await service.get_model_stats(session)
 
 
 # ---------------------------------------------------------------------------
@@ -49,12 +60,19 @@ async def create_registered_model(
 @router.get("", response_model=PaginatedModelSummaries)
 async def list_registered_models(
     search: str | None = Query(None, description="Search by model name"),
+    status: str | None = Query(None, description="Filter by latest version status (READY, PENDING_REGISTRATION, FAILED_REGISTRATION)"),
+    python_version: str | None = Query(None, description="Filter by Python version"),
+    sklearn_version: str | None = Query(None, description="Filter by sklearn version"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
 ):
     """List registered models with latest version status and metadata."""
-    return await service.list_model_summaries(session, search=search, page=page, page_size=page_size)
+    return await service.list_model_summaries(
+        session, search=search, status=status,
+        python_version=python_version, sklearn_version=sklearn_version,
+        page=page, page_size=page_size,
+    )
 
 
 @router.get("/{model_name}", response_model=RegisteredModelResponse)

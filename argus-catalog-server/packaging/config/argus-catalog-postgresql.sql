@@ -2,6 +2,31 @@
 -- Database: argus_catalog
 
 -- ---------------------------------------------------------------------------
+-- Configuration
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS catalog_configuration (
+    id SERIAL PRIMARY KEY,
+    category VARCHAR(50) NOT NULL,
+    config_key VARCHAR(100) NOT NULL UNIQUE,
+    config_value VARCHAR(500) NOT NULL DEFAULT '',
+    description VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+INSERT INTO catalog_configuration (category, config_key, config_value, description)
+VALUES
+    ('object_storage', 'object_storage_endpoint', 'http://localhost:9000', 'S3-compatible endpoint URL'),
+    ('object_storage', 'object_storage_access_key', 'minioadmin', 'S3 access key'),
+    ('object_storage', 'object_storage_secret_key', 'minioadmin', 'S3 secret key'),
+    ('object_storage', 'object_storage_region', 'us-east-1', 'S3 region'),
+    ('object_storage', 'object_storage_use_ssl', 'false', 'Use SSL for S3 connection'),
+    ('object_storage', 'object_storage_bucket', 'model-artifacts', 'S3 bucket for model artifacts'),
+    ('object_storage', 'object_storage_presigned_url_expiry', '3600', 'Presigned URL expiry in seconds')
+ON CONFLICT (config_key) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
 -- User Management
 -- ---------------------------------------------------------------------------
 
@@ -471,3 +496,24 @@ CREATE INDEX IF NOT EXISTS idx_dataset_lineage_source
 
 CREATE INDEX IF NOT EXISTS idx_dataset_lineage_target
     ON argus_dataset_lineage (target_dataset_id);
+
+
+-- ---------------------------------------------------------------------------
+-- Model Access Log
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS catalog_model_access_log (
+    id SERIAL PRIMARY KEY,
+    model_name VARCHAR(255) NOT NULL,
+    version INT NOT NULL,
+    access_type VARCHAR(20) NOT NULL,
+    client_ip VARCHAR(45),
+    user_agent VARCHAR(500),
+    accessed_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_model_access_log_name_at
+    ON catalog_model_access_log (model_name, accessed_at);
+
+CREATE INDEX IF NOT EXISTS idx_model_access_log_at
+    ON catalog_model_access_log (accessed_at);

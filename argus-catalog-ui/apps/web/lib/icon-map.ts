@@ -6,6 +6,7 @@ import {
   HelpCircle,
   LayoutDashboard,
   Server,
+  Settings,
   Tags,
   Users,
 } from "lucide-react"
@@ -18,6 +19,7 @@ const iconMap: Record<string, LucideIcon> = {
   FolderOpen,
   LayoutDashboard,
   Server,
+  Settings,
   Tags,
   Users,
 }

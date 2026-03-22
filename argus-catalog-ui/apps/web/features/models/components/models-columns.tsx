@@ -158,6 +158,38 @@ export const modelsColumns: ColumnDef<ModelSummary>[] = [
     meta: { className: "w-[90px] text-center" },
   },
   {
+    id: "age",
+    header: () => <span className="w-full text-center block">Age</span>,
+    cell: ({ row }) => {
+      const created = new Date(row.original.updated_at)
+      const now = new Date()
+      const diffMs = now.getTime() - created.getTime()
+      const days = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+      let label: string
+      if (days === 0) label = "today"
+      else if (days === 1) label = "1d ago"
+      else if (days < 30) label = `${days}d ago`
+      else if (days < 365) label = `${Math.floor(days / 30)}mo ago`
+      else label = `${Math.floor(days / 365)}y ago`
+      return (
+        <span className="text-sm text-muted-foreground text-center block" title={created.toLocaleString()}>
+          {label}
+        </span>
+      )
+    },
+    meta: { className: "w-[80px] text-center" },
+  },
+  {
+    id: "access_count",
+    header: () => <span className="w-full text-center block">Access</span>,
+    cell: ({ row }) => (
+      <span className="text-sm text-muted-foreground text-center block">
+        {row.original.access_count || 0}
+      </span>
+    ),
+    meta: { className: "w-[70px] text-center" },
+  },
+  {
     id: "updated_at",
     header: () => <span className="w-full text-center block">Updated</span>,
     cell: ({ row }) => (

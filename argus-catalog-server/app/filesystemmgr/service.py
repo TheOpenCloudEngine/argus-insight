@@ -35,9 +35,16 @@ logger = logging.getLogger(__name__)
 # =========================================================================== #
 
 
-def _get_root_dir() -> Path:
-    """Return the root directory for the file browser (data_dir)."""
-    return settings.data_dir
+def _get_root_dir(sub_path: str | None = None) -> Path:
+    """Return the root directory for the file browser.
+
+    If sub_path is provided, returns data_dir / sub_path.
+    e.g. sub_path="model-artifacts" → data_dir/model-artifacts
+    """
+    root = settings.data_dir
+    if sub_path:
+        root = root / sub_path
+    return root
 
 
 def _format_dt(timestamp: float) -> str:
@@ -76,40 +83,37 @@ def _get_group(st: os.stat_result) -> str:
         return str(st.st_gid)
 
 
-def _resolve_path(path: str) -> Path:
-    """Resolve a user-supplied path relative to data_dir.
+def _resolve_path(path: str, root_sub: str | None = None) -> Path:
+    """Resolve a user-supplied path relative to root directory.
 
-    The user sees "/" as the root, which maps to data_dir internally.
-    For example, if data_dir is /var/lib/argus-catalog-server:
-      - path="/"         -> /var/lib/argus-catalog-server
-      - path="/models"   -> /var/lib/argus-catalog-server/models
-      - path="/a/../b"   -> /var/lib/argus-catalog-server/b  (traversal safe)
+    The user sees "/" as the root, which maps to data_dir (or data_dir/root_sub).
+    For example, if data_dir is /var/lib/argus-catalog-server and root_sub="model-artifacts":
+      - path="/"         -> /var/lib/argus-catalog-server/model-artifacts
+      - path="/iris"     -> /var/lib/argus-catalog-server/model-artifacts/iris
     """
-    root = _get_root_dir().resolve()
+    root = _get_root_dir(root_sub).resolve()
+    root.mkdir(parents=True, exist_ok=True)
 
-    # Normalize: strip leading "/" so joining works correctly
     relative = path.lstrip("/")
     if relative:
         resolved = (root / relative).resolve()
     else:
         resolved = root
 
-    # Prevent directory traversal outside of root
     if not (resolved == root or str(resolved).startswith(str(root) + "/")):
-        raise ValueError(f"Access denied: path escapes data directory")
+        raise ValueError("Access denied: path escapes data directory")
 
     return resolved
 
 
-def _to_user_path(resolved: Path) -> str:
-    """Convert an internal resolved path back to a user-visible path (relative to data_dir)."""
-    root = _get_root_dir().resolve()
+def _to_user_path(resolved: Path, root_sub: str | None = None) -> str:
+    """Convert an internal resolved path back to a user-visible path."""
+    root = _get_root_dir(root_sub).resolve()
     try:
         rel = resolved.relative_to(root)
         return "/" + str(rel) if str(rel) != "." else "/"
     except ValueError:
         return str(resolved)
-    return resolved
 
 
 # =========================================================================== #
@@ -117,9 +121,9 @@ def _to_user_path(resolved: Path) -> str:
 # =========================================================================== #
 
 
-async def list_directory(path: str) -> ListDirectoryResponse:
+async def list_directory(path: str, root_sub: str | None = None) -> ListDirectoryResponse:
     """List files and directories under a given path."""
-    resolved = _resolve_path(path)
+    resolved = _resolve_path(path, root_sub)
 
     if not resolved.exists():
         raise FileNotFoundError(f"Directory not found: {resolved}")
@@ -146,7 +150,7 @@ async def list_directory(path: str) -> ListDirectoryResponse:
 
         if stat.S_ISDIR(st.st_mode):
             folders.append(FolderInfo(
-                key=_to_user_path(entry) + "/",
+                key=_to_user_path(entry, root_sub) + "/",
                 name=entry.name,
                 owner=owner,
                 group=group,
@@ -154,7 +158,7 @@ async def list_directory(path: str) -> ListDirectoryResponse:
             ))
         else:
             files.append(FileInfo(
-                key=_to_user_path(entry),
+                key=_to_user_path(entry, root_sub),
                 name=entry.name,
                 size=st.st_size,
                 last_modified=_format_dt(st.st_mtime),
@@ -166,7 +170,7 @@ async def list_directory(path: str) -> ListDirectoryResponse:
     return ListDirectoryResponse(
         folders=folders,
         files=files,
-        current_path=_to_user_path(resolved),
+        current_path=_to_user_path(resolved, root_sub),
     )
 
 
@@ -175,12 +179,12 @@ async def list_directory(path: str) -> ListDirectoryResponse:
 # =========================================================================== #
 
 
-async def create_folder(path: str) -> CreateFolderResponse:
+async def create_folder(path: str, root_sub: str | None = None) -> CreateFolderResponse:
     """Create a new directory (including parents)."""
-    resolved = _resolve_path(path)
+    resolved = _resolve_path(path, root_sub)
     resolved.mkdir(parents=True, exist_ok=True)
     logger.info("CreateFolder: %s", resolved)
-    return CreateFolderResponse(path=_to_user_path(resolved))
+    return CreateFolderResponse(path=_to_user_path(resolved, root_sub))
 
 
 # =========================================================================== #
@@ -188,14 +192,14 @@ async def create_folder(path: str) -> CreateFolderResponse:
 # =========================================================================== #
 
 
-async def delete_paths(paths: list[str]) -> DeleteResponse:
+async def delete_paths(paths: list[str], root_sub: str | None = None) -> DeleteResponse:
     """Delete multiple files or directories."""
     deleted: list[str] = []
     errors: list[dict] = []
 
     for p in paths:
         try:
-            resolved = _resolve_path(p)
+            resolved = _resolve_path(p, root_sub)
             if not resolved.exists():
                 errors.append({"path": p, "error": "Not found"})
                 continue
@@ -219,10 +223,10 @@ async def delete_paths(paths: list[str]) -> DeleteResponse:
 # =========================================================================== #
 
 
-async def rename(source_path: str, destination_path: str) -> RenameResponse:
+async def rename(source_path: str, destination_path: str, root_sub: str | None = None) -> RenameResponse:
     """Rename or move a file/directory."""
-    src = _resolve_path(source_path)
-    dst = _resolve_path(destination_path)
+    src = _resolve_path(source_path, root_sub)
+    dst = _resolve_path(destination_path, root_sub)
 
     if not src.exists():
         raise FileNotFoundError(f"Source not found: {src}")
@@ -231,7 +235,7 @@ async def rename(source_path: str, destination_path: str) -> RenameResponse:
 
     src.rename(dst)
     logger.info("Rename: %s -> %s", src, dst)
-    return RenameResponse(source=_to_user_path(src), destination=_to_user_path(dst))
+    return RenameResponse(source=_to_user_path(src, root_sub), destination=_to_user_path(dst, root_sub))
 
 
 # =========================================================================== #
@@ -239,9 +243,9 @@ async def rename(source_path: str, destination_path: str) -> RenameResponse:
 # =========================================================================== #
 
 
-async def file_stat(path: str) -> FileStatResponse:
+async def file_stat(path: str, root_sub: str | None = None) -> FileStatResponse:
     """Get detailed metadata for a file or directory."""
-    resolved = _resolve_path(path)
+    resolved = _resolve_path(path, root_sub)
 
     if not resolved.exists():
         raise FileNotFoundError(f"Not found: {resolved}")
@@ -250,7 +254,7 @@ async def file_stat(path: str) -> FileStatResponse:
     symlink_target = str(resolved.readlink()) if resolved.is_symlink() else None
 
     return FileStatResponse(
-        path=_to_user_path(resolved),
+        path=_to_user_path(resolved, root_sub),
         name=resolved.name or "/",
         is_directory=resolved.is_dir(),
         size=st.st_size,
@@ -272,12 +276,12 @@ async def file_stat(path: str) -> FileStatResponse:
 # =========================================================================== #
 
 
-async def read_file(path: str) -> tuple[bytes, str]:
+async def read_file(path: str, root_sub: str | None = None) -> tuple[bytes, str]:
     """Read a file and return (bytes, filename).
 
     Returns the raw bytes so the router can build a streaming response.
     """
-    resolved = _resolve_path(path)
+    resolved = _resolve_path(path, root_sub)
 
     if not resolved.exists():
         raise FileNotFoundError(f"File not found: {resolved}")
@@ -297,16 +301,17 @@ async def save_uploaded_file(
     destination_dir: str,
     filename: str,
     content: bytes,
+    root_sub: str | None = None,
 ) -> str:
     """Save an uploaded file to the specified directory."""
-    dir_path = _resolve_path(destination_dir)
+    dir_path = _resolve_path(destination_dir, root_sub)
     if not dir_path.is_dir():
         raise NotADirectoryError(f"Not a directory: {dir_path}")
 
     file_path = dir_path / filename
     file_path.write_bytes(content)
     logger.info("Upload: %s (%d bytes)", file_path, len(content))
-    return _to_user_path(file_path)
+    return _to_user_path(file_path, root_sub)
 
 
 # =========================================================================== #
@@ -329,12 +334,12 @@ def _serialize_value(val):
     return str(val)
 
 
-async def preview_parquet(path: str, max_rows: int = MAX_PREVIEW_ROWS) -> TablePreviewResponse:
+async def preview_parquet(path: str, max_rows: int = MAX_PREVIEW_ROWS, root_sub: str | None = None) -> TablePreviewResponse:
     """Preview a Parquet file as tabular data using PyArrow."""
     import io
     import pyarrow.parquet as pq
 
-    resolved = _resolve_path(path)
+    resolved = _resolve_path(path, root_sub)
     data = resolved.read_bytes()
     pf = pq.ParquetFile(io.BytesIO(data))
     total_rows = pf.metadata.num_rows
@@ -363,12 +368,13 @@ async def preview_xlsx(
     path: str,
     sheet: str | None = None,
     max_rows: int = MAX_PREVIEW_ROWS,
+    root_sub: str | None = None,
 ) -> TablePreviewResponse:
     """Preview an XLSX/XLS file as tabular data using openpyxl."""
     import io
     import openpyxl
 
-    resolved = _resolve_path(path)
+    resolved = _resolve_path(path, root_sub)
     data = resolved.read_bytes()
     wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
 
@@ -401,12 +407,12 @@ async def preview_xlsx(
     )
 
 
-async def preview_docx(path: str) -> DocumentPreviewResponse:
+async def preview_docx(path: str, root_sub: str | None = None) -> DocumentPreviewResponse:
     """Preview a DOCX file by converting to HTML using mammoth."""
     import io
     import mammoth
 
-    resolved = _resolve_path(path)
+    resolved = _resolve_path(path, root_sub)
     data = resolved.read_bytes()
     result = mammoth.convert_to_html(io.BytesIO(data))
     if result.messages:
@@ -416,12 +422,12 @@ async def preview_docx(path: str) -> DocumentPreviewResponse:
     return DocumentPreviewResponse(format="docx", html=result.value)
 
 
-async def preview_pptx(path: str) -> DocumentPreviewResponse:
+async def preview_pptx(path: str, root_sub: str | None = None) -> DocumentPreviewResponse:
     """Preview a PPTX file by extracting slide text and notes."""
     import io
     from pptx import Presentation
 
-    resolved = _resolve_path(path)
+    resolved = _resolve_path(path, root_sub)
     data = resolved.read_bytes()
     prs = Presentation(io.BytesIO(data))
 

@@ -1,6 +1,8 @@
 "use client"
 
 import { DashboardHeader } from "@/components/dashboard-header"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@workspace/ui/components/tabs"
+import { ModelsDashboard } from "@/features/models/components/models-dashboard"
 import { ModelsDialogs } from "@/features/models/components/models-dialogs"
 import { ModelsProvider } from "@/features/models/components/models-provider"
 import { ModelsTableWrapper } from "@/features/models/components/models-table-wrapper"
@@ -8,9 +10,20 @@ import { ModelsTableWrapper } from "@/features/models/components/models-table-wr
 export default function ModelsPage() {
   return (
     <ModelsProvider>
-      <DashboardHeader title="Models" />
+      <DashboardHeader title="MLflow Models" />
       <div className="flex flex-1 flex-col gap-4 p-4">
-        <ModelsTableWrapper />
+        <Tabs defaultValue="dashboard">
+          <TabsList variant="line">
+            <TabsTrigger value="dashboard" className="text-base">Dashboard</TabsTrigger>
+            <TabsTrigger value="models" className="text-base">Models</TabsTrigger>
+          </TabsList>
+          <TabsContent value="dashboard" className="mt-4">
+            <ModelsDashboard />
+          </TabsContent>
+          <TabsContent value="models" className="mt-4">
+            <ModelsTableWrapper />
+          </TabsContent>
+        </Tabs>
       </div>
       <ModelsDialogs />
     </ModelsProvider>

@@ -2,6 +2,30 @@
 -- Database: argus_catalog
 
 -- ---------------------------------------------------------------------------
+-- Configuration
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS catalog_configuration (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    category VARCHAR(50) NOT NULL,
+    config_key VARCHAR(100) NOT NULL UNIQUE,
+    config_value VARCHAR(500) NOT NULL DEFAULT '',
+    description VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO catalog_configuration (category, config_key, config_value, description)
+VALUES
+    ('object_storage', 'object_storage_endpoint', 'http://localhost:9000', 'S3-compatible endpoint URL'),
+    ('object_storage', 'object_storage_access_key', 'minioadmin', 'S3 access key'),
+    ('object_storage', 'object_storage_secret_key', 'minioadmin', 'S3 secret key'),
+    ('object_storage', 'object_storage_region', 'us-east-1', 'S3 region'),
+    ('object_storage', 'object_storage_use_ssl', 'false', 'Use SSL for S3 connection'),
+    ('object_storage', 'object_storage_bucket', 'model-artifacts', 'S3 bucket for model artifacts'),
+    ('object_storage', 'object_storage_presigned_url_expiry', '3600', 'Presigned URL expiry in seconds');
+
+-- ---------------------------------------------------------------------------
 -- User Management
 -- ---------------------------------------------------------------------------
 
@@ -459,4 +483,21 @@ CREATE TABLE IF NOT EXISTS argus_dataset_lineage (
     INDEX idx_dataset_lineage_target (target_dataset_id),
     FOREIGN KEY (source_dataset_id) REFERENCES catalog_datasets(id) ON DELETE CASCADE,
     FOREIGN KEY (target_dataset_id) REFERENCES catalog_datasets(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+-- ---------------------------------------------------------------------------
+-- Model Access Log
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS catalog_model_access_log (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    model_name VARCHAR(255) NOT NULL,
+    version INT NOT NULL,
+    access_type VARCHAR(20) NOT NULL,
+    client_ip VARCHAR(45),
+    user_agent VARCHAR(500),
+    accessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_model_access_log_name_at (model_name, accessed_at),
+    INDEX idx_model_access_log_at (accessed_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
