@@ -25,7 +25,16 @@ VALUES
     ('object_storage', 'object_storage_region', 'us-east-1', 'S3 region'),
     ('object_storage', 'object_storage_use_ssl', 'false', 'Use SSL for S3 connection'),
     ('object_storage', 'object_storage_bucket', 'model-artifacts', 'S3 bucket for model artifacts'),
-    ('object_storage', 'object_storage_presigned_url_expiry', '3600', 'Presigned URL expiry in seconds')
+    ('object_storage', 'object_storage_presigned_url_expiry', '3600', 'Presigned URL expiry in seconds'),
+    ('auth', 'auth_type', 'keycloak', 'Authentication type'),
+    ('auth', 'auth_keycloak_server_url', 'http://localhost:8180', 'Keycloak server URL'),
+    ('auth', 'auth_keycloak_realm', 'argus', 'Keycloak realm'),
+    ('auth', 'auth_keycloak_client_id', 'argus-client', 'Keycloak client ID'),
+    ('auth', 'auth_keycloak_client_secret', 'argus-client-secret', 'Keycloak client secret'),
+    ('auth', 'auth_keycloak_admin_role', 'argus-admin', 'Admin role name'),
+    ('auth', 'auth_keycloak_superuser_role', 'argus-supseruser', 'Superuser role name'),
+    ('auth', 'auth_keycloak_user_role', 'argus-user', 'User role name'),
+    ('cors', 'cors_origins', '*', 'Allowed CORS origins (comma-separated)')
 ON CONFLICT (config_key) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
