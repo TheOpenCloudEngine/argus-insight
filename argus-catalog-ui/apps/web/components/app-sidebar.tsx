@@ -3,6 +3,7 @@ import Link from "next/link"
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter, // Added for SSO AUTH
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -10,6 +11,7 @@ import {
   SidebarRail,
 } from "@workspace/ui/components/sidebar"
 import { AppSidebarNav } from "@/components/app-sidebar-nav"
+import { SidebarUser } from "@/components/sidebar-user" // Added for SSO AUTH
 import { getMenu } from "@/lib/menu"
 
 export async function AppSidebar() {
@@ -37,6 +39,11 @@ export async function AppSidebar() {
       <SidebarContent>
         <AppSidebarNav groups={menu.groups} />
       </SidebarContent>
+
+      {/* Added for SSO AUTH - displays current user info and logout button */}
+      <SidebarFooter>
+        <SidebarUser />
+      </SidebarFooter>
 
       <SidebarRail />
     </Sidebar>

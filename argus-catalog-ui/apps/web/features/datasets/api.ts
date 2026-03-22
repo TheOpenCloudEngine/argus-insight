@@ -3,6 +3,7 @@
  */
 
 import type { DatasetDetail, DatasetSummary, Platform, SchemaField } from "./data/schema"
+import { authFetch } from "@/features/auth/auth-fetch" // Added for SSO AUTH
 
 const BASE = "/api/v1/catalog"
 
@@ -35,13 +36,13 @@ export async function fetchDatasets(
   query.set("page", String(params?.page ?? 1))
   query.set("page_size", String(params?.pageSize ?? 20))
 
-  const res = await fetch(`${BASE}/datasets?${query.toString()}`)
+  const res = await authFetch(`${BASE}/datasets?${query.toString()}`)
   if (!res.ok) throw new Error(`Failed to fetch datasets: ${res.status}`)
   return res.json()
 }
 
 export async function fetchDataset(id: number): Promise<DatasetDetail> {
-  const res = await fetch(`${BASE}/datasets/${id}`)
+  const res = await authFetch(`${BASE}/datasets/${id}`)
   if (!res.ok) throw new Error(`Failed to fetch dataset: ${res.status}`)
   return res.json()
 }
@@ -63,7 +64,7 @@ export async function createDataset(payload: {
   tags?: number[]
   owners?: { owner_name: string; owner_type: string }[]
 }): Promise<DatasetDetail> {
-  const res = await fetch(`${BASE}/datasets`, {
+  const res = await authFetch(`${BASE}/datasets`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -85,7 +86,7 @@ export async function updateDataset(
     status?: string
   }
 ): Promise<DatasetDetail> {
-  const res = await fetch(`${BASE}/datasets/${id}`, {
+  const res = await authFetch(`${BASE}/datasets/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -95,7 +96,7 @@ export async function updateDataset(
 }
 
 export async function deleteDataset(id: number): Promise<void> {
-  const res = await fetch(`${BASE}/datasets/${id}`, { method: "DELETE" })
+  const res = await authFetch(`${BASE}/datasets/${id}`, { method: "DELETE" })
   if (!res.ok) throw new Error(`Failed to delete dataset: ${res.status}`)
 }
 
@@ -108,13 +109,13 @@ export type PlatformMetadata = {
 }
 
 export async function fetchPlatformMetadata(platformId: number): Promise<PlatformMetadata> {
-  const res = await fetch(`${BASE}/platforms/${platformId}/metadata`)
+  const res = await authFetch(`${BASE}/platforms/${platformId}/metadata`)
   if (!res.ok) throw new Error(`Failed to fetch platform metadata: ${res.status}`)
   return res.json()
 }
 
 export async function fetchPlatforms(): Promise<Platform[]> {
-  const res = await fetch(`${BASE}/platforms`)
+  const res = await authFetch(`${BASE}/platforms`)
   if (!res.ok) throw new Error(`Failed to fetch platforms: ${res.status}`)
   return res.json()
 }
@@ -123,7 +124,7 @@ export async function addDatasetTag(
   datasetId: number,
   tagId: number
 ): Promise<void> {
-  const res = await fetch(`${BASE}/datasets/${datasetId}/tags/${tagId}`, {
+  const res = await authFetch(`${BASE}/datasets/${datasetId}/tags/${tagId}`, {
     method: "POST",
   })
   if (!res.ok)
@@ -134,7 +135,7 @@ export async function removeDatasetTag(
   datasetId: number,
   tagId: number
 ): Promise<void> {
-  const res = await fetch(`${BASE}/datasets/${datasetId}/tags/${tagId}`, {
+  const res = await authFetch(`${BASE}/datasets/${datasetId}/tags/${tagId}`, {
     method: "DELETE",
   })
   if (!res.ok)
@@ -145,7 +146,7 @@ export async function addDatasetOwner(
   datasetId: number,
   payload: { owner_name: string; owner_type: string }
 ): Promise<void> {
-  const res = await fetch(`${BASE}/datasets/${datasetId}/owners`, {
+  const res = await authFetch(`${BASE}/datasets/${datasetId}/owners`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -158,7 +159,7 @@ export async function removeDatasetOwner(
   datasetId: number,
   ownerId: number
 ): Promise<void> {
-  const res = await fetch(
+  const res = await authFetch(
     `${BASE}/datasets/${datasetId}/owners/${ownerId}`,
     { method: "DELETE" }
   )
@@ -177,7 +178,7 @@ export async function updateDatasetSchema(
     ordinal?: number
   }[]
 ): Promise<SchemaField[]> {
-  const res = await fetch(`${BASE}/datasets/${datasetId}/schema`, {
+  const res = await authFetch(`${BASE}/datasets/${datasetId}/schema`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(fields),
@@ -218,7 +219,7 @@ export async function fetchSchemaHistory(
   page: number = 1,
   pageSize: number = 20,
 ): Promise<PaginatedSchemaSnapshots> {
-  const res = await fetch(
+  const res = await authFetch(
     `${BASE}/datasets/${datasetId}/schema/history?page=${page}&page_size=${pageSize}`,
   )
   if (!res.ok) throw new Error(`Failed to fetch schema history: ${res.status}`)
@@ -229,7 +230,7 @@ export async function addDatasetGlossaryTerm(
   datasetId: number,
   termId: number
 ): Promise<void> {
-  const res = await fetch(
+  const res = await authFetch(
     `${BASE}/datasets/${datasetId}/glossary/${termId}`,
     { method: "POST" }
   )
@@ -240,7 +241,7 @@ export async function removeDatasetGlossaryTerm(
   datasetId: number,
   termId: number
 ): Promise<void> {
-  const res = await fetch(
+  const res = await authFetch(
     `${BASE}/datasets/${datasetId}/glossary/${termId}`,
     { method: "DELETE" }
   )
@@ -258,7 +259,7 @@ export async function uploadSampleData(
 ): Promise<{ status: string; path: string; size: number }> {
   const form = new FormData()
   form.append("file", file)
-  const res = await fetch(`${BASE}/datasets/${datasetId}/sample`, {
+  const res = await authFetch(`${BASE}/datasets/${datasetId}/sample`, {
     method: "POST",
     body: form,
   })
@@ -269,13 +270,13 @@ export async function uploadSampleData(
 export async function fetchSampleData(
   datasetId: number
 ): Promise<Response> {
-  return fetch(`${BASE}/datasets/${datasetId}/sample`)
+  return authFetch(`${BASE}/datasets/${datasetId}/sample`)
 }
 
 export async function deleteSampleData(
   datasetId: number
 ): Promise<void> {
-  const res = await fetch(`${BASE}/datasets/${datasetId}/sample`, {
+  const res = await authFetch(`${BASE}/datasets/${datasetId}/sample`, {
     method: "DELETE",
   })
   if (!res.ok) throw new Error(`Failed to delete sample data: ${res.status}`)
@@ -284,7 +285,7 @@ export async function deleteSampleData(
 export async function convertSampleToParquet(
   datasetId: number,
 ): Promise<{ status: string; rows: number; columns: number }> {
-  const res = await fetch(`${BASE}/datasets/${datasetId}/sample/convert-to-parquet`, {
+  const res = await authFetch(`${BASE}/datasets/${datasetId}/sample/convert-to-parquet`, {
     method: "POST",
   })
   if (!res.ok) throw new Error(`Failed to convert to parquet: ${res.status}`)
@@ -311,7 +312,7 @@ export async function saveDelimiterConfig(
   datasetId: number,
   config: DelimiterConfig
 ): Promise<void> {
-  const res = await fetch(`${BASE}/datasets/${datasetId}/sample/delimiter`, {
+  const res = await authFetch(`${BASE}/datasets/${datasetId}/sample/delimiter`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(config),
@@ -322,5 +323,5 @@ export async function saveDelimiterConfig(
 export async function fetchDelimiterConfig(
   datasetId: number
 ): Promise<Response> {
-  return fetch(`${BASE}/datasets/${datasetId}/sample/delimiter`)
+  return authFetch(`${BASE}/datasets/${datasetId}/sample/delimiter`)
 }

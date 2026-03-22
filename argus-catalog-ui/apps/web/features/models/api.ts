@@ -3,6 +3,7 @@
  */
 
 import type { ModelSummary } from "./data/schema"
+import { authFetch } from "@/features/auth/auth-fetch" // Added for SSO AUTH
 
 const BASE = "/api/v1/models"
 
@@ -33,7 +34,7 @@ export async function fetchModels(
   query.set("page", String(params?.page ?? 1))
   query.set("page_size", String(params?.pageSize ?? 20))
 
-  const res = await fetch(`${BASE}?${query.toString()}`)
+  const res = await authFetch(`${BASE}?${query.toString()}`)
   if (!res.ok) throw new Error(`Failed to fetch models: ${res.status}`)
   return res.json()
 }
@@ -60,7 +61,7 @@ export type ModelStats = {
 }
 
 export async function fetchModelStats(): Promise<ModelStats> {
-  const res = await fetch(`${BASE}/stats`)
+  const res = await authFetch(`${BASE}/stats`)
   if (!res.ok) throw new Error(`Failed to fetch stats: ${res.status}`)
   return res.json()
 }
@@ -70,7 +71,7 @@ export async function createModel(payload: {
   description?: string
   owner?: string
 }): Promise<ModelSummary> {
-  const res = await fetch(BASE, {
+  const res = await authFetch(BASE, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -152,7 +153,7 @@ export type ModelDownloadStats = {
 }
 
 export async function fetchModelDetail(name: string): Promise<ModelDetail> {
-  const res = await fetch(`${BASE}/${encodeURIComponent(name)}/detail`)
+  const res = await authFetch(`${BASE}/${encodeURIComponent(name)}/detail`)
   if (!res.ok) throw new Error(`Failed to fetch model detail: ${res.status}`)
   return res.json()
 }
@@ -161,19 +162,19 @@ export async function fetchModelVersions(
   name: string, page: number = 1, pageSize: number = 20,
 ): Promise<{ items: ModelVersionItem[]; total: number; page: number; page_size: number }> {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
-  const res = await fetch(`${BASE}/${encodeURIComponent(name)}/versions?${params}`)
+  const res = await authFetch(`${BASE}/${encodeURIComponent(name)}/versions?${params}`)
   if (!res.ok) throw new Error(`Failed to fetch versions: ${res.status}`)
   return res.json()
 }
 
 export async function fetchModelDownloadStats(name: string): Promise<ModelDownloadStats> {
-  const res = await fetch(`${BASE}/${encodeURIComponent(name)}/download`)
+  const res = await authFetch(`${BASE}/${encodeURIComponent(name)}/download`)
   if (!res.ok) throw new Error(`Failed to fetch download stats: ${res.status}`)
   return res.json()
 }
 
 export async function deleteModel(name: string): Promise<void> {
-  const res = await fetch(`${BASE}/${encodeURIComponent(name)}`, {
+  const res = await authFetch(`${BASE}/${encodeURIComponent(name)}`, {
     method: "DELETE",
   })
   if (!res.ok) throw new Error(`Failed to delete model: ${res.status}`)
@@ -182,7 +183,7 @@ export async function deleteModel(name: string): Promise<void> {
 export async function hardDeleteModels(
   names: string[],
 ): Promise<{ deleted: string[]; not_found: string[] }> {
-  const res = await fetch(`${BASE}/hard-delete`, {
+  const res = await authFetch(`${BASE}/hard-delete`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ names }),

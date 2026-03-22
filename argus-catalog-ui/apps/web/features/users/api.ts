@@ -14,6 +14,7 @@
  */
 
 import { type User } from "./data/schema"
+import { authFetch } from "@/features/auth/auth-fetch" // Added for SSO AUTH
 
 /** Base URL prefix for all user management API calls. */
 const BASE = "/api/v1/usermgr"
@@ -86,7 +87,7 @@ export async function fetchUsers(params?: UserListParams): Promise<PaginatedUser
   query.set("page_size", String(params?.pageSize ?? 10))
 
   const url = `${BASE}/users?${query.toString()}`
-  const res = await fetch(url)
+  const res = await authFetch(url)
   if (!res.ok) throw new Error(`Failed to fetch users: ${res.status}`)
   const data = await res.json()
   return {
@@ -115,7 +116,7 @@ export async function checkUserExists(params: {
   const query = new URLSearchParams()
   if (params.username) query.set("username", params.username)
   if (params.email) query.set("email", params.email)
-  const res = await fetch(`${BASE}/check-user?${query.toString()}`)
+  const res = await authFetch(`${BASE}/check-user?${query.toString()}`)
   if (!res.ok) throw new Error(`Failed to check user: ${res.status}`)
   return res.json()
 }
@@ -147,7 +148,7 @@ type CreateUserPayload = {
  * @throws Error with the backend's detail message if creation fails.
  */
 export async function createUser(payload: CreateUserPayload): Promise<User> {
-  const res = await fetch(`${BASE}/users`, {
+  const res = await authFetch(`${BASE}/users`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -169,7 +170,7 @@ export async function createUser(payload: CreateUserPayload): Promise<User> {
  * @throws Error if the HTTP response is not OK (e.g. user not found).
  */
 export async function deleteUser(userId: string): Promise<void> {
-  const res = await fetch(`${BASE}/users/${userId}`, { method: "DELETE" })
+  const res = await authFetch(`${BASE}/users/${userId}`, { method: "DELETE" })
   if (!res.ok) throw new Error(`Failed to delete user: ${res.status}`)
 }
 
@@ -182,7 +183,7 @@ export async function deleteUser(userId: string): Promise<void> {
  * @throws Error if the HTTP response is not OK.
  */
 export async function activateUser(userId: string): Promise<void> {
-  const res = await fetch(`${BASE}/users/${userId}/activate`, { method: "PUT" })
+  const res = await authFetch(`${BASE}/users/${userId}/activate`, { method: "PUT" })
   if (!res.ok) throw new Error(`Failed to activate user: ${res.status}`)
 }
 
@@ -196,7 +197,7 @@ export async function activateUser(userId: string): Promise<void> {
  * @throws Error if the HTTP response is not OK.
  */
 export async function deactivateUser(userId: string): Promise<void> {
-  const res = await fetch(`${BASE}/users/${userId}/deactivate`, { method: "PUT" })
+  const res = await authFetch(`${BASE}/users/${userId}/deactivate`, { method: "PUT" })
   if (!res.ok) throw new Error(`Failed to deactivate user: ${res.status}`)
 }
 
@@ -215,7 +216,7 @@ export async function modifyUser(
   userId: string,
   payload: { first_name?: string; last_name?: string; email?: string; phone_number?: string },
 ): Promise<User> {
-  const res = await fetch(`${BASE}/users/${userId}`, {
+  const res = await authFetch(`${BASE}/users/${userId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

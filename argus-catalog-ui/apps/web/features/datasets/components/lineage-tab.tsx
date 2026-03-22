@@ -21,6 +21,7 @@ import { Badge } from "@workspace/ui/components/badge"
 import { Separator } from "@workspace/ui/components/separator"
 import { Database, ArrowRight, X, Link2 } from "lucide-react"
 import Link from "next/link"
+import { authFetch } from "@/features/auth/auth-fetch" // Added for SSO AUTH
 
 const BASE = "/api/v1/catalog"
 
@@ -425,7 +426,7 @@ export function LineageTab({
     async function load() {
       try {
         setLoading(true)
-        const resp = await fetch(`${BASE}/datasets/${datasetId}/lineage`)
+        const resp = await authFetch(`${BASE}/datasets/${datasetId}/lineage`)
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
         const data = await resp.json()
         setLineageData(data)

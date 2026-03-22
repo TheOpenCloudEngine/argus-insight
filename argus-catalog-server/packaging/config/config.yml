@@ -21,6 +21,17 @@ data:
 cors:
   origins: ${cors.origins:*}
 
+# Added for SSO AUTH - Keycloak OIDC settings
+auth:
+  type: ${auth.type:keycloak}
+  keycloak:
+    server_url: ${auth.keycloak.server_url:http://localhost:8180}
+    realm: ${auth.keycloak.realm:argus-catalog}
+    client_id: ${auth.keycloak.client_id:argus-catalog-server}
+    client_secret: ${auth.keycloak.client_secret:argus-catalog-server-secret}
+    admin_role: ${auth.keycloak.admin_role:catalog-admin}
+    user_role: ${auth.keycloak.user_role:catalog-user}
+
 database:
   type: ${db.type:postgresql}
   host: ${db.host:localhost}

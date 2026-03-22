@@ -4,11 +4,12 @@ import type {
   FilesystemFolder,
   ListDirectoryResponse,
 } from "@/components/local-filesystem-browser"
+import { authFetch } from "@/features/auth/auth-fetch" // Added for SSO AUTH
 
 const API_BASE = "/api/v1/filesystem"
 
 async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init)
+  const res = await authFetch(url, init)
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(body.detail || `API error ${res.status}`)

@@ -2,6 +2,8 @@
  * Comment API client.
  */
 
+import { authFetch } from "@/features/auth/auth-fetch" // Added for SSO AUTH
+
 const BASE = "/api/v1/comments"
 
 export type CommentData = {
@@ -43,7 +45,7 @@ export async function fetchComments(
     page: String(page),
     page_size: String(pageSize),
   })
-  const res = await fetch(`${BASE}?${params}`)
+  const res = await authFetch(`${BASE}?${params}`)
   if (!res.ok) throw new Error(`Failed to fetch comments: ${res.status}`)
   return res.json()
 }
@@ -57,7 +59,7 @@ export async function createComment(payload: {
   category: string
   author_name: string
 }): Promise<CommentData> {
-  const res = await fetch(BASE, {
+  const res = await authFetch(BASE, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -73,7 +75,7 @@ export async function updateComment(
   commentId: number,
   payload: { content: string; content_plain?: string; category?: string },
 ): Promise<CommentData> {
-  const res = await fetch(`${BASE}/${commentId}`, {
+  const res = await authFetch(`${BASE}/${commentId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -83,7 +85,7 @@ export async function updateComment(
 }
 
 export async function deleteComment(commentId: number): Promise<void> {
-  const res = await fetch(`${BASE}/${commentId}`, { method: "DELETE" })
+  const res = await authFetch(`${BASE}/${commentId}`, { method: "DELETE" })
   if (!res.ok) throw new Error(`Failed to delete comment: ${res.status}`)
 }
 
@@ -92,7 +94,7 @@ export async function fetchCommentCount(
   entityId: string,
 ): Promise<number> {
   const params = new URLSearchParams({ entity_type: entityType, entity_id: entityId })
-  const res = await fetch(`${BASE}/count?${params}`)
+  const res = await authFetch(`${BASE}/count?${params}`)
   if (!res.ok) return 0
   const data = await res.json()
   return data.count ?? 0

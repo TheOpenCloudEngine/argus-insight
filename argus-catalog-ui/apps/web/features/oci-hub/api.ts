@@ -2,6 +2,8 @@
  * OCI Model Hub API client.
  */
 
+import { authFetch } from "@/features/auth/auth-fetch" // Added for SSO AUTH
+
 const BASE = "/api/v1/oci-models"
 
 export type OciModelSummary = {
@@ -78,13 +80,13 @@ export async function fetchOciModels(params?: {
   if (params?.status) q.set("status", params.status)
   q.set("page", String(params?.page ?? 1))
   q.set("page_size", String(params?.pageSize ?? 12))
-  const res = await fetch(`${BASE}?${q}`)
+  const res = await authFetch(`${BASE}?${q}`)
   if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`)
   return res.json()
 }
 
 export async function fetchOciModel(name: string): Promise<OciModelDetail> {
-  const res = await fetch(`${BASE}/${encodeURIComponent(name)}`)
+  const res = await authFetch(`${BASE}/${encodeURIComponent(name)}`)
   if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`)
   return res.json()
 }
@@ -98,7 +100,7 @@ export async function createOciModel(payload: {
   language?: string
   owner?: string
 }): Promise<OciModelDetail> {
-  const res = await fetch(BASE, {
+  const res = await authFetch(BASE, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -114,7 +116,7 @@ export async function updateOciModel(
   name: string,
   payload: Record<string, string | null>,
 ): Promise<OciModelDetail> {
-  const res = await fetch(`${BASE}/${encodeURIComponent(name)}`, {
+  const res = await authFetch(`${BASE}/${encodeURIComponent(name)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -124,12 +126,12 @@ export async function updateOciModel(
 }
 
 export async function deleteOciModel(name: string): Promise<void> {
-  const res = await fetch(`${BASE}/${encodeURIComponent(name)}`, { method: "DELETE" })
+  const res = await authFetch(`${BASE}/${encodeURIComponent(name)}`, { method: "DELETE" })
   if (!res.ok) throw new Error(`Failed: ${res.status}`)
 }
 
 export async function updateReadme(name: string, readme: string): Promise<void> {
-  const res = await fetch(`${BASE}/${encodeURIComponent(name)}/readme`, {
+  const res = await authFetch(`${BASE}/${encodeURIComponent(name)}/readme`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ readme }),
@@ -138,17 +140,17 @@ export async function updateReadme(name: string, readme: string): Promise<void> 
 }
 
 export async function addTag(name: string, tagId: number): Promise<void> {
-  const res = await fetch(`${BASE}/${encodeURIComponent(name)}/tags/${tagId}`, { method: "POST" })
+  const res = await authFetch(`${BASE}/${encodeURIComponent(name)}/tags/${tagId}`, { method: "POST" })
   if (!res.ok) throw new Error(`Failed: ${res.status}`)
 }
 
 export async function removeTag(name: string, tagId: number): Promise<void> {
-  const res = await fetch(`${BASE}/${encodeURIComponent(name)}/tags/${tagId}`, { method: "DELETE" })
+  const res = await authFetch(`${BASE}/${encodeURIComponent(name)}/tags/${tagId}`, { method: "DELETE" })
   if (!res.ok) throw new Error(`Failed: ${res.status}`)
 }
 
 export async function fetchVersions(name: string): Promise<OciModelVersion[]> {
-  const res = await fetch(`${BASE}/${encodeURIComponent(name)}/versions`)
+  const res = await authFetch(`${BASE}/${encodeURIComponent(name)}/versions`)
   if (!res.ok) throw new Error(`Failed: ${res.status}`)
   return res.json()
 }
@@ -160,7 +162,7 @@ export async function addLineage(name: string, payload: {
   relation_type: string
   description?: string
 }): Promise<void> {
-  const res = await fetch(`${BASE}/${encodeURIComponent(name)}/lineage`, {
+  const res = await authFetch(`${BASE}/${encodeURIComponent(name)}/lineage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -169,7 +171,7 @@ export async function addLineage(name: string, payload: {
 }
 
 export async function removeLineage(name: string, lineageId: number): Promise<void> {
-  const res = await fetch(`${BASE}/${encodeURIComponent(name)}/lineage/${lineageId}`, { method: "DELETE" })
+  const res = await authFetch(`${BASE}/${encodeURIComponent(name)}/lineage/${lineageId}`, { method: "DELETE" })
   if (!res.ok) throw new Error(`Failed: ${res.status}`)
 }
 
@@ -183,7 +185,7 @@ export async function importFromHuggingFace(payload: {
   language?: string
   revision?: string
 }): Promise<{ name: string; version: number; file_count: number; total_size: number }> {
-  const res = await fetch(`${BASE}/import/huggingface`, {
+  const res = await authFetch(`${BASE}/import/huggingface`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -219,7 +221,7 @@ export type OciHubStats = {
 }
 
 export async function fetchOciHubStats(): Promise<OciHubStats> {
-  const res = await fetch(`${BASE}/stats`)
+  const res = await authFetch(`${BASE}/stats`)
   if (!res.ok) throw new Error(`Failed to fetch stats: ${res.status}`)
   return res.json()
 }

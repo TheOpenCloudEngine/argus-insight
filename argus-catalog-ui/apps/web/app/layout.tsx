@@ -2,6 +2,7 @@ import "@workspace/ui/globals.css"
 import localFont from "next/font/local"
 import { Toaster } from "sonner"
 import { ThemeProvider } from "@/components/theme-provider"
+import { AuthProviderWrapper } from "@/components/auth-provider-wrapper" // Added for SSO AUTH
 
 const robotoCondensed = localFont({
   src: "./fonts/RobotoCondensed-Variable.ttf",
@@ -31,7 +32,10 @@ export default function RootLayout({
     >
       <body className="font-[family-name:var(--font-roboto-condensed)]">
         <ThemeProvider>
-          {children}
+          {/* Added for SSO AUTH - wraps entire app with authentication context */}
+          <AuthProviderWrapper>
+            {children}
+          </AuthProviderWrapper>
           <Toaster richColors position="top-center" />
         </ThemeProvider>
       </body>

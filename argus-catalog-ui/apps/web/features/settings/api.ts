@@ -1,3 +1,5 @@
+import { authFetch } from "@/features/auth/auth-fetch" // Added for SSO AUTH
+
 const BASE = "/api/v1/settings"
 
 export type ObjectStorageConfig = {
@@ -11,7 +13,7 @@ export type ObjectStorageConfig = {
 }
 
 export async function fetchObjectStorageConfig(): Promise<ObjectStorageConfig> {
-  const res = await fetch(`${BASE}/object-storage`)
+  const res = await authFetch(`${BASE}/object-storage`)
   if (!res.ok) throw new Error(`Failed to fetch config: ${res.status}`)
   return res.json()
 }
@@ -19,7 +21,7 @@ export async function fetchObjectStorageConfig(): Promise<ObjectStorageConfig> {
 export async function updateObjectStorageConfig(
   config: ObjectStorageConfig,
 ): Promise<void> {
-  const res = await fetch(`${BASE}/object-storage`, {
+  const res = await authFetch(`${BASE}/object-storage`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(config),
@@ -34,7 +36,7 @@ export async function testObjectStorage(
   region: string,
   bucket: string,
 ): Promise<{ success: boolean; message: string }> {
-  const res = await fetch(`${BASE}/object-storage/test`, {
+  const res = await authFetch(`${BASE}/object-storage/test`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

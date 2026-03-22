@@ -71,6 +71,15 @@ class Settings:
         self.db_pool_recycle: int = int(_get_nested("database", "pool", "recycle", 3600))
         self.db_echo: bool = _to_bool(_get("database", "echo", False))
 
+        # Added for SSO AUTH - Keycloak OIDC configuration
+        self.auth_type: str = _get("auth", "type", "keycloak")
+        self.auth_keycloak_server_url: str = _get_nested("auth", "keycloak", "server_url", "http://localhost:8180")
+        self.auth_keycloak_realm: str = _get_nested("auth", "keycloak", "realm", "argus-catalog")
+        self.auth_keycloak_client_id: str = _get_nested("auth", "keycloak", "client_id", "argus-catalog-server")
+        self.auth_keycloak_client_secret: str = _get_nested("auth", "keycloak", "client_secret", "argus-catalog-server-secret")
+        self.auth_keycloak_admin_role: str = _get_nested("auth", "keycloak", "admin_role", "catalog-admin")
+        self.auth_keycloak_user_role: str = _get_nested("auth", "keycloak", "user_role", "catalog-user")
+
         # Object Storage (MinIO / S3) — defaults, overwritten from DB at startup
         self.os_endpoint: str = "http://localhost:9000"
         self.os_access_key: str = "minioadmin"
