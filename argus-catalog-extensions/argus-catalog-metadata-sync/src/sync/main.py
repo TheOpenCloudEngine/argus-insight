@@ -60,6 +60,10 @@ def run_batch(platform: str | None = None) -> int:
             platforms_to_sync.append("oracle")
         if settings.mssql_enabled:
             platforms_to_sync.append("mssql")
+        if settings.trino_sync_enabled:
+            platforms_to_sync.append("trino")
+        if settings.starrocks_sync_enabled:
+            platforms_to_sync.append("starrocks")
 
     if not platforms_to_sync:
         logging.warning("No platforms enabled for sync")
@@ -121,12 +125,14 @@ def run_batch(platform: str | None = None) -> int:
                     exit_code = 1
             finally:
                 sync.disconnect()
-        elif p in ("mysql", "postgresql", "oracle", "mssql"):
+        elif p in ("mysql", "postgresql", "oracle", "mssql", "trino", "starrocks"):
             sync_classes = {
                 "mysql": ("sync.platforms.mysql.sync", "MysqlMetadataSync"),
                 "postgresql": ("sync.platforms.postgresql.sync", "PostgresqlMetadataSync"),
                 "oracle": ("sync.platforms.oracle.sync", "OracleMetadataSync"),
                 "mssql": ("sync.platforms.mssql.sync", "MssqlMetadataSync"),
+                "trino": ("sync.platforms.trino.sync", "TrinoMetadataSync"),
+                "starrocks": ("sync.platforms.starrocks.sync", "StarrocksMetadataSync"),
             }
             module_path, class_name = sync_classes[p]
             import importlib

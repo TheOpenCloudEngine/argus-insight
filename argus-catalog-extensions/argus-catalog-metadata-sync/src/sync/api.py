@@ -103,6 +103,28 @@ def _init_platforms() -> None:
             enabled=settings.mssql_schedule_enabled,
         )
 
+    # Trino (metadata sync)
+    if settings.trino_sync_enabled:
+        from sync.platforms.trino.sync import TrinoMetadataSync
+
+        trino_sync = TrinoMetadataSync(client, settings)
+        _scheduler.register(
+            trino_sync,
+            interval_minutes=settings.trino_schedule_interval_minutes,
+            enabled=settings.trino_schedule_enabled,
+        )
+
+    # StarRocks (metadata sync)
+    if settings.starrocks_sync_enabled:
+        from sync.platforms.starrocks.sync import StarrocksMetadataSync
+
+        sr_sync = StarrocksMetadataSync(client, settings)
+        _scheduler.register(
+            sr_sync,
+            interval_minutes=settings.starrocks_schedule_interval_minutes,
+            enabled=settings.starrocks_schedule_enabled,
+        )
+
     # Impala (query collection via Cloudera Manager API)
     if settings.impala_enabled:
         from sync.platforms.impala.collector import ImpalaQueryCollector
@@ -282,6 +304,18 @@ async def get_schedule(platform: str):
             "platform": platform,
             "interval_minutes": settings.mssql_schedule_interval_minutes,
             "enabled": settings.mssql_schedule_enabled,
+        }
+    elif platform == "trino":
+        return {
+            "platform": platform,
+            "interval_minutes": settings.trino_schedule_interval_minutes,
+            "enabled": settings.trino_schedule_enabled,
+        }
+    elif platform == "starrocks":
+        return {
+            "platform": platform,
+            "interval_minutes": settings.starrocks_schedule_interval_minutes,
+            "enabled": settings.starrocks_schedule_enabled,
         }
     raise HTTPException(status_code=404, detail=f"Platform '{platform}' not found")
 

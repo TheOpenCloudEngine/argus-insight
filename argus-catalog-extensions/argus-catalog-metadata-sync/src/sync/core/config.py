@@ -246,6 +246,49 @@ class Settings:
         )
         self.mssql_schedule_enabled: bool = _to_bool(ms_sched.get("enabled", True))
 
+        # Trino Platform (metadata sync)
+        tr_raw = _raw.get("platforms", {}).get("trino", {})
+        self.trino_sync_enabled: bool = _to_bool(tr_raw.get("enabled", False))
+        self.trino_host: str = tr_raw.get("host", "localhost")
+        self.trino_port: int = int(tr_raw.get("port", 8080))
+        self.trino_username: str = tr_raw.get("username", "trino")
+        self.trino_password: str = tr_raw.get("password", "")
+        self.trino_http_scheme: str = tr_raw.get("http_scheme", "https")
+        self.trino_catalogs: list[str] = tr_raw.get("catalogs", [])
+        self.trino_exclude_catalogs: list[str] = tr_raw.get(
+            "exclude_catalogs", ["system", "jmx"]
+        )
+        self.trino_exclude_schemas: list[str] = tr_raw.get(
+            "exclude_schemas", ["information_schema"]
+        )
+        self.trino_origin: str = tr_raw.get("origin", "PROD")
+        tr_sched = tr_raw.get("schedule", {})
+        self.trino_schedule_interval_minutes: int = int(
+            tr_sched.get("interval_minutes", 60)
+        )
+        self.trino_schedule_enabled: bool = _to_bool(tr_sched.get("enabled", True))
+
+        # StarRocks Platform (metadata sync)
+        sr_raw = _raw.get("platforms", {}).get("starrocks", {})
+        self.starrocks_sync_enabled: bool = _to_bool(sr_raw.get("enabled", False))
+        self.starrocks_host: str = sr_raw.get("host", "localhost")
+        self.starrocks_port: int = int(sr_raw.get("port", 9030))
+        self.starrocks_username: str = sr_raw.get("username", "root")
+        self.starrocks_password: str = sr_raw.get("password", "")
+        self.starrocks_databases: list[str] = sr_raw.get("databases", [])
+        self.starrocks_exclude_databases: list[str] = sr_raw.get(
+            "exclude_databases",
+            ["information_schema", "_statistics_", "starrocks_monitor"],
+        )
+        self.starrocks_origin: str = sr_raw.get("origin", "PROD")
+        sr_sched = sr_raw.get("schedule", {})
+        self.starrocks_schedule_interval_minutes: int = int(
+            sr_sched.get("interval_minutes", 60)
+        )
+        self.starrocks_schedule_enabled: bool = _to_bool(
+            sr_sched.get("enabled", True)
+        )
+
         # Impala Platform (query collection via Cloudera Manager API)
         impala_raw = _raw.get("platforms", {}).get("impala", {})
         self.impala_enabled: bool = _to_bool(impala_raw.get("enabled", False))

@@ -33,6 +33,10 @@ oracle = [
 mssql = [
     "pymssql>=2.2",
 ]
+trino = [
+    "trino>=0.327",
+    "sqlalchemy-trino>=0.6",
+]
 kerberos = [
     "kerberos>=1.3",
 ]
