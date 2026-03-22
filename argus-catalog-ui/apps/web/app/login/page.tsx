@@ -1,7 +1,7 @@
 // Added for SSO AUTH - login page with username/password form.
 "use client"
 
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
@@ -24,10 +24,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
 
   // If already authenticated, redirect
-  if (isAuthenticated) {
-    router.replace("/dashboard")
-    return null
-  }
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.replace("/dashboard")
+    }
+  }, [isAuthenticated, router])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()

@@ -9,7 +9,7 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   return (
-    {/* Added for SSO AUTH - redirects unauthenticated users to /login */}
+    // Added for SSO AUTH - redirects unauthenticated users to /login
     <AuthGuardWrapper>
       <TooltipProvider>
         <SidebarProvider>
