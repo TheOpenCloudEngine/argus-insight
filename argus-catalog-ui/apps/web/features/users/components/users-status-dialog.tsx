@@ -63,10 +63,11 @@ export function UsersStatusDialog({
       const fn = isActivate ? activateUser : deactivateUser
       await Promise.all(selectedUsers.map((u) => fn(u.id)))
       await refreshUsers()
+      onOpenChange(false)
     } catch (err) {
-      console.error(`Failed to ${type} users:`, err)
+      const msg = err instanceof Error ? err.message : `Failed to ${type} users`
+      alert(msg)
     }
-    onOpenChange(false)
   }
 
   return (

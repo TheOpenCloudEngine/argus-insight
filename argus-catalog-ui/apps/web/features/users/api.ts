@@ -201,7 +201,10 @@ export async function activateUser(userId: string): Promise<void> {
  */
 export async function deactivateUser(userId: string): Promise<void> {
   const res = await authFetch(`${BASE}/users/${userId}/deactivate`, { method: "PUT" })
-  if (!res.ok) throw new Error(`Failed to deactivate user: ${res.status}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || `Failed to deactivate user: ${res.status}`)
+  }
 }
 
 /**
