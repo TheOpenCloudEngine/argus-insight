@@ -1096,6 +1096,7 @@ export default function DatasetDetailPage() {
                           <TableHead className="w-[50px] text-center">Unique</TableHead>
                           <TableHead className="w-[50px] text-center">Index</TableHead>
                           <TableHead className="w-[50px] text-center">Partition</TableHead>
+                          <TableHead className="w-[50px] text-center">Distributed</TableHead>
                           <TableHead className="w-[50px] text-center">Nullable</TableHead>
                           <TableHead>Description</TableHead>
                         </TableRow>
@@ -1135,6 +1136,11 @@ export default function DatasetDetailPage() {
                             <TableCell className="text-center">
                               {field.is_partition_key === "true" && (
                                 <Check className="h-4 w-4 text-orange-500 mx-auto" />
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {field.is_distribution_key === "true" && (
+                                <Check className="h-4 w-4 text-blue-500 mx-auto" />
                               )}
                             </TableCell>
                             <TableCell className="text-center">

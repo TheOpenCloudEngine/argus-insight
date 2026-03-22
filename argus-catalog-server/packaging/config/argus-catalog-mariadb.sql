@@ -199,6 +199,7 @@ CREATE TABLE IF NOT EXISTS catalog_dataset_schemas (
     is_unique VARCHAR(5) DEFAULT 'false',
     is_indexed VARCHAR(5) DEFAULT 'false',
     is_partition_key VARCHAR(5) DEFAULT 'false',
+    is_distribution_key VARCHAR(5) DEFAULT 'false',
     ordinal INT NOT NULL DEFAULT 0,
     FOREIGN KEY (dataset_id) REFERENCES catalog_datasets(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

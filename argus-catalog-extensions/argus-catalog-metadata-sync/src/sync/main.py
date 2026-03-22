@@ -50,6 +50,20 @@ def run_batch(platform: str | None = None) -> int:
             platforms_to_sync.append("hive")
         if settings.kudu_enabled:
             platforms_to_sync.append("kudu")
+        if settings.greenplum_enabled:
+            platforms_to_sync.append("greenplum")
+        if settings.mysql_enabled:
+            platforms_to_sync.append("mysql")
+        if settings.postgresql_enabled:
+            platforms_to_sync.append("postgresql")
+        if settings.oracle_enabled:
+            platforms_to_sync.append("oracle")
+        if settings.mssql_enabled:
+            platforms_to_sync.append("mssql")
+        if settings.trino_sync_enabled:
+            platforms_to_sync.append("trino")
+        if settings.starrocks_sync_enabled:
+            platforms_to_sync.append("starrocks")
 
     if not platforms_to_sync:
         logging.warning("No platforms enabled for sync")
@@ -87,6 +101,55 @@ def run_batch(platform: str | None = None) -> int:
                 logging.info(
                     "Kudu sync result: created=%d, updated=%d, failed=%d",
                     result.created, result.updated, result.failed,
+                )
+                if not result.success:
+                    exit_code = 1
+            finally:
+                sync.disconnect()
+        elif p == "greenplum":
+            from sync.platforms.greenplum.sync import GreenplumMetadataSync
+
+            sync = GreenplumMetadataSync(client, settings)
+            logging.info("Starting batch sync for Greenplum")
+            try:
+                if not sync.connect():
+                    logging.error("Failed to connect to Greenplum")
+                    exit_code = 1
+                    continue
+                result = sync.sync()
+                logging.info(
+                    "Greenplum sync result: created=%d, updated=%d, failed=%d",
+                    result.created, result.updated, result.failed,
+                )
+                if not result.success:
+                    exit_code = 1
+            finally:
+                sync.disconnect()
+        elif p in ("mysql", "postgresql", "oracle", "mssql", "trino", "starrocks"):
+            sync_classes = {
+                "mysql": ("sync.platforms.mysql.sync", "MysqlMetadataSync"),
+                "postgresql": ("sync.platforms.postgresql.sync", "PostgresqlMetadataSync"),
+                "oracle": ("sync.platforms.oracle.sync", "OracleMetadataSync"),
+                "mssql": ("sync.platforms.mssql.sync", "MssqlMetadataSync"),
+                "trino": ("sync.platforms.trino.sync", "TrinoMetadataSync"),
+                "starrocks": ("sync.platforms.starrocks.sync", "StarrocksMetadataSync"),
+            }
+            module_path, class_name = sync_classes[p]
+            import importlib
+            mod = importlib.import_module(module_path)
+            sync_cls = getattr(mod, class_name)
+
+            sync = sync_cls(client, settings)
+            logging.info("Starting batch sync for %s", p)
+            try:
+                if not sync.connect():
+                    logging.error("Failed to connect to %s", p)
+                    exit_code = 1
+                    continue
+                result = sync.sync()
+                logging.info(
+                    "%s sync result: created=%d, updated=%d, failed=%d",
+                    p, result.created, result.updated, result.failed,
                 )
                 if not result.success:
                     exit_code = 1

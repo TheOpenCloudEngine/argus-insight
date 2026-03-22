@@ -89,6 +89,7 @@ class DatasetSchema(Base):
     is_unique = Column(String(5), default="false")
     is_indexed = Column(String(5), default="false")
     is_partition_key = Column(String(5), default="false")
+    is_distribution_key = Column(String(5), default="false")
     ordinal = Column(Integer, nullable=False, default=0)
 
 

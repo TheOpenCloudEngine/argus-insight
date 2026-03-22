@@ -136,8 +136,75 @@ class HiveMetastoreSync(BasePlatformSync):
         return [db for db in all_dbs if db not in self.settings.hive_exclude_databases]
 
     def _map_hive_type(self, hive_type: str) -> str:
-        """Map Hive column type to a normalized type name."""
-        return hive_type.upper().split("(")[0].split("<")[0].strip()
+        """Map Hive column type to a normalized type name.
+
+        Preserves complex type structure:
+        - array<string>          → ARRAY<STRING>
+        - map<string,int>        → MAP<STRING,INT>
+        - struct<name:string>    → STRUCT<name:STRING>
+        - decimal(10,2)          → DECIMAL
+        - varchar(100)           → VARCHAR
+        """
+        t = hive_type.strip()
+        lower = t.lower()
+
+        # Complex types: recursively normalize inner types
+        if lower.startswith("array<") and t.endswith(">"):
+            inner = t[6:-1]
+            return f"ARRAY<{self._map_hive_type(inner)}>"
+        if lower.startswith("map<") and t.endswith(">"):
+            inner = t[4:-1]
+            key, value = self._split_top_level(inner, ",")
+            return f"MAP<{self._map_hive_type(key)},{self._map_hive_type(value)}>"
+        if lower.startswith("struct<") and t.endswith(">"):
+            inner = t[7:-1]
+            fields = self._split_top_level_all(inner, ",")
+            mapped = []
+            for field in fields:
+                if ":" in field:
+                    fname, ftype = field.split(":", 1)
+                    mapped.append(f"{fname.strip()}:{self._map_hive_type(ftype)}")
+                else:
+                    mapped.append(self._map_hive_type(field))
+            return f"STRUCT<{','.join(mapped)}>"
+        if lower.startswith("uniontype<") and t.endswith(">"):
+            inner = t[10:-1]
+            parts = self._split_top_level_all(inner, ",")
+            mapped = [self._map_hive_type(p) for p in parts]
+            return f"UNIONTYPE<{','.join(mapped)}>"
+
+        # Simple types: strip precision/parameters
+        return t.upper().split("(")[0].strip()
+
+    @staticmethod
+    def _split_top_level(s: str, sep: str) -> tuple[str, str]:
+        """Split string on first top-level separator (respecting angle brackets)."""
+        depth = 0
+        for i, ch in enumerate(s):
+            if ch == "<":
+                depth += 1
+            elif ch == ">":
+                depth -= 1
+            elif ch == sep and depth == 0:
+                return s[:i].strip(), s[i + 1:].strip()
+        return s.strip(), ""
+
+    @staticmethod
+    def _split_top_level_all(s: str, sep: str) -> list[str]:
+        """Split string on all top-level separators (respecting angle brackets)."""
+        parts = []
+        depth = 0
+        start = 0
+        for i, ch in enumerate(s):
+            if ch == "<":
+                depth += 1
+            elif ch == ">":
+                depth -= 1
+            elif ch == sep and depth == 0:
+                parts.append(s[start:i].strip())
+                start = i + 1
+        parts.append(s[start:].strip())
+        return parts
 
     def _sync_table(self, platform_id: int, db_name: str, table_name: str, result: SyncResult) -> None:
         """Sync a single table to Argus Catalog."""
