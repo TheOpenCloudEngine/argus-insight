@@ -108,6 +108,22 @@ class Settings:
         self.hive_metastore_db_username: str = hive_db.get("username", "hive")
         self.hive_metastore_db_password: str = hive_db.get("password", "hive")
 
+        # Kudu Platform
+        kudu_raw = _raw.get("platforms", {}).get("kudu", {})
+        self.kudu_enabled: bool = _to_bool(kudu_raw.get("enabled", False))
+        self.kudu_master_addresses: str = kudu_raw.get("master_addresses", "localhost:7051")
+        self.kudu_table_filter: str = kudu_raw.get("table_filter", "")
+        self.kudu_default_database: str = kudu_raw.get("default_database", "default")
+        self.kudu_parse_impala_naming: bool = _to_bool(
+            kudu_raw.get("parse_impala_naming", True)
+        )
+        self.kudu_origin: str = kudu_raw.get("origin", "PROD")
+        kudu_sched = kudu_raw.get("schedule", {})
+        self.kudu_schedule_interval_minutes: int = int(
+            kudu_sched.get("interval_minutes", 60)
+        )
+        self.kudu_schedule_enabled: bool = _to_bool(kudu_sched.get("enabled", True))
+
         # Impala Platform (query collection via Cloudera Manager API)
         impala_raw = _raw.get("platforms", {}).get("impala", {})
         self.impala_enabled: bool = _to_bool(impala_raw.get("enabled", False))

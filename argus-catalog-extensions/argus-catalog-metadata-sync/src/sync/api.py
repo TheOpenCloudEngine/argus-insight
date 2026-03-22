@@ -37,6 +37,17 @@ def _init_platforms() -> None:
             enabled=settings.hive_schedule_enabled,
         )
 
+    # Kudu
+    if settings.kudu_enabled:
+        from sync.platforms.kudu.sync import KuduMetadataSync
+
+        kudu_sync = KuduMetadataSync(client, settings)
+        _scheduler.register(
+            kudu_sync,
+            interval_minutes=settings.kudu_schedule_interval_minutes,
+            enabled=settings.kudu_schedule_enabled,
+        )
+
     # Impala (query collection via Cloudera Manager API)
     if settings.impala_enabled:
         from sync.platforms.impala.collector import ImpalaQueryCollector
@@ -181,6 +192,12 @@ async def get_schedule(platform: str):
             "interval_minutes": settings.hive_schedule_interval_minutes,
             "enabled": settings.hive_schedule_enabled,
         }
+    elif platform == "kudu":
+        return {
+            "platform": platform,
+            "interval_minutes": settings.kudu_schedule_interval_minutes,
+            "enabled": settings.kudu_schedule_enabled,
+        }
     raise HTTPException(status_code=404, detail=f"Platform '{platform}' not found")
 
 
@@ -244,6 +261,64 @@ async def test_hive_connection():
         raise HTTPException(status_code=502, detail=str(e))
     finally:
         hive_sync.disconnect()
+
+
+# ---------------------------------------------------------------------------
+# Kudu connection configuration
+# ---------------------------------------------------------------------------
+
+class KuduConnectionUpdate(BaseModel):
+    master_addresses: str = "localhost:7051"
+    table_filter: str = ""
+    default_database: str = "default"
+    parse_impala_naming: bool = True
+    origin: str = "PROD"
+
+
+@app.put("/sync/kudu/connection")
+async def update_kudu_connection(req: KuduConnectionUpdate):
+    """Update the Kudu connection configuration."""
+    settings.kudu_master_addresses = req.master_addresses
+    settings.kudu_table_filter = req.table_filter
+    settings.kudu_default_database = req.default_database
+    settings.kudu_parse_impala_naming = req.parse_impala_naming
+    settings.kudu_origin = req.origin
+
+    # Re-register with new config
+    from sync.platforms.kudu.sync import KuduMetadataSync
+
+    client = CatalogClient(settings)
+    kudu_sync = KuduMetadataSync(client, settings)
+    _scheduler.register(
+        kudu_sync,
+        interval_minutes=settings.kudu_schedule_interval_minutes,
+        enabled=settings.kudu_schedule_enabled,
+    )
+
+    return {"status": "ok", "message": "Kudu connection updated"}
+
+
+@app.post("/sync/kudu/test")
+async def test_kudu_connection():
+    """Test connection to Kudu master(s)."""
+    from sync.platforms.kudu.sync import KuduMetadataSync
+
+    client = CatalogClient(settings)
+    kudu_sync = KuduMetadataSync(client, settings)
+    try:
+        connected = kudu_sync.connect()
+        if connected:
+            tables = kudu_sync.discover()
+            return {
+                "status": "ok",
+                "message": "Connection successful",
+                "tables_count": len(tables),
+            }
+        return {"status": "error", "message": "Failed to connect"}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    finally:
+        kudu_sync.disconnect()
 
 
 # ---------------------------------------------------------------------------

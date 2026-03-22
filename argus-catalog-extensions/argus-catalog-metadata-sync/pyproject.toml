@@ -21,6 +21,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+kudu = [
+    "kudu-python>=1.17.0",
+]
 kerberos = [
     "kerberos>=1.3",
 ]
