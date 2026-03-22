@@ -1,4 +1,5 @@
 import {
+  Bell,
   BookOpen,
   Box,
   Database,
@@ -14,6 +15,7 @@ import {
 import type { LucideIcon } from "lucide-react"
 
 const iconMap: Record<string, LucideIcon> = {
+  Bell,
   BookOpen,
   Box,
   Database,

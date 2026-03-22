@@ -71,6 +71,12 @@
           "title": "Tags",
           "url": "/dashboard/tags",
           "icon": "Tags"
+        },
+        {
+          "id": "alerts",
+          "title": "Alerts",
+          "url": "/dashboard/alerts",
+          "icon": "Bell"
         }
       ]
     },

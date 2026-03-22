@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
+from app.alert.router import router as alert_router
 from app.catalog.router import router as catalog_router
 from app.comments.router import router as comments_router
 from app.filesystemmgr.router import router as filesystem_router
@@ -156,6 +157,7 @@ app.include_router(uc_compat_router)  # /api/2.0/mlflow/unity-catalog (no extra 
 app.include_router(search_router, prefix="/api/v1")
 app.include_router(settings_router, prefix="/api/v1")
 app.include_router(usermgr_router, prefix="/api/v1")
+app.include_router(alert_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")  # Added for SSO AUTH
 
 

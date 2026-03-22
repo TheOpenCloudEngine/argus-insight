@@ -1,15 +1,37 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useState } from "react"
-import { Brain, Search } from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
+import { Bell, Brain, Search } from "lucide-react"
 
+import { Badge } from "@workspace/ui/components/badge"
+import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@workspace/ui/components/popover"
 import { Separator } from "@workspace/ui/components/separator"
 import { SidebarTrigger } from "@workspace/ui/components/sidebar"
 import {
   Tooltip, TooltipContent, TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
+import { authFetch } from "@/features/auth/auth-fetch"
+
+type AlertSummary = {
+  total_open: number
+  breaking_count: number
+  warning_count: number
+  info_count: number
+}
+
+type AlertItem = {
+  id: number
+  severity: string
+  change_summary: string
+  source_dataset_name: string | null
+  source_platform_type: string | null
+  affected_dataset_name: string | null
+  affected_platform_type: string | null
+  created_at: string
+}
 
 interface DashboardHeaderProps {
   title: string
@@ -18,12 +40,40 @@ interface DashboardHeaderProps {
 export function DashboardHeader({ title }: DashboardHeaderProps) {
   const router = useRouter()
   const [query, setQuery] = useState("")
+  const [summary, setSummary] = useState<AlertSummary | null>(null)
+  const [recentAlerts, setRecentAlerts] = useState<AlertItem[]>([])
+  const [popoverOpen, setPopoverOpen] = useState(false)
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && query.trim()) {
       router.push(`/dashboard/search?q=${encodeURIComponent(query.trim())}`)
     }
   }
+
+  // Fetch alert summary periodically
+  const fetchSummary = useCallback(async () => {
+    try {
+      const resp = await authFetch("/api/v1/alerts/summary")
+      if (resp.ok) setSummary(await resp.json())
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => {
+    fetchSummary()
+    const interval = setInterval(fetchSummary, 30000) // every 30s
+    return () => clearInterval(interval)
+  }, [fetchSummary])
+
+  // Fetch recent alerts when popover opens
+  useEffect(() => {
+    if (!popoverOpen) return
+    authFetch("/api/v1/alerts?status=OPEN&page_size=5")
+      .then(r => r.json())
+      .then(data => setRecentAlerts(data.items || []))
+      .catch(() => {})
+  }, [popoverOpen])
+
+  const totalOpen = summary?.total_open ?? 0
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
@@ -33,6 +83,95 @@ export function DashboardHeader({ title }: DashboardHeaderProps) {
         <h1 className="text-xl font-semibold leading-none">{title}</h1>
       </div>
       <div className="flex items-center gap-2 ml-auto">
+        {/* Notification Bell */}
+        <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="icon" className="relative h-9 w-9">
+              <Bell className="h-4 w-4" />
+              {totalOpen > 0 && (
+                <span className={`absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white ${
+                  (summary?.breaking_count ?? 0) > 0
+                    ? "bg-red-500"
+                    : "bg-amber-500"
+                }`}>
+                  {totalOpen > 99 ? "99+" : totalOpen}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-96 p-0" align="end">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <span className="text-sm font-medium">Alerts</span>
+              <div className="flex items-center gap-1.5">
+                {(summary?.breaking_count ?? 0) > 0 && (
+                  <Badge className="bg-red-500 text-white text-[10px] px-1.5 py-0 border-0">
+                    {summary!.breaking_count} Breaking
+                  </Badge>
+                )}
+                {(summary?.warning_count ?? 0) > 0 && (
+                  <Badge className="bg-amber-500 text-white text-[10px] px-1.5 py-0 border-0">
+                    {summary!.warning_count} Warning
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            <div className="max-h-80 overflow-y-auto">
+              {recentAlerts.length === 0 ? (
+                <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  No open alerts
+                </div>
+              ) : (
+                recentAlerts.map(alert => (
+                  <button
+                    key={alert.id}
+                    type="button"
+                    onClick={() => {
+                      setPopoverOpen(false)
+                      router.push("/dashboard/alerts")
+                    }}
+                    className="w-full text-left px-4 py-3 border-b last:border-b-0 hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="flex items-start gap-2">
+                      <SeverityDot severity={alert.severity} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">
+                          {alert.change_summary}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {alert.source_platform_type && `${alert.source_platform_type}`}
+                          {alert.source_dataset_name && `.${alert.source_dataset_name}`}
+                          {alert.affected_dataset_name && ` → ${alert.affected_platform_type}.${alert.affected_dataset_name}`}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {formatTimeAgo(alert.created_at)}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+
+            {totalOpen > 0 && (
+              <div className="border-t px-4 py-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs"
+                  onClick={() => {
+                    setPopoverOpen(false)
+                    router.push("/dashboard/alerts")
+                  }}
+                >
+                  View all alerts
+                </Button>
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
+
+        {/* Search */}
         <div className="relative hidden md:block">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
@@ -55,4 +194,29 @@ export function DashboardHeader({ title }: DashboardHeaderProps) {
       </div>
     </header>
   )
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function SeverityDot({ severity }: { severity: string }) {
+  const color = severity === "BREAKING"
+    ? "bg-red-500"
+    : severity === "WARNING"
+      ? "bg-amber-500"
+      : "bg-blue-400"
+
+  return <span className={`mt-1.5 flex-shrink-0 w-2 h-2 rounded-full ${color}`} />
+}
+
+function formatTimeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return "just now"
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
 }

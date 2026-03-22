@@ -722,3 +722,68 @@ CREATE INDEX IF NOT EXISTS idx_dataset_embeddings_ivfflat
     ON catalog_dataset_embeddings
     USING ivfflat (embedding vector_cosine_ops)
     WITH (lists = 100);
+
+-- ---------------------------------------------------------------------------
+-- Alert - Subscription (who wants to be notified about what)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_alert_subscription (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(200) NOT NULL,
+    scope_type VARCHAR(32) NOT NULL,
+    scope_id INTEGER,
+    channels VARCHAR(200) NOT NULL DEFAULT 'IN_APP',
+    severity_filter VARCHAR(16) NOT NULL DEFAULT 'WARNING',
+    is_active VARCHAR(5) NOT NULL DEFAULT 'true',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_alert_sub_user
+    ON argus_alert_subscription (user_id);
+
+CREATE INDEX IF NOT EXISTS idx_alert_sub_scope
+    ON argus_alert_subscription (scope_type, scope_id);
+
+-- ---------------------------------------------------------------------------
+-- Alert - Lineage Alert (schema change impact events)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_lineage_alert (
+    id SERIAL PRIMARY KEY,
+    alert_type VARCHAR(32) NOT NULL,
+    severity VARCHAR(16) NOT NULL,
+    source_dataset_id INTEGER NOT NULL REFERENCES catalog_datasets(id) ON DELETE CASCADE,
+    affected_dataset_id INTEGER REFERENCES catalog_datasets(id) ON DELETE CASCADE,
+    lineage_id INTEGER REFERENCES argus_dataset_lineage(id) ON DELETE SET NULL,
+    change_summary VARCHAR(500) NOT NULL,
+    change_detail TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+    resolved_by VARCHAR(200),
+    resolved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_lineage_alert_source
+    ON argus_lineage_alert (source_dataset_id);
+
+CREATE INDEX IF NOT EXISTS idx_lineage_alert_affected
+    ON argus_lineage_alert (affected_dataset_id);
+
+CREATE INDEX IF NOT EXISTS idx_lineage_alert_status
+    ON argus_lineage_alert (status);
+
+-- ---------------------------------------------------------------------------
+-- Alert - Notification Log (delivery records)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_alert_notification (
+    id SERIAL PRIMARY KEY,
+    alert_id INTEGER NOT NULL REFERENCES argus_lineage_alert(id) ON DELETE CASCADE,
+    channel VARCHAR(32) NOT NULL,
+    recipient VARCHAR(200) NOT NULL,
+    sent_at TIMESTAMPTZ DEFAULT NOW(),
+    status VARCHAR(20) NOT NULL DEFAULT 'SENT'
+);
+
+CREATE INDEX IF NOT EXISTS idx_alert_notification_alert
+    ON argus_alert_notification (alert_id);

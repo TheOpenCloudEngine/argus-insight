@@ -677,3 +677,60 @@ CREATE TABLE IF NOT EXISTS catalog_oci_model_download_log (
     INDEX idx_oci_model_download_log_name_at (model_name, downloaded_at),
     INDEX idx_oci_model_download_log_at (downloaded_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Alert - Subscription (who wants to be notified about what)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_alert_subscription (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(200) NOT NULL,
+    scope_type VARCHAR(32) NOT NULL,
+    scope_id INT,
+    channels VARCHAR(200) NOT NULL DEFAULT 'IN_APP',
+    severity_filter VARCHAR(16) NOT NULL DEFAULT 'WARNING',
+    is_active VARCHAR(5) NOT NULL DEFAULT 'true',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_alert_sub_user (user_id),
+    INDEX idx_alert_sub_scope (scope_type, scope_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Alert - Lineage Alert (schema change impact events)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_lineage_alert (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    alert_type VARCHAR(32) NOT NULL,
+    severity VARCHAR(16) NOT NULL,
+    source_dataset_id INT NOT NULL,
+    affected_dataset_id INT,
+    lineage_id INT,
+    change_summary VARCHAR(500) NOT NULL,
+    change_detail TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+    resolved_by VARCHAR(200),
+    resolved_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_lineage_alert_source (source_dataset_id),
+    INDEX idx_lineage_alert_affected (affected_dataset_id),
+    INDEX idx_lineage_alert_status (status),
+    FOREIGN KEY (source_dataset_id) REFERENCES catalog_datasets(id) ON DELETE CASCADE,
+    FOREIGN KEY (affected_dataset_id) REFERENCES catalog_datasets(id) ON DELETE CASCADE,
+    FOREIGN KEY (lineage_id) REFERENCES argus_dataset_lineage(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Alert - Notification Log (delivery records)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_alert_notification (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    alert_id INT NOT NULL,
+    channel VARCHAR(32) NOT NULL,
+    recipient VARCHAR(200) NOT NULL,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(20) NOT NULL DEFAULT 'SENT',
+    INDEX idx_alert_notification_alert (alert_id),
+    FOREIGN KEY (alert_id) REFERENCES argus_lineage_alert(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
