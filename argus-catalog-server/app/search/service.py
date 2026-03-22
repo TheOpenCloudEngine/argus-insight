@@ -38,14 +38,15 @@ async def semantic_search(
 
     # pgvector cosine distance operator: <=>
     # similarity = 1 - cosine_distance
+    # Note: use CAST() instead of ::vector to avoid SQLAlchemy text() parameter conflict with ::
     result = await session.execute(text("""
         SELECT e.dataset_id,
-               1 - (e.embedding <=> :query_vec::vector) AS similarity
+               1 - (e.embedding <=> CAST(:query_vec AS vector)) AS similarity
         FROM catalog_dataset_embeddings e
         JOIN catalog_datasets d ON d.id = e.dataset_id
         WHERE d.status != 'removed'
-          AND 1 - (e.embedding <=> :query_vec::vector) >= :threshold
-        ORDER BY e.embedding <=> :query_vec::vector
+          AND 1 - (e.embedding <=> CAST(:query_vec AS vector)) >= :threshold
+        ORDER BY e.embedding <=> CAST(:query_vec AS vector)
         LIMIT :lim
     """), {
         "query_vec": str(query_vec),

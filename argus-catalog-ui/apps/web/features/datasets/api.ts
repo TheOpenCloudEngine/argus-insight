@@ -325,3 +325,44 @@ export async function fetchDelimiterConfig(
 ): Promise<Response> {
   return authFetch(`${BASE}/datasets/${datasetId}/sample/delimiter`)
 }
+
+
+// ---------------------------------------------------------------------------
+// Semantic Search
+// ---------------------------------------------------------------------------
+
+export type SemanticSearchResult = {
+  dataset: DatasetSummary
+  score: number
+  match_type: string
+}
+
+export type SemanticSearchResponse = {
+  items: SemanticSearchResult[]
+  total: number
+  query: string
+  provider: string | null
+  model: string | null
+}
+
+export async function semanticSearch(
+  q: string, limit: number = 20, threshold: number = 0.3,
+): Promise<SemanticSearchResponse> {
+  const params = new URLSearchParams({ q, limit: String(limit), threshold: String(threshold) })
+  const res = await authFetch(`${BASE}/search/semantic?${params}`)
+  if (!res.ok) throw new Error(`Semantic search failed: ${res.status}`)
+  return res.json()
+}
+
+export async function hybridSearch(
+  q: string, limit: number = 20,
+  keywordWeight: number = 0.3, semanticWeight: number = 0.7,
+): Promise<SemanticSearchResponse> {
+  const params = new URLSearchParams({
+    q, limit: String(limit),
+    keyword_weight: String(keywordWeight), semantic_weight: String(semanticWeight),
+  })
+  const res = await authFetch(`${BASE}/search/hybrid?${params}`)
+  if (!res.ok) throw new Error(`Hybrid search failed: ${res.status}`)
+  return res.json()
+}
