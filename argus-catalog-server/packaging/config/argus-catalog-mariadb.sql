@@ -501,3 +501,32 @@ CREATE TABLE IF NOT EXISTS catalog_model_access_log (
     INDEX idx_model_access_log_name_at (model_name, accessed_at),
     INDEX idx_model_access_log_at (accessed_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Comments
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS catalog_comments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    entity_type VARCHAR(50) NOT NULL,
+    entity_id VARCHAR(255) NOT NULL,
+    parent_id INT,
+    root_id INT,
+    depth INT NOT NULL DEFAULT 0,
+    content TEXT NOT NULL,
+    content_plain TEXT,
+    category VARCHAR(20) NOT NULL DEFAULT 'general',
+    author_name VARCHAR(100) NOT NULL,
+    author_email VARCHAR(255),
+    author_avatar VARCHAR(500),
+    reply_count INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    INDEX idx_comments_entity (entity_type, entity_id, is_deleted),
+    INDEX idx_comments_root (root_id),
+    INDEX idx_comments_parent (parent_id),
+    INDEX idx_comments_created (created_at),
+    FOREIGN KEY (parent_id) REFERENCES catalog_comments(id) ON DELETE CASCADE,
+    FOREIGN KEY (root_id) REFERENCES catalog_comments(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

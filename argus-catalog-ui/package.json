@@ -22,6 +22,11 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@tiptap/extension-link": "^3.20.4",
+    "@tiptap/extension-placeholder": "^3.20.4",
+    "@tiptap/pm": "^3.20.4",
+    "@tiptap/react": "^3.20.4",
+    "@tiptap/starter-kit": "^3.20.4",
     "recharts": "^3.8.0"
   }
 }

@@ -15,6 +15,7 @@ import { Button } from "@workspace/ui/components/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@workspace/ui/components/tabs"
 
+import { CommentSection } from "@/components/comments"
 import {
   fetchModelDetail,
   fetchModelVersions,
@@ -462,6 +463,7 @@ export function ModelsDetail({ modelName, onBack }: ModelsDetailProps) {
           <TabsTrigger value="usage" className="text-base">Usage</TabsTrigger>
           <TabsTrigger value="versions" className="text-base">Versions</TabsTrigger>
           <TabsTrigger value="access" className="text-base">Access</TabsTrigger>
+          <TabsTrigger value="comments" className="text-base">Comments</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="mt-4">
           <OverviewTab detail={detail} />
@@ -474,6 +476,9 @@ export function ModelsDetail({ modelName, onBack }: ModelsDetailProps) {
         </TabsContent>
         <TabsContent value="access" className="mt-4">
           <AccessTab modelName={detail.name} />
+        </TabsContent>
+        <TabsContent value="comments" className="mt-4">
+          <CommentSection entityType="model" entityId={detail.name} currentUser="admin" />
         </TabsContent>
       </Tabs>
     </div>

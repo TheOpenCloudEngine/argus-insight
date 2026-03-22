@@ -517,3 +517,35 @@ CREATE INDEX IF NOT EXISTS idx_model_access_log_name_at
 
 CREATE INDEX IF NOT EXISTS idx_model_access_log_at
     ON catalog_model_access_log (accessed_at);
+
+-- ---------------------------------------------------------------------------
+-- Comments
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS catalog_comments (
+    id SERIAL PRIMARY KEY,
+    entity_type VARCHAR(50) NOT NULL,
+    entity_id VARCHAR(255) NOT NULL,
+    parent_id INT REFERENCES catalog_comments(id) ON DELETE CASCADE,
+    root_id INT REFERENCES catalog_comments(id) ON DELETE CASCADE,
+    depth INT NOT NULL DEFAULT 0,
+    content TEXT NOT NULL,
+    content_plain TEXT,
+    category VARCHAR(20) NOT NULL DEFAULT 'general',
+    author_name VARCHAR(100) NOT NULL,
+    author_email VARCHAR(255),
+    author_avatar VARCHAR(500),
+    reply_count INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE INDEX IF NOT EXISTS idx_comments_entity
+    ON catalog_comments (entity_type, entity_id, is_deleted);
+CREATE INDEX IF NOT EXISTS idx_comments_root
+    ON catalog_comments (root_id);
+CREATE INDEX IF NOT EXISTS idx_comments_parent
+    ON catalog_comments (parent_id);
+CREATE INDEX IF NOT EXISTS idx_comments_created
+    ON catalog_comments (created_at DESC);

@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.catalog.router import router as catalog_router
+from app.comments.router import router as comments_router
 from app.filesystemmgr.router import router as filesystem_router
 from app.models.router import router as models_router
 from app.models.store_router import router as model_store_router
@@ -54,6 +55,7 @@ async def lifespan(app: FastAPI):
     await init_database()
 
     import app.catalog.models  # noqa: F401
+    import app.comments.models  # noqa: F401
     import app.models.models  # noqa: F401
     import app.settings.models  # noqa: F401
     import app.usermgr.models  # noqa: F401
@@ -104,6 +106,7 @@ app.add_middleware(
 )
 
 app.include_router(catalog_router, prefix="/api/v1")
+app.include_router(comments_router, prefix="/api/v1")
 app.include_router(filesystem_router, prefix="/api/v1")
 app.include_router(models_router, prefix="/api/v1")
 app.include_router(model_store_router, prefix="/api/v1")

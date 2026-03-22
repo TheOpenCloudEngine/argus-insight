@@ -96,7 +96,8 @@ import { NiFiFlowTab } from "@/features/datasets/components/nifi-flow-tab"
 import { KestraFlowTab } from "@/features/datasets/components/kestra-flow-tab"
 import { AirflowDagTab } from "@/features/datasets/components/airflow-dag-tab"
 import { LineageTab } from "@/features/datasets/components/lineage-tab"
-import { GitBranch } from "lucide-react"
+import { GitBranch, MessageSquare } from "lucide-react"
+import { CommentSection } from "@/components/comments"
 
 // ---------------------------------------------------------------------------
 // Schema field helpers for editing
@@ -974,6 +975,10 @@ export default function DatasetDetailPage() {
               <GitBranch className="h-4 w-4" />
               Lineage
             </TabsTrigger>
+            <TabsTrigger value="comments" className="gap-1.5">
+              <MessageSquare className="h-4 w-4" />
+              Comments
+            </TabsTrigger>
           </TabsList>
 
           {/* =============== Schema tab =============== */}
@@ -1479,6 +1484,15 @@ export default function DatasetDetailPage() {
           {/* =============== Lineage tab =============== */}
           <TabsContent value="lineage" className="mt-4">
             <LineageTab datasetId={datasetId} datasetName={dataset.name} />
+          </TabsContent>
+
+          {/* =============== Comments tab =============== */}
+          <TabsContent value="comments" className="mt-4">
+            <CommentSection
+              entityType="dataset"
+              entityId={String(datasetId)}
+              currentUser="admin"
+            />
           </TabsContent>
         </Tabs>
 
