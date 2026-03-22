@@ -169,7 +169,7 @@ class HiveMetastoreSync(BasePlatformSync):
                 "field_path": pk["name"],
                 "field_type": self._map_hive_type(pk["type"]),
                 "native_type": pk["type"],
-                "description": (pk.get("comment", "") + " [partition key]").strip(),
+                "description": pk.get("comment", ""),\n                "is_partition_key": "true",
                 "nullable": "false",
                 "ordinal": ordinal,
             })

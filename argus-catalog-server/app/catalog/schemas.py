@@ -79,6 +79,7 @@ class SchemaFieldCreate(BaseModel):
     is_primary_key: str = "false"
     is_unique: str = "false"
     is_indexed: str = "false"
+    is_partition_key: str = "false"
     ordinal: int = 0
 
 
@@ -92,6 +93,7 @@ class SchemaFieldResponse(BaseModel):
     is_primary_key: str = "false"
     is_unique: str = "false"
     is_indexed: str = "false"
+    is_partition_key: str = "false"
     ordinal: int
 
     model_config = {"from_attributes": True}

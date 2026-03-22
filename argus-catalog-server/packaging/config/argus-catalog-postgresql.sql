@@ -194,6 +194,7 @@ CREATE TABLE IF NOT EXISTS catalog_dataset_schemas (
     is_primary_key VARCHAR(5) DEFAULT 'false',
     is_unique VARCHAR(5) DEFAULT 'false',
     is_indexed VARCHAR(5) DEFAULT 'false',
+    is_partition_key VARCHAR(5) DEFAULT 'false',
     ordinal INT NOT NULL DEFAULT 0
 );
 

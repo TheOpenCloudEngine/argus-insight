@@ -120,6 +120,7 @@ function newField(ordinal: number): EditableField {
     is_primary_key: "false",
     is_unique: "false",
     is_indexed: "false",
+    is_partition_key: "false",
     ordinal,
   }
 }
@@ -135,6 +136,7 @@ function toEditable(f: SchemaField): EditableField {
     is_primary_key: f.is_primary_key ?? "false",
     is_unique: f.is_unique ?? "false",
     is_indexed: f.is_indexed ?? "false",
+    is_partition_key: f.is_partition_key ?? "false",
     ordinal: f.ordinal,
   }
 }
@@ -631,6 +633,7 @@ export default function DatasetDetailPage() {
       is_primary_key: f.is_primary_key,
       is_unique: f.is_unique,
       is_indexed: f.is_indexed,
+      is_partition_key: f.is_partition_key,
       ordinal: idx,
     }))
     try {
@@ -1092,6 +1095,7 @@ export default function DatasetDetailPage() {
                           <TableHead className="w-[50px] text-center">PK</TableHead>
                           <TableHead className="w-[50px] text-center">Unique</TableHead>
                           <TableHead className="w-[50px] text-center">Index</TableHead>
+                          <TableHead className="w-[50px] text-center">Partition</TableHead>
                           <TableHead className="w-[50px] text-center">Nullable</TableHead>
                           <TableHead>Description</TableHead>
                         </TableRow>
@@ -1126,6 +1130,11 @@ export default function DatasetDetailPage() {
                             <TableCell className="text-center">
                               {field.is_indexed === "true" && (
                                 <Check className="h-4 w-4 text-muted-foreground mx-auto" />
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {field.is_partition_key === "true" && (
+                                <Check className="h-4 w-4 text-orange-500 mx-auto" />
                               )}
                             </TableCell>
                             <TableCell className="text-center">

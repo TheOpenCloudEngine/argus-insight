@@ -30,6 +30,7 @@ export type EditableField = {
   is_primary_key: string
   is_unique: string
   is_indexed: string
+  is_partition_key: string
   ordinal: number
 }
 
@@ -134,6 +135,16 @@ export function SchemaEditGrid({ fields, onChange, dataTypeOptions = [] }: Schem
       cellStyle: { textAlign: "center", color: "#9ca3af" },
     },
     {
+      headerName: "Partition",
+      field: "is_partition_key",
+      width: 75,
+      editable: true,
+      cellEditor: "agSelectCellEditor",
+      cellEditorParams: { values: ["true", "false"] },
+      cellRenderer: (p: { value: string }) => p.value === "true" ? "✓" : "",
+      cellStyle: { textAlign: "center" },
+    },
+    {
       headerName: "Nullable",
       field: "nullable",
       width: 80,
@@ -190,6 +201,7 @@ export function SchemaEditGrid({ fields, onChange, dataTypeOptions = [] }: Schem
       is_primary_key: "false",
       is_unique: "false",
       is_indexed: "false",
+      is_partition_key: "false",
       ordinal: fieldsRef.current.length,
     }])
   }, [onChange])
