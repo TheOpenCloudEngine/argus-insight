@@ -27,6 +27,7 @@ import {
   AlertDialogTitle,
 } from "@workspace/ui/components/alert-dialog"
 import { Button } from "@workspace/ui/components/button"
+import { toast } from "sonner"
 import { activateUser, deactivateUser } from "../api"
 import { type User } from "../data/schema"
 import { useUsers } from "./users-provider"
@@ -63,10 +64,11 @@ export function UsersStatusDialog({
       const fn = isActivate ? activateUser : deactivateUser
       await Promise.all(selectedUsers.map((u) => fn(u.id)))
       await refreshUsers()
+      onOpenChange(false)
     } catch (err) {
-      console.error(`Failed to ${type} users:`, err)
+      const msg = err instanceof Error ? err.message : `Failed to ${type} users`
+      toast.error(msg)
     }
-    onOpenChange(false)
   }
 
   return (

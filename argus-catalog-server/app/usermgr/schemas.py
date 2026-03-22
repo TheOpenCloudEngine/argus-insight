@@ -31,15 +31,15 @@ class UserStatus(str, Enum):
 
 
 class RoleName(str, Enum):
-    """Available role names.
+    """Available role identifiers.
 
-    These values must match the `name` column in the `argus_roles` table.
-    - ADMIN: Administrator with full platform access.
-    - USER:  Standard user with limited permissions.
+    These values must match the `role_id` column in the `argus_roles` table
+    and the Keycloak realm role names.
     """
 
-    ADMIN = "Admin"
-    USER = "User"
+    ADMIN = "argus-admin"
+    SUPERUSER = "argus-superuser"
+    USER = "argus-user"
 
 
 # ---------------------------------------------------------------------------
@@ -47,14 +47,10 @@ class RoleName(str, Enum):
 # ---------------------------------------------------------------------------
 
 class RoleResponse(BaseModel):
-    """Role information returned to the client.
-
-    Used by the GET /roles endpoint to list all available roles.
-    The `from_attributes` config allows direct construction from
-    SQLAlchemy ORM objects (ArgusRole instances).
-    """
+    """Role information returned to the client."""
 
     id: int
+    role_id: str
     name: str
     description: str | None = None
     created_at: datetime

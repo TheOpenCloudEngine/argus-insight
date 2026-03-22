@@ -143,8 +143,11 @@ async def delete_user(user_id: int, session: AsyncSession = Depends(get_session)
     Permanently removes the user account from the database.
     This operation is irreversible. Returns 404 if the user does not exist.
     """
-    if not await service.delete_user(session, user_id):
-        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        if not await service.delete_user(session, user_id):
+            raise HTTPException(status_code=404, detail="User not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return {"status": "ok", "message": "User deleted"}
 
 
@@ -187,7 +190,10 @@ async def deactivate_user(user_id: int, session: AsyncSession = Depends(get_sess
     The account is preserved and can be reactivated later.
     Returns the updated user profile, or 404 if the user does not exist.
     """
-    user = await service.deactivate_user(session, user_id)
+    try:
+        user = await service.deactivate_user(session, user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user

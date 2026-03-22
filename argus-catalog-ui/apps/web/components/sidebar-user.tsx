@@ -1,4 +1,3 @@
-// Added for SSO AUTH - sidebar footer component with user dropdown, profile dialog, and logout.
 "use client"
 
 import { useState } from "react"
@@ -7,6 +6,7 @@ import {
   ChevronUp,
   LogOut,
   Mail,
+  Settings,
   Shield,
   ShieldAlert,
   ShieldCheck,
@@ -31,18 +31,20 @@ import {
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@workspace/ui/components/sidebar"
 import { Separator } from "@workspace/ui/components/separator"
 import { useAuth } from "@/features/auth"
+import { UsersActionDialog } from "@/features/users/components/users-action-dialog"
+import type { User as UserType } from "@/features/users/data/schema"
 
 export function SidebarUser() {
   const { user, logout } = useAuth()
   const router = useRouter()
   const [profileOpen, setProfileOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   if (!user) return null
 
   const displayName =
     `${user.last_name ?? ""}${user.first_name ?? ""}`.trim() || user.username
 
-  // Role icon: admin > superuser > user
   const RoleIcon = user.is_admin
     ? ShieldCheck
     : user.is_superuser
@@ -52,8 +54,22 @@ export function SidebarUser() {
     user.role === "admin"
       ? "Admin"
       : user.role === "superuser"
-        ? "Super User"
+        ? "Superuser"
         : "User"
+
+  // Build a User object for UsersActionDialog (edit mode)
+  const currentUserAsRow: UserType = {
+    id: user.sub,
+    firstName: user.first_name,
+    lastName: user.last_name,
+    username: user.username,
+    email: user.email,
+    phoneNumber: "",
+    status: "active" as const,
+    role: (user.roles?.[0] || user.realm_roles?.find(r => r.startsWith("argus-")) || "argus-user") as "argus-admin" | "argus-superuser" | "argus-user",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
 
   async function handleLogout() {
     await logout()
@@ -93,6 +109,10 @@ export function SidebarUser() {
               <DropdownMenuItem onSelect={() => setProfileOpen(true)}>
                 <User2 className="mr-2 size-4" />
                 Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
+                <Settings className="mr-2 size-4" />
+                Account Settings
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={handleLogout}>
@@ -152,6 +172,15 @@ export function SidebarUser() {
           </dl>
         </DialogContent>
       </Dialog>
+
+      {/* Account Settings — reuse UsersActionDialog in edit mode, without Role */}
+      <UsersActionDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        currentRow={currentUserAsRow}
+        hideRole
+        onSaved={() => window.location.reload()}
+      />
     </>
   )
 }

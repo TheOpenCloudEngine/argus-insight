@@ -72,8 +72,11 @@ async def lifespan(app: FastAPI):
     # Seed default data
     from app.core.database import async_session
     from app.catalog.service import seed_platforms, seed_platform_metadata
-    from app.settings.service import seed_configuration, load_os_settings, load_embedding_settings
-    from app.usermgr.service import seed_roles
+    from app.settings.service import (
+        seed_configuration, load_os_settings, load_embedding_settings,
+        load_auth_settings, load_cors_settings,
+    )
+    from app.usermgr.service import seed_roles, seed_admin_user
 
     async with async_session() as session:
         await seed_platforms(session)
@@ -82,6 +85,9 @@ async def lifespan(app: FastAPI):
         await seed_configuration(session)
         await load_os_settings(session)
         await load_embedding_settings(session)
+        await load_auth_settings(session)
+        await load_cors_settings(session)
+        await seed_admin_user(session)
 
     # Ensure S3 bucket exists
     try:
@@ -105,13 +111,40 @@ app = FastAPI(
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
+
+class DynamicCORSMiddleware:
+    """CORS middleware that reads allowed origins from settings at request time.
+
+    Rebuilds the inner CORSMiddleware only when settings.cors_origins changes.
+    """
+
+    def __init__(self, app):
+        self.app = app
+        self._inner = None
+        self._origins_snapshot = None
+
+    def _get_inner(self):
+        current = tuple(settings.cors_origins)
+        if current != self._origins_snapshot:
+            self._inner = CORSMiddleware(
+                app=self.app,
+                allow_origins=list(current),
+                allow_credentials=True,
+                allow_methods=["*"],
+                allow_headers=["*"],
+            )
+            self._origins_snapshot = current
+        return self._inner
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        await self._get_inner()(scope, receive, send)
+
+
+app.add_middleware(DynamicCORSMiddleware)
 
 app.include_router(catalog_router, prefix="/api/v1")
 app.include_router(comments_router, prefix="/api/v1")

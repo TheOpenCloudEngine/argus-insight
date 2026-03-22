@@ -61,7 +61,7 @@ function mapUser(u: Record<string, unknown>): User {
     firstName: u.first_name,
     lastName: u.last_name,
     phoneNumber: u.phone_number ?? "",
-    role: typeof u.role === "string" ? u.role.toLowerCase() : u.role,
+    role: u.role,
     createdAt: new Date(u.created_at as string),
     updatedAt: new Date(u.updated_at as string),
   } as User
@@ -125,7 +125,7 @@ export async function checkUserExists(params: {
  * Payload for creating a new user.
  *
  * Uses snake_case field names to match the backend's expected request body.
- * The role field uses title-case ("Admin" | "User") to match the backend enum.
+ * The role field uses role_id values (e.g., "argus-admin", "argus-user").
  */
 type CreateUserPayload = {
   username: string
@@ -134,7 +134,7 @@ type CreateUserPayload = {
   last_name: string
   phone_number: string
   password: string
-  role: "Admin" | "User"
+  role: string
 }
 
 /**
@@ -171,7 +171,10 @@ export async function createUser(payload: CreateUserPayload): Promise<User> {
  */
 export async function deleteUser(userId: string): Promise<void> {
   const res = await authFetch(`${BASE}/users/${userId}`, { method: "DELETE" })
-  if (!res.ok) throw new Error(`Failed to delete user: ${res.status}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || `Failed to delete user: ${res.status}`)
+  }
 }
 
 /**
@@ -198,7 +201,10 @@ export async function activateUser(userId: string): Promise<void> {
  */
 export async function deactivateUser(userId: string): Promise<void> {
   const res = await authFetch(`${BASE}/users/${userId}/deactivate`, { method: "PUT" })
-  if (!res.ok) throw new Error(`Failed to deactivate user: ${res.status}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || `Failed to deactivate user: ${res.status}`)
+  }
 }
 
 /**
@@ -222,5 +228,18 @@ export async function modifyUser(
     body: JSON.stringify(payload),
   })
   if (!res.ok) throw new Error(`Failed to modify user: ${res.status}`)
+  return res.json()
+}
+
+export async function changeUserRole(userId: string, role: string): Promise<User> {
+  const res = await authFetch(`${BASE}/users/${userId}/role`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || `Failed to change role: ${res.status}`)
+  }
   return res.json()
 }

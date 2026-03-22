@@ -196,11 +196,17 @@ async def get_embedding_stats(session: AsyncSession) -> dict:
 
     provider = await get_provider()
 
+    # Read dimension from DB config instead of provider.dimension()
+    # to avoid triggering model load on stats query
+    from app.settings.service import get_config_by_category
+    emb_cfg = await get_config_by_category(session, "embedding")
+    dim = int(emb_cfg.get("embedding_dimension", "384")) if emb_cfg else None
+
     return {
         "total_datasets": total_datasets,
         "embedded_datasets": total_embeddings,
         "coverage_pct": round(total_embeddings / total_datasets * 100, 1) if total_datasets > 0 else 0,
         "provider": provider.provider_name() if provider else None,
         "model": provider.model_name() if provider else None,
-        "dimension": provider.dimension() if provider else None,
+        "dimension": dim,
     }

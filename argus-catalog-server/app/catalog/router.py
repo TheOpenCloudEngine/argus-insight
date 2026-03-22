@@ -33,6 +33,7 @@ from app.catalog.schemas import (
     TagResponse,
     TagUsage,
 )
+from app.core.auth import AdminUser
 from app.core.database import get_session
 
 logger = logging.getLogger(__name__)
@@ -192,8 +193,8 @@ async def list_tags(session: AsyncSession = Depends(get_session)):
 
 
 @router.post("/tags", response_model=TagResponse)
-async def create_tag(req: TagCreate, session: AsyncSession = Depends(get_session)):
-    """Create a new tag."""
+async def create_tag(req: TagCreate, _admin: AdminUser, session: AsyncSession = Depends(get_session)):
+    """Create a new tag. Requires admin role."""
     return await service.create_tag(session, req)
 
 
@@ -207,8 +208,8 @@ async def get_tag_usage(tag_id: int, session: AsyncSession = Depends(get_session
 
 
 @router.delete("/tags/{tag_id}")
-async def delete_tag(tag_id: int, session: AsyncSession = Depends(get_session)):
-    """Delete a tag."""
+async def delete_tag(tag_id: int, _admin: AdminUser, session: AsyncSession = Depends(get_session)):
+    """Delete a tag. Requires admin role."""
     if not await service.delete_tag(session, tag_id):
         raise HTTPException(status_code=404, detail="Tag not found")
     return {"status": "ok", "message": "Tag deleted"}
@@ -226,15 +227,15 @@ async def list_glossary_terms(session: AsyncSession = Depends(get_session)):
 
 @router.post("/glossary", response_model=GlossaryTermResponse)
 async def create_glossary_term(
-    req: GlossaryTermCreate, session: AsyncSession = Depends(get_session)
+    req: GlossaryTermCreate, _admin: AdminUser, session: AsyncSession = Depends(get_session),
 ):
-    """Create a new glossary term."""
+    """Create a new glossary term. Requires admin role."""
     return await service.create_glossary_term(session, req)
 
 
 @router.delete("/glossary/{term_id}")
-async def delete_glossary_term(term_id: int, session: AsyncSession = Depends(get_session)):
-    """Delete a glossary term."""
+async def delete_glossary_term(term_id: int, _admin: AdminUser, session: AsyncSession = Depends(get_session)):
+    """Delete a glossary term. Requires admin role."""
     if not await service.delete_glossary_term(session, term_id):
         raise HTTPException(status_code=404, detail="Glossary term not found")
     return {"status": "ok", "message": "Glossary term deleted"}
@@ -263,8 +264,8 @@ async def list_datasets(
 
 
 @router.post("/datasets", response_model=DatasetResponse)
-async def create_dataset(req: DatasetCreate, session: AsyncSession = Depends(get_session)):
-    """Register a new dataset."""
+async def create_dataset(req: DatasetCreate, _admin: AdminUser, session: AsyncSession = Depends(get_session)):
+    """Register a new dataset. Requires admin role."""
     try:
         return await service.create_dataset(session, req)
     except ValueError as e:
@@ -291,9 +292,9 @@ async def get_dataset_by_urn(urn: str, session: AsyncSession = Depends(get_sessi
 
 @router.put("/datasets/{dataset_id}", response_model=DatasetResponse)
 async def update_dataset(
-    dataset_id: int, req: DatasetUpdate, session: AsyncSession = Depends(get_session)
+    dataset_id: int, req: DatasetUpdate, _admin: AdminUser, session: AsyncSession = Depends(get_session),
 ):
-    """Update dataset metadata."""
+    """Update dataset metadata. Requires admin role."""
     dataset = await service.update_dataset(session, dataset_id, req)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
@@ -520,9 +521,10 @@ async def remove_dataset_glossary_term(
 async def update_schema_fields(
     dataset_id: int,
     fields: list[SchemaFieldCreate],
+    _admin: AdminUser,
     session: AsyncSession = Depends(get_session),
 ):
-    """Replace all schema fields for a dataset."""
+    """Replace all schema fields for a dataset. Requires admin role."""
     return await service.update_schema_fields(
         session, dataset_id,
         [f.model_dump() for f in fields],
@@ -564,9 +566,10 @@ def _sample_path(qualified_name: str):
 async def upload_sample_data(
     dataset_id: int,
     file: UploadFile,
+    _admin: AdminUser,
     session: AsyncSession = Depends(get_session),
 ):
-    """Upload a CSV sample data file for a dataset."""
+    """Upload a CSV sample data file for a dataset. Requires admin role."""
     dataset = await service.get_dataset(session, dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
@@ -631,9 +634,10 @@ async def get_sample_data(
 @router.post("/datasets/{dataset_id}/sample/convert-to-parquet")
 async def convert_sample_to_parquet(
     dataset_id: int,
+    _admin: AdminUser,
     session: AsyncSession = Depends(get_session),
 ):
-    """Convert an existing CSV sample to parquet format."""
+    """Convert an existing CSV sample to parquet format. Requires admin role."""
     dataset = await service.get_dataset(session, dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
@@ -686,9 +690,10 @@ async def convert_sample_to_parquet(
 @router.delete("/datasets/{dataset_id}/sample")
 async def delete_sample_data(
     dataset_id: int,
+    _admin: AdminUser,
     session: AsyncSession = Depends(get_session),
 ):
-    """Delete sample data for a dataset (parquet or CSV)."""
+    """Delete sample data for a dataset (parquet or CSV). Requires admin role."""
     dataset = await service.get_dataset(session, dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
@@ -743,9 +748,10 @@ class DelimiterConfig(BaseModel):
 async def save_delimiter_config(
     dataset_id: int,
     config: DelimiterConfig,
+    _admin: AdminUser,
     session: AsyncSession = Depends(get_session),
 ):
-    """Save delimiter / parse settings for a dataset's sample data."""
+    """Save delimiter / parse settings for a dataset's sample data. Requires admin role."""
     dataset = await service.get_dataset(session, dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")

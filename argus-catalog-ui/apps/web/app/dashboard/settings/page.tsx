@@ -4,17 +4,27 @@ import { DashboardHeader } from "@/components/dashboard-header"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@workspace/ui/components/tabs"
 import { OciModelRegistrySettings } from "@/features/settings/oci-model-registry-settings"
 import { EmbeddingSettings } from "@/features/settings/embedding-settings"
+import { AuthSettings } from "@/features/settings/auth-settings"
+import { CorsSettings } from "@/features/settings/cors-settings"
 
 export default function SettingsPage() {
   return (
     <>
       <DashboardHeader title="Settings" />
       <div className="flex flex-1 flex-col gap-4 p-4">
-        <Tabs defaultValue="oci-model-registry">
+        <Tabs defaultValue="auth">
           <TabsList>
+            <TabsTrigger value="auth">Authentication</TabsTrigger>
+            <TabsTrigger value="cors">CORS</TabsTrigger>
             <TabsTrigger value="oci-model-registry">OCI Model Registry</TabsTrigger>
             <TabsTrigger value="embedding">Embedding</TabsTrigger>
           </TabsList>
+          <TabsContent value="auth" className="mt-4">
+            <AuthSettings />
+          </TabsContent>
+          <TabsContent value="cors" className="mt-4">
+            <CorsSettings />
+          </TabsContent>
           <TabsContent value="oci-model-registry" className="mt-4">
             <OciModelRegistrySettings />
           </TabsContent>

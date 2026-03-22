@@ -26,6 +26,7 @@ import { useCallback } from "react"
 import { z } from "zod"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
+import { toast } from "sonner"
 
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -47,7 +48,7 @@ import {
 import { Input } from "@workspace/ui/components/input"
 import { PasswordInput } from "@/components/password-input"
 import { SelectDropdown } from "@/components/select-dropdown"
-import { checkUserExists, createUser, modifyUser } from "../api"
+import { changeUserRole, checkUserExists, createUser, modifyUser } from "../api"
 import { roles } from "../data/data"
 import { type User } from "../data/schema"
 import { useUsers } from "./users-provider"
@@ -144,15 +145,22 @@ type UsersActionDialogProps = {
   open: boolean
   /** Callback to open or close the dialog. */
   onOpenChange: (open: boolean) => void
+  /** Hide the Role field (used for Account Settings self-edit). */
+  hideRole?: boolean
+  /** Custom onSave callback (used for Account Settings without UsersProvider). */
+  onSaved?: () => void
 }
 
 export function UsersActionDialog({
   currentRow,
   open,
   onOpenChange,
+  hideRole = false,
+  onSaved,
 }: UsersActionDialogProps) {
   const isEdit = !!currentRow
-  const { refreshUsers } = useUsers()
+  const usersCtx = (() => { try { return useUsers() } catch { return null } })()
+  const refreshUsers = usersCtx?.refreshUsers
 
   /**
    * Initialize the form with React Hook Form + Zod resolver.
@@ -180,7 +188,7 @@ export function UsersActionDialog({
           lastName: "",
           username: "",
           email: "",
-          role: "user",
+          role: "argus-user",
           phoneNumber: "",
           password: "",
           confirmPassword: "",
@@ -256,8 +264,11 @@ export function UsersActionDialog({
           email: values.email,
           phone_number: values.phoneNumber,
         })
+        // Change role if it was modified (skip in hideRole mode)
+        if (!hideRole && values.role && values.role !== currentRow.role) {
+          await changeUserRole(currentRow.id, values.role)
+        }
       } else {
-        const roleMap: Record<string, "Admin" | "User"> = { admin: "Admin", user: "User" }
         await createUser({
           username: values.username,
           email: values.email,
@@ -265,14 +276,16 @@ export function UsersActionDialog({
           last_name: values.lastName,
           phone_number: values.phoneNumber,
           password: values.password,
-          role: roleMap[values.role] || "User",
+          role: values.role,
         })
       }
-      await refreshUsers()
+      if (refreshUsers) await refreshUsers()
+      if (onSaved) onSaved()
       form.reset()
       onOpenChange(false)
     } catch (err) {
-      console.error("Failed to save user:", err)
+      const msg = err instanceof Error ? err.message : "Failed to save user"
+      toast.error(msg)
     }
   }
 
@@ -403,7 +416,7 @@ export function UsersActionDialog({
               />
 
               {/* Phone Number and Role side by side */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className={hideRole ? "" : "grid grid-cols-2 gap-4"}>
                 <FormField
                   control={form.control}
                   name="phoneNumber"
@@ -417,23 +430,25 @@ export function UsersActionDialog({
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
-                  name="role"
-                  render={({ field }) => (
-                    <FormItem>
-                      <RequiredLabel>Role</RequiredLabel>
-                      <SelectDropdown
-                        defaultValue={field.value}
-                        onValueChange={field.onChange}
-                        placeholder="Select a role"
-                        className="w-full"
-                        items={roles.map(({ label, value }) => ({ label, value }))}
-                      />
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {!hideRole && (
+                  <FormField
+                    control={form.control}
+                    name="role"
+                    render={({ field }) => (
+                      <FormItem>
+                        <RequiredLabel>Role</RequiredLabel>
+                        <SelectDropdown
+                          defaultValue={field.value}
+                          onValueChange={field.onChange}
+                          placeholder="Select a role"
+                          className="w-full"
+                          items={roles.map(({ label, value }) => ({ label, value }))}
+                        />
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
               </div>
 
               {/* Password field — required in add mode, optional in edit mode */}

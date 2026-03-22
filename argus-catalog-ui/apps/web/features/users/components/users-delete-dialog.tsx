@@ -52,16 +52,24 @@ export function UsersDeleteDialog({
    * Only proceeds if the typed value exactly matches the target user's username.
    * Calls the deleteUser API, refreshes the list, and closes the dialog.
    */
+  const [error, setError] = useState<string | null>(null)
+
   const handleDelete = async () => {
     if (value.trim() !== currentRow.username) return
+    setError(null)
 
     try {
       await deleteUser(currentRow.id)
       await refreshUsers()
+      onOpenChange(false)
     } catch (err) {
-      console.error("Failed to delete user:", err)
+      const msg = err instanceof Error ? err.message : "Failed to delete user"
+      if (msg.includes("admin") || msg.includes("Admin")) {
+        setError(msg)
+      } else {
+        setError(msg)
+      }
     }
-    onOpenChange(false)
   }
 
   return (
@@ -87,7 +95,7 @@ export function UsersDeleteDialog({
             <br />
             This action will permanently remove the user with the role of{" "}
             <span className="font-bold">
-              {currentRow.role.toUpperCase()}
+              {currentRow.role === "argus-admin" ? "Admin" : currentRow.role === "argus-superuser" ? "Superuser" : "User"}
             </span>{" "}
             from the system. This cannot be undone.
           </p>
@@ -102,13 +110,23 @@ export function UsersDeleteDialog({
             />
           </Label>
 
+          {/* Error message */}
+          {error && (
+            <Alert variant="destructive">
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
           {/* Destructive warning banner */}
-          <Alert variant="destructive">
-            <AlertTitle>Warning!</AlertTitle>
-            <AlertDescription>
-              Please be careful, this operation can not be rolled back.
-            </AlertDescription>
-          </Alert>
+          {!error && (
+            <Alert variant="destructive">
+              <AlertTitle>Warning!</AlertTitle>
+              <AlertDescription>
+                Please be careful, this operation can not be rolled back.
+              </AlertDescription>
+            </Alert>
+          )}
         </div>
       }
       confirmText="Delete"

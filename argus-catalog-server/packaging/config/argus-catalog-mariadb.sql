@@ -23,7 +23,16 @@ VALUES
     ('object_storage', 'object_storage_region', 'us-east-1', 'S3 region'),
     ('object_storage', 'object_storage_use_ssl', 'false', 'Use SSL for S3 connection'),
     ('object_storage', 'object_storage_bucket', 'model-artifacts', 'S3 bucket for model artifacts'),
-    ('object_storage', 'object_storage_presigned_url_expiry', '3600', 'Presigned URL expiry in seconds');
+    ('object_storage', 'object_storage_presigned_url_expiry', '3600', 'Presigned URL expiry in seconds'),
+    ('auth', 'auth_type', 'keycloak', 'Authentication type'),
+    ('auth', 'auth_keycloak_server_url', 'http://localhost:8180', 'Keycloak server URL'),
+    ('auth', 'auth_keycloak_realm', 'argus', 'Keycloak realm'),
+    ('auth', 'auth_keycloak_client_id', 'argus-client', 'Keycloak client ID'),
+    ('auth', 'auth_keycloak_client_secret', 'argus-client-secret', 'Keycloak client secret'),
+    ('auth', 'auth_keycloak_admin_role', 'argus-admin', 'Admin role name'),
+    ('auth', 'auth_keycloak_superuser_role', 'argus-supseruser', 'Superuser role name'),
+    ('auth', 'auth_keycloak_user_role', 'argus-user', 'User role name'),
+    ('cors', 'cors_origins', '*', 'Allowed CORS origins (comma-separated)');
 
 -- ---------------------------------------------------------------------------
 -- User Management
@@ -31,7 +40,8 @@ VALUES
 
 CREATE TABLE IF NOT EXISTS argus_roles (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(50) NOT NULL UNIQUE,
+    role_id VARCHAR(50) NOT NULL UNIQUE,
+    name VARCHAR(50) NOT NULL,
     description VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -51,6 +61,26 @@ CREATE TABLE IF NOT EXISTS argus_users (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (role_id) REFERENCES argus_roles(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO argus_roles (role_id, name, description)
+VALUES
+    ('argus-admin', 'Admin', 'Administrator with full access'),
+    ('argus-superuser', 'Superuser', 'Superuser with elevated access'),
+    ('argus-user', 'User', 'Standard user with limited access');
+
+INSERT INTO argus_users (username, email, first_name, last_name, password_hash, status, role_id)
+VALUES (
+    'admin',
+    'admin@argus.local',
+    'Admin',
+    'User',
+    '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918',
+    'active',
+    (SELECT id FROM argus_roles WHERE role_id = 'argus-admin')
+)
+ON DUPLICATE KEY UPDATE
+    password_hash = VALUES(password_hash),
+    role_id = VALUES(role_id);
 
 -- ---------------------------------------------------------------------------
 -- Catalog - Platforms

@@ -21,8 +21,9 @@ export type UserStatus = z.infer<typeof userStatusSchema>
  * - user:  Standard access with limited administrative capabilities.
  */
 const userRoleSchema = z.union([
-  z.literal("admin"),
-  z.literal("user"),
+  z.literal("argus-admin"),
+  z.literal("argus-superuser"),
+  z.literal("argus-user"),
 ])
 
 /**

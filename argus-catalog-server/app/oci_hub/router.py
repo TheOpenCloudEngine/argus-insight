@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import AdminUser
 from app.core.database import get_session
 from app.oci_hub import service
 from app.oci_hub.schemas import (
@@ -132,9 +133,9 @@ class ReadmeBody(BaseModel):
 
 @router.put("/{name}/readme")
 async def update_readme(
-    name: str, body: ReadmeBody, session: AsyncSession = Depends(get_session),
+    name: str, body: ReadmeBody, _admin: AdminUser, session: AsyncSession = Depends(get_session),
 ):
-    """Update model README (Markdown)."""
+    """Update model README (Markdown). Requires admin role."""
     logger.info("PUT /oci-models/%s/readme", name)
     if not await service.update_readme(session, name, body.readme):
         raise HTTPException(status_code=404, detail=f"Model '{name}' not found")
@@ -259,9 +260,9 @@ async def finalize_version(
 
 @router.post("/import/huggingface", response_model=ImportResponse)
 async def import_huggingface(
-    req: HuggingFaceImportRequest, session: AsyncSession = Depends(get_session),
+    req: HuggingFaceImportRequest, _admin: AdminUser, session: AsyncSession = Depends(get_session),
 ):
-    """Import a model from HuggingFace Hub."""
+    """Import a model from HuggingFace Hub. Requires admin role."""
     logger.info("POST /oci-models/import/huggingface: %s", req.hf_model_id)
     try:
         return await service.import_from_huggingface(

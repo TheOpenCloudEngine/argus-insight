@@ -34,6 +34,24 @@ from app.usermgr.schemas import (
 logger = logging.getLogger(__name__)
 
 
+async def _is_last_admin(session: AsyncSession, user_id: int) -> bool:
+    """Check if the given user is the only admin in the system."""
+    from app.usermgr.schemas import RoleName
+    admin_role = await _get_role_by_role_id(session, RoleName.ADMIN.value)
+    if not admin_role:
+        return False
+    # Count admins
+    admin_count = (await session.execute(
+        select(func.count()).where(ArgusUser.role_id == admin_role.id)
+    )).scalar() or 0
+    if admin_count > 1:
+        return False
+    # Check if this user is an admin
+    result = await session.execute(select(ArgusUser).where(ArgusUser.id == user_id))
+    user = result.scalars().first()
+    return user is not None and user.role_id == admin_role.id
+
+
 def _hash_password(password: str) -> str:
     """Hash a password using SHA-256.
 
@@ -43,34 +61,14 @@ def _hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
-async def _get_role_by_name(session: AsyncSession, name: str) -> ArgusRole | None:
-    """Look up a role by its unique name.
-
-    Args:
-        session: Active database session.
-        name: Role name to search for (e.g., "Admin", "User").
-
-    Returns:
-        The ArgusRole ORM instance if found, or None.
-    """
-    result = await session.execute(select(ArgusRole).where(ArgusRole.name == name))
+async def _get_role_by_role_id(session: AsyncSession, role_id: str) -> ArgusRole | None:
+    """Look up a role by its role_id identifier (e.g., "argus-admin")."""
+    result = await session.execute(select(ArgusRole).where(ArgusRole.role_id == role_id))
     return result.scalars().first()
 
 
 async def _build_user_response(session: AsyncSession, user: ArgusUser) -> UserResponse:
-    """Build a UserResponse from an ORM user object, resolving role name.
-
-    Performs an additional query to look up the role name from the role_id
-    foreign key. Returns "Unknown" if the role record is missing (should
-    not happen with proper foreign key constraints).
-
-    Args:
-        session: Active database session.
-        user: The ArgusUser ORM instance to convert.
-
-    Returns:
-        A fully populated UserResponse Pydantic model.
-    """
+    """Build a UserResponse from an ORM user object, resolving role."""
     result = await session.execute(select(ArgusRole).where(ArgusRole.id == user.role_id))
     role = result.scalars().first()
     return UserResponse(
@@ -81,7 +79,7 @@ async def _build_user_response(session: AsyncSession, user: ArgusUser) -> UserRe
         last_name=user.last_name,
         phone_number=user.phone_number,
         status=UserStatus(user.status),
-        role=role.name if role else "Unknown",
+        role=role.role_id if role else "unknown",
         created_at=user.created_at,
         updated_at=user.updated_at,
     )
@@ -139,7 +137,7 @@ async def add_user(session: AsyncSession, req: UserAddRequest) -> UserResponse:
     Raises:
         ValueError: If the specified role name does not exist in the database.
     """
-    role = await _get_role_by_name(session, req.role.value)
+    role = await _get_role_by_role_id(session, req.role.value)
     if not role:
         raise ValueError(f"Role '{req.role.value}' not found")
 
@@ -173,6 +171,9 @@ async def delete_user(session: AsyncSession, user_id: int) -> bool:
     Returns:
         True if the user was found and deleted, False if not found.
     """
+    if await _is_last_admin(session, user_id):
+        raise ValueError("Cannot delete the only admin. At least one admin must remain.")
+
     result = await session.execute(select(ArgusUser).where(ArgusUser.id == user_id))
     user = result.scalars().first()
     if not user:
@@ -243,7 +244,14 @@ async def change_role(
     if not user:
         return None
 
-    role = await _get_role_by_name(session, req.role.value)
+    # Prevent removing the last admin
+    from app.usermgr.schemas import RoleName
+    admin_role = await _get_role_by_role_id(session, RoleName.ADMIN.value)
+    if admin_role and user.role_id == admin_role.id and req.role.value != RoleName.ADMIN.value:
+        if await _is_last_admin(session, user_id):
+            raise ValueError("Cannot change the role of the only admin. At least one admin must remain.")
+
+    role = await _get_role_by_role_id(session, req.role.value)
     if not role:
         raise ValueError(f"Role '{req.role.value}' not found")
 
@@ -291,6 +299,9 @@ async def deactivate_user(session: AsyncSession, user_id: int) -> UserResponse |
     Returns:
         The updated user as a UserResponse, or None if the user was not found.
     """
+    if await _is_last_admin(session, user_id):
+        raise ValueError("Cannot deactivate the only admin. At least one active admin must remain.")
+
     result = await session.execute(select(ArgusUser).where(ArgusUser.id == user_id))
     user = result.scalars().first()
     if not user:
@@ -356,7 +367,7 @@ async def list_users(
     """
     # Base query: join users with roles to get role name in results.
     base = (
-        select(ArgusUser, ArgusRole.name.label("role_name"))
+        select(ArgusUser, ArgusRole.role_id.label("role_code"))
         .join(ArgusRole, ArgusUser.role_id == ArgusRole.id)
     )
 
@@ -364,9 +375,9 @@ async def list_users(
     if status:
         base = base.where(ArgusUser.status.in_([status]))
 
-    # Filter by role name (exact match).
+    # Filter by role_id (exact match).
     if role:
-        base = base.where(ArgusRole.name.in_([role]))
+        base = base.where(ArgusRole.role_id.in_([role]))
 
     # Free-text search across multiple fields using ILIKE for case-insensitive matching.
     if search:
@@ -404,11 +415,11 @@ async def list_users(
             last_name=user.last_name,
             phone_number=user.phone_number,
             status=UserStatus(user.status),
-            role=role_name or "Unknown",
+            role=role_code or "unknown",
             created_at=user.created_at,
             updated_at=user.updated_at,
         )
-        for user, role_name in rows
+        for user, role_code in rows
     ]
 
     return PaginatedUserResponse(
@@ -450,12 +461,46 @@ async def seed_roles(session: AsyncSession) -> None:
     Args:
         session: Active database session.
     """
-    for name, desc in [
-        (RoleName.ADMIN.value, "Administrator with full access"),
-        (RoleName.USER.value, "Standard user with limited access"),
-    ]:
-        existing = await _get_role_by_name(session, name)
+    default_roles = [
+        (RoleName.ADMIN.value, "Admin", "Administrator with full access"),
+        (RoleName.SUPERUSER.value, "Superuser", "Superuser with elevated access"),
+        (RoleName.USER.value, "User", "Standard user with limited access"),
+    ]
+    for rid, display_name, desc in default_roles:
+        existing = await _get_role_by_role_id(session, rid)
         if not existing:
-            session.add(ArgusRole(name=name, description=desc))
-            logger.info("Seeded role: %s", name)
+            session.add(ArgusRole(role_id=rid, name=display_name, description=desc))
+            logger.info("Seeded role: %s (%s)", rid, display_name)
     await session.commit()
+
+
+async def seed_admin_user(session: AsyncSession) -> None:
+    """Create a default admin user if no users exist (local auth mode).
+
+    Only runs when auth_type is 'local' and the argus_users table is empty.
+    Default credentials: admin / admin (should be changed after first login).
+    """
+    from app.core.config import settings
+    if settings.auth_type != "local":
+        return
+
+    count = (await session.execute(select(func.count()).select_from(ArgusUser))).scalar() or 0
+    if count > 0:
+        return
+
+    admin_role = await _get_role_by_role_id(session, RoleName.ADMIN.value)
+    if not admin_role:
+        return
+
+    user = ArgusUser(
+        username="admin",
+        email="admin@argus.local",
+        first_name="Admin",
+        last_name="User",
+        password_hash=_hash_password("admin"),
+        status="active",
+        role_id=admin_role.id,
+    )
+    session.add(user)
+    await session.commit()
+    logger.info("Seeded default admin user: admin/admin (change password after first login)")

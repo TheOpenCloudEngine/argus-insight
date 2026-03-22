@@ -161,8 +161,7 @@ export function UsersTable({ data, isLoading }: UsersTableProps) {
 
     let role = ""
     if (Array.isArray(roleVal) && roleVal.length === 1) {
-      const r = roleVal[0] as string
-      role = r.charAt(0).toUpperCase() + r.slice(1)
+      role = roleVal[0] as string
     }
 
     const search = typeof searchVal === "string" ? searchVal : ""

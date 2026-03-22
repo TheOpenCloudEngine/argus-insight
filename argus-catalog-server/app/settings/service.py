@@ -31,11 +31,38 @@ _EMBEDDING_DEFAULTS: list[tuple[str, str, str]] = [
 ]
 
 
+def _build_auth_defaults() -> list[tuple[str, str, str]]:
+    """Build auth defaults from config file values (fallback for first startup)."""
+    from app.core.config import settings
+    return [
+        ("auth_type", settings.auth_type, "Authentication type"),
+        ("auth_keycloak_server_url", settings.auth_keycloak_server_url, "Keycloak server URL"),
+        ("auth_keycloak_realm", settings.auth_keycloak_realm, "Keycloak realm"),
+        ("auth_keycloak_client_id", settings.auth_keycloak_client_id, "Keycloak client ID"),
+        ("auth_keycloak_client_secret", settings.auth_keycloak_client_secret, "Keycloak client secret"),
+        ("auth_keycloak_admin_role", settings.auth_keycloak_admin_role, "Admin role name"),
+        ("auth_keycloak_superuser_role", settings.auth_keycloak_superuser_role, "Superuser role name"),
+        ("auth_keycloak_user_role", settings.auth_keycloak_user_role, "User role name"),
+    ]
+
+
+def _build_cors_defaults() -> list[tuple[str, str, str]]:
+    """Build CORS defaults from config file values."""
+    from app.core.config import settings
+    origins = settings.cors_origins
+    origins_str = ",".join(origins) if isinstance(origins, list) else str(origins)
+    return [
+        ("cors_origins", origins_str, "Allowed CORS origins (comma-separated)"),
+    ]
+
+
 async def seed_configuration(session: AsyncSession) -> None:
     """Insert default configuration rows if they don't exist."""
     all_defaults = [
         ("object_storage", _OS_DEFAULTS),
         ("embedding", _EMBEDDING_DEFAULTS),
+        ("auth", _build_auth_defaults()),
+        ("cors", _build_cors_defaults()),
     ]
     for category, defaults in all_defaults:
         for key, value, desc in defaults:
@@ -113,4 +140,47 @@ async def load_embedding_settings(session: AsyncSession) -> dict[str, str]:
     else:
         logger.info("Embedding is disabled")
 
+    return cfg
+
+
+async def load_auth_settings(session: AsyncSession) -> dict[str, str]:
+    """Load Keycloak auth settings from DB and update the global settings object."""
+    from app.core.config import settings
+
+    cfg = await get_config_by_category(session, "auth")
+    if not cfg:
+        logger.info("No auth settings in DB, using config file defaults")
+        return {}
+
+    settings.auth_type = cfg.get("auth_type", settings.auth_type)
+    settings.auth_keycloak_server_url = cfg.get("auth_keycloak_server_url", settings.auth_keycloak_server_url)
+    settings.auth_keycloak_realm = cfg.get("auth_keycloak_realm", settings.auth_keycloak_realm)
+    settings.auth_keycloak_client_id = cfg.get("auth_keycloak_client_id", settings.auth_keycloak_client_id)
+    settings.auth_keycloak_client_secret = cfg.get("auth_keycloak_client_secret", settings.auth_keycloak_client_secret)
+    settings.auth_keycloak_admin_role = cfg.get("auth_keycloak_admin_role", settings.auth_keycloak_admin_role)
+    settings.auth_keycloak_superuser_role = cfg.get("auth_keycloak_superuser_role", settings.auth_keycloak_superuser_role)
+    settings.auth_keycloak_user_role = cfg.get("auth_keycloak_user_role", settings.auth_keycloak_user_role)
+
+    # Clear JWKS cache so next request fetches keys from the (potentially new) Keycloak server
+    from app.core.auth import _jwks_cache
+    _jwks_cache.clear()
+
+    logger.info("Auth settings loaded from DB: server_url=%s, realm=%s",
+                settings.auth_keycloak_server_url, settings.auth_keycloak_realm)
+    return cfg
+
+
+async def load_cors_settings(session: AsyncSession) -> dict[str, str]:
+    """Load CORS settings from DB and update the global settings object."""
+    from app.core.config import settings
+
+    cfg = await get_config_by_category(session, "cors")
+    if not cfg:
+        logger.info("No CORS settings in DB, using config file defaults")
+        return {}
+
+    origins_str = cfg.get("cors_origins", "*")
+    settings.cors_origins = [o.strip() for o in origins_str.split(",") if o.strip()]
+
+    logger.info("CORS settings loaded from DB: origins=%s", settings.cors_origins)
     return cfg
