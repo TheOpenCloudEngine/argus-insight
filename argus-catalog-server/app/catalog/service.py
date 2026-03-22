@@ -1120,8 +1120,8 @@ async def save_schema_snapshot(
     # Analyze schema changes and create lineage alerts
     if changes:
         try:
-            from app.alert.service import analyze_and_create_alerts
-            alerts = await analyze_and_create_alerts(session, dataset_id, changes)
+            from app.alert.service import evaluate_rules_and_create_alerts
+            alerts = await evaluate_rules_and_create_alerts(session, dataset_id, changes)
             if alerts:
                 logger.info("Created %d lineage alert(s) for dataset_id=%d", len(alerts), dataset_id)
         except Exception as e:

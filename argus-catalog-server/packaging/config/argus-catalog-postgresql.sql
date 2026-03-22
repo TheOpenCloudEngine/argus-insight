@@ -671,6 +671,36 @@ CREATE INDEX IF NOT EXISTS idx_dataset_column_mapping_lineage ON argus_dataset_c
 -- Alert - Lineage Alert (schema change impact events)
 -- ---------------------------------------------------------------------------
 
+-- ---------------------------------------------------------------------------
+-- Alert - Alert Rule (what to watch, when to trigger, who to notify)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_alert_rule (
+    id SERIAL PRIMARY KEY,
+    rule_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    scope_type VARCHAR(32) NOT NULL,
+    scope_id INT,
+    trigger_type VARCHAR(64) NOT NULL,
+    trigger_config TEXT DEFAULT '{}',
+    severity_override VARCHAR(16),
+    channels VARCHAR(200) NOT NULL DEFAULT 'IN_APP',
+    notify_owners VARCHAR(5) NOT NULL DEFAULT 'true',
+    webhook_url VARCHAR(500),
+    subscribers VARCHAR(2000),
+    is_active VARCHAR(5) NOT NULL DEFAULT 'true',
+    created_by VARCHAR(200),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_alert_rule_scope ON argus_alert_rule (scope_type, scope_id);
+CREATE INDEX IF NOT EXISTS idx_alert_rule_active ON argus_alert_rule (is_active);
+
+-- ---------------------------------------------------------------------------
+-- Alert - Lineage Alert (schema change impact events)
+-- ---------------------------------------------------------------------------
+
 CREATE TABLE IF NOT EXISTS argus_lineage_alert (
     id SERIAL PRIMARY KEY,
     alert_type VARCHAR(32) NOT NULL,
@@ -678,6 +708,7 @@ CREATE TABLE IF NOT EXISTS argus_lineage_alert (
     source_dataset_id INT NOT NULL REFERENCES catalog_datasets(id) ON DELETE CASCADE,
     affected_dataset_id INT REFERENCES catalog_datasets(id) ON DELETE CASCADE,
     lineage_id INT REFERENCES argus_dataset_lineage(id) ON DELETE SET NULL,
+    rule_id INT REFERENCES argus_alert_rule(id) ON DELETE SET NULL,
     change_summary VARCHAR(500) NOT NULL,
     change_detail TEXT,
     status VARCHAR(20) NOT NULL,
@@ -689,24 +720,7 @@ CREATE TABLE IF NOT EXISTS argus_lineage_alert (
 CREATE INDEX IF NOT EXISTS idx_lineage_alert_affected ON argus_lineage_alert USING btree (affected_dataset_id);
 CREATE INDEX IF NOT EXISTS idx_lineage_alert_source ON argus_lineage_alert USING btree (source_dataset_id);
 CREATE INDEX IF NOT EXISTS idx_lineage_alert_status ON argus_lineage_alert USING btree (status);
-
--- ---------------------------------------------------------------------------
--- Alert - Subscription (who wants to be notified about what)
--- ---------------------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS argus_alert_subscription (
-    id SERIAL PRIMARY KEY,
-    user_id VARCHAR(200) NOT NULL,
-    scope_type VARCHAR(32) NOT NULL,
-    scope_id INT,
-    channels VARCHAR(200) NOT NULL,
-    severity_filter VARCHAR(16) NOT NULL,
-    is_active VARCHAR(5) NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_alert_sub_scope ON argus_alert_subscription USING btree (scope_type, scope_id);
-CREATE INDEX IF NOT EXISTS idx_alert_sub_user ON argus_alert_subscription USING btree (user_id);
+CREATE INDEX IF NOT EXISTS idx_lineage_alert_rule ON argus_lineage_alert USING btree (rule_id);
 
 -- ---------------------------------------------------------------------------
 -- Alert - Notification Log (delivery records)
