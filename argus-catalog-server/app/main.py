@@ -76,7 +76,7 @@ async def lifespan(app: FastAPI):
         seed_configuration, load_os_settings, load_embedding_settings,
         load_auth_settings, load_cors_settings,
     )
-    from app.usermgr.service import seed_roles
+    from app.usermgr.service import seed_roles, seed_admin_user
 
     async with async_session() as session:
         await seed_platforms(session)
@@ -87,6 +87,7 @@ async def lifespan(app: FastAPI):
         await load_embedding_settings(session)
         await load_auth_settings(session)
         await load_cors_settings(session)
+        await seed_admin_user(session)
 
     # Ensure S3 bucket exists
     try:

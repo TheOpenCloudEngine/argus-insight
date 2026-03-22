@@ -10,6 +10,9 @@ import {
 } from "@workspace/ui/components/dialog"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@workspace/ui/components/select"
 
 import {
   fetchAuthConfig, fetchAuthSecret, initializeKeycloak,
@@ -44,6 +47,7 @@ export function AuthSettings() {
   const [testing, setTesting] = useState(false)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
+  const [authType, setAuthType] = useState("keycloak")
   const [serverUrl, setServerUrl] = useState("")
   const [realm, setRealm] = useState("")
   const [clientId, setClientId] = useState("")
@@ -78,6 +82,7 @@ export function AuthSettings() {
     try {
       setLoading(true)
       const cfg = await fetchAuthConfig()
+      setAuthType(cfg.type || "keycloak")
       setServerUrl(cfg.server_url)
       setRealm(cfg.realm)
       setClientId(cfg.client_id)
@@ -99,11 +104,11 @@ export function AuthSettings() {
     setMessage(null)
     try {
       await updateAuthConfig({
-        type: "keycloak",
+        type: authType,
         server_url: serverUrl, realm, client_id: clientId, client_secret: clientSecret,
         admin_role: adminRole, superuser_role: superuserRole, user_role: userRole,
       })
-      setMessage({ type: "success", text: "Authentication configuration saved" })
+      setMessage({ type: "success", text: `Authentication configuration saved (${authType} mode)` })
     } catch (e) {
       setMessage({ type: "error", text: e instanceof Error ? e.message : "Save failed" })
     } finally {
@@ -205,10 +210,32 @@ export function AuthSettings() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Keycloak OIDC</CardTitle>
-          <CardDescription>Configure Keycloak server connection for SSO authentication.</CardDescription>
+          <CardTitle className="text-base">Authentication</CardTitle>
+          <CardDescription>Configure authentication method for user login.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Auth type selector */}
+          <div className="space-y-1.5">
+            <Label>Authentication Type</Label>
+            <Select value={authType} onValueChange={setAuthType}>
+              <SelectTrigger className="w-[240px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="local">Local (built-in user management)</SelectItem>
+                <SelectItem value="keycloak">Keycloak OIDC (SSO)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {authType === "local"
+                ? "Users are managed locally in the database. No external identity provider required."
+                : "Users authenticate via Keycloak. Requires a running Keycloak server."
+              }
+            </p>
+          </div>
+
+          {authType === "keycloak" && (
+          <>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>Server URL <span className="text-red-500">*</span></Label>
@@ -273,20 +300,26 @@ export function AuthSettings() {
               <Input value={userRole} readOnly className="bg-muted" />
             </div>
           </div>
+          </>
+          )}
 
           <div className="flex items-center gap-2 pt-2">
             <Button onClick={handleSave} disabled={saving}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
               Save
             </Button>
-            <Button variant="outline" onClick={handleTest} disabled={testing}>
-              {testing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Play className="h-4 w-4 mr-1" />}
-              Test Connection
-            </Button>
-            <Button variant="outline" onClick={handleOpenInit}>
-              <Rocket className="h-4 w-4 mr-1" />
-              Initialize
-            </Button>
+            {authType === "keycloak" && (
+              <>
+                <Button variant="outline" onClick={handleTest} disabled={testing}>
+                  {testing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Play className="h-4 w-4 mr-1" />}
+                  Test Connection
+                </Button>
+                <Button variant="outline" onClick={handleOpenInit}>
+                  <Rocket className="h-4 w-4 mr-1" />
+                  Initialize
+                </Button>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>

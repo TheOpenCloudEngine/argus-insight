@@ -459,3 +459,35 @@ async def seed_roles(session: AsyncSession) -> None:
             session.add(ArgusRole(name=name, description=desc))
             logger.info("Seeded role: %s", name)
     await session.commit()
+
+
+async def seed_admin_user(session: AsyncSession) -> None:
+    """Create a default admin user if no users exist (local auth mode).
+
+    Only runs when auth_type is 'local' and the argus_users table is empty.
+    Default credentials: admin / admin (should be changed after first login).
+    """
+    from app.core.config import settings
+    if settings.auth_type != "local":
+        return
+
+    count = (await session.execute(select(func.count()).select_from(ArgusUser))).scalar() or 0
+    if count > 0:
+        return
+
+    admin_role = await _get_role_by_name(session, RoleName.ADMIN.value)
+    if not admin_role:
+        return
+
+    user = ArgusUser(
+        username="admin",
+        email="admin@argus.local",
+        first_name="Admin",
+        last_name="User",
+        password_hash=_hash_password("admin"),
+        status="active",
+        role_id=admin_role.id,
+    )
+    session.add(user)
+    await session.commit()
+    logger.info("Seeded default admin user: admin/admin (change password after first login)")
