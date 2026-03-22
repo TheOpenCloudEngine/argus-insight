@@ -273,6 +273,13 @@ class KuduConnectionUpdate(BaseModel):
     default_database: str = "default"
     parse_impala_naming: bool = True
     origin: str = "PROD"
+    kerberos_enabled: bool = False
+    kerberos_principal: str = ""
+    kerberos_keytab: str = ""
+    sasl_protocol_name: str = "kudu"
+    require_authentication: bool = False
+    encryption_policy: str = "optional"
+    trusted_certificates: list[str] = []
 
 
 @app.put("/sync/kudu/connection")
@@ -283,6 +290,13 @@ async def update_kudu_connection(req: KuduConnectionUpdate):
     settings.kudu_default_database = req.default_database
     settings.kudu_parse_impala_naming = req.parse_impala_naming
     settings.kudu_origin = req.origin
+    settings.kudu_kerberos_enabled = req.kerberos_enabled
+    settings.kudu_kerberos_principal = req.kerberos_principal
+    settings.kudu_kerberos_keytab = req.kerberos_keytab
+    settings.kudu_sasl_protocol_name = req.sasl_protocol_name
+    settings.kudu_require_authentication = req.require_authentication
+    settings.kudu_encryption_policy = req.encryption_policy
+    settings.kudu_trusted_certificates = req.trusted_certificates
 
     # Re-register with new config
     from sync.platforms.kudu.sync import KuduMetadataSync

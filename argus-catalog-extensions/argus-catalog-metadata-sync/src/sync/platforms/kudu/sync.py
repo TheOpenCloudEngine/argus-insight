@@ -11,7 +11,9 @@ configured default_database.
 """
 
 import logging
+import subprocess
 from datetime import datetime
+from pathlib import Path
 
 from sync.core.base import BasePlatformSync, SyncResult
 from sync.core.catalog_client import CatalogClient
@@ -55,7 +57,12 @@ class KuduMetadataSync(BasePlatformSync):
     # ------------------------------------------------------------------
 
     def connect(self) -> bool:
-        """Connect to Kudu master(s)."""
+        """Connect to Kudu master(s).
+
+        Supports Kerberos authentication and TLS encryption.
+        When Kerberos is enabled, kinit is executed with the configured
+        principal and keytab before connecting.
+        """
         try:
             import kudu
         except ImportError:
@@ -66,8 +73,36 @@ class KuduMetadataSync(BasePlatformSync):
             return False
 
         try:
+            # Kerberos authentication: obtain TGT via kinit
+            if self.settings.kudu_kerberos_enabled:
+                self._kinit()
+
             host, port = self._parse_master_addresses()
-            self._kudu_client = kudu.connect(host, port)
+
+            # Build connection kwargs for security options
+            connect_kwargs: dict = {}
+            if self.settings.kudu_kerberos_enabled:
+                connect_kwargs["require_authentication"] = True
+                if self.settings.kudu_sasl_protocol_name:
+                    connect_kwargs["sasl_protocol_name"] = (
+                        self.settings.kudu_sasl_protocol_name
+                    )
+            elif self.settings.kudu_require_authentication:
+                connect_kwargs["require_authentication"] = True
+
+            # TLS / Encryption policy
+            encryption_policy = self.settings.kudu_encryption_policy
+            if encryption_policy and encryption_policy != "optional":
+                connect_kwargs["encryption_policy"] = encryption_policy
+
+            # Trusted CA certificates
+            if self.settings.kudu_trusted_certificates:
+                certs = []
+                for cert_path in self.settings.kudu_trusted_certificates:
+                    certs.append(Path(cert_path).read_text())
+                connect_kwargs["trusted_certificates"] = certs
+
+            self._kudu_client = kudu.connect(host, port, **connect_kwargs)
             # Validate connection
             self._kudu_client.list_tables()
             logger.info("Connected to Kudu master(s): %s:%d", host, port)
@@ -159,6 +194,28 @@ class KuduMetadataSync(BasePlatformSync):
             else:
                 host_parts.append(addr)
         return ",".join(host_parts), port
+
+    def _kinit(self) -> None:
+        """Obtain Kerberos TGT using kinit with the configured keytab.
+
+        Raises RuntimeError if kinit fails.
+        """
+        principal = self.settings.kudu_kerberos_principal
+        keytab = self.settings.kudu_kerberos_keytab
+        if not principal or not keytab:
+            raise RuntimeError(
+                "Kerberos is enabled but principal or keytab is not configured"
+            )
+        logger.info("Executing kinit for principal: %s", principal)
+        result = subprocess.run(
+            ["kinit", "-kt", keytab, principal],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"kinit failed (exit {result.returncode}): {result.stderr.strip()}"
+            )
+        logger.info("Kerberos TGT obtained successfully")
 
     def _parse_table_name(self, raw_name: str) -> tuple[str, str]:
         """Parse Kudu table name into (database, table_name).

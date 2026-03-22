@@ -117,6 +117,18 @@ class Settings:
         self.kudu_parse_impala_naming: bool = _to_bool(
             kudu_raw.get("parse_impala_naming", True)
         )
+        # Kerberos authentication
+        krb = kudu_raw.get("kerberos", {})
+        self.kudu_kerberos_enabled: bool = _to_bool(krb.get("enabled", False))
+        self.kudu_kerberos_principal: str = krb.get("principal", "")
+        self.kudu_kerberos_keytab: str = krb.get("keytab", "")
+        self.kudu_sasl_protocol_name: str = krb.get("sasl_protocol_name", "kudu")
+        # TLS / Encryption
+        tls = kudu_raw.get("tls", {})
+        self.kudu_require_authentication: bool = _to_bool(tls.get("require_authentication", False))
+        self.kudu_encryption_policy: str = tls.get("encryption_policy", "optional")
+        self.kudu_trusted_certificates: list[str] = tls.get("trusted_certificates", [])
+
         self.kudu_origin: str = kudu_raw.get("origin", "PROD")
         kudu_sched = kudu_raw.get("schedule", {})
         self.kudu_schedule_interval_minutes: int = int(
