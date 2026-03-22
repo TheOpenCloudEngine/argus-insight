@@ -16,6 +16,7 @@ from app.comments.router import router as comments_router
 from app.filesystemmgr.router import router as filesystem_router
 from app.models.router import router as models_router
 from app.models.store_router import router as model_store_router
+from app.oci_hub.router import router as oci_hub_router
 from app.models.uc_compat import router as uc_compat_router
 from app.settings.router import router as settings_router
 from app.usermgr.router import router as usermgr_router
@@ -57,6 +58,7 @@ async def lifespan(app: FastAPI):
     import app.catalog.models  # noqa: F401
     import app.comments.models  # noqa: F401
     import app.models.models  # noqa: F401
+    import app.oci_hub.models  # noqa: F401
     import app.settings.models  # noqa: F401
     import app.usermgr.models  # noqa: F401
 
@@ -110,6 +112,7 @@ app.include_router(comments_router, prefix="/api/v1")
 app.include_router(filesystem_router, prefix="/api/v1")
 app.include_router(models_router, prefix="/api/v1")
 app.include_router(model_store_router, prefix="/api/v1")
+app.include_router(oci_hub_router, prefix="/api/v1")
 app.include_router(uc_compat_router)  # /api/2.0/mlflow/unity-catalog (no extra prefix)
 app.include_router(settings_router, prefix="/api/v1")
 app.include_router(usermgr_router, prefix="/api/v1")

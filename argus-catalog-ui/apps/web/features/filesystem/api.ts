@@ -157,3 +157,58 @@ export function createFilesystemDataSource(rootSub?: string): FilesystemDataSour
     },
   }
 }
+
+// ---------------------------------------------------------------------------
+// S3 Bucket Browser (for OCI Model Files)
+// ---------------------------------------------------------------------------
+
+const S3_BROWSE_BASE = "/api/v1/model-store/browse"
+
+/**
+ * Create a FilesystemDataSource that browses S3 bucket via model-store API.
+ * Used for OCI Model Files page.
+ */
+export function createS3DataSource(): FilesystemDataSource {
+  return {
+    async listDirectory(path: string): Promise<ListDirectoryResponse> {
+      const params = new URLSearchParams({ path })
+      const data = await apiFetch<{
+        folders: Array<{ key: string; name: string; owner?: string; group?: string; permissions?: string }>
+        files: Array<{ key: string; name: string; size: number; last_modified: string; owner?: string; group?: string; permissions?: string }>
+        current_path: string
+      }>(`${S3_BROWSE_BASE}/list?${params}`)
+      return {
+        folders: data.folders.map(toFolder),
+        files: data.files.map(toFile),
+        currentPath: data.current_path,
+      }
+    },
+
+    async deletePaths(): Promise<void> {
+      // S3 delete not supported from browser
+      throw new Error("Delete is not supported for S3 objects from the browser")
+    },
+
+    async createFolder(): Promise<void> {
+      throw new Error("Create folder is not supported for S3 from the browser")
+    },
+
+    async uploadFiles(): Promise<void> {
+      throw new Error("Upload is not supported from the browser. Use SDK or API.")
+    },
+
+    async getDownloadUrl(path: string): Promise<string> {
+      const params = new URLSearchParams({ path })
+      const data = await apiFetch<{ url: string }>(`${S3_BROWSE_BASE}/download?${params}`)
+      return data.url
+    },
+
+    async renamePath(): Promise<void> {
+      throw new Error("Rename is not supported for S3 from the browser")
+    },
+
+    async previewFile(): Promise<unknown> {
+      throw new Error("Preview is not supported for S3 files")
+    },
+  }
+}

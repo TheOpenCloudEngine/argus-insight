@@ -1,6 +1,6 @@
-"""Model access logging and usage statistics.
+"""Model download logging and usage statistics.
 
-Records model access events and provides aggregated statistics
+Records model download events and provides aggregated statistics
 for daily, weekly, and monthly usage reporting.
 """
 
@@ -10,66 +10,66 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.models import ModelAccessLog, ModelVersion
+from app.models.models import ModelDownloadLog, ModelVersion
 
 logger = logging.getLogger(__name__)
 
 
-async def log_access(
+async def log_download(
     session: AsyncSession,
     model_name: str,
     version: int,
-    access_type: str,
+    download_type: str,
     client_ip: str | None = None,
     user_agent: str | None = None,
 ) -> None:
-    """Record a model access event.
+    """Record a model download event.
 
     Truncates user_agent to 500 chars. Commit failures are logged
-    but do not propagate — access logging should not break the main request.
+    but do not propagate — download logging should not break the main request.
     """
     try:
-        entry = ModelAccessLog(
+        entry = ModelDownloadLog(
             model_name=model_name,
             version=version,
-            access_type=access_type,
+            download_type=download_type,
             client_ip=client_ip,
             user_agent=user_agent[:500] if user_agent and len(user_agent) > 500 else user_agent,
         )
         session.add(entry)
         await session.commit()
-        logger.info("Access logged: %s v%d (%s) from %s", model_name, version, access_type, client_ip)
+        logger.info("Download logged: %s v%d (%s) from %s", model_name, version, download_type, client_ip)
     except Exception as e:
-        logger.warning("Failed to log access for %s v%d: %s", model_name, version, e)
+        logger.warning("Failed to log download for %s v%d: %s", model_name, version, e)
 
 
-async def get_total_access_count(session: AsyncSession) -> int:
-    """Get total access count for all models."""
-    result = await session.execute(select(func.count()).select_from(ModelAccessLog))
+async def get_total_download_count(session: AsyncSession) -> int:
+    """Get total download count for all models."""
+    result = await session.execute(select(func.count()).select_from(ModelDownloadLog))
     return result.scalar() or 0
 
 
-async def get_access_count_by_model(session: AsyncSession) -> dict[str, int]:
-    """Get total access count per model."""
+async def get_download_count_by_model(session: AsyncSession) -> dict[str, int]:
+    """Get total download count per model."""
     result = await session.execute(
-        select(ModelAccessLog.model_name, func.count())
-        .group_by(ModelAccessLog.model_name)
+        select(ModelDownloadLog.model_name, func.count())
+        .group_by(ModelDownloadLog.model_name)
         .order_by(func.count().desc())
     )
     return {name: count for name, count in result.all()}
 
 
-async def get_hourly_access(
+async def get_hourly_download(
     session: AsyncSession, hours: int = 24,
 ) -> list[dict]:
-    """Get hourly access counts for the last N hours."""
+    """Get hourly download counts for the last N hours."""
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
     result = await session.execute(
         select(
-            func.date_trunc("hour", ModelAccessLog.accessed_at).label("hour"),
+            func.date_trunc("hour", ModelDownloadLog.downloaded_at).label("hour"),
             func.count().label("count"),
         )
-        .where(ModelAccessLog.accessed_at >= since)
+        .where(ModelDownloadLog.downloaded_at >= since)
         .group_by(text("hour"))
         .order_by(text("hour"))
     )
@@ -79,72 +79,51 @@ async def get_hourly_access(
     ]
 
 
-async def get_daily_access(
+async def get_daily_download(
     session: AsyncSession, days: int = 30,
 ) -> list[dict]:
-    """Get daily access counts for the last N days."""
+    """Get daily download counts for the last N days."""
     since = datetime.now(timezone.utc) - timedelta(days=days)
     result = await session.execute(
         select(
-            func.date(ModelAccessLog.accessed_at).label("day"),
+            func.date(ModelDownloadLog.downloaded_at).label("day"),
             func.count().label("count"),
         )
-        .where(ModelAccessLog.accessed_at >= since)
-        .group_by(func.date(ModelAccessLog.accessed_at))
+        .where(ModelDownloadLog.downloaded_at >= since)
+        .group_by(func.date(ModelDownloadLog.downloaded_at))
         .order_by(text("day"))
     )
     return [{"date": str(row.day), "count": row.count} for row in result.all()]
 
 
-async def get_daily_access_by_model(
-    session: AsyncSession, days: int = 30,
-) -> list[dict]:
-    """Get daily access counts per model for the last N days."""
-    since = datetime.now(timezone.utc) - timedelta(days=days)
-    result = await session.execute(
-        select(
-            func.date(ModelAccessLog.accessed_at).label("day"),
-            ModelAccessLog.model_name,
-            func.count().label("count"),
-        )
-        .where(ModelAccessLog.accessed_at >= since)
-        .group_by(func.date(ModelAccessLog.accessed_at), ModelAccessLog.model_name)
-        .order_by(text("day"))
-    )
-    return [
-        {"date": str(row.day), "model_name": row.model_name, "count": row.count}
-        for row in result.all()
-    ]
-
-
-async def get_weekly_access(
+async def get_weekly_download(
     session: AsyncSession, weeks: int = 12,
 ) -> list[dict]:
-    """Get weekly access counts for the last N weeks."""
+    """Get weekly download counts for the last N weeks."""
     since = datetime.now(timezone.utc) - timedelta(weeks=weeks)
     result = await session.execute(
         select(
-            func.date_trunc("week", ModelAccessLog.accessed_at).label("week"),
+            func.date_trunc("week", ModelDownloadLog.downloaded_at).label("week"),
             func.count().label("count"),
         )
-        .where(ModelAccessLog.accessed_at >= since)
+        .where(ModelDownloadLog.downloaded_at >= since)
         .group_by(text("week"))
         .order_by(text("week"))
     )
     return [{"date": str(row.week)[:10], "count": row.count} for row in result.all()]
 
 
-async def get_monthly_access(
+async def get_monthly_download(
     session: AsyncSession, months: int = 12,
 ) -> list[dict]:
-    """Get monthly access counts for the last N months."""
+    """Get monthly download counts for the last N months."""
     since = datetime.now(timezone.utc) - timedelta(days=months * 30)
     result = await session.execute(
         select(
-            func.date_trunc("month", ModelAccessLog.accessed_at).label("month"),
+            func.date_trunc("month", ModelDownloadLog.downloaded_at).label("month"),
             func.count().label("count"),
         )
-        .where(ModelAccessLog.accessed_at >= since)
+        .where(ModelDownloadLog.downloaded_at >= since)
         .group_by(text("month"))
         .order_by(text("month"))
     )
@@ -177,10 +156,7 @@ async def get_hourly_publish(
             func.date_trunc("hour", ModelVersion.finished_at).label("hour"),
             func.count().label("count"),
         )
-        .where(
-            ModelVersion.status == "READY",
-            ModelVersion.finished_at >= since,
-        )
+        .where(ModelVersion.status == "READY", ModelVersion.finished_at >= since)
         .group_by(text("hour"))
         .order_by(text("hour"))
     )
@@ -200,10 +176,7 @@ async def get_daily_publish(
             func.date(ModelVersion.finished_at).label("day"),
             func.count().label("count"),
         )
-        .where(
-            ModelVersion.status == "READY",
-            ModelVersion.finished_at >= since,
-        )
+        .where(ModelVersion.status == "READY", ModelVersion.finished_at >= since)
         .group_by(func.date(ModelVersion.finished_at))
         .order_by(text("day"))
     )

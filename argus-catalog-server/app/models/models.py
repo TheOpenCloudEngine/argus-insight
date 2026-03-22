@@ -170,20 +170,20 @@ class CatalogModel(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
-class ModelAccessLog(Base):
-    """Access log for model usage tracking.
+class ModelDownloadLog(Base):
+    """Download log for model usage tracking.
 
     Records every time a model version is loaded, pulled, or downloaded.
     Used for daily/weekly/monthly usage statistics.
     """
 
-    __tablename__ = "catalog_model_access_log"
+    __tablename__ = "catalog_model_download_log"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     model_name = Column(String(255), nullable=False, index=True)
     version = Column(Integer, nullable=False)
     # 'load' (MLflow), 'pull' (SDK), 'download' (single file)
-    access_type = Column(String(20), nullable=False)
+    download_type = Column(String(20), nullable=False)
     client_ip = Column(String(45))
     user_agent = Column(String(500))
-    accessed_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    downloaded_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)

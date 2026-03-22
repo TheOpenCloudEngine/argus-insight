@@ -19,10 +19,10 @@ import { CommentSection } from "@/components/comments"
 import {
   fetchModelDetail,
   fetchModelVersions,
-  fetchModelAccessStats,
+  fetchModelDownloadStats,
   type ModelDetail,
   type ModelVersionItem,
-  type ModelAccessStats,
+  type ModelDownloadStats,
 } from "../api"
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react").then((m) => m.default), {
@@ -296,22 +296,22 @@ function VersionsTab({ modelName }: { modelName: string }) {
   )
 }
 
-// ─── Access Tab ───
+// ─── Download Tab ───
 
-function AccessTab({ modelName }: { modelName: string }) {
-  const [stats, setStats] = useState<ModelAccessStats | null>(null)
+function DownloadTab({ modelName }: { modelName: string }) {
+  const [stats, setStats] = useState<ModelDownloadStats | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetchModelAccessStats(modelName)
+    fetchModelDownloadStats(modelName)
       .then(setStats)
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [modelName])
 
-  if (loading || !stats) return <div className="text-center py-12 text-muted-foreground">Loading access data...</div>
+  if (loading || !stats) return <div className="text-center py-12 text-muted-foreground">Loading download data...</div>
 
-  const chartData = stats.daily_access.map((d) => ({
+  const chartData = stats.daily_download.map((d) => ({
     date: d.date.slice(5),
     fullDate: d.date,
     count: d.count,
@@ -321,7 +321,7 @@ function AccessTab({ modelName }: { modelName: string }) {
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Daily Access (30 days)</CardTitle>
+          <CardTitle className="text-sm font-medium">Daily Download (30 days)</CardTitle>
         </CardHeader>
         <CardContent>
           {chartData.length > 0 ? (
@@ -335,14 +335,14 @@ function AccessTab({ modelName }: { modelName: string }) {
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-sm text-muted-foreground text-center py-8">No access data yet</p>
+            <p className="text-sm text-muted-foreground text-center py-8">No download data yet</p>
           )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Recent Access Log</CardTitle>
+          <CardTitle className="text-sm font-medium">Recent Download Log</CardTitle>
         </CardHeader>
         <CardContent>
           {stats.recent_logs.length > 0 ? (
@@ -360,10 +360,10 @@ function AccessTab({ modelName }: { modelName: string }) {
                 <tbody className="divide-y">
                   {stats.recent_logs.map((log, i) => (
                     <tr key={i} className="hover:bg-muted/30">
-                      <td className="px-3 py-1.5">{formatDateTime(log.accessed_at)}</td>
+                      <td className="px-3 py-1.5">{formatDateTime(log.downloaded_at)}</td>
                       <td className="px-3 py-1.5 text-center">v{log.version}</td>
                       <td className="px-3 py-1.5 text-center">
-                        <Badge variant="outline" className="text-sm">{log.access_type}</Badge>
+                        <Badge variant="outline" className="text-sm">{log.download_type}</Badge>
                       </td>
                       <td className="px-3 py-1.5 font-mono">{log.client_ip || "-"}</td>
                       <td className="px-3 py-1.5 truncate max-w-[300px]">{log.user_agent || "-"}</td>
@@ -373,7 +373,7 @@ function AccessTab({ modelName }: { modelName: string }) {
               </table>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground text-center py-4">No access logs yet</p>
+            <p className="text-sm text-muted-foreground text-center py-4">No download logs yet</p>
           )}
         </CardContent>
       </Card>
@@ -450,7 +450,7 @@ export function ModelsDetail({ modelName, onBack }: ModelsDetailProps) {
               <GitBranch className="h-3.5 w-3.5" /> {detail.max_version_number} version{detail.max_version_number !== 1 ? "s" : ""}
             </span>
             <span className="flex items-center gap-1">
-              <Activity className="h-3.5 w-3.5" /> {detail.access_count} access
+              <Activity className="h-3.5 w-3.5" /> {detail.download_count} download
             </span>
           </div>
         </div>
@@ -462,7 +462,7 @@ export function ModelsDetail({ modelName, onBack }: ModelsDetailProps) {
           <TabsTrigger value="overview" className="text-base">Overview</TabsTrigger>
           <TabsTrigger value="usage" className="text-base">Usage</TabsTrigger>
           <TabsTrigger value="versions" className="text-base">Versions</TabsTrigger>
-          <TabsTrigger value="access" className="text-base">Access</TabsTrigger>
+          <TabsTrigger value="download" className="text-base">Download</TabsTrigger>
           <TabsTrigger value="comments" className="text-base">Comments</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="mt-4">
@@ -474,8 +474,8 @@ export function ModelsDetail({ modelName, onBack }: ModelsDetailProps) {
         <TabsContent value="versions" className="mt-4">
           <VersionsTab modelName={detail.name} />
         </TabsContent>
-        <TabsContent value="access" className="mt-4">
-          <AccessTab modelName={detail.name} />
+        <TabsContent value="download" className="mt-4">
+          <DownloadTab modelName={detail.name} />
         </TabsContent>
         <TabsContent value="comments" className="mt-4">
           <CommentSection entityType="model" entityId={detail.name} currentUser="admin" />

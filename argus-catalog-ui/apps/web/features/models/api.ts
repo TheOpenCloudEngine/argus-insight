@@ -45,14 +45,14 @@ export type ModelStats = {
   ready_versions: number
   pending_count: number
   failed_count: number
-  total_access: number
+  total_download: number
   status_distribution: { status: string; count: number }[]
   model_sizes: { model_name: string; model_size_bytes: number }[]
   versions_per_model: { model_name: string; version_count: number }[]
-  daily_access_1d: { date: string; count: number }[]
-  daily_access_7d: { date: string; count: number }[]
-  daily_access_30d: { date: string; count: number }[]
-  access_by_model: Record<string, number>
+  daily_download_1d: { date: string; count: number }[]
+  daily_download_7d: { date: string; count: number }[]
+  daily_download_30d: { date: string; count: number }[]
+  download_by_model: Record<string, number>
   total_publish: number
   daily_publish_1d: { date: string; count: number }[]
   daily_publish_7d: { date: string; count: number }[]
@@ -115,7 +115,7 @@ export type ModelDetail = {
   updated_at: string
   latest_version_status: string | null
   catalog: CatalogModelDetail | null
-  access_count: number
+  download_count: number
 }
 
 export type ModelVersionItem = {
@@ -137,18 +137,18 @@ export type ModelVersionItem = {
   updated_at: string
 }
 
-export type AccessLogEntry = {
-  accessed_at: string
+export type DownloadLogEntry = {
+  downloaded_at: string
   version: number
-  access_type: string
+  download_type: string
   client_ip: string | null
   user_agent: string | null
 }
 
-export type ModelAccessStats = {
-  total_access: number
-  daily_access: { date: string; count: number }[]
-  recent_logs: AccessLogEntry[]
+export type ModelDownloadStats = {
+  total_download: number
+  daily_download: { date: string; count: number }[]
+  recent_logs: DownloadLogEntry[]
 }
 
 export async function fetchModelDetail(name: string): Promise<ModelDetail> {
@@ -166,9 +166,9 @@ export async function fetchModelVersions(
   return res.json()
 }
 
-export async function fetchModelAccessStats(name: string): Promise<ModelAccessStats> {
-  const res = await fetch(`${BASE}/${encodeURIComponent(name)}/access`)
-  if (!res.ok) throw new Error(`Failed to fetch access stats: ${res.status}`)
+export async function fetchModelDownloadStats(name: string): Promise<ModelDownloadStats> {
+  const res = await fetch(`${BASE}/${encodeURIComponent(name)}/download`)
+  if (!res.ok) throw new Error(`Failed to fetch download stats: ${res.status}`)
   return res.json()
 }
 

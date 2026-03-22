@@ -228,9 +228,9 @@ async def get_model_version(
     if not result:
         return JSONResponse({"error_code": "NOT_FOUND"}, status_code=404)
 
-    # Log access
-    from app.models.access_log import log_access
-    await log_access(
+    # Log download
+    from app.models.download_log import log_download
+    await log_download(
         session, full_name, version, "load",
         client_ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),

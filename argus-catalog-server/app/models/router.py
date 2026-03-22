@@ -2,7 +2,7 @@
 
 Native Argus Catalog API for model management under /api/v1/models.
 Provides CRUD operations for registered models and model versions,
-dashboard statistics, model detail views, and access statistics.
+dashboard statistics, model detail views, and download statistics.
 
 For MLflow integration, use the UC-compatible API in uc_compat.py instead.
 """
@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_session
 from app.models import service
 from app.models.schemas import (
-    ModelAccessStats,
+    ModelDownloadStats,
     ModelDetailResponse,
     ModelStats,
     ModelVersionCreate,
@@ -40,7 +40,7 @@ router = APIRouter(prefix="/models", tags=["models"])
 
 @router.get("/stats", response_model=ModelStats)
 async def get_model_stats(session: AsyncSession = Depends(get_session)):
-    """Get dashboard statistics: summary cards, charts, access/publish trends."""
+    """Get dashboard statistics: summary cards, charts, download/publish trends."""
     logger.info("GET /models/stats")
     return await service.get_model_stats(session)
 
@@ -87,7 +87,7 @@ async def list_registered_models(
 async def get_model_detail(
     model_name: str, session: AsyncSession = Depends(get_session),
 ):
-    """Get full model detail with latest version metadata and access count."""
+    """Get full model detail with latest version metadata and download count."""
     logger.info("GET /models/%s/detail", model_name)
     detail = await service.get_model_detail(session, model_name)
     if not detail:
@@ -96,13 +96,13 @@ async def get_model_detail(
     return detail
 
 
-@router.get("/{model_name}/access", response_model=ModelAccessStats)
-async def get_model_access_stats(
+@router.get("/{model_name}/download", response_model=ModelDownloadStats)
+async def get_model_download_stats(
     model_name: str, session: AsyncSession = Depends(get_session),
 ):
-    """Get access statistics (daily chart + recent logs) for a specific model."""
-    logger.info("GET /models/%s/access", model_name)
-    return await service.get_model_access_stats(session, model_name)
+    """Get download statistics (daily chart + recent logs) for a specific model."""
+    logger.info("GET /models/%s/download", model_name)
+    return await service.get_model_download_stats(session, model_name)
 
 
 @router.get("/{model_name}", response_model=RegisteredModelResponse)

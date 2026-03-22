@@ -499,24 +499,24 @@ CREATE INDEX IF NOT EXISTS idx_dataset_lineage_target
 
 
 -- ---------------------------------------------------------------------------
--- Model Access Log
+-- Model Download Log
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS catalog_model_access_log (
+CREATE TABLE IF NOT EXISTS catalog_model_download_log (
     id SERIAL PRIMARY KEY,
     model_name VARCHAR(255) NOT NULL,
     version INT NOT NULL,
-    access_type VARCHAR(20) NOT NULL,
+    download_type VARCHAR(20) NOT NULL,
     client_ip VARCHAR(45),
     user_agent VARCHAR(500),
-    accessed_at TIMESTAMPTZ DEFAULT NOW()
+    downloaded_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_model_access_log_name_at
-    ON catalog_model_access_log (model_name, accessed_at);
+CREATE INDEX IF NOT EXISTS idx_model_download_log_name_at
+    ON catalog_model_download_log (model_name, downloaded_at);
 
-CREATE INDEX IF NOT EXISTS idx_model_access_log_at
-    ON catalog_model_access_log (accessed_at);
+CREATE INDEX IF NOT EXISTS idx_model_download_log_at
+    ON catalog_model_download_log (downloaded_at);
 
 -- ---------------------------------------------------------------------------
 -- Comments
@@ -549,3 +549,80 @@ CREATE INDEX IF NOT EXISTS idx_comments_parent
     ON catalog_comments (parent_id);
 CREATE INDEX IF NOT EXISTS idx_comments_created
     ON catalog_comments (created_at DESC);
+
+-- ---------------------------------------------------------------------------
+-- OCI Model Hub
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS catalog_oci_models (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    display_name VARCHAR(255),
+    description TEXT,
+    readme TEXT,
+    task VARCHAR(50),
+    framework VARCHAR(50),
+    language VARCHAR(50),
+    license VARCHAR(100),
+    source_type VARCHAR(50),
+    source_id VARCHAR(500),
+    source_revision VARCHAR(100),
+    bucket VARCHAR(255),
+    storage_prefix VARCHAR(500),
+    owner VARCHAR(200),
+    version_count INT NOT NULL DEFAULT 0,
+    total_size BIGINT DEFAULT 0,
+    download_count INT NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'draft',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS catalog_oci_model_versions (
+    id SERIAL PRIMARY KEY,
+    model_id INT NOT NULL REFERENCES catalog_oci_models(id) ON DELETE CASCADE,
+    version INT NOT NULL,
+    manifest TEXT,
+    content_digest VARCHAR(100),
+    file_count INT DEFAULT 0,
+    total_size BIGINT DEFAULT 0,
+    metadata JSONB,
+    status VARCHAR(20) NOT NULL DEFAULT 'ready',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (model_id, version)
+);
+
+CREATE TABLE IF NOT EXISTS catalog_oci_model_tags (
+    id SERIAL PRIMARY KEY,
+    model_id INT NOT NULL REFERENCES catalog_oci_models(id) ON DELETE CASCADE,
+    tag_id INT NOT NULL REFERENCES catalog_tags(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (model_id, tag_id)
+);
+
+CREATE TABLE IF NOT EXISTS catalog_oci_model_lineage (
+    id SERIAL PRIMARY KEY,
+    model_id INT NOT NULL REFERENCES catalog_oci_models(id) ON DELETE CASCADE,
+    source_type VARCHAR(20) NOT NULL,
+    source_id VARCHAR(255) NOT NULL,
+    source_name VARCHAR(255),
+    relation_type VARCHAR(30) NOT NULL,
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS catalog_oci_model_download_log (
+    id SERIAL PRIMARY KEY,
+    model_name VARCHAR(255) NOT NULL,
+    version INT NOT NULL,
+    download_type VARCHAR(20) NOT NULL,
+    client_ip VARCHAR(45),
+    user_agent VARCHAR(500),
+    downloaded_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_oci_model_download_log_name_at
+    ON catalog_oci_model_download_log (model_name, downloaded_at);
+
+CREATE INDEX IF NOT EXISTS idx_oci_model_download_log_at
+    ON catalog_oci_model_download_log (downloaded_at);

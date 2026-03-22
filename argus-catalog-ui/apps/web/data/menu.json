@@ -41,6 +41,12 @@
           "icon": "FolderOpen"
         },
         {
+          "id": "oci-hub",
+          "title": "OCI Model Hub",
+          "url": "/dashboard/oci-hub",
+          "icon": "Globe"
+        },
+        {
           "id": "oci-files",
           "title": "OCI Model Files",
           "url": "/dashboard/oci-files",

@@ -214,6 +214,72 @@ async def list_files(
     return files
 
 
+async def list_s3_directory(
+    prefix: str = "",
+    bucket: str | None = None,
+) -> dict:
+    """List S3 objects and folders under a prefix, simulating directory structure.
+
+    Uses delimiter='/' for folder-like browsing. Returns the same shape as
+    the local filesystem list API for UI compatibility.
+    """
+    bucket = bucket or settings.os_bucket
+    clean = prefix.strip("/")
+    s3_prefix = f"{clean}/" if clean else ""
+
+    async with get_s3_client() as s3:
+        resp = await s3.list_objects_v2(Bucket=bucket, Prefix=s3_prefix, Delimiter="/")
+
+    folders = []
+    for cp in resp.get("CommonPrefixes", []):
+        fp = cp["Prefix"]
+        name = fp.rstrip("/").rsplit("/", 1)[-1]
+        folders.append({
+            "key": "/" + fp.rstrip("/") + "/",
+            "name": name,
+            "owner": "", "group": "", "permissions": "",
+        })
+
+    files = []
+    for obj in resp.get("Contents", []):
+        key = obj["Key"]
+        if key == s3_prefix:
+            continue
+        name = key.rsplit("/", 1)[-1]
+        if not name:
+            continue
+        files.append({
+            "key": "/" + key,
+            "name": name,
+            "size": obj.get("Size", 0),
+            "last_modified": obj["LastModified"].isoformat() if obj.get("LastModified") else "",
+            "owner": "", "group": "", "permissions": "",
+        })
+
+    current_path = "/" + clean if clean else "/"
+    logger.info("S3 list: bucket=%s, prefix=%s, folders=%d, files=%d",
+                bucket, s3_prefix, len(folders), len(files))
+    return {"folders": folders, "files": files, "current_path": current_path}
+
+
+async def generate_s3_download_url(
+    path: str,
+    bucket: str | None = None,
+) -> str:
+    """Generate a presigned download URL for any S3 object by path."""
+    bucket = bucket or settings.os_bucket
+    key = path.lstrip("/")
+    expiry = settings.os_presigned_url_expiry
+
+    async with get_s3_client() as s3:
+        url = await s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket, "Key": key},
+            ExpiresIn=expiry,
+        )
+    return url
+
+
 async def get_total_size(
     model_name: str,
     version: int,
@@ -480,6 +546,7 @@ async def import_from_huggingface(
             "total_size": total_size,
         }
 
+        # Parse config.json for model metadata
         config_path = local_path / "config.json"
         if config_path.is_file():
             try:
@@ -488,8 +555,29 @@ async def import_from_huggingface(
                 metadata["architectures"] = config.get("architectures")
                 metadata["torch_dtype"] = config.get("torch_dtype")
                 metadata["transformers_version"] = config.get("transformers_version")
+                metadata["hidden_size"] = config.get("hidden_size")
+                metadata["num_hidden_layers"] = config.get("num_hidden_layers")
+                metadata["num_attention_heads"] = config.get("num_attention_heads")
+                metadata["vocab_size"] = config.get("vocab_size")
             except Exception as e:
                 logger.warning("Failed to parse config.json for %s: %s", hf_model_id, e)
+
+        # Read README.md for Model Card
+        readme_path = local_path / "README.md"
+        if readme_path.is_file():
+            try:
+                metadata["readme"] = readme_path.read_text(encoding="utf-8")
+            except Exception as e:
+                logger.warning("Failed to read README.md for %s: %s", hf_model_id, e)
+
+        # Read tokenizer_config.json for tokenizer info
+        tok_path = local_path / "tokenizer_config.json"
+        if tok_path.is_file():
+            try:
+                tok_config = json.loads(tok_path.read_text())
+                metadata["tokenizer_class"] = tok_config.get("tokenizer_class")
+            except Exception:
+                pass
 
     # Generate OCI manifest
     annotations = {

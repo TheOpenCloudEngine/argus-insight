@@ -31,10 +31,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.models import CatalogModel, ModelVersion, RegisteredModel
 from app.models.schemas import (
-    AccessDataPoint,
-    AccessLogEntry,
+    DataPoint,
+    DownloadLogEntry,
     CatalogModelDetail,
-    ModelAccessStats,
+    ModelDownloadStats,
     ModelDetailResponse,
     ModelSizeInfo,
     ModelStats,
@@ -183,9 +183,9 @@ async def list_model_summaries(
     result = await session.execute(query)
     models = result.scalars().all()
 
-    # Pre-load access counts for all models
-    from app.models.access_log import get_access_count_by_model
-    access_counts = await get_access_count_by_model(session)
+    # Pre-load download counts for all models
+    from app.models.download_log import get_download_count_by_model
+    download_counts = await get_download_count_by_model(session)
 
     # Build summaries with joined data
     all_items: list[ModelSummary] = []
@@ -215,7 +215,7 @@ async def list_model_summaries(
             sklearn_version=cm.sklearn_version if cm else None,
             python_version=cm.python_version if cm else None,
             model_size_bytes=cm.model_size_bytes if cm else None,
-            access_count=access_counts.get(m.name, 0),
+            download_count=download_counts.get(m.name, 0),
             updated_at=m.updated_at,
         )
 
@@ -252,10 +252,10 @@ async def get_model_stats(session: AsyncSession) -> ModelStats:
         return ModelStats(
             total_models=0, total_versions=0,
             ready_models=0, ready_versions=0,
-            pending_count=0, failed_count=0, total_access=0,
+            pending_count=0, failed_count=0, total_download=0,
             status_distribution=[], model_sizes=[], versions_per_model=[],
-            daily_access_1d=[], daily_access_7d=[], daily_access_30d=[],
-            access_by_model={},
+            daily_download_1d=[], daily_download_7d=[], daily_download_30d=[],
+            download_by_model={},
             total_publish=0,
             daily_publish_1d=[], daily_publish_7d=[], daily_publish_30d=[],
         )
@@ -335,28 +335,28 @@ async def get_model_stats(session: AsyncSession) -> ModelStats:
         for name, count in ver_result.all()
     ]
 
-    # Access stats
-    from app.models.access_log import (
-        get_total_access_count,
-        get_hourly_access,
-        get_daily_access,
-        get_access_count_by_model,
+    # Download stats
+    from app.models.download_log import (
+        get_total_download_count,
+        get_hourly_download,
+        get_daily_download,
+        get_download_count_by_model,
     )
-    total_access = await get_total_access_count(session)
+    total_download = await get_total_download_count(session)
 
-    hourly_raw = await get_hourly_access(session, hours=24)
-    daily_1d = [AccessDataPoint(date=d["date"], count=d["count"]) for d in hourly_raw]
+    hourly_raw = await get_hourly_download(session, hours=24)
+    daily_1d = [DataPoint(date=d["date"], count=d["count"]) for d in hourly_raw]
 
-    daily_7d_raw = await get_daily_access(session, days=7)
-    daily_7d = [AccessDataPoint(date=d["date"], count=d["count"]) for d in daily_7d_raw]
+    daily_7d_raw = await get_daily_download(session, days=7)
+    daily_7d = [DataPoint(date=d["date"], count=d["count"]) for d in daily_7d_raw]
 
-    daily_30d_raw = await get_daily_access(session, days=30)
-    daily_30d = [AccessDataPoint(date=d["date"], count=d["count"]) for d in daily_30d_raw]
+    daily_30d_raw = await get_daily_download(session, days=30)
+    daily_30d = [DataPoint(date=d["date"], count=d["count"]) for d in daily_30d_raw]
 
-    access_by_model = await get_access_count_by_model(session)
+    download_by_model = await get_download_count_by_model(session)
 
     # Publish stats
-    from app.models.access_log import (
+    from app.models.download_log import (
         get_total_publish_count,
         get_hourly_publish,
         get_daily_publish,
@@ -364,13 +364,13 @@ async def get_model_stats(session: AsyncSession) -> ModelStats:
     total_publish = await get_total_publish_count(session)
 
     pub_1d_raw = await get_hourly_publish(session, hours=24)
-    pub_1d = [AccessDataPoint(date=d["date"], count=d["count"]) for d in pub_1d_raw]
+    pub_1d = [DataPoint(date=d["date"], count=d["count"]) for d in pub_1d_raw]
 
     pub_7d_raw = await get_daily_publish(session, days=7)
-    pub_7d = [AccessDataPoint(date=d["date"], count=d["count"]) for d in pub_7d_raw]
+    pub_7d = [DataPoint(date=d["date"], count=d["count"]) for d in pub_7d_raw]
 
     pub_30d_raw = await get_daily_publish(session, days=30)
-    pub_30d = [AccessDataPoint(date=d["date"], count=d["count"]) for d in pub_30d_raw]
+    pub_30d = [DataPoint(date=d["date"], count=d["count"]) for d in pub_30d_raw]
 
     return ModelStats(
         total_models=total_models,
@@ -379,14 +379,14 @@ async def get_model_stats(session: AsyncSession) -> ModelStats:
         ready_versions=ready_versions,
         pending_count=pending,
         failed_count=failed,
-        total_access=total_access,
+        total_download=total_download,
         status_distribution=status_distribution,
         model_sizes=model_sizes,
         versions_per_model=versions_per_model,
-        daily_access_1d=daily_1d,
-        daily_access_7d=daily_7d,
-        daily_access_30d=daily_30d,
-        access_by_model=access_by_model,
+        daily_download_1d=daily_1d,
+        daily_download_7d=daily_7d,
+        daily_download_30d=daily_30d,
+        download_by_model=download_by_model,
         total_publish=total_publish,
         daily_publish_1d=pub_1d,
         daily_publish_7d=pub_7d,
@@ -397,7 +397,7 @@ async def get_model_stats(session: AsyncSession) -> ModelStats:
 async def get_model_detail(
     session: AsyncSession, name: str,
 ) -> ModelDetailResponse | None:
-    """Get full model detail with latest version metadata and access count."""
+    """Get full model detail with latest version metadata and download count."""
     model = await _resolve_model(session, name)
     if not model:
         return None
@@ -433,9 +433,9 @@ async def get_model_detail(
             source_type=cm.source_type,
         )
 
-    # Access count
-    from app.models.access_log import get_access_count_by_model
-    access_counts = await get_access_count_by_model(session)
+    # Download count
+    from app.models.download_log import get_download_count_by_model
+    download_counts = await get_download_count_by_model(session)
 
     return ModelDetailResponse(
         id=model.id,
@@ -451,54 +451,54 @@ async def get_model_detail(
         updated_at=model.updated_at,
         latest_version_status=latest_ver,
         catalog=catalog,
-        access_count=access_counts.get(name, 0),
+        download_count=download_counts.get(name, 0),
     )
 
 
-async def get_model_access_stats(
+async def get_model_download_stats(
     session: AsyncSession, name: str,
-) -> ModelAccessStats:
-    """Get access statistics for a specific model."""
-    from app.models.models import ModelAccessLog
+) -> ModelDownloadStats:
+    """Get download statistics for a specific model."""
+    from app.models.models import ModelDownloadLog
 
-    # Total access for this model
+    # Total download for this model
     total = (await session.execute(
-        select(func.count()).where(ModelAccessLog.model_name == name)
+        select(func.count()).where(ModelDownloadLog.model_name == name)
     )).scalar() or 0
 
-    # Daily access (30 days)
+    # Daily download (30 days)
     from datetime import timezone, timedelta
     since = _dt.datetime.now(timezone.utc) - timedelta(days=30)
     daily_result = await session.execute(
         select(
-            func.date(ModelAccessLog.accessed_at).label("day"),
+            func.date(ModelDownloadLog.downloaded_at).label("day"),
             func.count().label("count"),
         )
-        .where(ModelAccessLog.model_name == name, ModelAccessLog.accessed_at >= since)
-        .group_by(func.date(ModelAccessLog.accessed_at))
-        .order_by(func.date(ModelAccessLog.accessed_at))
+        .where(ModelDownloadLog.model_name == name, ModelDownloadLog.downloaded_at >= since)
+        .group_by(func.date(ModelDownloadLog.downloaded_at))
+        .order_by(func.date(ModelDownloadLog.downloaded_at))
     )
-    daily = [AccessDataPoint(date=str(r.day), count=r.count) for r in daily_result.all()]
+    daily = [DataPoint(date=str(r.day), count=r.count) for r in daily_result.all()]
 
     # Recent logs (last 50)
     recent_result = await session.execute(
-        select(ModelAccessLog)
-        .where(ModelAccessLog.model_name == name)
-        .order_by(ModelAccessLog.accessed_at.desc())
+        select(ModelDownloadLog)
+        .where(ModelDownloadLog.model_name == name)
+        .order_by(ModelDownloadLog.downloaded_at.desc())
         .limit(50)
     )
     recent = [
-        AccessLogEntry(
-            accessed_at=r.accessed_at,
+        DownloadLogEntry(
+            downloaded_at=r.downloaded_at,
             version=r.version,
-            access_type=r.access_type,
+            download_type=r.download_type,
             client_ip=r.client_ip,
             user_agent=r.user_agent,
         )
         for r in recent_result.scalars().all()
     ]
 
-    return ModelAccessStats(total_access=total, daily_access=daily, recent_logs=recent)
+    return ModelDownloadStats(total_download=total, daily_download=daily, recent_logs=recent)
 
 
 async def update_registered_model(

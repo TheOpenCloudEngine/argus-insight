@@ -185,11 +185,11 @@ export function createModelsColumns(
       meta: { className: "w-[80px] text-center" },
     },
     {
-      id: "access_count",
-      header: () => <span className="w-full text-center block">Access</span>,
+      id: "download_count",
+      header: () => <span className="w-full text-center block">Download</span>,
       cell: ({ row }) => (
         <span className="text-sm text-muted-foreground text-center block">
-          {row.original.access_count || 0}
+          {row.original.download_count || 0}
         </span>
       ),
       meta: { className: "w-[70px] text-center" },

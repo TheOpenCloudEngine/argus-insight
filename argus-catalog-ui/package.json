@@ -22,11 +22,17 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@tailwindcss/typography": "^0.5.19",
     "@tiptap/extension-link": "^3.20.4",
     "@tiptap/extension-placeholder": "^3.20.4",
     "@tiptap/pm": "^3.20.4",
     "@tiptap/react": "^3.20.4",
     "@tiptap/starter-kit": "^3.20.4",
-    "recharts": "^3.8.0"
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "@xyflow/react": "^12.10.1",
+    "react-markdown": "^10.1.0",
+    "react-syntax-highlighter": "^16.1.1",
+    "recharts": "^3.8.0",
+    "remark-gfm": "^4.0.1"
   }
 }

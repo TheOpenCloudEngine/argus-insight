@@ -487,19 +487,19 @@ CREATE TABLE IF NOT EXISTS argus_dataset_lineage (
 
 
 -- ---------------------------------------------------------------------------
--- Model Access Log
+-- Model Download Log
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS catalog_model_access_log (
+CREATE TABLE IF NOT EXISTS catalog_model_download_log (
     id INT AUTO_INCREMENT PRIMARY KEY,
     model_name VARCHAR(255) NOT NULL,
     version INT NOT NULL,
-    access_type VARCHAR(20) NOT NULL,
+    download_type VARCHAR(20) NOT NULL,
     client_ip VARCHAR(45),
     user_agent VARCHAR(500),
-    accessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_model_access_log_name_at (model_name, accessed_at),
-    INDEX idx_model_access_log_at (accessed_at)
+    downloaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_model_download_log_name_at (model_name, downloaded_at),
+    INDEX idx_model_download_log_at (downloaded_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------------
@@ -529,4 +529,81 @@ CREATE TABLE IF NOT EXISTS catalog_comments (
     INDEX idx_comments_created (created_at),
     FOREIGN KEY (parent_id) REFERENCES catalog_comments(id) ON DELETE CASCADE,
     FOREIGN KEY (root_id) REFERENCES catalog_comments(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- OCI Model Hub
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS catalog_oci_models (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    display_name VARCHAR(255),
+    description TEXT,
+    readme TEXT,
+    task VARCHAR(50),
+    framework VARCHAR(50),
+    language VARCHAR(50),
+    license VARCHAR(100),
+    source_type VARCHAR(50),
+    source_id VARCHAR(500),
+    source_revision VARCHAR(100),
+    bucket VARCHAR(255),
+    storage_prefix VARCHAR(500),
+    owner VARCHAR(200),
+    version_count INT NOT NULL DEFAULT 0,
+    total_size BIGINT DEFAULT 0,
+    download_count INT NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'draft',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS catalog_oci_model_versions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    model_id INT NOT NULL,
+    version INT NOT NULL,
+    manifest TEXT,
+    content_digest VARCHAR(100),
+    file_count INT DEFAULT 0,
+    total_size BIGINT DEFAULT 0,
+    metadata JSON,
+    status VARCHAR(20) NOT NULL DEFAULT 'ready',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_oci_model_version (model_id, version),
+    FOREIGN KEY (model_id) REFERENCES catalog_oci_models(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS catalog_oci_model_tags (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    model_id INT NOT NULL,
+    tag_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_oci_model_tag (model_id, tag_id),
+    FOREIGN KEY (model_id) REFERENCES catalog_oci_models(id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id) REFERENCES catalog_tags(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS catalog_oci_model_lineage (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    model_id INT NOT NULL,
+    source_type VARCHAR(20) NOT NULL,
+    source_id VARCHAR(255) NOT NULL,
+    source_name VARCHAR(255),
+    relation_type VARCHAR(30) NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_id) REFERENCES catalog_oci_models(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS catalog_oci_model_download_log (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    model_name VARCHAR(255) NOT NULL,
+    version INT NOT NULL,
+    download_type VARCHAR(20) NOT NULL,
+    client_ip VARCHAR(45),
+    user_agent VARCHAR(500),
+    downloaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_oci_model_download_log_name_at (model_name, downloaded_at),
+    INDEX idx_oci_model_download_log_at (downloaded_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

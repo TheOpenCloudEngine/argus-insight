@@ -288,8 +288,15 @@ class ModelClient:
         model_name: str,
         description: str | None = None,
         owner: str | None = None,
+        task: str | None = None,
+        framework: str | None = None,
+        source_type: str = "my",
     ) -> dict:
-        """Push a local model directory to the registry via presigned URLs.
+        """Push a local model directory to the OCI Model Hub.
+
+        1. Creates the OCI model if it doesn't exist
+        2. Uploads all files to S3 via model-store API
+        3. Finalizes the version (scan files, generate manifest, update DB)
 
         Unlike import_local (server-side), this uploads from the client side.
         Works when the client cannot access the server's filesystem.
@@ -298,16 +305,25 @@ class ModelClient:
         if not local_path.is_dir():
             raise FileNotFoundError(f"Directory not found: {local_path}")
 
-        # Create model if needed
+        # Create OCI model if needed
         try:
-            self.create_model(model_name, description=description, owner=owner)
+            payload = {"name": model_name, "source_type": source_type}
+            if description:
+                payload["description"] = description
+            if owner:
+                payload["owner"] = owner
+            if task:
+                payload["task"] = task
+            if framework:
+                payload["framework"] = framework
+            self._request("POST", self._url("/oci-models"), json=payload)
         except RuntimeError as e:
             if "409" not in str(e):
                 raise
 
-        # Create version
-        model = self.get_model(model_name)
-        new_version = model["max_version_number"] + 1
+        # Determine version number
+        versions = self._request("GET", self._url(f"/oci-models/{model_name}/versions")).json()
+        new_version = max((v["version"] for v in versions), default=0) + 1
 
         # Collect files
         files = []
@@ -315,16 +331,31 @@ class ModelClient:
             if fp.is_file() and not str(fp.relative_to(local_path)).startswith("."):
                 files.append(fp)
 
-        # Upload each file
+        # Upload each file to S3 via model-store
         for fp in files:
-            rel = str(fp.relative_to(local_path))
             self.upload_file(model_name, new_version, fp)
 
-        # Finalize
-        result = self.finalize(model_name, new_version)
+        # Read README if present
+        readme = None
+        readme_path = local_path / "README.md"
+        if readme_path.is_file():
+            readme = readme_path.read_text(encoding="utf-8")
+
+        # Finalize via OCI Hub API (creates version record + updates model stats)
+        body = {}
+        if readme:
+            body["readme"] = readme
+        resp = self._request(
+            "POST",
+            self._url(f"/oci-models/{model_name}/versions/{new_version}/finalize"),
+            json=body if body else None,
+        )
+        result = resp.json()
+
         return {
             "model_name": model_name,
             "version": new_version,
             "file_count": len(files),
-            **result,
+            "total_size": result.get("total_size", 0),
+            "status": result.get("status", "ready"),
         }

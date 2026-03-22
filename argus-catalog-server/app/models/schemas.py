@@ -79,7 +79,7 @@ class ModelSummary(BaseModel):
     sklearn_version: str | None = None
     python_version: str | None = None
     model_size_bytes: int | None = None
-    access_count: int = 0
+    download_count: int = 0
     updated_at: datetime
 
 
@@ -105,13 +105,13 @@ class ModelVersionCount(BaseModel):
     version_count: int
 
 
-class AccessDataPoint(BaseModel):
+class DataPoint(BaseModel):
     date: str
     count: int
 
 
 class ModelStats(BaseModel):
-    """Dashboard statistics for MLFlow Models page."""
+    """Dashboard statistics for MLflow Models page."""
 
     total_models: int
     total_versions: int
@@ -119,18 +119,18 @@ class ModelStats(BaseModel):
     ready_versions: int
     pending_count: int
     failed_count: int
-    total_access: int
+    total_download: int
     status_distribution: list[ModelVersionStatusCount]
     model_sizes: list[ModelSizeInfo]
     versions_per_model: list[ModelVersionCount]
-    daily_access_1d: list[AccessDataPoint]
-    daily_access_7d: list[AccessDataPoint]
-    daily_access_30d: list[AccessDataPoint]
-    access_by_model: dict[str, int]
+    daily_download_1d: list[DataPoint]
+    daily_download_7d: list[DataPoint]
+    daily_download_30d: list[DataPoint]
+    download_by_model: dict[str, int]
     total_publish: int
-    daily_publish_1d: list[AccessDataPoint]
-    daily_publish_7d: list[AccessDataPoint]
-    daily_publish_30d: list[AccessDataPoint]
+    daily_publish_1d: list[DataPoint]
+    daily_publish_7d: list[DataPoint]
+    daily_publish_30d: list[DataPoint]
 
 
 class CatalogModelDetail(BaseModel):
@@ -166,25 +166,25 @@ class ModelDetailResponse(BaseModel):
     updated_at: datetime
     latest_version_status: str | None = None
     catalog: CatalogModelDetail | None = None
-    access_count: int = 0
+    download_count: int = 0
 
 
-class AccessLogEntry(BaseModel):
-    """Single access log entry."""
+class DownloadLogEntry(BaseModel):
+    """Single download log entry."""
 
-    accessed_at: datetime
+    downloaded_at: datetime
     version: int
-    access_type: str
+    download_type: str
     client_ip: str | None = None
     user_agent: str | None = None
 
 
-class ModelAccessStats(BaseModel):
-    """Access statistics for a single model."""
+class ModelDownloadStats(BaseModel):
+    """Download statistics for a single model."""
 
-    total_access: int
-    daily_access: list[AccessDataPoint]
-    recent_logs: list[AccessLogEntry]
+    total_download: int
+    daily_download: list[DataPoint]
+    recent_logs: list[DownloadLogEntry]
 
 
 # ---------------------------------------------------------------------------

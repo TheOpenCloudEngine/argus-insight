@@ -309,8 +309,16 @@ class CatalogStats(BaseModel):
     total_platforms: int
     total_tags: int
     total_glossary_terms: int
+    total_owners: int
+    synced_datasets: int
     datasets_by_platform: list[dict]
     datasets_by_origin: list[dict]
+    datasets_by_platform_type: list[dict]
+    schema_fields_by_platform: list[dict]
+    top_tagged_datasets: list[dict]
+    daily_datasets_1d: list[dict]
+    daily_datasets_7d: list[dict]
+    daily_datasets_30d: list[dict]
     recent_datasets: list[DatasetSummary]
 
 

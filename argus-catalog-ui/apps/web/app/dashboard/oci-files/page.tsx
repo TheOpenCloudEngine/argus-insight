@@ -3,10 +3,10 @@
 import { useMemo } from "react"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { LocalFilesystemBrowser } from "@/components/local-filesystem-browser"
-import { createFilesystemDataSource } from "@/features/filesystem/api"
+import { createS3DataSource } from "@/features/filesystem/api"
 
 export default function OciFilesPage() {
-  const dataSource = useMemo(() => createFilesystemDataSource("oci-artifacts"), [])
+  const dataSource = useMemo(() => createS3DataSource(), [])
 
   return (
     <>

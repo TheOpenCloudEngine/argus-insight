@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Box, GitBranch, CheckCircle2, AlertTriangle, Activity } from "lucide-react"
+import { Box, Download, GitBranch, Globe, Upload, Activity } from "lucide-react"
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -9,121 +9,76 @@ import {
 } from "recharts"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
-import { fetchModelStats, type ModelStats } from "../api"
+import { fetchOciHubStats, type OciHubStats } from "./api"
 
-/** Format bytes to human-readable string. */
 function formatSize(bytes: number): string {
+  if (!bytes) return "-"
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
 }
 
-/** Shorten model name for chart labels. */
 function shortName(name: string): string {
-  const parts = name.split(".")
-  return parts[parts.length - 1]
+  return name.length > 20 ? name.slice(0, 18) + "..." : name
 }
 
-/** Format date label for line chart. */
 function shortDate(dateStr: string): string {
   const parts = dateStr.split("-")
   return `${parts[1]}/${parts[2]}`
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  READY: "#3b82f6",
-  PENDING: "#a1a1aa",
-  FAILED: "#ef4444",
+const SOURCE_COLORS: Record<string, string> = {
+  huggingface: "#3b82f6",
+  my: "#f97316",
+  file: "#10b981",
+  local: "#10b981",
+  unknown: "#a1a1aa",
 }
 
-export function ModelsDashboard() {
-  const [stats, setStats] = useState<ModelStats | null>(null)
+export function OciHubDashboard() {
+  const [stats, setStats] = useState<OciHubStats | null>(null)
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     try {
       setLoading(true)
-      setStats(await fetchModelStats())
+      setStats(await fetchOciHubStats())
     } catch (err) {
-      console.error("Failed to fetch model stats:", err)
+      console.error("Failed to fetch OCI Hub stats:", err)
     } finally {
       setLoading(false)
     }
   }, [])
 
-  useEffect(() => {
-    load()
-  }, [load])
+  useEffect(() => { load() }, [load])
 
   if (loading || !stats) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        {[...Array(5)].map((_, i) => (
-          <Card key={i}>
-            <CardContent className="pt-6">
-              <div className="h-16 animate-pulse bg-muted rounded" />
-            </CardContent>
-          </Card>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+        {[...Array(6)].map((_, i) => (
+          <Card key={i}><CardContent className="pt-6"><div className="h-16 animate-pulse bg-muted rounded" /></CardContent></Card>
         ))}
       </div>
     )
   }
 
-  const sizeData = stats.model_sizes.slice(0, 10).map((m) => ({
-    name: shortName(m.model_name),
-    fullName: m.model_name,
-    size: m.model_size_bytes,
-    sizeLabel: formatSize(m.model_size_bytes),
-  }))
+  const pieData = stats.source_distribution.filter((s) => s.count > 0)
+  const sizeData = stats.model_sizes.map((m) => ({ name: shortName(m.model_name), fullName: m.model_name, size: m.total_size }))
+  const dlData = stats.top_downloads.map((m) => ({ name: shortName(m.model_name), fullName: m.model_name, downloads: m.download_count }))
 
-  const versionData = stats.versions_per_model.slice(0, 10).map((m) => ({
-    name: shortName(m.model_name),
-    fullName: m.model_name,
-    versions: m.version_count,
-  }))
+  const dl1dData = stats.download_1d.map((d) => ({ date: d.date, fullDate: d.date, count: d.count }))
+  const dl7dData = stats.download_7d.map((d) => ({ date: shortDate(d.date), fullDate: d.date, count: d.count }))
+  const dl30dData = stats.download_30d.map((d) => ({ date: shortDate(d.date), fullDate: d.date, count: d.count }))
 
-  const pieData = stats.status_distribution.filter((s) => s.count > 0)
-
-  const daily1dData = stats.daily_download_1d.map((d) => ({
-    date: d.date,
-    fullDate: d.date,
-    count: d.count,
-  }))
-
-  const daily7dData = stats.daily_download_7d.map((d) => ({
-    date: shortDate(d.date),
-    fullDate: d.date,
-    count: d.count,
-  }))
-
-  const daily30dData = stats.daily_download_30d.map((d) => ({
-    date: shortDate(d.date),
-    fullDate: d.date,
-    count: d.count,
-  }))
-
-  const pub1dData = stats.daily_publish_1d.map((d) => ({
-    date: d.date,
-    fullDate: d.date,
-    count: d.count,
-  }))
-
-  const pub7dData = stats.daily_publish_7d.map((d) => ({
-    date: shortDate(d.date),
-    fullDate: d.date,
-    count: d.count,
-  }))
-
-  const pub30dData = stats.daily_publish_30d.map((d) => ({
-    date: shortDate(d.date),
-    fullDate: d.date,
-    count: d.count,
-  }))
+  const pub1dData = stats.publish_1d.map((d) => ({ date: d.date, fullDate: d.date, count: d.count }))
+  const pub7dData = stats.publish_7d.map((d) => ({ date: shortDate(d.date), fullDate: d.date, count: d.count }))
+  const pub30dData = stats.publish_30d.map((d) => ({ date: shortDate(d.date), fullDate: d.date, count: d.count }))
 
   return (
     <div className="space-y-4">
       {/* Summary Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Models</CardTitle>
@@ -146,48 +101,51 @@ export function ModelsDashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Ready</CardTitle>
-            <CheckCircle2 className="h-4 w-4 text-blue-500" />
+            <CardTitle className="text-sm font-medium">HuggingFace</CardTitle>
+            <Globe className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-500">{stats.ready_models}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {stats.ready_versions} version{stats.ready_versions !== 1 ? "s" : ""}
-            </p>
+            <div className="text-2xl font-bold text-blue-500">{stats.hf_count}</div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Pending / Failed</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-orange-500" />
+            <CardTitle className="text-sm font-medium">My Models</CardTitle>
+            <Upload className="h-4 w-4 text-orange-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              <span className="text-zinc-400">{stats.pending_count}</span>
-              <span className="text-muted-foreground mx-1">/</span>
-              <span className="text-red-500">{stats.failed_count}</span>
-            </div>
+            <div className="text-2xl font-bold text-orange-500">{stats.my_count}</div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Download</CardTitle>
-            <Activity className="h-4 w-4 text-emerald-500" />
+            <Download className="h-4 w-4 text-emerald-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-emerald-500">{stats.total_download}</div>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total Publish</CardTitle>
+            <Activity className="h-4 w-4 text-purple-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-purple-500">{stats.total_publish}</div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Charts Row 1 */}
+      {/* Charts Row 1: Source / Size / Downloads */}
       <div className="grid gap-4 lg:grid-cols-3">
-        {/* Pie: Version Status */}
+        {/* Donut: Source Distribution */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Version Status</CardTitle>
+            <CardTitle className="text-sm font-medium">Source Distribution</CardTitle>
           </CardHeader>
           <CardContent>
             {pieData.length > 0 ? (
@@ -197,7 +155,7 @@ export function ModelsDashboard() {
                     <Pie
                       data={pieData}
                       dataKey="count"
-                      nameKey="status"
+                      nameKey="source"
                       cx="50%"
                       cy="50%"
                       innerRadius={35}
@@ -205,23 +163,17 @@ export function ModelsDashboard() {
                       paddingAngle={2}
                     >
                       {pieData.map((entry) => (
-                        <Cell
-                          key={entry.status}
-                          fill={STATUS_COLORS[entry.status] || "#a1a1aa"}
-                        />
+                        <Cell key={entry.source} fill={SOURCE_COLORS[entry.source] || "#a1a1aa"} />
                       ))}
                     </Pie>
                     <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="space-y-2">
-                  {stats.status_distribution.map((s) => (
-                    <div key={s.status} className="flex items-center gap-2 text-sm">
-                      <span
-                        className="h-3 w-3 rounded-full"
-                        style={{ backgroundColor: STATUS_COLORS[s.status] || "#a1a1aa" }}
-                      />
-                      <span className="text-muted-foreground">{s.status}</span>
+                  {pieData.map((s) => (
+                    <div key={s.source} className="flex items-center gap-2 text-sm">
+                      <span className="h-3 w-3 rounded-full" style={{ backgroundColor: SOURCE_COLORS[s.source] || "#a1a1aa" }} />
+                      <span className="text-muted-foreground">{s.source}</span>
                       <span className="font-medium ml-auto">{s.count}</span>
                     </div>
                   ))}
@@ -233,37 +185,19 @@ export function ModelsDashboard() {
           </CardContent>
         </Card>
 
-        {/* Bar: Model Size */}
+        {/* Bar: Model Size Top 10 */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Model Size</CardTitle>
+            <CardTitle className="text-sm font-medium">Model Size (Top 10)</CardTitle>
           </CardHeader>
           <CardContent>
             {sizeData.length > 0 ? (
               <ResponsiveContainer width="100%" height={160}>
-                <BarChart
-                  data={sizeData}
-                  layout="vertical"
-                  margin={{ left: 0, right: 10, top: 0, bottom: 0 }}
-                >
+                <BarChart data={sizeData} layout="vertical" margin={{ left: 0, right: 10, top: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis
-                    type="number"
-                    tickFormatter={(v) => formatSize(v)}
-                    fontSize={11}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={90}
-                    fontSize={11}
-                  />
-                  <Tooltip
-                    formatter={(value: number) => formatSize(value)}
-                    labelFormatter={(_, payload) =>
-                      payload?.[0]?.payload?.fullName || ""
-                    }
-                  />
+                  <XAxis type="number" tickFormatter={(v) => formatSize(v)} fontSize={11} />
+                  <YAxis type="category" dataKey="name" width={90} fontSize={11} />
+                  <Tooltip formatter={(value: number) => formatSize(value)} labelFormatter={(_, p) => p?.[0]?.payload?.fullName || ""} />
                   <Bar dataKey="size" fill="#3b82f6" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -273,37 +207,24 @@ export function ModelsDashboard() {
           </CardContent>
         </Card>
 
-        {/* Bar: Versions per Model */}
+        {/* Bar: Downloads Top 10 */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Versions per Model</CardTitle>
+            <CardTitle className="text-sm font-medium">Downloads (Top 10)</CardTitle>
           </CardHeader>
           <CardContent>
-            {versionData.length > 0 ? (
+            {dlData.length > 0 ? (
               <ResponsiveContainer width="100%" height={160}>
-                <BarChart
-                  data={versionData}
-                  layout="vertical"
-                  margin={{ left: 0, right: 10, top: 0, bottom: 0 }}
-                >
+                <BarChart data={dlData} layout="vertical" margin={{ left: 0, right: 10, top: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                   <XAxis type="number" allowDecimals={false} fontSize={11} />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={90}
-                    fontSize={11}
-                  />
-                  <Tooltip
-                    labelFormatter={(_, payload) =>
-                      payload?.[0]?.payload?.fullName || ""
-                    }
-                  />
-                  <Bar dataKey="versions" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                  <YAxis type="category" dataKey="name" width={90} fontSize={11} />
+                  <Tooltip labelFormatter={(_, p) => p?.[0]?.payload?.fullName || ""} />
+                  <Bar dataKey="downloads" fill="#10b981" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">No data</p>
+              <p className="text-sm text-muted-foreground text-center py-8">No downloads yet</p>
             )}
           </CardContent>
         </Card>
@@ -311,15 +232,14 @@ export function ModelsDashboard() {
 
       {/* Charts Row 2: Download Trends */}
       <div className="grid gap-4 lg:grid-cols-3">
-        {/* Hourly Download (1 day) */}
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium">Hourly Download (24h)</CardTitle>
           </CardHeader>
           <CardContent>
-            {daily1dData.length > 0 ? (
+            {dl1dData.length > 0 ? (
               <ResponsiveContainer width="100%" height={160}>
-                <BarChart data={daily1dData} margin={{ left: 0, right: 10, top: 5, bottom: 0 }}>
+                <BarChart data={dl1dData} margin={{ left: 0, right: 10, top: 5, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" fontSize={10} />
                   <YAxis allowDecimals={false} fontSize={11} />
@@ -333,31 +253,19 @@ export function ModelsDashboard() {
           </CardContent>
         </Card>
 
-        {/* Daily Download (7 days) */}
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium">Daily Download (7 days)</CardTitle>
           </CardHeader>
           <CardContent>
-            {daily7dData.length > 0 ? (
+            {dl7dData.length > 0 ? (
               <ResponsiveContainer width="100%" height={160}>
-                <LineChart data={daily7dData} margin={{ left: 0, right: 10, top: 5, bottom: 0 }}>
+                <LineChart data={dl7dData} margin={{ left: 0, right: 10, top: 5, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" fontSize={10} />
                   <YAxis allowDecimals={false} fontSize={11} />
-                  <Tooltip
-                    labelFormatter={(_, payload) =>
-                      payload?.[0]?.payload?.fullDate || ""
-                    }
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="count"
-                    stroke="#f59e0b"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                    activeDot={{ r: 5 }}
-                  />
+                  <Tooltip labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || ""} />
+                  <Line type="monotone" dataKey="count" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
@@ -366,31 +274,19 @@ export function ModelsDashboard() {
           </CardContent>
         </Card>
 
-        {/* Daily Download (30 days) */}
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium">Daily Download (30 days)</CardTitle>
           </CardHeader>
           <CardContent>
-            {daily30dData.length > 0 ? (
+            {dl30dData.length > 0 ? (
               <ResponsiveContainer width="100%" height={160}>
-                <LineChart data={daily30dData} margin={{ left: 0, right: 10, top: 5, bottom: 0 }}>
+                <LineChart data={dl30dData} margin={{ left: 0, right: 10, top: 5, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" fontSize={10} />
                   <YAxis allowDecimals={false} fontSize={11} />
-                  <Tooltip
-                    labelFormatter={(_, payload) =>
-                      payload?.[0]?.payload?.fullDate || ""
-                    }
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="count"
-                    stroke="#3b82f6"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                    activeDot={{ r: 5 }}
-                  />
+                  <Tooltip labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || ""} />
+                  <Line type="monotone" dataKey="count" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
@@ -402,7 +298,6 @@ export function ModelsDashboard() {
 
       {/* Charts Row 3: Publish Trends */}
       <div className="grid gap-4 lg:grid-cols-3">
-        {/* Hourly Publish (1 day) */}
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium">Hourly Publish (24h)</CardTitle>
@@ -424,7 +319,6 @@ export function ModelsDashboard() {
           </CardContent>
         </Card>
 
-        {/* Daily Publish (7 days) */}
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium">Daily Publish (7 days)</CardTitle>
@@ -436,19 +330,8 @@ export function ModelsDashboard() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" fontSize={10} />
                   <YAxis allowDecimals={false} fontSize={11} />
-                  <Tooltip
-                    labelFormatter={(_, payload) =>
-                      payload?.[0]?.payload?.fullDate || ""
-                    }
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="count"
-                    stroke="#d946ef"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                    activeDot={{ r: 5 }}
-                  />
+                  <Tooltip labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || ""} />
+                  <Line type="monotone" dataKey="count" stroke="#d946ef" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
@@ -457,7 +340,6 @@ export function ModelsDashboard() {
           </CardContent>
         </Card>
 
-        {/* Daily Publish (30 days) */}
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium">Daily Publish (30 days)</CardTitle>
@@ -469,19 +351,8 @@ export function ModelsDashboard() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" fontSize={10} />
                   <YAxis allowDecimals={false} fontSize={11} />
-                  <Tooltip
-                    labelFormatter={(_, payload) =>
-                      payload?.[0]?.payload?.fullDate || ""
-                    }
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="count"
-                    stroke="#8b5cf6"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                    activeDot={{ r: 5 }}
-                  />
+                  <Tooltip labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || ""} />
+                  <Line type="monotone" dataKey="count" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
                 </LineChart>
               </ResponsiveContainer>
             ) : (

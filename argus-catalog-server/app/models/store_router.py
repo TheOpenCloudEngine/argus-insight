@@ -136,12 +136,16 @@ async def get_download_url(
 ):
     """Generate a presigned download URL for a file."""
     try:
-        from app.models.access_log import log_access
-        await log_access(
-            session, model_name, version, "download",
-            client_ip=request.client.host if request and request.client else None,
-            user_agent=request.headers.get("user-agent") if request else None,
-        )
+        client_ip = request.client.host if request and request.client else None
+        user_agent = request.headers.get("user-agent") if request else None
+
+        from app.models.download_log import log_download
+        await log_download(session, model_name, version, "download", client_ip, user_agent)
+
+        # Also log to OCI download log if applicable
+        from app.oci_hub.download_log import log_oci_download
+        await log_oci_download(session, model_name, version, "download", client_ip, user_agent)
+
         return await model_store.generate_download_url(model_name, version, filename)
     except Exception as e:
         logger.error("Download URL error: %s", e)
@@ -157,16 +161,49 @@ async def get_download_urls(
 ):
     """Generate presigned download URLs for all files in a version."""
     try:
-        from app.models.access_log import log_access
-        await log_access(
-            session, model_name, version, "pull",
-            client_ip=request.client.host if request and request.client else None,
-            user_agent=request.headers.get("user-agent") if request else None,
-        )
+        client_ip = request.client.host if request and request.client else None
+        user_agent = request.headers.get("user-agent") if request else None
+
+        from app.models.download_log import log_download
+        await log_download(session, model_name, version, "pull", client_ip, user_agent)
+
+        # Log to OCI download log + increment counter if applicable
+        from app.oci_hub.download_log import log_oci_download
+        await log_oci_download(session, model_name, version, "pull", client_ip, user_agent)
+
         urls = await model_store.generate_download_urls(model_name, version)
         return {"files": urls}
     except Exception as e:
         logger.error("Download URLs error: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# S3 Bucket Browser (for OCI Model Files page)
+# ---------------------------------------------------------------------------
+
+@router.get("/browse/list")
+async def browse_s3_directory(
+    path: str = Query("/", description="Directory path in S3 bucket"),
+):
+    """List S3 objects and folders under a path (directory-like browsing)."""
+    try:
+        return await model_store.list_s3_directory(prefix=path.lstrip("/"))
+    except Exception as e:
+        logger.error("S3 browse error: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/browse/download")
+async def browse_s3_download(
+    path: str = Query(..., description="File path in S3 bucket"),
+):
+    """Get a presigned download URL for an S3 object."""
+    try:
+        url = await model_store.generate_s3_download_url(path)
+        return {"url": url}
+    except Exception as e:
+        logger.error("S3 download URL error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

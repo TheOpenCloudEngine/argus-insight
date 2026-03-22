@@ -753,8 +753,13 @@ async def update_schema_fields(
 # ---------------------------------------------------------------------------
 
 async def get_catalog_stats(session: AsyncSession) -> CatalogStats:
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import text
+
+    active_filter = Dataset.status != "removed"
+
     total_datasets = (await session.execute(
-        select(func.count()).select_from(Dataset).where(Dataset.status != "removed")
+        select(func.count()).select_from(Dataset).where(active_filter)
     )).scalar() or 0
 
     total_platforms = (await session.execute(
@@ -769,11 +774,20 @@ async def get_catalog_stats(session: AsyncSession) -> CatalogStats:
         select(func.count()).select_from(GlossaryTerm)
     )).scalar() or 0
 
-    # Datasets by platform
+    total_owners = (await session.execute(
+        select(func.count()).select_from(Owner)
+    )).scalar() or 0
+
+    synced_datasets = (await session.execute(
+        select(func.count()).select_from(Dataset)
+        .where(active_filter, Dataset.is_synced == "true")
+    )).scalar() or 0
+
+    # Datasets by platform name (for bar chart)
     result = await session.execute(
         select(Platform.name, func.count(Dataset.id))
         .join(Dataset, Dataset.platform_id == Platform.id)
-        .where(Dataset.status != "removed")
+        .where(active_filter)
         .group_by(Platform.name)
         .order_by(func.count(Dataset.id).desc())
     )
@@ -781,26 +795,113 @@ async def get_catalog_stats(session: AsyncSession) -> CatalogStats:
         {"platform": name, "count": count} for name, count in result.all()
     ]
 
-    # Datasets by origin
+    # Datasets by platform type (for donut chart)
+    result = await session.execute(
+        select(Platform.type, func.count(Dataset.id))
+        .join(Dataset, Dataset.platform_id == Platform.id)
+        .where(active_filter)
+        .group_by(Platform.type)
+        .order_by(func.count(Dataset.id).desc())
+    )
+    datasets_by_platform_type = [
+        {"type": ptype, "count": count} for ptype, count in result.all()
+    ]
+
+    # Datasets by origin (for donut chart)
     result = await session.execute(
         select(Dataset.origin, func.count(Dataset.id))
-        .where(Dataset.status != "removed")
+        .where(active_filter)
         .group_by(Dataset.origin)
     )
     datasets_by_origin = [
         {"origin": origin, "count": count} for origin, count in result.all()
     ]
 
+    # Schema field count by platform (bar chart)
+    result = await session.execute(
+        select(Platform.name, func.count(DatasetSchema.id))
+        .join(Dataset, Dataset.platform_id == Platform.id)
+        .join(DatasetSchema, DatasetSchema.dataset_id == Dataset.id)
+        .where(active_filter)
+        .group_by(Platform.name)
+        .order_by(func.count(DatasetSchema.id).desc())
+        .limit(10)
+    )
+    schema_fields_by_platform = [
+        {"platform": name, "count": count} for name, count in result.all()
+    ]
+
+    # Top tagged datasets (datasets with most tags)
+    result = await session.execute(
+        select(Dataset.name, func.count(DatasetTag.id).label("tag_count"))
+        .join(DatasetTag, DatasetTag.dataset_id == Dataset.id)
+        .where(active_filter)
+        .group_by(Dataset.name)
+        .order_by(text("tag_count DESC"))
+        .limit(10)
+    )
+    top_tagged_datasets = [
+        {"name": name, "count": count} for name, count in result.all()
+    ]
+
+    # Daily dataset creation trends
+    now = datetime.now(timezone.utc)
+
+    # Hourly (24h)
+    since_1d = now - timedelta(hours=24)
+    result = await session.execute(
+        select(
+            func.date_trunc("hour", Dataset.created_at).label("hour"),
+            func.count().label("count"),
+        )
+        .where(active_filter, Dataset.created_at >= since_1d)
+        .group_by(text("hour")).order_by(text("hour"))
+    )
+    daily_datasets_1d = [
+        {"date": r.hour.strftime("%H:%M") if r.hour else "", "count": r.count}
+        for r in result.all()
+    ]
+
+    # Daily (7d)
+    since_7d = now - timedelta(days=7)
+    result = await session.execute(
+        select(func.date(Dataset.created_at).label("day"), func.count().label("count"))
+        .where(active_filter, Dataset.created_at >= since_7d)
+        .group_by(func.date(Dataset.created_at)).order_by(text("day"))
+    )
+    daily_datasets_7d = [
+        {"date": str(r.day), "count": r.count} for r in result.all()
+    ]
+
+    # Daily (30d)
+    since_30d = now - timedelta(days=30)
+    result = await session.execute(
+        select(func.date(Dataset.created_at).label("day"), func.count().label("count"))
+        .where(active_filter, Dataset.created_at >= since_30d)
+        .group_by(func.date(Dataset.created_at)).order_by(text("day"))
+    )
+    daily_datasets_30d = [
+        {"date": str(r.day), "count": r.count} for r in result.all()
+    ]
+
     # Recent datasets
-    recent = await list_datasets(session, page=1, page_size=5)
+    recent = await list_datasets(session, page=1, page_size=10)
 
     return CatalogStats(
         total_datasets=total_datasets,
         total_platforms=total_platforms,
         total_tags=total_tags,
         total_glossary_terms=total_glossary_terms,
+        total_owners=total_owners,
+        synced_datasets=synced_datasets,
         datasets_by_platform=datasets_by_platform,
         datasets_by_origin=datasets_by_origin,
+        datasets_by_platform_type=datasets_by_platform_type,
+        schema_fields_by_platform=schema_fields_by_platform,
+        top_tagged_datasets=top_tagged_datasets,
+        daily_datasets_1d=daily_datasets_1d,
+        daily_datasets_7d=daily_datasets_7d,
+        daily_datasets_30d=daily_datasets_30d,
         recent_datasets=recent.items,
     )
 
