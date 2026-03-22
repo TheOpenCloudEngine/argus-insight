@@ -309,6 +309,58 @@ async def get_me(user: CurrentUser):
     )
 
 
+class UpdateProfileRequest(BaseModel):
+    first_name: str | None = None
+    last_name: str | None = None
+    email: str | None = None
+    phone_number: str | None = None
+
+
+@router.put("/me", response_model=UserInfoResponse)
+async def update_me(
+    req: UpdateProfileRequest,
+    current_user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    """Update the current user's profile (local auth only)."""
+    if settings.auth_type != "local":
+        raise HTTPException(status_code=400, detail="Profile update is only available in local auth mode")
+
+    from app.usermgr.models import ArgusUser
+    result = await session.execute(
+        select(ArgusUser).where(ArgusUser.id == int(current_user.sub))
+    )
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if req.first_name is not None:
+        user.first_name = req.first_name
+    if req.last_name is not None:
+        user.last_name = req.last_name
+    if req.email is not None:
+        user.email = req.email
+    if req.phone_number is not None:
+        user.phone_number = req.phone_number
+
+    await session.commit()
+    await session.refresh(user)
+    logger.info("Profile updated: %s", user.username)
+
+    return UserInfoResponse(
+        sub=str(user.id),
+        username=user.username,
+        email=user.email,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        roles=current_user.roles,
+        realm_roles=current_user.realm_roles,
+        role=current_user.role,
+        is_admin=current_user.is_admin,
+        is_superuser=current_user.is_superuser,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Change password (Local mode only)
 # ---------------------------------------------------------------------------
