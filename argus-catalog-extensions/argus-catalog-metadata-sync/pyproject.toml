@@ -24,6 +24,15 @@ dependencies = [
 kudu = [
     "kudu-python>=1.17.0",
 ]
+mysql = [
+    "pymysql>=1.1",
+]
+oracle = [
+    "oracledb>=2.0",
+]
+mssql = [
+    "pymssql>=2.2",
+]
 kerberos = [
     "kerberos>=1.3",
 ]

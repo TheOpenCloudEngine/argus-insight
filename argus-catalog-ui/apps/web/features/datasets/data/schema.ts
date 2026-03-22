@@ -33,6 +33,7 @@ export const schemaFieldSchema = z.object({
   is_unique: z.string().optional().default("false"),
   is_indexed: z.string().optional().default("false"),
   is_partition_key: z.string().optional().default("false"),
+  is_distribution_key: z.string().optional().default("false"),
   ordinal: z.number(),
 })
 export type SchemaField = z.infer<typeof schemaFieldSchema>

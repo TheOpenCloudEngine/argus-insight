@@ -136,6 +136,116 @@ class Settings:
         )
         self.kudu_schedule_enabled: bool = _to_bool(kudu_sched.get("enabled", True))
 
+        # Greenplum Platform
+        gp_raw = _raw.get("platforms", {}).get("greenplum", {})
+        self.greenplum_enabled: bool = _to_bool(gp_raw.get("enabled", False))
+        self.greenplum_host: str = gp_raw.get("host", "localhost")
+        self.greenplum_port: int = int(gp_raw.get("port", 5432))
+        self.greenplum_database: str = gp_raw.get("database", "")
+        self.greenplum_username: str = gp_raw.get("username", "gpadmin")
+        self.greenplum_password: str = gp_raw.get("password", "")
+        self.greenplum_databases: list[str] = gp_raw.get("databases", [])
+        self.greenplum_exclude_databases: list[str] = gp_raw.get(
+            "exclude_databases", ["template0", "template1", "postgres"]
+        )
+        self.greenplum_schemas: list[str] = gp_raw.get("schemas", [])
+        self.greenplum_exclude_schemas: list[str] = gp_raw.get(
+            "exclude_schemas",
+            ["pg_catalog", "information_schema", "gp_toolkit", "pg_toast"],
+        )
+        self.greenplum_origin: str = gp_raw.get("origin", "PROD")
+        gp_sched = gp_raw.get("schedule", {})
+        self.greenplum_schedule_interval_minutes: int = int(
+            gp_sched.get("interval_minutes", 60)
+        )
+        self.greenplum_schedule_enabled: bool = _to_bool(
+            gp_sched.get("enabled", True)
+        )
+
+        # MySQL Platform
+        my_raw = _raw.get("platforms", {}).get("mysql", {})
+        self.mysql_enabled: bool = _to_bool(my_raw.get("enabled", False))
+        self.mysql_host: str = my_raw.get("host", "localhost")
+        self.mysql_port: int = int(my_raw.get("port", 3306))
+        self.mysql_username: str = my_raw.get("username", "root")
+        self.mysql_password: str = my_raw.get("password", "")
+        self.mysql_databases: list[str] = my_raw.get("databases", [])
+        self.mysql_exclude_databases: list[str] = my_raw.get(
+            "exclude_databases",
+            ["information_schema", "mysql", "performance_schema", "sys"],
+        )
+        self.mysql_origin: str = my_raw.get("origin", "PROD")
+        my_sched = my_raw.get("schedule", {})
+        self.mysql_schedule_interval_minutes: int = int(
+            my_sched.get("interval_minutes", 60)
+        )
+        self.mysql_schedule_enabled: bool = _to_bool(my_sched.get("enabled", True))
+
+        # PostgreSQL Platform
+        pg_raw = _raw.get("platforms", {}).get("postgresql", {})
+        self.postgresql_enabled: bool = _to_bool(pg_raw.get("enabled", False))
+        self.postgresql_host: str = pg_raw.get("host", "localhost")
+        self.postgresql_port: int = int(pg_raw.get("port", 5432))
+        self.postgresql_database: str = pg_raw.get("database", "")
+        self.postgresql_username: str = pg_raw.get("username", "postgres")
+        self.postgresql_password: str = pg_raw.get("password", "")
+        self.postgresql_databases: list[str] = pg_raw.get("databases", [])
+        self.postgresql_exclude_databases: list[str] = pg_raw.get(
+            "exclude_databases", ["template0", "template1", "postgres"]
+        )
+        self.postgresql_schemas: list[str] = pg_raw.get("schemas", [])
+        self.postgresql_exclude_schemas: list[str] = pg_raw.get(
+            "exclude_schemas", ["pg_catalog", "information_schema", "pg_toast"],
+        )
+        self.postgresql_origin: str = pg_raw.get("origin", "PROD")
+        pg_sched = pg_raw.get("schedule", {})
+        self.postgresql_schedule_interval_minutes: int = int(
+            pg_sched.get("interval_minutes", 60)
+        )
+        self.postgresql_schedule_enabled: bool = _to_bool(pg_sched.get("enabled", True))
+
+        # Oracle Platform
+        ora_raw = _raw.get("platforms", {}).get("oracle", {})
+        self.oracle_enabled: bool = _to_bool(ora_raw.get("enabled", False))
+        self.oracle_host: str = ora_raw.get("host", "localhost")
+        self.oracle_port: int = int(ora_raw.get("port", 1521))
+        self.oracle_service_name: str = ora_raw.get("service_name", "")
+        self.oracle_sid: str = ora_raw.get("sid", "ORCL")
+        self.oracle_username: str = ora_raw.get("username", "system")
+        self.oracle_password: str = ora_raw.get("password", "")
+        self.oracle_schemas: list[str] = ora_raw.get("schemas", [])
+        self.oracle_exclude_schemas: list[str] = ora_raw.get(
+            "exclude_schemas",
+            ["SYS", "SYSTEM", "DBSNMP", "APPQOSSYS", "OUTLN", "XDB",
+             "WMSYS", "CTXSYS", "MDSYS", "ORDDATA", "ORDSYS", "OLAPSYS"],
+        )
+        self.oracle_origin: str = ora_raw.get("origin", "PROD")
+        ora_sched = ora_raw.get("schedule", {})
+        self.oracle_schedule_interval_minutes: int = int(
+            ora_sched.get("interval_minutes", 60)
+        )
+        self.oracle_schedule_enabled: bool = _to_bool(ora_sched.get("enabled", True))
+
+        # MSSQL Platform
+        ms_raw = _raw.get("platforms", {}).get("mssql", {})
+        self.mssql_enabled: bool = _to_bool(ms_raw.get("enabled", False))
+        self.mssql_host: str = ms_raw.get("host", "localhost")
+        self.mssql_port: int = int(ms_raw.get("port", 1433))
+        self.mssql_database: str = ms_raw.get("database", "")
+        self.mssql_username: str = ms_raw.get("username", "sa")
+        self.mssql_password: str = ms_raw.get("password", "")
+        self.mssql_databases: list[str] = ms_raw.get("databases", [])
+        self.mssql_exclude_databases: list[str] = ms_raw.get(
+            "exclude_databases", ["master", "tempdb", "model", "msdb"],
+        )
+        self.mssql_schemas: list[str] = ms_raw.get("schemas", [])
+        self.mssql_origin: str = ms_raw.get("origin", "PROD")
+        ms_sched = ms_raw.get("schedule", {})
+        self.mssql_schedule_interval_minutes: int = int(
+            ms_sched.get("interval_minutes", 60)
+        )
+        self.mssql_schedule_enabled: bool = _to_bool(ms_sched.get("enabled", True))
+
         # Impala Platform (query collection via Cloudera Manager API)
         impala_raw = _raw.get("platforms", {}).get("impala", {})
         self.impala_enabled: bool = _to_bool(impala_raw.get("enabled", False))

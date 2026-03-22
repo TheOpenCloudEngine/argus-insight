@@ -48,6 +48,61 @@ def _init_platforms() -> None:
             enabled=settings.kudu_schedule_enabled,
         )
 
+    # Greenplum
+    if settings.greenplum_enabled:
+        from sync.platforms.greenplum.sync import GreenplumMetadataSync
+
+        gp_sync = GreenplumMetadataSync(client, settings)
+        _scheduler.register(
+            gp_sync,
+            interval_minutes=settings.greenplum_schedule_interval_minutes,
+            enabled=settings.greenplum_schedule_enabled,
+        )
+
+    # MySQL
+    if settings.mysql_enabled:
+        from sync.platforms.mysql.sync import MysqlMetadataSync
+
+        mysql_sync = MysqlMetadataSync(client, settings)
+        _scheduler.register(
+            mysql_sync,
+            interval_minutes=settings.mysql_schedule_interval_minutes,
+            enabled=settings.mysql_schedule_enabled,
+        )
+
+    # PostgreSQL
+    if settings.postgresql_enabled:
+        from sync.platforms.postgresql.sync import PostgresqlMetadataSync
+
+        pg_sync = PostgresqlMetadataSync(client, settings)
+        _scheduler.register(
+            pg_sync,
+            interval_minutes=settings.postgresql_schedule_interval_minutes,
+            enabled=settings.postgresql_schedule_enabled,
+        )
+
+    # Oracle
+    if settings.oracle_enabled:
+        from sync.platforms.oracle.sync import OracleMetadataSync
+
+        oracle_sync = OracleMetadataSync(client, settings)
+        _scheduler.register(
+            oracle_sync,
+            interval_minutes=settings.oracle_schedule_interval_minutes,
+            enabled=settings.oracle_schedule_enabled,
+        )
+
+    # MSSQL
+    if settings.mssql_enabled:
+        from sync.platforms.mssql.sync import MssqlMetadataSync
+
+        mssql_sync = MssqlMetadataSync(client, settings)
+        _scheduler.register(
+            mssql_sync,
+            interval_minutes=settings.mssql_schedule_interval_minutes,
+            enabled=settings.mssql_schedule_enabled,
+        )
+
     # Impala (query collection via Cloudera Manager API)
     if settings.impala_enabled:
         from sync.platforms.impala.collector import ImpalaQueryCollector
@@ -198,6 +253,36 @@ async def get_schedule(platform: str):
             "interval_minutes": settings.kudu_schedule_interval_minutes,
             "enabled": settings.kudu_schedule_enabled,
         }
+    elif platform == "greenplum":
+        return {
+            "platform": platform,
+            "interval_minutes": settings.greenplum_schedule_interval_minutes,
+            "enabled": settings.greenplum_schedule_enabled,
+        }
+    elif platform == "mysql":
+        return {
+            "platform": platform,
+            "interval_minutes": settings.mysql_schedule_interval_minutes,
+            "enabled": settings.mysql_schedule_enabled,
+        }
+    elif platform == "postgresql":
+        return {
+            "platform": platform,
+            "interval_minutes": settings.postgresql_schedule_interval_minutes,
+            "enabled": settings.postgresql_schedule_enabled,
+        }
+    elif platform == "oracle":
+        return {
+            "platform": platform,
+            "interval_minutes": settings.oracle_schedule_interval_minutes,
+            "enabled": settings.oracle_schedule_enabled,
+        }
+    elif platform == "mssql":
+        return {
+            "platform": platform,
+            "interval_minutes": settings.mssql_schedule_interval_minutes,
+            "enabled": settings.mssql_schedule_enabled,
+        }
     raise HTTPException(status_code=404, detail=f"Platform '{platform}' not found")
 
 
@@ -333,6 +418,78 @@ async def test_kudu_connection():
         raise HTTPException(status_code=502, detail=str(e))
     finally:
         kudu_sync.disconnect()
+
+
+# ---------------------------------------------------------------------------
+# Greenplum connection configuration
+# ---------------------------------------------------------------------------
+
+class GreenplumConnectionUpdate(BaseModel):
+    host: str = "localhost"
+    port: int = 5432
+    database: str = ""
+    username: str = "gpadmin"
+    password: str = ""
+    databases: list[str] = []
+    exclude_databases: list[str] = ["template0", "template1", "postgres"]
+    schemas: list[str] = []
+    exclude_schemas: list[str] = [
+        "pg_catalog", "information_schema", "gp_toolkit", "pg_toast",
+    ]
+    origin: str = "PROD"
+
+
+@app.put("/sync/greenplum/connection")
+async def update_greenplum_connection(req: GreenplumConnectionUpdate):
+    """Update the Greenplum connection configuration."""
+    settings.greenplum_host = req.host
+    settings.greenplum_port = req.port
+    settings.greenplum_database = req.database
+    settings.greenplum_username = req.username
+    settings.greenplum_password = req.password
+    settings.greenplum_databases = req.databases
+    settings.greenplum_exclude_databases = req.exclude_databases
+    settings.greenplum_schemas = req.schemas
+    settings.greenplum_exclude_schemas = req.exclude_schemas
+    settings.greenplum_origin = req.origin
+
+    # Re-register with new config
+    from sync.platforms.greenplum.sync import GreenplumMetadataSync
+
+    client = CatalogClient(settings)
+    gp_sync = GreenplumMetadataSync(client, settings)
+    _scheduler.register(
+        gp_sync,
+        interval_minutes=settings.greenplum_schedule_interval_minutes,
+        enabled=settings.greenplum_schedule_enabled,
+    )
+
+    return {"status": "ok", "message": "Greenplum connection updated"}
+
+
+@app.post("/sync/greenplum/test")
+async def test_greenplum_connection():
+    """Test connection to Greenplum."""
+    from sync.platforms.greenplum.sync import GreenplumMetadataSync
+
+    client = CatalogClient(settings)
+    gp_sync = GreenplumMetadataSync(client, settings)
+    try:
+        connected = gp_sync.connect()
+        if connected:
+            tables = gp_sync.discover()
+            db_names = sorted({t["database"] for t in tables})
+            return {
+                "status": "ok",
+                "message": "Connection successful",
+                "databases": db_names,
+                "tables_count": len(tables),
+            }
+        return {"status": "error", "message": "Failed to connect"}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    finally:
+        gp_sync.disconnect()
 
 
 # ---------------------------------------------------------------------------
