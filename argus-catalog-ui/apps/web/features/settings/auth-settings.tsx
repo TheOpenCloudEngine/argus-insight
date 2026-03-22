@@ -128,6 +128,30 @@ export function AuthSettings() {
     }
   }
 
+  const handleOpenInit = () => {
+    // Validate all required fields before opening the dialog
+    const missing: string[] = []
+    if (!serverUrl.trim()) missing.push("Server URL")
+    if (!initAdminUser.trim()) missing.push("Admin Username")
+    if (!initAdminPass.trim()) missing.push("Admin Password")
+    if (!realm.trim()) missing.push("Realm")
+    if (!clientId.trim()) missing.push("Client ID")
+    if (!clientSecret.trim() || clientSecret === "••••••••" && !realSecret) {
+      // Need to resolve masked secret
+    }
+    if (!adminRole.trim()) missing.push("Admin Role")
+    if (!superuserRole.trim()) missing.push("Superuser Role")
+    if (!userRole.trim()) missing.push("User Role")
+
+    if (missing.length > 0) {
+      setMessage({ type: "error", text: `Required fields missing: ${missing.join(", ")}` })
+      return
+    }
+    setMessage(null)
+    setInitSteps([])
+    setInitOpen(true)
+  }
+
   const handleInitialize = async () => {
     setInitRunning(true)
     setInitSteps([])
@@ -259,7 +283,7 @@ export function AuthSettings() {
               {testing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Play className="h-4 w-4 mr-1" />}
               Test Connection
             </Button>
-            <Button variant="outline" onClick={() => setInitOpen(true)}>
+            <Button variant="outline" onClick={handleOpenInit}>
               <Rocket className="h-4 w-4 mr-1" />
               Initialize
             </Button>
