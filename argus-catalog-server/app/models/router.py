@@ -12,6 +12,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import AdminUser
 from app.core.database import get_session
 from app.models import service
 from app.models.schemas import (
@@ -154,9 +155,10 @@ async def delete_registered_model(
 @router.post("/hard-delete")
 async def hard_delete_models(
     body: dict,
+    _admin: AdminUser,
     session: AsyncSession = Depends(get_session),
 ):
-    """Permanently delete models: DB records (3 tables) + disk/S3 artifacts."""
+    """Permanently delete models: DB records (3 tables) + disk/S3 artifacts. Requires admin role."""
     names: list[str] = body.get("names", [])
     if not names:
         raise HTTPException(status_code=400, detail="No model names provided")
