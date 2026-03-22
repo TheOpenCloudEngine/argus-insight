@@ -2,15 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import Link from "next/link"
-import { Brain, Database, Loader2, Search } from "lucide-react"
+import { Database, Loader2, Search } from "lucide-react"
 
 import { Badge } from "@workspace/ui/components/badge"
-import { Button } from "@workspace/ui/components/button"
-import { Input } from "@workspace/ui/components/input"
-import {
-  Tooltip, TooltipContent, TooltipTrigger,
-} from "@workspace/ui/components/tooltip"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { hybridSearch, type SemanticSearchResult } from "@/features/datasets/api"
 
@@ -39,7 +33,6 @@ export default function SearchPage() {
   const router = useRouter()
   const q = searchParams.get("q") ?? ""
 
-  const [query, setQuery] = useState(q)
   const [results, setResults] = useState<SemanticSearchResult[]>([])
   const [total, setTotal] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
@@ -69,59 +62,28 @@ export default function SearchPage() {
 
   useEffect(() => {
     if (q) {
-      setQuery(q)
       doSearch(q)
+    } else {
+      // No query (e.g. browser back) — go back to previous page
+      router.back()
     }
-  }, [q, doSearch])
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && query.trim()) {
-      router.push(`/dashboard/search?q=${encodeURIComponent(query.trim())}`)
-    }
-  }
+  }, [q, doSearch, router])
 
   return (
     <>
       <DashboardHeader title="Search Results" />
       <div className="flex flex-1 flex-col gap-4 p-4">
-        {/* Search bar */}
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1 max-w-xl">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Search datasets..."
-              className="pl-8 h-9 text-sm"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
-              autoFocus
-            />
+        {/* Search meta */}
+        {!isLoading && q && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span>{total} result{total !== 1 ? "s" : ""} for &ldquo;{q}&rdquo;</span>
+            {provider ? (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0">{provider}/{model}</Badge>
+            ) : (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0">keyword only</Badge>
+            )}
           </div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="flex items-center">
-                <Brain className={`h-4 w-4 ${provider ? "text-purple-500" : "text-muted-foreground/40"}`} />
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              {provider
-                ? `Semantic search active (${provider}/${model})`
-                : "Keyword search only (embedding disabled)"
-              }
-            </TooltipContent>
-          </Tooltip>
-          {!isLoading && q && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>{total} result{total !== 1 ? "s" : ""} for &ldquo;{q}&rdquo;</span>
-              {provider ? (
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0">{provider}/{model}</Badge>
-              ) : (
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0">keyword only</Badge>
-              )}
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Loading */}
         {isLoading && (

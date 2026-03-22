@@ -37,8 +37,8 @@ export function DashboardHeader({ title }: DashboardHeaderProps) {
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Search datasets..."
-            className="pl-8 w-64 h-9 text-sm"
+            placeholder="Search datasets by name, description, or meaning..."
+            className="pl-8 w-96 h-9 text-sm"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
