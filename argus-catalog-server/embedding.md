@@ -650,6 +650,55 @@ sudo apt install postgresql-16-pgvector    # Debian/Ubuntu
 sudo dnf install pgvector_16               # RHEL/Rocky
 ```
 
+설치 후 슈퍼유저로 확장을 활성화해야 합니다:
+```bash
+sudo -u postgres psql -d argus_catalog -c "CREATE EXTENSION IF NOT EXISTS vector;"
+```
+> 일반 DB 사용자(`argus`)로는 `CREATE EXTENSION`을 실행할 수 없습니다.
+> `InsufficientPrivilegeError: 확장 모듈을 만들 권한이 없습니다` 에러가 발생하면
+> 반드시 `postgres` 슈퍼유저로 실행하세요.
+
+### embedding 컬럼이 text 타입으로 생성됨
+
+pgvector 확장을 설치하기 **전에** 서버가 시작되면 SQLAlchemy `create_all()`이
+`vector(384)` 타입을 인식하지 못하고 `text` 타입으로 fallback하여 테이블을 생성합니다.
+이 경우 검색 시 다음 에러가 발생합니다:
+
+**`ERROR: 연산자 없음: text <=> vector`**
+
+해결 방법:
+```bash
+# 1. pgvector 확장 설치 (위 참고)
+
+# 2. 기존 데이터 삭제 후 컬럼 타입 변경
+sudo -u postgres psql -d argus_catalog -c "
+DELETE FROM catalog_dataset_embeddings;
+ALTER TABLE catalog_dataset_embeddings
+  ALTER COLUMN embedding TYPE vector(384) USING embedding::vector(384);
+"
+
+# 3. 백필로 임베딩 재생성
+curl -X POST http://localhost:4600/api/v1/catalog/search/embeddings/backfill
+```
+
+> **권장 설치 순서:** pgvector 확장 설치 → 서버 시작 (테이블 자동 생성)
+> 이 순서를 따르면 이 문제가 발생하지 않습니다.
+
+### SQLAlchemy text()에서 ::vector 캐스트 구문 에러
+
+**`PostgresSyntaxError: 구문 오류, ":" 부근`**
+
+SQLAlchemy `text()` 안에서 PostgreSQL의 `::vector` 타입 캐스트를 사용하면,
+`::`가 바인드 파라미터 `:param`의 `:`와 충돌합니다.
+
+```python
+# 잘못된 예 — :: 가 파라미터 구문과 충돌
+text("e.embedding <=> :query_vec::vector")
+
+# 올바른 예 — CAST() 함수 사용
+text("e.embedding <=> CAST(:query_vec AS vector)")
+```
+
 ### 프로바이더 변경 후 검색 품질 저하
 - 기존 임베딩 삭제 → 백필 필요 (다른 벡터 공간)
 - 차원이 다르면 pgvector 컬럼 ALTER 필요:
