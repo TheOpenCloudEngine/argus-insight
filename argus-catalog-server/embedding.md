@@ -15,6 +15,37 @@ Argus Catalog의 시맨틱 검색은 데이터셋 메타데이터(이름, 설명
 
 ---
 
+## pgvector와 Embedding Provider의 관계
+
+pgvector와 Embedding Provider는 **독립적인 역할**을 담당합니다.
+
+| 구성 요소 | 역할 | 의존 관계 |
+|-----------|------|-----------|
+| **pgvector** | 벡터 **저장 + 검색** (PostgreSQL 확장) | 필수 — 어떤 프로바이더를 쓰든 벡터를 저장할 곳이 필요 |
+| **Embedding Provider** | 텍스트 → 벡터 **생성** | 3개 중 택 1 — Local, OpenAI, Ollama |
+
+```
+텍스트 "고객 구매 테이블"
+    ↓
+[Embedding Provider]  ← 여기가 교체 가능한 부분
+    ├─ Local (sentence-transformers)
+    ├─ OpenAI API
+    └─ Ollama
+    ↓
+벡터 [0.012, -0.034, ...]  (384 또는 1536차원)
+    ↓
+[pgvector]  ← 여기는 항상 고정
+    ├─ 저장: INSERT INTO catalog_dataset_embeddings
+    └─ 검색: ORDER BY embedding <=> query_vec (코사인 유사도)
+```
+
+- **pgvector 없이** → 벡터를 저장/검색할 수 없으므로 시맨틱 검색 자체가 불가
+- **Local embedding 없이** → OpenAI나 Ollama로 벡터를 생성하면 되므로 `sentence-transformers` 설치 불필요
+
+즉, **pgvector는 필수**, Embedding Provider는 **3개 중 1개를 선택**합니다.
+
+---
+
 ## 아키텍처
 
 ```
@@ -392,16 +423,142 @@ CREATE INDEX idx_dataset_embeddings_ivfflat
 
 ---
 
-## 의존성
+## 의존성 및 설치
 
-```
-# requirements.txt
-pgvector>=0.3.0                  # SQLAlchemy pgvector 타입
-sentence-transformers>=3.0.0     # 로컬 임베딩 (선택, local provider 사용 시)
+### 필수 의존성
+
+```bash
+pip install pgvector>=0.3.0      # SQLAlchemy pgvector 타입 (필수)
 ```
 
-`sentence-transformers`는 PyTorch를 포함하여 용량이 큽니다 (~2GB).
-로컬 프로바이더를 사용하지 않는 경우 설치하지 않아도 됩니다 (런타임 lazy import).
+PostgreSQL에 pgvector 확장이 필요합니다:
+```bash
+# Ubuntu/Debian
+sudo apt install postgresql-16-pgvector
+
+# RHEL/Rocky Linux
+sudo dnf install pgvector_16
+
+# macOS (Homebrew)
+brew install pgvector
+
+# Docker (postgres 이미지에 포함된 pgvector 이미지 사용)
+docker run -d pgvector/pgvector:pg16
+```
+
+설치 후 SQL에서 확장을 활성화합니다 (서버 시작 시 자동 실행됨):
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+### sentence-transformers 설치 (Local 프로바이더)
+
+Local 프로바이더 사용 시에만 필요합니다. PyTorch를 포함하여 용량이 큽니다.
+
+```bash
+# 기본 설치 (CPU, ~2GB)
+pip install sentence-transformers>=3.0.0
+
+# GPU 지원 (CUDA 12.x)
+pip install sentence-transformers>=3.0.0 torch --index-url https://download.pytorch.org/whl/cu121
+
+# GPU 지원 (CUDA 11.8)
+pip install sentence-transformers>=3.0.0 torch --index-url https://download.pytorch.org/whl/cu118
+```
+
+> OpenAI나 Ollama 프로바이더만 사용하는 경우 `sentence-transformers`를 설치하지 않아도 됩니다.
+> 코드에서 lazy import를 사용하므로 설치되지 않은 상태에서도 서버가 정상 시작됩니다.
+
+### 모델 다운로드
+
+#### 온라인 환경
+
+첫 임베딩 요청 시 모델이 자동으로 HuggingFace Hub에서 다운로드됩니다.
+캐시 위치: `~/.cache/huggingface/hub/`
+
+수동으로 미리 다운로드하려면:
+```bash
+# Python으로 다운로드
+python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+
+# 한국어 모델
+python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')"
+```
+
+#### 에어갭 (오프라인) 환경
+
+인터넷이 없는 환경에서는 모델 파일을 미리 다운로드하여 서버에 배포합니다.
+
+**Step 1: 인터넷이 되는 머신에서 모델 다운로드**
+
+```bash
+# 방법 1: sentence-transformers로 다운로드
+python -c "
+from sentence_transformers import SentenceTransformer
+model = SentenceTransformer('all-MiniLM-L6-v2')
+model.save('/tmp/all-MiniLM-L6-v2')
+"
+
+# 방법 2: huggingface-cli로 다운로드
+pip install huggingface_hub
+huggingface-cli download sentence-transformers/all-MiniLM-L6-v2 --local-dir /tmp/all-MiniLM-L6-v2
+```
+
+**Step 2: 에어갭 서버로 전송**
+
+```bash
+# 압축
+tar -czf all-MiniLM-L6-v2.tar.gz -C /tmp all-MiniLM-L6-v2
+
+# USB/SCP 등으로 전송 후 압축 해제
+tar -xzf all-MiniLM-L6-v2.tar.gz -C /opt/models/
+```
+
+**Step 3: 설정에서 로컬 경로 지정**
+
+Settings > Embedding에서 Model 필드에 로컬 경로를 입력:
+```
+/opt/models/all-MiniLM-L6-v2
+```
+
+또는 API로 설정:
+```bash
+curl -X PUT http://localhost:4600/api/v1/settings/embedding \
+  -H "Content-Type: application/json" \
+  -d '{
+    "enabled": true,
+    "provider": "local",
+    "model": "/opt/models/all-MiniLM-L6-v2",
+    "dimension": 384
+  }'
+```
+
+#### 모델별 다운로드 명령어
+
+| 모델 | 용도 | 크기 | 다운로드 |
+|------|------|------|---------|
+| `all-MiniLM-L6-v2` | 영문 기본 | ~80MB | `SentenceTransformer('all-MiniLM-L6-v2')` |
+| `paraphrase-multilingual-MiniLM-L12-v2` | 한국어+영문 | ~470MB | `SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')` |
+| `bge-small-en-v1.5` | 영문 고품질 | ~130MB | `SentenceTransformer('BAAI/bge-small-en-v1.5')` |
+| `bge-m3` | 다국어 고품질 | ~2.2GB | `SentenceTransformer('BAAI/bge-m3')` |
+
+#### Ollama 모델 설치
+
+Ollama 프로바이더 사용 시 모델을 미리 pull 해야 합니다:
+```bash
+# Ollama 설치 (https://ollama.com)
+curl -fsSL https://ollama.com/install.sh | sh
+
+# 모델 pull
+ollama pull all-minilm           # 384d, ~23MB
+ollama pull nomic-embed-text     # 768d, ~274MB
+ollama pull mxbai-embed-large    # 1024d, ~670MB
+
+# 동작 확인
+curl http://localhost:11434/api/embeddings -d '{"model": "all-minilm", "prompt": "test"}'
+```
+
+에어갭 환경에서는 [Ollama 모델 파일을 수동으로 복사](https://github.com/ollama/ollama/blob/main/docs/import.md)하여 배포합니다.
 
 ---
 
@@ -464,9 +621,38 @@ class MyProvider(EmbeddingProvider):
 - `threshold`를 낮추기 (기본 0.3 → 0.1)
 
 ### 로컬 프로바이더 로드 실패
-- `sentence-transformers` 설치 여부 확인: `pip install sentence-transformers`
-- 에어갭 환경이면 모델 파일을 미리 다운로드하여 로컬 경로 지정
+
+**`RuntimeError: sentence-transformers is required`**
+```bash
+pip install sentence-transformers>=3.0.0
+```
+
+**`OSError: Can't load model 'all-MiniLM-L6-v2'` (에어갭 환경)**
+```bash
+# 온라인 머신에서 다운로드 후 전송
+python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2').save('/tmp/all-MiniLM-L6-v2')"
+# 서버에 복사 후 Settings에서 모델 경로를 /opt/models/all-MiniLM-L6-v2 로 변경
+```
+
+**`torch.cuda.OutOfMemoryError` (GPU 메모리 부족)**
+```bash
+# CPU 모드로 강제 전환
+export CUDA_VISIBLE_DEVICES=""
+# 또는 더 작은 모델 사용 (all-MiniLM-L6-v2 → 80MB)
+```
+
+### pgvector 확장 미설치
+
+**`ERROR: type "vector" does not exist`**
+```bash
+# PostgreSQL 버전에 맞는 pgvector 설치
+sudo apt install postgresql-16-pgvector    # Debian/Ubuntu
+sudo dnf install pgvector_16               # RHEL/Rocky
+```
 
 ### 프로바이더 변경 후 검색 품질 저하
 - 기존 임베딩 삭제 → 백필 필요 (다른 벡터 공간)
-- 차원이 다르면 pgvector 컬럼 ALTER 필요
+- 차원이 다르면 pgvector 컬럼 ALTER 필요:
+  ```sql
+  ALTER TABLE catalog_dataset_embeddings ALTER COLUMN embedding TYPE vector(1536);
+  ```
