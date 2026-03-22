@@ -380,3 +380,122 @@ class PlatformMetadataResponse(BaseModel):
     table_types: list[PlatformTableTypeResponse] = Field(default_factory=list)
     storage_formats: list[PlatformStorageFormatResponse] = Field(default_factory=list)
     features: list[PlatformFeatureResponse] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Data pipeline schemas
+# ---------------------------------------------------------------------------
+
+class PipelineType(str, Enum):
+    ETL = "ETL"
+    FILE_EXPORT = "FILE_EXPORT"
+    CDC = "CDC"
+    REPLICATION = "REPLICATION"
+    API = "API"
+    MANUAL = "MANUAL"
+
+
+class PipelineStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    DEPRECATED = "DEPRECATED"
+
+
+class PipelineCreate(BaseModel):
+    pipeline_name: str = Field(..., min_length=1, max_length=255)
+    description: str | None = None
+    pipeline_type: PipelineType = PipelineType.ETL
+    schedule: str | None = None
+    owner: str | None = None
+
+
+class PipelineUpdate(BaseModel):
+    pipeline_name: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = None
+    pipeline_type: PipelineType | None = None
+    schedule: str | None = None
+    owner: str | None = None
+    status: PipelineStatus | None = None
+
+
+class PipelineResponse(BaseModel):
+    id: int
+    pipeline_name: str
+    description: str | None = None
+    pipeline_type: str
+    schedule: str | None = None
+    owner: str | None = None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Cross-platform lineage schemas
+# ---------------------------------------------------------------------------
+
+class LineageSource(str, Enum):
+    QUERY_AGGREGATED = "QUERY_AGGREGATED"
+    PIPELINE = "PIPELINE"
+    MANUAL = "MANUAL"
+
+
+class LineageRelationType(str, Enum):
+    READ_WRITE = "READ_WRITE"
+    ETL = "ETL"
+    FILE_EXPORT = "FILE_EXPORT"
+    CDC = "CDC"
+    REPLICATION = "REPLICATION"
+    DERIVED = "DERIVED"
+
+
+class ColumnMappingCreate(BaseModel):
+    source_column: str = Field(..., min_length=1, max_length=256)
+    target_column: str = Field(..., min_length=1, max_length=256)
+    transform_type: str = "DIRECT"
+    transform_expr: str | None = None
+
+
+class ColumnMappingResponse(BaseModel):
+    id: int
+    source_column: str
+    target_column: str
+    transform_type: str
+    transform_expr: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class DatasetLineageCreate(BaseModel):
+    source_dataset_id: int
+    target_dataset_id: int
+    relation_type: LineageRelationType = LineageRelationType.ETL
+    lineage_source: LineageSource = LineageSource.MANUAL
+    pipeline_id: int | None = None
+    description: str | None = None
+    created_by: str | None = None
+    column_mappings: list[ColumnMappingCreate] = Field(default_factory=list)
+
+
+class DatasetLineageResponse(BaseModel):
+    id: int
+    source_dataset_id: int
+    target_dataset_id: int
+    source_dataset_name: str | None = None
+    target_dataset_name: str | None = None
+    source_platform_type: str | None = None
+    target_platform_type: str | None = None
+    source_platform_name: str | None = None
+    target_platform_name: str | None = None
+    relation_type: str
+    lineage_source: str
+    pipeline_id: int | None = None
+    pipeline_name: str | None = None
+    description: str | None = None
+    created_by: str | None = None
+    query_count: int = 0
+    last_seen_at: datetime | None = None
+    created_at: datetime
+    column_mappings: list[ColumnMappingResponse] = Field(default_factory=list)

@@ -511,6 +511,22 @@ CREATE INDEX IF NOT EXISTS idx_column_lineage_query_lineage_id
     ON argus_column_lineage (query_lineage_id);
 
 -- ---------------------------------------------------------------------------
+-- Lineage - Data Pipeline (ETL/CDC/file-export pipeline registry)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_data_pipeline (
+    id SERIAL PRIMARY KEY,
+    pipeline_name VARCHAR(255) NOT NULL UNIQUE,
+    description TEXT,
+    pipeline_type VARCHAR(64) NOT NULL DEFAULT 'ETL',
+    schedule VARCHAR(100),
+    owner VARCHAR(200),
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ---------------------------------------------------------------------------
 -- Lineage - Dataset Lineage (aggregated dataset-to-dataset relationships)
 -- ---------------------------------------------------------------------------
 
@@ -519,7 +535,11 @@ CREATE TABLE IF NOT EXISTS argus_dataset_lineage (
     source_dataset_id INTEGER NOT NULL REFERENCES catalog_datasets(id) ON DELETE CASCADE,
     target_dataset_id INTEGER NOT NULL REFERENCES catalog_datasets(id) ON DELETE CASCADE,
     relation_type VARCHAR(32) NOT NULL DEFAULT 'READ_WRITE',
-    query_count INTEGER NOT NULL DEFAULT 1,
+    lineage_source VARCHAR(32) NOT NULL DEFAULT 'QUERY_AGGREGATED',
+    pipeline_id INTEGER REFERENCES argus_data_pipeline(id) ON DELETE SET NULL,
+    description TEXT,
+    created_by VARCHAR(200),
+    query_count INTEGER NOT NULL DEFAULT 0,
     last_query_id VARCHAR(256),
     last_seen_at TIMESTAMPTZ DEFAULT NOW(),
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -531,6 +551,26 @@ CREATE INDEX IF NOT EXISTS idx_dataset_lineage_source
 
 CREATE INDEX IF NOT EXISTS idx_dataset_lineage_target
     ON argus_dataset_lineage (target_dataset_id);
+
+CREATE INDEX IF NOT EXISTS idx_dataset_lineage_pipeline
+    ON argus_dataset_lineage (pipeline_id);
+
+-- ---------------------------------------------------------------------------
+-- Lineage - Dataset Column Mapping (cross-platform column-level lineage)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_dataset_column_mapping (
+    id SERIAL PRIMARY KEY,
+    dataset_lineage_id INTEGER NOT NULL REFERENCES argus_dataset_lineage(id) ON DELETE CASCADE,
+    source_column VARCHAR(256) NOT NULL,
+    target_column VARCHAR(256) NOT NULL,
+    transform_type VARCHAR(64) NOT NULL DEFAULT 'DIRECT',
+    transform_expr VARCHAR(500),
+    UNIQUE (dataset_lineage_id, source_column, target_column)
+);
+
+CREATE INDEX IF NOT EXISTS idx_dataset_column_mapping_lineage
+    ON argus_dataset_column_mapping (dataset_lineage_id);
 
 
 -- ---------------------------------------------------------------------------

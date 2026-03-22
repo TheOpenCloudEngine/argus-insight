@@ -13,7 +13,10 @@ from app.catalog import service
 from app.core.config import settings
 from app.catalog.schemas import (
     CatalogStats,
+    ColumnMappingCreate,
     DatasetCreate,
+    DatasetLineageCreate,
+    DatasetLineageResponse,
     DatasetResponse,
     DatasetUpdate,
     GlossaryTermCreate,
@@ -21,6 +24,9 @@ from app.catalog.schemas import (
     OwnerCreate,
     OwnerResponse,
     PaginatedDatasets,
+    PipelineCreate,
+    PipelineResponse,
+    PipelineUpdate,
     PlatformConfigurationResponse,
     PlatformConfigurationSave,
     PlatformCreate,
@@ -318,14 +324,23 @@ async def get_dataset_lineage(dataset_id: int, session: AsyncSession = Depends(g
     """Get upstream and downstream lineage for a dataset.
 
     Returns nodes (datasets) and edges (source→target relationships) suitable
-    for rendering a lineage DAG in the UI.
+    for rendering a lineage DAG in the UI.  Merges both query-based lineage
+    (argus_query_lineage) and dataset-level lineage (argus_dataset_lineage)
+    so that cross-platform relationships are included.
     """
     # Verify dataset exists
     dataset = await service.get_dataset(session, dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
-    # Collect all connected dataset IDs via query_lineage (upstream + downstream)
+    # ------------------------------------------------------------------
+    # 1. Collect related IDs from BOTH lineage sources
+    # ------------------------------------------------------------------
+    related_ids: set[int] = {dataset_id}
+    edge_set: set[tuple] = set()  # (source_id, target_id)
+    edge_meta: dict[tuple, dict] = {}  # extra info per edge
+
+    # 1a. Query-based lineage (same-platform, auto-collected)
     upstream_rows = (await session.execute(text("""
         SELECT DISTINCT source_table, source_dataset_id
         FROM argus_query_lineage
@@ -338,41 +353,81 @@ async def get_dataset_lineage(dataset_id: int, session: AsyncSession = Depends(g
         WHERE source_dataset_id = :ds_id AND target_dataset_id IS NOT NULL
     """), {"ds_id": dataset_id})).fetchall()
 
-    # Collect all related dataset IDs (to find indirect lineage)
-    related_ids = set()
-    related_ids.add(dataset_id)
     for row in upstream_rows:
         related_ids.add(row[1])
+        key = (row[1], dataset_id)
+        edge_set.add(key)
+        edge_meta.setdefault(key, {
+            "sourceTable": row[0], "targetTable": "",
+            "lineageSource": "QUERY_AGGREGATED", "lineageId": None,
+        })
+
     for row in downstream_rows:
         related_ids.add(row[1])
+        key = (dataset_id, row[1])
+        edge_set.add(key)
+        edge_meta.setdefault(key, {
+            "sourceTable": "", "targetTable": row[0],
+            "lineageSource": "QUERY_AGGREGATED", "lineageId": None,
+        })
 
-    # Fetch second-level upstream (upstream of upstream)
-    if upstream_rows:
-        up_ids = [row[1] for row in upstream_rows]
-        placeholders = ", ".join(f":id{i}" for i in range(len(up_ids)))
-        params = {f"id{i}": uid for i, uid in enumerate(up_ids)}
+    # 1b. Dataset-level lineage (cross-platform, manual/pipeline)
+    dl_rows = (await session.execute(text("""
+        SELECT id, source_dataset_id, target_dataset_id, lineage_source, relation_type
+        FROM argus_dataset_lineage
+        WHERE source_dataset_id = :ds_id OR target_dataset_id = :ds_id
+    """), {"ds_id": dataset_id})).fetchall()
+
+    for row in dl_rows:
+        related_ids.add(row[1])
+        related_ids.add(row[2])
+        key = (row[1], row[2])
+        edge_set.add(key)
+        edge_meta[key] = {
+            "sourceTable": "", "targetTable": "",
+            "lineageSource": row[3], "lineageId": row[0],
+            "relationType": row[4],
+        }
+
+    # 2. Fetch second-level connections (2 hops) from both sources
+    first_level_ids = related_ids - {dataset_id}
+    if first_level_ids:
+        placeholders = ", ".join(f":id{i}" for i in range(len(first_level_ids)))
+        params = {f"id{i}": fid for i, fid in enumerate(first_level_ids)}
+
+        # Query lineage 2nd hop
+        for direction_col, filter_col in [
+            ("source_dataset_id", "target_dataset_id"),
+            ("target_dataset_id", "source_dataset_id"),
+        ]:
+            rows2 = (await session.execute(text(f"""
+                SELECT DISTINCT {direction_col}
+                FROM argus_query_lineage
+                WHERE {filter_col} IN ({placeholders}) AND {direction_col} IS NOT NULL
+            """), params)).fetchall()
+            for r in rows2:
+                related_ids.add(r[0])
+
+        # Dataset lineage 2nd hop
         rows2 = (await session.execute(text(f"""
-            SELECT DISTINCT source_dataset_id
-            FROM argus_query_lineage
-            WHERE target_dataset_id IN ({placeholders}) AND source_dataset_id IS NOT NULL
+            SELECT DISTINCT source_dataset_id, target_dataset_id,
+                   id, lineage_source, relation_type
+            FROM argus_dataset_lineage
+            WHERE source_dataset_id IN ({placeholders})
+               OR target_dataset_id IN ({placeholders})
         """), params)).fetchall()
-        for row in rows2:
-            related_ids.add(row[0])
+        for r in rows2:
+            related_ids.add(r[0])
+            related_ids.add(r[1])
+            key = (r[0], r[1])
+            edge_set.add(key)
+            edge_meta.setdefault(key, {
+                "sourceTable": "", "targetTable": "",
+                "lineageSource": r[3], "lineageId": r[2],
+                "relationType": r[4],
+            })
 
-    # Fetch second-level downstream
-    if downstream_rows:
-        down_ids = [row[1] for row in downstream_rows]
-        placeholders = ", ".join(f":id{i}" for i in range(len(down_ids)))
-        params = {f"id{i}": did for i, did in enumerate(down_ids)}
-        rows2 = (await session.execute(text(f"""
-            SELECT DISTINCT target_dataset_id
-            FROM argus_query_lineage
-            WHERE source_dataset_id IN ({placeholders}) AND target_dataset_id IS NOT NULL
-        """), params)).fetchall()
-        for row in rows2:
-            related_ids.add(row[0])
-
-    # Build nodes: fetch dataset info for all related IDs
+    # 3. Build nodes
     nodes = []
     if related_ids:
         placeholders = ", ".join(f":id{i}" for i in range(len(related_ids)))
@@ -393,7 +448,7 @@ async def get_dataset_lineage(dataset_id: int, session: AsyncSession = Depends(g
                 "isCurrent": row[0] == dataset_id,
             })
 
-    # Build edges: all lineage edges among related datasets
+    # 4. Build edges (query-based)
     edges = []
     if related_ids:
         placeholders = ", ".join(f":id{i}" for i in range(len(related_ids)))
@@ -406,25 +461,60 @@ async def get_dataset_lineage(dataset_id: int, session: AsyncSession = Depends(g
               AND source_dataset_id IS NOT NULL
               AND target_dataset_id IS NOT NULL
         """), params)).fetchall()
+        seen_edges = set()
         for row in edge_rows:
+            key = (row[0], row[1])
+            seen_edges.add(key)
             edges.append({
                 "source": row[0],
                 "target": row[1],
                 "sourceTable": row[2],
                 "targetTable": row[3],
+                "lineageSource": "QUERY_AGGREGATED",
+                "lineageId": None,
             })
 
-    # Column lineage for direct connections
+        # Add dataset-level lineage edges (cross-platform)
+        dl_edge_rows = (await session.execute(text(f"""
+            SELECT id, source_dataset_id, target_dataset_id,
+                   lineage_source, relation_type, description
+            FROM argus_dataset_lineage
+            WHERE source_dataset_id IN ({placeholders})
+              AND target_dataset_id IN ({placeholders})
+        """), params)).fetchall()
+        for row in dl_edge_rows:
+            key = (row[1], row[2])
+            if key not in seen_edges:
+                edges.append({
+                    "source": row[1],
+                    "target": row[2],
+                    "sourceTable": "",
+                    "targetTable": "",
+                    "lineageSource": row[3],
+                    "lineageId": row[0],
+                    "relationType": row[4],
+                    "description": row[5],
+                })
+
+    # 5. Column lineage (merge query-based + dataset-level)
     column_lineage = []
     direct_ids = [dataset_id]
     for row in upstream_rows:
         direct_ids.append(row[1])
     for row in downstream_rows:
         direct_ids.append(row[1])
+    # Add direct connections from dataset lineage
+    for dl in dl_rows:
+        if dl[1] not in direct_ids:
+            direct_ids.append(dl[1])
+        if dl[2] not in direct_ids:
+            direct_ids.append(dl[2])
 
     if direct_ids:
         placeholders = ", ".join(f":id{i}" for i in range(len(direct_ids)))
         params = {f"id{i}": did for i, did in enumerate(direct_ids)}
+
+        # Query-based column lineage
         cl_rows = (await session.execute(text(f"""
             SELECT ql.source_dataset_id, ql.target_dataset_id,
                    cl.source_column, cl.target_column, cl.transform_type
@@ -436,6 +526,24 @@ async def get_dataset_lineage(dataset_id: int, session: AsyncSession = Depends(g
               AND ql.target_dataset_id IS NOT NULL
         """), params)).fetchall()
         for row in cl_rows:
+            column_lineage.append({
+                "sourceDatasetId": row[0],
+                "targetDatasetId": row[1],
+                "sourceColumn": row[2],
+                "targetColumn": row[3],
+                "transformType": row[4],
+            })
+
+        # Dataset-level column mappings (cross-platform)
+        dcm_rows = (await session.execute(text(f"""
+            SELECT dl.source_dataset_id, dl.target_dataset_id,
+                   cm.source_column, cm.target_column, cm.transform_type
+            FROM argus_dataset_column_mapping cm
+            JOIN argus_dataset_lineage dl ON cm.dataset_lineage_id = dl.id
+            WHERE dl.source_dataset_id IN ({placeholders})
+              AND dl.target_dataset_id IN ({placeholders})
+        """), params)).fetchall()
+        for row in dcm_rows:
             column_lineage.append({
                 "sourceDatasetId": row[0],
                 "targetDatasetId": row[1],
@@ -813,3 +921,123 @@ async def upload_sample_parquet(
     dest.write_bytes(body)
     logger.info("Sample parquet uploaded: %s (%d bytes)", dest, len(body))
     return {"status": "ok", "path": str(dest), "size": len(body)}
+
+
+# ---------------------------------------------------------------------------
+# Data Pipeline CRUD
+# ---------------------------------------------------------------------------
+
+@router.post("/pipelines", response_model=PipelineResponse, status_code=201)
+async def create_pipeline(data: PipelineCreate, session: AsyncSession = Depends(get_session)):
+    """Register a data pipeline (ETL, CDC, file export, etc.)."""
+    result = await service.create_pipeline(session, data)
+    await session.commit()
+    return result
+
+
+@router.get("/pipelines", response_model=list[PipelineResponse])
+async def list_pipelines(session: AsyncSession = Depends(get_session)):
+    """List all registered data pipelines."""
+    return await service.list_pipelines(session)
+
+
+@router.get("/pipelines/{pipeline_id}", response_model=PipelineResponse)
+async def get_pipeline(pipeline_id: int, session: AsyncSession = Depends(get_session)):
+    """Get a data pipeline by ID."""
+    pipeline = await service.get_pipeline(session, pipeline_id)
+    if not pipeline:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+    return PipelineResponse.model_validate(pipeline)
+
+
+@router.put("/pipelines/{pipeline_id}", response_model=PipelineResponse)
+async def update_pipeline(
+    pipeline_id: int, data: PipelineUpdate, session: AsyncSession = Depends(get_session),
+):
+    """Update a data pipeline."""
+    result = await service.update_pipeline(session, pipeline_id, data)
+    if not result:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+    await session.commit()
+    return result
+
+
+@router.delete("/pipelines/{pipeline_id}", status_code=204)
+async def delete_pipeline(pipeline_id: int, session: AsyncSession = Depends(get_session)):
+    """Delete a data pipeline."""
+    deleted = await service.delete_pipeline(session, pipeline_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+    await session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Cross-Platform Dataset Lineage
+# ---------------------------------------------------------------------------
+
+@router.post("/lineage", response_model=DatasetLineageResponse, status_code=201)
+async def create_lineage(
+    data: DatasetLineageCreate, session: AsyncSession = Depends(get_session),
+):
+    """Register a cross-platform dataset lineage relationship."""
+    # Validate source and target datasets exist
+    src = await service.get_dataset(session, data.source_dataset_id)
+    if not src:
+        raise HTTPException(status_code=404, detail="Source dataset not found")
+    tgt = await service.get_dataset(session, data.target_dataset_id)
+    if not tgt:
+        raise HTTPException(status_code=404, detail="Target dataset not found")
+    if data.source_dataset_id == data.target_dataset_id:
+        raise HTTPException(status_code=400, detail="Source and target must be different")
+    if data.pipeline_id:
+        pipeline = await service.get_pipeline(session, data.pipeline_id)
+        if not pipeline:
+            raise HTTPException(status_code=404, detail="Pipeline not found")
+
+    result = await service.create_dataset_lineage(session, data)
+    await session.commit()
+    return result
+
+
+@router.get("/lineage", response_model=list[DatasetLineageResponse])
+async def list_lineages(
+    dataset_id: int | None = Query(None, description="Filter by dataset ID"),
+    lineage_source: str | None = Query(None, description="Filter: MANUAL, PIPELINE, etc."),
+    session: AsyncSession = Depends(get_session),
+):
+    """List dataset lineage relationships."""
+    return await service.list_dataset_lineages(session, dataset_id, lineage_source)
+
+
+@router.get("/lineage/{lineage_id}", response_model=DatasetLineageResponse)
+async def get_lineage(lineage_id: int, session: AsyncSession = Depends(get_session)):
+    """Get a dataset lineage by ID with column mappings."""
+    lineage = await service.get_dataset_lineage(session, lineage_id)
+    if not lineage:
+        raise HTTPException(status_code=404, detail="Lineage not found")
+    return await service._build_lineage_response(session, lineage_id)
+
+
+@router.put("/lineage/{lineage_id}/column-mappings", response_model=DatasetLineageResponse)
+async def update_lineage_column_mappings(
+    lineage_id: int,
+    column_mappings: list[ColumnMappingCreate],
+    session: AsyncSession = Depends(get_session),
+):
+    """Replace column mappings for a dataset lineage."""
+    result = await service.update_dataset_lineage_column_mappings(
+        session, lineage_id, column_mappings,
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Lineage not found")
+    await session.commit()
+    return result
+
+
+@router.delete("/lineage/{lineage_id}", status_code=204)
+async def delete_lineage(lineage_id: int, session: AsyncSession = Depends(get_session)):
+    """Delete a dataset lineage relationship."""
+    deleted = await service.delete_dataset_lineage(session, lineage_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Lineage not found")
+    await session.commit()

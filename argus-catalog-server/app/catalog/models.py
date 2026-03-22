@@ -178,6 +178,68 @@ class Owner(Base):
 # Platform metadata models
 # ---------------------------------------------------------------------------
 
+class DataPipeline(Base):
+    """Data pipeline registry for ETL/CDC/file-export flows."""
+
+    __tablename__ = "argus_data_pipeline"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    pipeline_name = Column(String(255), nullable=False, unique=True)
+    description = Column(Text)
+    pipeline_type = Column(String(64), nullable=False, default="ETL")
+    schedule = Column(String(100))
+    owner = Column(String(200))
+    status = Column(String(20), nullable=False, default="ACTIVE")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class DatasetLineage(Base):
+    """Aggregated dataset-to-dataset lineage (cross-platform supported)."""
+
+    __tablename__ = "argus_dataset_lineage"
+    __table_args__ = (
+        UniqueConstraint("source_dataset_id", "target_dataset_id", "relation_type"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source_dataset_id = Column(
+        Integer, ForeignKey("catalog_datasets.id", ondelete="CASCADE"), nullable=False
+    )
+    target_dataset_id = Column(
+        Integer, ForeignKey("catalog_datasets.id", ondelete="CASCADE"), nullable=False
+    )
+    relation_type = Column(String(32), nullable=False, default="READ_WRITE")
+    lineage_source = Column(String(32), nullable=False, default="QUERY_AGGREGATED")
+    pipeline_id = Column(
+        Integer, ForeignKey("argus_data_pipeline.id", ondelete="SET NULL")
+    )
+    description = Column(Text)
+    created_by = Column(String(200))
+    query_count = Column(Integer, nullable=False, default=0)
+    last_query_id = Column(String(256))
+    last_seen_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class DatasetColumnMapping(Base):
+    """Cross-platform column-level lineage mapping."""
+
+    __tablename__ = "argus_dataset_column_mapping"
+    __table_args__ = (
+        UniqueConstraint("dataset_lineage_id", "source_column", "target_column"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dataset_lineage_id = Column(
+        Integer, ForeignKey("argus_dataset_lineage.id", ondelete="CASCADE"), nullable=False
+    )
+    source_column = Column(String(256), nullable=False)
+    target_column = Column(String(256), nullable=False)
+    transform_type = Column(String(64), nullable=False, default="DIRECT")
+    transform_expr = Column(String(500))
+
+
 class PlatformDataType(Base):
     """Supported data types per platform."""
 

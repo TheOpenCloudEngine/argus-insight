@@ -18,10 +18,12 @@ import {
 import "@xyflow/react/dist/style.css"
 import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
 import { Badge } from "@workspace/ui/components/badge"
+import { Button } from "@workspace/ui/components/button"
 import { Separator } from "@workspace/ui/components/separator"
-import { Database, ArrowRight, X, Link2 } from "lucide-react"
+import { Database, ArrowRight, X, Link2, Plus, Trash2, GitBranch } from "lucide-react"
 import Link from "next/link"
-import { authFetch } from "@/features/auth/auth-fetch" // Added for SSO AUTH
+import { authFetch } from "@/features/auth/auth-fetch"
+import { LineageAddDialog } from "./lineage-add-dialog"
 
 const BASE = "/api/v1/catalog"
 
@@ -43,6 +45,10 @@ type LineageEdge = {
   target: number
   sourceTable: string
   targetTable: string
+  lineageSource?: string   // QUERY_AGGREGATED | MANUAL | PIPELINE
+  lineageId?: number | null
+  relationType?: string
+  description?: string
 }
 
 type ColumnLineageItem = {
@@ -67,6 +73,41 @@ type SelectedEdgeInfo = {
   targetName: string
   columns: ColumnLineageItem[]
   joinKeys: ColumnLineageItem[]
+  lineageSource?: string
+  lineageId?: number | null
+  relationType?: string
+  description?: string
+}
+
+// ---------------------------------------------------------------------------
+// Platform color palette
+// ---------------------------------------------------------------------------
+
+const PLATFORM_COLORS: Record<string, {
+  border: string; bg: string; ring: string; icon: string; badge: string
+}> = {
+  PostgreSQL:  { border: "border-sky-500",     bg: "bg-sky-50 dark:bg-sky-950",         ring: "ring-sky-200",     icon: "text-sky-600",     badge: "bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200" },
+  MySQL:       { border: "border-orange-500",  bg: "bg-orange-50 dark:bg-orange-950",   ring: "ring-orange-200",  icon: "text-orange-600",  badge: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200" },
+  MariaDB:     { border: "border-orange-500",  bg: "bg-orange-50 dark:bg-orange-950",   ring: "ring-orange-200",  icon: "text-orange-600",  badge: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200" },
+  Hive:        { border: "border-yellow-500",  bg: "bg-yellow-50 dark:bg-yellow-950",   ring: "ring-yellow-200",  icon: "text-yellow-600",  badge: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200" },
+  Impala:      { border: "border-indigo-500",  bg: "bg-indigo-50 dark:bg-indigo-950",   ring: "ring-indigo-200",  icon: "text-indigo-600",  badge: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200" },
+  Trino:       { border: "border-pink-500",    bg: "bg-pink-50 dark:bg-pink-950",       ring: "ring-pink-200",    icon: "text-pink-600",    badge: "bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200" },
+  StarRocks:   { border: "border-violet-500",  bg: "bg-violet-50 dark:bg-violet-950",   ring: "ring-violet-200",  icon: "text-violet-600",  badge: "bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-200" },
+  Kafka:       { border: "border-stone-600",   bg: "bg-stone-50 dark:bg-stone-950",     ring: "ring-stone-200",   icon: "text-stone-600",   badge: "bg-stone-100 text-stone-800 dark:bg-stone-900 dark:text-stone-200" },
+  S3:          { border: "border-emerald-500", bg: "bg-emerald-50 dark:bg-emerald-950", ring: "ring-emerald-200", icon: "text-emerald-600", badge: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200" },
+  Greenplum:   { border: "border-green-500",   bg: "bg-green-50 dark:bg-green-950",     ring: "ring-green-200",   icon: "text-green-600",   badge: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" },
+  Oracle:      { border: "border-red-500",     bg: "bg-red-50 dark:bg-red-950",         ring: "ring-red-200",     icon: "text-red-600",     badge: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200" },
+  Kudu:        { border: "border-teal-500",    bg: "bg-teal-50 dark:bg-teal-950",       ring: "ring-teal-200",    icon: "text-teal-600",    badge: "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200" },
+  Spark:       { border: "border-amber-500",   bg: "bg-amber-50 dark:bg-amber-950",     ring: "ring-amber-200",   icon: "text-amber-600",   badge: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200" },
+}
+
+const DEFAULT_PLATFORM_COLOR = {
+  border: "border-gray-400", bg: "bg-gray-50 dark:bg-gray-950", ring: "ring-gray-200",
+  icon: "text-gray-500", badge: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
+}
+
+function getPlatformColor(platformType: string) {
+  return PLATFORM_COLORS[platformType] ?? DEFAULT_PLATFORM_COLOR
 }
 
 // ---------------------------------------------------------------------------
@@ -74,12 +115,14 @@ type SelectedEdgeInfo = {
 // ---------------------------------------------------------------------------
 
 function DatasetNode({ data }: { data: LineageNode }) {
+  const pc = getPlatformColor(data.platformType)
+
   const borderColor = data.isCurrent
-    ? "border-blue-500 ring-2 ring-blue-200"
-    : "border-border"
+    ? `${pc.border} ring-2 ${pc.ring}`
+    : pc.border
 
   const bgColor = data.isCurrent
-    ? "bg-blue-50 dark:bg-blue-950"
+    ? pc.bg
     : "bg-card"
 
   return (
@@ -89,7 +132,7 @@ function DatasetNode({ data }: { data: LineageNode }) {
       <Handle type="target" position={Position.Left} className="!bg-muted-foreground !w-2 !h-2" />
 
       <div className="flex items-center gap-2 mb-1">
-        <Database className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+        <Database className={`h-4 w-4 flex-shrink-0 ${pc.icon}`} />
         <Link
           href={`/dashboard/datasets/${data.id}`}
           className="text-sm font-semibold text-foreground hover:underline truncate"
@@ -97,8 +140,13 @@ function DatasetNode({ data }: { data: LineageNode }) {
           {data.name}
         </Link>
       </div>
-      <div className="text-xs text-muted-foreground">
-        {data.platformName}
+      <div className="flex items-center gap-1.5">
+        <Badge className={`text-[10px] px-1.5 py-0 font-normal border-0 ${pc.badge}`}>
+          {data.platformType}
+        </Badge>
+        <span className="text-xs text-muted-foreground truncate">
+          {data.platformName}
+        </span>
       </div>
 
       <Handle type="source" position={Position.Right} className="!bg-muted-foreground !w-2 !h-2" />
@@ -122,8 +170,39 @@ function transformBadge(type: string) {
       return <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">{type}</Badge>
     case "EXPRESSION":
       return <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">{type}</Badge>
+    case "CAST":
+      return <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">{type}</Badge>
     default:
       return <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">{type}</Badge>
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Lineage source badge
+// ---------------------------------------------------------------------------
+
+function lineageSourceBadge(source: string | undefined) {
+  switch (source) {
+    case "MANUAL":
+      return (
+        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
+          Manual
+        </Badge>
+      )
+    case "PIPELINE":
+      return (
+        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
+          Pipeline
+        </Badge>
+      )
+    case "QUERY_AGGREGATED":
+      return (
+        <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+          Auto
+        </Badge>
+      )
+    default:
+      return null
   }
 }
 
@@ -134,9 +213,11 @@ function transformBadge(type: string) {
 function EdgeDetailPanel({
   info,
   onClose,
+  onDelete,
 }: {
   info: SelectedEdgeInfo
   onClose: () => void
+  onDelete?: (lineageId: number) => void
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -200,6 +281,8 @@ function EdgeDetailPanel({
     window.addEventListener("mouseup", onUp)
   }, [size])
 
+  const isManual = info.lineageSource === "MANUAL" || info.lineageSource === "PIPELINE"
+
   if (!pos) return null
 
   return (
@@ -215,14 +298,29 @@ function EdgeDetailPanel({
           onMouseDown={onDragStart}
         >
           <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-medium">Lineage Detail</CardTitle>
-            <button
-              onClick={onClose}
-              onMouseDown={e => e.stopPropagation()}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-sm font-medium">Lineage Detail</CardTitle>
+              {lineageSourceBadge(info.lineageSource)}
+            </div>
+            <div className="flex items-center gap-1">
+              {isManual && info.lineageId && onDelete && (
+                <button
+                  onClick={() => onDelete(info.lineageId!)}
+                  onMouseDown={e => e.stopPropagation()}
+                  className="text-muted-foreground hover:text-destructive p-0.5"
+                  title="Delete lineage"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                onMouseDown={e => e.stopPropagation()}
+                className="text-muted-foreground hover:text-foreground p-0.5"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
             <span className="font-medium text-foreground">{info.sourceName}</span>
@@ -233,6 +331,25 @@ function EdgeDetailPanel({
 
         {/* Scrollable content */}
         <CardContent className="pt-0 space-y-4 overflow-auto flex-1 min-h-0">
+          {/* Lineage metadata for manual/pipeline */}
+          {isManual && (
+            <div className="space-y-1.5 text-xs">
+              {info.relationType && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Relation</span>
+                  <span className="font-medium">{info.relationType}</span>
+                </div>
+              )}
+              {info.description && (
+                <div>
+                  <span className="text-muted-foreground">Description</span>
+                  <p className="mt-0.5 text-foreground">{info.description}</p>
+                </div>
+              )}
+              <Separator />
+            </div>
+          )}
+
           {/* JOIN Keys */}
           {info.joinKeys.length > 0 && (
             <div>
@@ -407,6 +524,22 @@ function layoutNodes(
 }
 
 // ---------------------------------------------------------------------------
+// Edge style helpers
+// ---------------------------------------------------------------------------
+
+/** Auto-collected edges are dashed; manual/pipeline edges are solid */
+function edgeStyle(lineageSource: string | undefined, isSelected: boolean) {
+  const isManual = lineageSource === "MANUAL" || lineageSource === "PIPELINE"
+  const color = isSelected ? "#8b5cf6" : isManual ? "#10b981" : "#6b7280"
+  return {
+    stroke: color,
+    strokeWidth: isSelected ? 3 : 2,
+    strokeDasharray: isManual ? undefined : "6 3",
+    cursor: "pointer" as const,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // LineageTab Component
 // ---------------------------------------------------------------------------
 
@@ -421,23 +554,36 @@ export function LineageTab({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedEdge, setSelectedEdge] = useState<SelectedEdgeInfo | null>(null)
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
+
+  const loadLineage = useCallback(async () => {
+    try {
+      setLoading(true)
+      const resp = await authFetch(`${BASE}/datasets/${datasetId}/lineage`)
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const data = await resp.json()
+      setLineageData(data)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to load lineage")
+    } finally {
+      setLoading(false)
+    }
+  }, [datasetId])
 
   useEffect(() => {
-    async function load() {
-      try {
-        setLoading(true)
-        const resp = await authFetch(`${BASE}/datasets/${datasetId}/lineage`)
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-        const data = await resp.json()
-        setLineageData(data)
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Failed to load lineage")
-      } finally {
-        setLoading(false)
+    loadLineage()
+  }, [loadLineage])
+
+  // Build edge metadata map for quick lookup
+  const edgeMetaMap = useMemo(() => {
+    const m = new Map<string, LineageEdge>()
+    if (lineageData) {
+      for (const e of lineageData.edges) {
+        m.set(`${e.source}-${e.target}`, e)
       }
     }
-    load()
-  }, [datasetId])
+    return m
+  }, [lineageData])
 
   const nodeNameMap = useMemo(() => {
     const m = new Map<number, string>()
@@ -452,13 +598,13 @@ export function LineageTab({
     const srcId = Number(edge.source)
     const tgtId = Number(edge.target)
 
+    const meta = edgeMetaMap.get(`${srcId}-${tgtId}`)
+
     // Find column lineage entries for this edge
     const allCols = lineageData.columnLineage.filter(
       cl => cl.sourceDatasetId === srcId && cl.targetDatasetId === tgtId,
     )
 
-    // Also look for JOIN_KEY entries where this source table joined with another
-    // source table that feeds into the same target
     const joinKeys = allCols.filter(cl => cl.transformType === "JOIN_KEY")
     const columns = allCols.filter(cl => cl.transformType !== "JOIN_KEY")
 
@@ -469,7 +615,22 @@ export function LineageTab({
       targetName: nodeNameMap.get(tgtId) ?? String(tgtId),
       columns,
       joinKeys,
+      lineageSource: meta?.lineageSource,
+      lineageId: meta?.lineageId,
+      relationType: meta?.relationType,
+      description: meta?.description,
     })
+  }
+
+  const handleDeleteLineage = async (lineageId: number) => {
+    try {
+      const resp = await authFetch(`${BASE}/lineage/${lineageId}`, { method: "DELETE" })
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      setSelectedEdge(null)
+      loadLineage()
+    } catch {
+      // silently fail
+    }
   }
 
   const { flowNodes, flowEdges } = useMemo(() => {
@@ -479,26 +640,34 @@ export function LineageTab({
 
     const nodes = layoutNodes(lineageData.nodes, lineageData.edges, datasetId)
 
-    const edges: Edge[] = lineageData.edges.map((e, i) => ({
-      id: `e-${e.source}-${e.target}-${i}`,
-      source: String(e.source),
-      target: String(e.target),
-      animated: true,
-      style: { stroke: "#6b7280", strokeWidth: 2, cursor: "pointer" },
-      markerEnd: { type: MarkerType.ArrowClosed, color: "#6b7280" },
-      label: "",
-      interactionWidth: 20,
-    }))
-
     const seen = new Set<string>()
-    const uniqueEdges = edges.filter(e => {
-      const key = `${e.source}-${e.target}`
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
+    const edges: Edge[] = []
 
-    return { flowNodes: nodes, flowEdges: uniqueEdges }
+    for (let i = 0; i < lineageData.edges.length; i++) {
+      const e = lineageData.edges[i]!
+      const key = `${e.source}-${e.target}`
+      if (seen.has(key)) continue
+      seen.add(key)
+
+      const isManual = e.lineageSource === "MANUAL" || e.lineageSource === "PIPELINE"
+
+      edges.push({
+        id: `e-${e.source}-${e.target}-${i}`,
+        source: String(e.source),
+        target: String(e.target),
+        animated: !isManual,
+        style: edgeStyle(e.lineageSource, false),
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: isManual ? "#10b981" : "#6b7280",
+        },
+        label: "",
+        interactionWidth: 20,
+        data: { lineageSource: e.lineageSource },
+      })
+    }
+
+    return { flowNodes: nodes, flowEdges: edges }
   }, [lineageData, datasetId])
 
   const [nodes, setNodes, onNodesChange] = useNodesState(flowNodes)
@@ -515,16 +684,16 @@ export function LineageTab({
         && srcId === selectedEdge.sourceId
         && tgtId === selectedEdge.targetId
 
+      const ls = e.data?.lineageSource as string | undefined
+
       return {
         ...e,
-        style: {
-          ...e.style,
-          stroke: isSelected ? "#8b5cf6" : "#6b7280",
-          strokeWidth: isSelected ? 3 : 2,
-        },
+        style: edgeStyle(ls, !!isSelected),
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          color: isSelected ? "#8b5cf6" : "#6b7280",
+          color: isSelected
+            ? "#8b5cf6"
+            : (ls === "MANUAL" || ls === "PIPELINE") ? "#10b981" : "#6b7280",
         },
       }
     })
@@ -534,6 +703,19 @@ export function LineageTab({
   useEffect(() => {
     setNodes(flowNodes)
   }, [flowNodes, setNodes])
+
+  // -- Add Lineage button (always visible) --
+  const addButton = (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => setAddDialogOpen(true)}
+      className="gap-1.5"
+    >
+      <Plus className="h-3.5 w-3.5" />
+      Add Lineage
+    </Button>
+  )
 
   if (loading) {
     return (
@@ -557,52 +739,85 @@ export function LineageTab({
 
   if (!lineageData || lineageData.nodes.length <= 1) {
     return (
-      <Card>
-        <CardContent className="flex items-center justify-center py-12">
-          <p className="text-sm text-muted-foreground">
-            No lineage data available for this dataset.
-          </p>
-        </CardContent>
-      </Card>
+      <>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
+            <GitBranch className="h-10 w-10 text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">
+              No lineage data available for this dataset.
+            </p>
+            {addButton}
+          </CardContent>
+        </Card>
+        <LineageAddDialog
+          open={addDialogOpen}
+          onOpenChange={setAddDialogOpen}
+          datasetId={datasetId}
+          datasetName={datasetName}
+          onCreated={loadLineage}
+        />
+      </>
     )
   }
 
   return (
-    <Card>
-      <CardContent className="p-0">
-        <div style={{ height: 600 }} className="relative">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onEdgeClick={onEdgeClick}
-            onPaneClick={() => setSelectedEdge(null)}
-            nodeTypes={nodeTypes}
-            fitView
-            fitViewOptions={{ padding: 0.3 }}
-            minZoom={0.3}
-            maxZoom={2}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-            <Controls showInteractive={false} />
-          </ReactFlow>
+    <>
+      <Card>
+        <CardContent className="p-0">
+          <div style={{ height: 600 }} className="relative">
+            {/* Floating toolbar */}
+            <div className="absolute top-3 left-3 z-10 flex items-center gap-2">
+              {addButton}
+            </div>
 
-          {selectedEdge && (
-            <EdgeDetailPanel
-              info={selectedEdge}
-              onClose={() => setSelectedEdge(null)}
-            />
-          )}
-        </div>
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onEdgeClick={onEdgeClick}
+              onPaneClick={() => setSelectedEdge(null)}
+              nodeTypes={nodeTypes}
+              fitView
+              fitViewOptions={{ padding: 0.3 }}
+              minZoom={0.3}
+              maxZoom={2}
+              proOptions={{ hideAttribution: true }}
+            >
+              <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+              <Controls showInteractive={false} />
+            </ReactFlow>
 
-        {!selectedEdge && (
-          <div className="px-4 py-2 border-t text-xs text-muted-foreground">
-            Click on an edge (arrow) to see column mappings and JOIN conditions.
+            {selectedEdge && (
+              <EdgeDetailPanel
+                info={selectedEdge}
+                onClose={() => setSelectedEdge(null)}
+                onDelete={handleDeleteLineage}
+              />
+            )}
           </div>
-        )}
-      </CardContent>
-    </Card>
+
+          <div className="px-4 py-2 border-t text-xs text-muted-foreground flex items-center gap-4">
+            <span>Click on an edge to see column mappings.</span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-5 border-t-2 border-gray-400" style={{ borderStyle: "dashed" }} />
+              Auto (query-based)
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-5 border-t-2 border-emerald-500" />
+              Manual / Pipeline
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+
+      <LineageAddDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        datasetId={datasetId}
+        datasetName={datasetName}
+        onCreated={loadLineage}
+      />
+    </>
   )
 }

@@ -498,6 +498,22 @@ CREATE TABLE IF NOT EXISTS argus_column_lineage (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------------
+-- Lineage - Data Pipeline (ETL/CDC/file-export pipeline registry)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_data_pipeline (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    pipeline_name VARCHAR(255) NOT NULL UNIQUE,
+    description TEXT,
+    pipeline_type VARCHAR(64) NOT NULL DEFAULT 'ETL',
+    schedule VARCHAR(100),
+    owner VARCHAR(200),
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
 -- Lineage - Dataset Lineage (aggregated dataset-to-dataset relationships)
 -- ---------------------------------------------------------------------------
 
@@ -506,15 +522,37 @@ CREATE TABLE IF NOT EXISTS argus_dataset_lineage (
     source_dataset_id INT NOT NULL,
     target_dataset_id INT NOT NULL,
     relation_type VARCHAR(32) NOT NULL DEFAULT 'READ_WRITE',
-    query_count INT NOT NULL DEFAULT 1,
+    lineage_source VARCHAR(32) NOT NULL DEFAULT 'QUERY_AGGREGATED',
+    pipeline_id INT,
+    description TEXT,
+    created_by VARCHAR(200),
+    query_count INT NOT NULL DEFAULT 0,
     last_query_id VARCHAR(256),
     last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_dataset_lineage (source_dataset_id, target_dataset_id, relation_type),
     INDEX idx_dataset_lineage_source (source_dataset_id),
     INDEX idx_dataset_lineage_target (target_dataset_id),
+    INDEX idx_dataset_lineage_pipeline (pipeline_id),
     FOREIGN KEY (source_dataset_id) REFERENCES catalog_datasets(id) ON DELETE CASCADE,
-    FOREIGN KEY (target_dataset_id) REFERENCES catalog_datasets(id) ON DELETE CASCADE
+    FOREIGN KEY (target_dataset_id) REFERENCES catalog_datasets(id) ON DELETE CASCADE,
+    FOREIGN KEY (pipeline_id) REFERENCES argus_data_pipeline(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Lineage - Dataset Column Mapping (cross-platform column-level lineage)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_dataset_column_mapping (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    dataset_lineage_id INT NOT NULL,
+    source_column VARCHAR(256) NOT NULL,
+    target_column VARCHAR(256) NOT NULL,
+    transform_type VARCHAR(64) NOT NULL DEFAULT 'DIRECT',
+    transform_expr VARCHAR(500),
+    UNIQUE KEY uq_column_mapping (dataset_lineage_id, source_column, target_column),
+    INDEX idx_dataset_column_mapping_lineage (dataset_lineage_id),
+    FOREIGN KEY (dataset_lineage_id) REFERENCES argus_dataset_lineage(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 

@@ -11,8 +11,11 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.catalog.models import (
+    DataPipeline,
     Dataset,
+    DatasetColumnMapping,
     DatasetGlossaryTerm,
+    DatasetLineage,
     DatasetProperty,
     DatasetSchema,
     DatasetTag,
@@ -29,7 +32,11 @@ from app.catalog.models import (
 )
 from app.catalog.schemas import (
     CatalogStats,
+    ColumnMappingCreate,
+    ColumnMappingResponse,
     DatasetCreate,
+    DatasetLineageCreate,
+    DatasetLineageResponse,
     DatasetPropertyResponse,
     DatasetResponse,
     DatasetSummary,
@@ -39,6 +46,9 @@ from app.catalog.schemas import (
     OwnerCreate,
     OwnerResponse,
     PaginatedDatasets,
+    PipelineCreate,
+    PipelineResponse,
+    PipelineUpdate,
     PlatformCreate,
     PlatformUpdate,
     PlatformDataTypeResponse,
@@ -1297,4 +1307,216 @@ async def get_platform_metadata(
         table_types=[PlatformTableTypeResponse.model_validate(t) for t in table_types],
         storage_formats=[PlatformStorageFormatResponse.model_validate(f) for f in storage_formats],
         features=[PlatformFeatureResponse.model_validate(f) for f in features],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Data Pipeline CRUD
+# ---------------------------------------------------------------------------
+
+async def create_pipeline(session: AsyncSession, data: PipelineCreate) -> PipelineResponse:
+    pipeline = DataPipeline(
+        pipeline_name=data.pipeline_name,
+        description=data.description,
+        pipeline_type=data.pipeline_type.value,
+        schedule=data.schedule,
+        owner=data.owner,
+    )
+    session.add(pipeline)
+    await session.flush()
+    await session.refresh(pipeline)
+    return PipelineResponse.model_validate(pipeline)
+
+
+async def list_pipelines(session: AsyncSession) -> list[PipelineResponse]:
+    result = await session.execute(
+        select(DataPipeline).order_by(DataPipeline.pipeline_name)
+    )
+    return [PipelineResponse.model_validate(p) for p in result.scalars().all()]
+
+
+async def get_pipeline(session: AsyncSession, pipeline_id: int) -> DataPipeline | None:
+    result = await session.execute(
+        select(DataPipeline).where(DataPipeline.id == pipeline_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def update_pipeline(
+    session: AsyncSession, pipeline_id: int, data: PipelineUpdate,
+) -> PipelineResponse | None:
+    pipeline = await get_pipeline(session, pipeline_id)
+    if not pipeline:
+        return None
+    for field, value in data.model_dump(exclude_unset=True).items():
+        if field == "pipeline_type" and value is not None:
+            value = value.value if hasattr(value, "value") else value
+        if field == "status" and value is not None:
+            value = value.value if hasattr(value, "value") else value
+        setattr(pipeline, field, value)
+    await session.flush()
+    await session.refresh(pipeline)
+    return PipelineResponse.model_validate(pipeline)
+
+
+async def delete_pipeline(session: AsyncSession, pipeline_id: int) -> bool:
+    pipeline = await get_pipeline(session, pipeline_id)
+    if not pipeline:
+        return False
+    await session.delete(pipeline)
+    await session.flush()
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Cross-Platform Dataset Lineage
+# ---------------------------------------------------------------------------
+
+async def create_dataset_lineage(
+    session: AsyncSession, data: DatasetLineageCreate,
+) -> DatasetLineageResponse:
+    lineage = DatasetLineage(
+        source_dataset_id=data.source_dataset_id,
+        target_dataset_id=data.target_dataset_id,
+        relation_type=data.relation_type.value,
+        lineage_source=data.lineage_source.value,
+        pipeline_id=data.pipeline_id,
+        description=data.description,
+        created_by=data.created_by,
+    )
+    session.add(lineage)
+    await session.flush()
+    await session.refresh(lineage)
+
+    # Create column mappings
+    for cm in data.column_mappings:
+        mapping = DatasetColumnMapping(
+            dataset_lineage_id=lineage.id,
+            source_column=cm.source_column,
+            target_column=cm.target_column,
+            transform_type=cm.transform_type,
+            transform_expr=cm.transform_expr,
+        )
+        session.add(mapping)
+    await session.flush()
+
+    return await _build_lineage_response(session, lineage.id)
+
+
+async def list_dataset_lineages(
+    session: AsyncSession,
+    dataset_id: int | None = None,
+    lineage_source: str | None = None,
+) -> list[DatasetLineageResponse]:
+    stmt = select(DatasetLineage)
+    if dataset_id is not None:
+        stmt = stmt.where(
+            or_(
+                DatasetLineage.source_dataset_id == dataset_id,
+                DatasetLineage.target_dataset_id == dataset_id,
+            )
+        )
+    if lineage_source is not None:
+        stmt = stmt.where(DatasetLineage.lineage_source == lineage_source)
+    stmt = stmt.order_by(DatasetLineage.created_at.desc())
+    result = await session.execute(stmt)
+    lineages = result.scalars().all()
+    return [await _build_lineage_response(session, l.id) for l in lineages]
+
+
+async def get_dataset_lineage(session: AsyncSession, lineage_id: int) -> DatasetLineage | None:
+    result = await session.execute(
+        select(DatasetLineage).where(DatasetLineage.id == lineage_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def delete_dataset_lineage(session: AsyncSession, lineage_id: int) -> bool:
+    lineage = await get_dataset_lineage(session, lineage_id)
+    if not lineage:
+        return False
+    await session.delete(lineage)
+    await session.flush()
+    return True
+
+
+async def update_dataset_lineage_column_mappings(
+    session: AsyncSession,
+    lineage_id: int,
+    column_mappings: list[ColumnMappingCreate],
+) -> DatasetLineageResponse | None:
+    lineage = await get_dataset_lineage(session, lineage_id)
+    if not lineage:
+        return None
+
+    # Delete existing mappings
+    existing = await session.execute(
+        select(DatasetColumnMapping).where(
+            DatasetColumnMapping.dataset_lineage_id == lineage_id
+        )
+    )
+    for m in existing.scalars().all():
+        await session.delete(m)
+
+    # Create new mappings
+    for cm in column_mappings:
+        mapping = DatasetColumnMapping(
+            dataset_lineage_id=lineage_id,
+            source_column=cm.source_column,
+            target_column=cm.target_column,
+            transform_type=cm.transform_type,
+            transform_expr=cm.transform_expr,
+        )
+        session.add(mapping)
+    await session.flush()
+
+    return await _build_lineage_response(session, lineage_id)
+
+
+async def _build_lineage_response(
+    session: AsyncSession, lineage_id: int,
+) -> DatasetLineageResponse:
+    lineage = await get_dataset_lineage(session, lineage_id)
+
+    # Fetch source dataset info (returns DatasetResponse with nested platform)
+    src = await get_dataset(session, lineage.source_dataset_id)
+    tgt = await get_dataset(session, lineage.target_dataset_id)
+
+    # Fetch pipeline name
+    pipeline_name = None
+    if lineage.pipeline_id:
+        pipeline = await get_pipeline(session, lineage.pipeline_id)
+        if pipeline:
+            pipeline_name = pipeline.pipeline_name
+
+    # Fetch column mappings
+    mappings_result = await session.execute(
+        select(DatasetColumnMapping).where(
+            DatasetColumnMapping.dataset_lineage_id == lineage_id
+        )
+    )
+    column_mappings = [
+        ColumnMappingResponse.model_validate(m) for m in mappings_result.scalars().all()
+    ]
+
+    return DatasetLineageResponse(
+        id=lineage.id,
+        source_dataset_id=lineage.source_dataset_id,
+        target_dataset_id=lineage.target_dataset_id,
+        source_dataset_name=src.name if src else None,
+        target_dataset_name=tgt.name if tgt else None,
+        source_platform_type=src.platform.type if src else None,
+        target_platform_type=tgt.platform.type if tgt else None,
+        source_platform_name=src.platform.name if src else None,
+        target_platform_name=tgt.platform.name if tgt else None,
+        relation_type=lineage.relation_type,
+        lineage_source=lineage.lineage_source,
+        pipeline_id=lineage.pipeline_id,
+        pipeline_name=pipeline_name,
+        description=lineage.description,
+        created_by=lineage.created_by,
+        query_count=lineage.query_count,
+        last_seen_at=lineage.last_seen_at,
+        created_at=lineage.created_at,
+        column_mappings=column_mappings,
     )
