@@ -196,7 +196,8 @@ async def get_manifest(
     try:
         data = await model_store.download_file(model_name, version, "manifest.json")
         return json.loads(data)
-    except Exception:
+    except Exception as e:
+        logger.warning("Manifest not found for %s v%d: %s", model_name, version, e)
         raise HTTPException(status_code=404, detail="Manifest not found")
 
 

@@ -1,6 +1,9 @@
 """ML Model Registry API endpoints.
 
 Native Argus Catalog API for model management under /api/v1/models.
+Provides CRUD operations for registered models and model versions,
+dashboard statistics, model detail views, and access statistics.
+
 For MLflow integration, use the UC-compatible API in uc_compat.py instead.
 """
 
@@ -21,7 +24,6 @@ from app.models.schemas import (
     ModelVersionUpdate,
     PaginatedModelSummaries,
     PaginatedModelVersions,
-    PaginatedRegisteredModels,
     RegisteredModelCreate,
     RegisteredModelResponse,
     RegisteredModelUpdate,
@@ -38,7 +40,8 @@ router = APIRouter(prefix="/models", tags=["models"])
 
 @router.get("/stats", response_model=ModelStats)
 async def get_model_stats(session: AsyncSession = Depends(get_session)):
-    """Get dashboard statistics for MLFlow Models page."""
+    """Get dashboard statistics: summary cards, charts, access/publish trends."""
+    logger.info("GET /models/stats")
     return await service.get_model_stats(session)
 
 
@@ -53,7 +56,9 @@ async def create_registered_model(
     """Register a new ML model."""
     logger.info("POST /models: name=%s", req.name)
     try:
-        return await service.create_registered_model(session, req)
+        result = await service.create_registered_model(session, req)
+        logger.info("Model created: %s (id=%d)", result.name, result.id)
+        return result
     except ValueError as e:
         logger.warning("POST /models conflict: %s", e)
         raise HTTPException(status_code=409, detail=str(e))
@@ -62,7 +67,7 @@ async def create_registered_model(
 @router.get("", response_model=PaginatedModelSummaries)
 async def list_registered_models(
     search: str | None = Query(None, description="Search by model name"),
-    status: str | None = Query(None, description="Filter by latest version status (READY, PENDING_REGISTRATION, FAILED_REGISTRATION)"),
+    status: str | None = Query(None, description="Filter by latest version status"),
     python_version: str | None = Query(None, description="Filter by Python version"),
     sklearn_version: str | None = Query(None, description="Filter by sklearn version"),
     page: int = Query(1, ge=1),
@@ -70,6 +75,7 @@ async def list_registered_models(
     session: AsyncSession = Depends(get_session),
 ):
     """List registered models with latest version status and metadata."""
+    logger.info("GET /models: search=%s, status=%s, page=%d", search, status, page)
     return await service.list_model_summaries(
         session, search=search, status=status,
         python_version=python_version, sklearn_version=sklearn_version,
@@ -81,9 +87,11 @@ async def list_registered_models(
 async def get_model_detail(
     model_name: str, session: AsyncSession = Depends(get_session),
 ):
-    """Get full model detail with latest version metadata."""
+    """Get full model detail with latest version metadata and access count."""
+    logger.info("GET /models/%s/detail", model_name)
     detail = await service.get_model_detail(session, model_name)
     if not detail:
+        logger.warning("Model not found: %s", model_name)
         raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
     return detail
 
@@ -92,7 +100,8 @@ async def get_model_detail(
 async def get_model_access_stats(
     model_name: str, session: AsyncSession = Depends(get_session),
 ):
-    """Get access statistics for a specific model."""
+    """Get access statistics (daily chart + recent logs) for a specific model."""
+    logger.info("GET /models/%s/access", model_name)
     return await service.get_model_access_stats(session, model_name)
 
 
@@ -101,8 +110,10 @@ async def get_registered_model(
     model_name: str, session: AsyncSession = Depends(get_session),
 ):
     """Get a registered model by name."""
+    logger.info("GET /models/%s", model_name)
     model = await service.get_registered_model_by_name(session, model_name)
     if not model:
+        logger.warning("Model not found: %s", model_name)
         raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
     return model
 
@@ -113,13 +124,17 @@ async def update_registered_model(
     req: RegisteredModelUpdate,
     session: AsyncSession = Depends(get_session),
 ):
-    """Update a registered model's metadata."""
+    """Update a registered model's metadata (name, description, owner)."""
+    logger.info("PATCH /models/%s", model_name)
     try:
         model = await service.update_registered_model(session, model_name, req)
     except ValueError as e:
+        logger.warning("PATCH /models/%s conflict: %s", model_name, e)
         raise HTTPException(status_code=409, detail=str(e))
     if not model:
+        logger.warning("Model not found for update: %s", model_name)
         raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
+    logger.info("Model updated: %s", model_name)
     return model
 
 
@@ -127,9 +142,12 @@ async def update_registered_model(
 async def delete_registered_model(
     model_name: str, session: AsyncSession = Depends(get_session),
 ):
-    """Soft-delete a registered model."""
+    """Soft-delete a registered model (hides from listings)."""
+    logger.info("DELETE /models/%s (soft)", model_name)
     if not await service.delete_registered_model(session, model_name):
+        logger.warning("Model not found for delete: %s", model_name)
         raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
+    logger.info("Model soft-deleted: %s", model_name)
     return {"status": "ok", "message": f"Model '{model_name}' deleted"}
 
 
@@ -138,11 +156,12 @@ async def hard_delete_models(
     body: dict,
     session: AsyncSession = Depends(get_session),
 ):
-    """Permanently delete models: DB records + disk artifacts."""
+    """Permanently delete models: DB records (3 tables) + disk/S3 artifacts."""
     names: list[str] = body.get("names", [])
     if not names:
         raise HTTPException(status_code=400, detail="No model names provided")
 
+    logger.info("Hard-delete requested for %d models: %s", len(names), names)
     deleted: list[str] = []
     not_found: list[str] = []
     for name in names:
@@ -151,7 +170,7 @@ async def hard_delete_models(
         else:
             not_found.append(name)
 
-    logger.info("Hard-deleted %d models: %s", len(deleted), deleted)
+    logger.info("Hard-delete result: deleted=%s, not_found=%s", deleted, not_found)
     return {"deleted": deleted, "not_found": not_found}
 
 
@@ -165,9 +184,8 @@ async def create_model_version(
     req: ModelVersionCreate,
     session: AsyncSession = Depends(get_session),
 ):
-    """Create a new model version (status: PENDING_REGISTRATION)."""
+    """Create a new model version (initial status: PENDING_REGISTRATION)."""
     logger.info("POST /models/%s/versions: source=%s, run_id=%s", model_name, req.source, req.run_id)
-    # Override model_name from path
     req.model_name = model_name
     try:
         return await service.create_model_version(session, req)
@@ -183,9 +201,11 @@ async def list_model_versions(
     page_size: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
 ):
-    """List all versions for a registered model."""
+    """List all versions for a registered model with pagination."""
+    logger.info("GET /models/%s/versions: page=%d", model_name, page)
     result = await service.list_model_versions(session, model_name, page=page, page_size=page_size)
     if result is None:
+        logger.warning("Model not found for version listing: %s", model_name)
         raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
     return result
 
@@ -194,9 +214,11 @@ async def list_model_versions(
 async def get_model_version(
     model_name: str, version: int, session: AsyncSession = Depends(get_session),
 ):
-    """Get a specific model version."""
+    """Get a specific model version by model name and version number."""
+    logger.info("GET /models/%s/versions/%d", model_name, version)
     ver = await service.get_model_version(session, model_name, version)
     if not ver:
+        logger.warning("Version not found: %s v%d", model_name, version)
         raise HTTPException(status_code=404, detail=f"Version {version} not found for model '{model_name}'")
     return ver
 
@@ -208,10 +230,13 @@ async def update_model_version(
     req: ModelVersionUpdate,
     session: AsyncSession = Depends(get_session),
 ):
-    """Update a model version's metadata."""
+    """Update a model version's metadata (description, source)."""
+    logger.info("PATCH /models/%s/versions/%d", model_name, version)
     ver = await service.update_model_version(session, model_name, version, req)
     if not ver:
+        logger.warning("Version not found for update: %s v%d", model_name, version)
         raise HTTPException(status_code=404, detail=f"Version {version} not found for model '{model_name}'")
+    logger.info("Version updated: %s v%d", model_name, version)
     return ver
 
 
@@ -222,7 +247,7 @@ async def finalize_model_version(
     req: ModelVersionFinalize,
     session: AsyncSession = Depends(get_session),
 ):
-    """Finalize a model version (transition from PENDING_REGISTRATION to READY or FAILED)."""
+    """Finalize a model version: transition from PENDING_REGISTRATION to READY or FAILED."""
     logger.info("PATCH /models/%s/versions/%d/finalize: status=%s", model_name, version, req.status)
     try:
         return await service.finalize_model_version(session, model_name, version, req)
@@ -236,9 +261,12 @@ async def delete_model_version(
     model_name: str, version: int, session: AsyncSession = Depends(get_session),
 ):
     """Delete a model version."""
+    logger.info("DELETE /models/%s/versions/%d", model_name, version)
     if not await service.delete_model_version(session, model_name, version):
+        logger.warning("Version not found for delete: %s v%d", model_name, version)
         raise HTTPException(
             status_code=404,
             detail=f"Version {version} not found for model '{model_name}'",
         )
+    logger.info("Version deleted: %s v%d", model_name, version)
     return {"status": "ok", "message": f"Version {version} of model '{model_name}' deleted"}

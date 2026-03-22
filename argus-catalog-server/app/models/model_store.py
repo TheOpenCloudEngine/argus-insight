@@ -488,8 +488,8 @@ async def import_from_huggingface(
                 metadata["architectures"] = config.get("architectures")
                 metadata["torch_dtype"] = config.get("torch_dtype")
                 metadata["transformers_version"] = config.get("transformers_version")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to parse config.json for %s: %s", hf_model_id, e)
 
     # Generate OCI manifest
     annotations = {

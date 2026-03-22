@@ -57,6 +57,7 @@ logger = logging.getLogger(__name__)
 
 
 def _model_artifacts_root() -> Path:
+    """Return the root directory for MLflow model artifacts (data_dir/model-artifacts)."""
     return settings.data_dir / "model-artifacts"
 
 
@@ -98,7 +99,10 @@ async def create_registered_model(
     await session.refresh(model)
 
     # Create artifact directory
-    Path(storage.replace("file://", "")).mkdir(parents=True, exist_ok=True)
+    try:
+        Path(storage.replace("file://", "")).mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logger.warning("Failed to create artifact directory for %s: %s", model.name, e)
     logger.info("RegisteredModel created: %s (id=%d, urn=%s)", model.name, model.id, model.urn)
     return RegisteredModelResponse.model_validate(model)
 
@@ -592,8 +596,11 @@ async def hard_delete_registered_model(session: AsyncSession, name: str) -> bool
     # Delete artifact directory from disk
     art_dir = _model_artifacts_root() / name
     if art_dir.exists():
-        shutil.rmtree(art_dir)
-        logger.info("Deleted artifact directory: %s", art_dir)
+        try:
+            shutil.rmtree(art_dir)
+            logger.info("Deleted artifact directory: %s", art_dir)
+        except OSError as e:
+            logger.warning("Failed to delete artifact directory %s: %s", art_dir, e)
 
     logger.info("RegisteredModel hard-deleted: %s (id=%d)", name, model.id)
     return True
@@ -604,6 +611,7 @@ async def hard_delete_registered_model(session: AsyncSession, name: str) -> bool
 # ---------------------------------------------------------------------------
 
 def _build_version_response(model: RegisteredModel, ver: ModelVersion) -> ModelVersionResponse:
+    """Build a ModelVersionResponse from ORM model and version objects."""
     return ModelVersionResponse(
         id=ver.id,
         model_id=ver.model_id,
@@ -627,6 +635,7 @@ def _build_version_response(model: RegisteredModel, ver: ModelVersion) -> ModelV
 
 
 async def _resolve_model(session: AsyncSession, name: str) -> RegisteredModel | None:
+    """Look up an active (non-deleted) model by name. Returns None if not found."""
     result = await session.execute(
         select(RegisteredModel).where(
             RegisteredModel.name == name,
@@ -677,7 +686,10 @@ async def create_model_version(
     await session.refresh(ver)
 
     # Create artifact directory
-    Path(ver_path).mkdir(parents=True, exist_ok=True)
+    try:
+        Path(ver_path).mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logger.warning("Failed to create version directory for %s v%d: %s", model.name, new_version, e)
     logger.info("ModelVersion created: %s v%d (id=%d, status=PENDING_REGISTRATION)",
                 model.name, new_version, ver.id)
     return _build_version_response(model, ver)

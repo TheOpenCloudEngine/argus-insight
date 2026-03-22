@@ -23,17 +23,24 @@ async def log_access(
     client_ip: str | None = None,
     user_agent: str | None = None,
 ) -> None:
-    """Record a model access event."""
-    entry = ModelAccessLog(
-        model_name=model_name,
-        version=version,
-        access_type=access_type,
-        client_ip=client_ip,
-        user_agent=user_agent[:500] if user_agent and len(user_agent) > 500 else user_agent,
-    )
-    session.add(entry)
-    await session.commit()
-    logger.debug("Access logged: %s v%d (%s)", model_name, version, access_type)
+    """Record a model access event.
+
+    Truncates user_agent to 500 chars. Commit failures are logged
+    but do not propagate — access logging should not break the main request.
+    """
+    try:
+        entry = ModelAccessLog(
+            model_name=model_name,
+            version=version,
+            access_type=access_type,
+            client_ip=client_ip,
+            user_agent=user_agent[:500] if user_agent and len(user_agent) > 500 else user_agent,
+        )
+        session.add(entry)
+        await session.commit()
+        logger.info("Access logged: %s v%d (%s) from %s", model_name, version, access_type, client_ip)
+    except Exception as e:
+        logger.warning("Failed to log access for %s v%d: %s", model_name, version, e)
 
 
 async def get_total_access_count(session: AsyncSession) -> int:

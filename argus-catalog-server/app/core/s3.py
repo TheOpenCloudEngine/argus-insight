@@ -1,7 +1,8 @@
 """S3-compatible object storage client for Catalog Server.
 
 Provides async S3 operations via aioboto3, compatible with AWS S3 and MinIO.
-Configuration is loaded from config.yml (object_storage section).
+Configuration is loaded from the catalog_configuration DB table at startup
+and stored in the global settings object.
 """
 
 import logging
@@ -18,6 +19,7 @@ _session: aioboto3.Session | None = None
 
 
 def _get_session() -> aioboto3.Session:
+    """Get or create the shared aioboto3 session (lazily initialized)."""
     global _session
     if _session is None:
         _session = aioboto3.Session()
@@ -26,7 +28,12 @@ def _get_session() -> aioboto3.Session:
 
 @asynccontextmanager
 async def get_s3_client() -> AsyncGenerator:
-    """Yield an async S3 client configured from settings."""
+    """Yield an async S3 client configured from settings.
+
+    Usage::
+        async with get_s3_client() as s3:
+            await s3.list_objects_v2(Bucket="my-bucket")
+    """
     session = _get_session()
     async with session.client(
         "s3",
@@ -40,12 +47,20 @@ async def get_s3_client() -> AsyncGenerator:
 
 
 async def ensure_bucket(bucket: str | None = None) -> None:
-    """Create the bucket if it does not exist."""
+    """Create the bucket if it does not exist.
+
+    Checks for bucket existence via head_bucket, and creates it if missing.
+    Logs warnings on creation failure instead of raising.
+    """
     bucket = bucket or settings.os_bucket
     async with get_s3_client() as s3:
         try:
             await s3.head_bucket(Bucket=bucket)
+            logger.info("Bucket '%s' exists", bucket)
         except Exception:
-            logger.info("Bucket '%s' not found, creating...", bucket)
-            await s3.create_bucket(Bucket=bucket)
-            logger.info("Bucket '%s' created", bucket)
+            try:
+                logger.info("Bucket '%s' not found, creating...", bucket)
+                await s3.create_bucket(Bucket=bucket)
+                logger.info("Bucket '%s' created successfully", bucket)
+            except Exception as create_err:
+                logger.warning("Failed to create bucket '%s': %s", bucket, create_err)

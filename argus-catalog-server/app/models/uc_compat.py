@@ -56,12 +56,14 @@ router = APIRouter(
 # ---------------------------------------------------------------------------
 
 def _ts_ms(dt) -> int:
+    """Convert a datetime to millisecond timestamp for UC API responses."""
     if dt is None:
         return 0
     return int(dt.timestamp() * 1000)
 
 
 def _model_to_uc(m: RegisteredModelResponse) -> dict:
+    """Convert internal RegisteredModelResponse to UC API response format."""
     parts = m.name.split(".", 2)
     if len(parts) == 3:
         catalog_name, schema_name, model_name = parts
@@ -84,6 +86,7 @@ def _model_to_uc(m: RegisteredModelResponse) -> dict:
 
 
 def _version_to_uc(v) -> dict:
+    """Convert internal ModelVersionResponse to UC API response format."""
     parts = v.model_name.split(".", 2)
     if len(parts) == 3:
         catalog_name, schema_name, model_name = parts
