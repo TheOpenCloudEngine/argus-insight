@@ -48,6 +48,8 @@ def run_batch(platform: str | None = None) -> int:
         # Sync all enabled platforms
         if settings.hive_enabled:
             platforms_to_sync.append("hive")
+        if settings.kudu_enabled:
+            platforms_to_sync.append("kudu")
 
     if not platforms_to_sync:
         logging.warning("No platforms enabled for sync")
@@ -65,6 +67,25 @@ def run_batch(platform: str | None = None) -> int:
                 result = sync.sync()
                 logging.info(
                     "Hive sync result: created=%d, updated=%d, failed=%d",
+                    result.created, result.updated, result.failed,
+                )
+                if not result.success:
+                    exit_code = 1
+            finally:
+                sync.disconnect()
+        elif p == "kudu":
+            from sync.platforms.kudu.sync import KuduMetadataSync
+
+            sync = KuduMetadataSync(client, settings)
+            logging.info("Starting batch sync for Kudu")
+            try:
+                if not sync.connect():
+                    logging.error("Failed to connect to Kudu")
+                    exit_code = 1
+                    continue
+                result = sync.sync()
+                logging.info(
+                    "Kudu sync result: created=%d, updated=%d, failed=%d",
                     result.created, result.updated, result.failed,
                 )
                 if not result.success:
