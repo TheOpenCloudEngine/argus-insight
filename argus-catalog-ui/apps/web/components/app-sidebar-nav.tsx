@@ -32,7 +32,9 @@ export function AppSidebarNav({ groups }: AppSidebarNavProps) {
         <SidebarGroup key={group.id}>
           <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
           <SidebarMenu>
-            {group.items.map((item) => {
+            {group.items
+              .filter((item) => !item.adminOnly || user?.is_admin)
+              .map((item) => {
               const Icon = getIcon(item.icon)
               return (
                 <SidebarMenuItem key={item.id}>

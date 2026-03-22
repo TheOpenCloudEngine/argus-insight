@@ -38,7 +38,8 @@
           "id": "mlflow-files",
           "title": "MLflow Model Files",
           "url": "/dashboard/mlflow-files",
-          "icon": "FolderOpen"
+          "icon": "FolderOpen",
+          "adminOnly": true
         },
         {
           "id": "oci-hub",
@@ -50,7 +51,8 @@
           "id": "oci-files",
           "title": "OCI Model Files",
           "url": "/dashboard/oci-files",
-          "icon": "FolderOpen"
+          "icon": "FolderOpen",
+          "adminOnly": true
         }
       ]
     },
