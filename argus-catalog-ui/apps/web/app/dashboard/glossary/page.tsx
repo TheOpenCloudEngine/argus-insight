@@ -2,12 +2,13 @@
 
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, createContext } from "react"
 import {
-  BookOpen, ChevronRight, FolderOpen, FileText, Plus, Pencil, Trash2, Check, X,
+  BookOpen, ChevronRight, FolderOpen, FileText, Plus, Pencil, Trash2, Check, X, MoveRight,
 } from "lucide-react"
 import { AgGridReact } from "ag-grid-react"
 import { AllCommunityModule, ModuleRegistry, type ColDef, type CellValueChangedEvent } from "ag-grid-community"
 
 import { Badge } from "@workspace/ui/components/badge"
+import { Checkbox } from "@workspace/ui/components/checkbox"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
@@ -85,6 +86,10 @@ export default function GlossaryPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null)
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
 
+  // Multi-select for Move to
+  const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set())
+  const [movePopoverOpen, setMovePopoverOpen] = useState(false)
+
   // Category editing
   const [editingNodeId, setEditingNodeId] = useState<number | null>(null)
   const [editingName, setEditingName] = useState("")
@@ -149,6 +154,29 @@ export default function GlossaryPage() {
       if (next.has(id)) next.delete(id); else next.add(id)
       return next
     })
+  }
+
+  // Checkbox toggle
+  const toggleCheck = (id: number) => {
+    setCheckedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  // Move to: update parent_id of all checked nodes
+  const moveTo = async (targetId: number | null) => {
+    // Prevent moving into own descendants
+    const targetDescendants = targetId ? new Set(collectIds(nodeMap.get(targetId)!)) : new Set<number>()
+    for (const id of checkedIds) {
+      if (id === targetId) continue
+      if (targetDescendants.has(id)) continue
+      await updateGlossaryTerm(id, { parent_id: targetId })
+    }
+    setCheckedIds(new Set())
+    setMovePopoverOpen(false)
+    await load()
   }
 
   // Category CRUD
@@ -259,12 +287,56 @@ export default function GlossaryPage() {
           {/* ========== Left: Tree ========== */}
           <div className="flex flex-col w-72 min-w-[260px] min-h-0 border rounded-lg">
             <div className="flex items-center justify-between px-3 py-2 border-b flex-shrink-0">
-              <span className="text-sm font-medium">Classification</span>
-              {user?.is_admin && (
-                <Button variant="outline" size="sm" onClick={addCategory}>
-                  <Plus className="h-3.5 w-3.5 mr-1" />Add
-                </Button>
-              )}
+              <span className="text-sm font-medium">
+                Classification
+                {checkedIds.size > 0 && (
+                  <span className="text-xs text-muted-foreground font-normal ml-1">
+                    ({checkedIds.size} selected)
+                  </span>
+                )}
+              </span>
+              <div className="flex items-center gap-1">
+                {user?.is_admin && checkedIds.size > 0 && (
+                  <Popover open={movePopoverOpen} onOpenChange={setMovePopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        <MoveRight className="h-3.5 w-3.5 mr-1" />Move to
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[240px] p-0" align="end">
+                      <Command>
+                        <CommandInput placeholder="Search folder..." />
+                        <CommandList>
+                          <CommandEmpty>No folders found.</CommandEmpty>
+                          <CommandGroup>
+                            <CommandItem onSelect={() => moveTo(null)}>
+                              <BookOpen className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+                              Root (최상위)
+                            </CommandItem>
+                            {terms
+                              .filter(t => {
+                                const n = nodeMap.get(t.id)
+                                return n && n.children.length > 0 && !checkedIds.has(t.id)
+                              })
+                              .map(t => (
+                                <CommandItem key={t.id} onSelect={() => moveTo(t.id)}>
+                                  <FolderOpen className="h-3.5 w-3.5 mr-2 text-amber-500" />
+                                  {t.name}
+                                </CommandItem>
+                              ))
+                            }
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                )}
+                {user?.is_admin && (
+                  <Button variant="outline" size="sm" onClick={addCategory}>
+                    <Plus className="h-3.5 w-3.5 mr-1" />Add
+                  </Button>
+                )}
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto py-1">
@@ -310,6 +382,16 @@ export default function GlossaryPage() {
                     >
                       <ChevronRight className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
                     </button>
+
+                    {/* Checkbox */}
+                    {user?.is_admin && (
+                      <Checkbox
+                        checked={checkedIds.has(node.id)}
+                        onCheckedChange={() => toggleCheck(node.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="shrink-0"
+                      />
+                    )}
 
                     {/* Icon */}
                     {hasChildren
