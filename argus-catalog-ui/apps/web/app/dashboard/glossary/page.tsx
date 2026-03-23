@@ -339,7 +339,7 @@ export default function GlossaryPage() {
               >
                 <BookOpen className="h-3.5 w-3.5 text-muted-foreground" />
                 All Terms
-                <span className="ml-auto text-xs text-muted-foreground">
+                <span className="ml-auto text-sm text-muted-foreground">
                   {terms.filter(t => (t.term_type ?? "TERM") === "TERM").length}
                 </span>
               </button>
@@ -418,7 +418,7 @@ export default function GlossaryPage() {
 
                     {/* Count */}
                     {!isEditing && isNodeCategory && (
-                      <span className="text-xs text-muted-foreground shrink-0">{leafCount}</span>
+                      <span className="text-sm text-muted-foreground shrink-0">{leafCount}</span>
                     )}
 
                     {/* Actions (visible on hover) */}
@@ -454,8 +454,7 @@ export default function GlossaryPage() {
               )}
             </div>
             <div className="ag-theme-alpine flex-1 min-h-0" style={{
-              "--ag-font-family": "var(--font-d2coding), 'D2Coding', Consolas, monospace",
-              "--ag-font-size": "13px",
+              "--ag-font-size": "14px",
             } as React.CSSProperties}>
               <AgGridReact
                 columnDefs={columnDefs}
