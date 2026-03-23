@@ -10,6 +10,7 @@ import {
   BookOpen,
   Check,
   ChevronDown,
+  ChevronRight,
   Circle,
   Code2,
   Columns3,
