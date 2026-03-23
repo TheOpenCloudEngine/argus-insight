@@ -1380,7 +1380,7 @@ export default function DatasetDetailPage() {
           <TabsContent value="glossary" className="mt-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between py-3">
-                <CardTitle className="text-base">Glossary Terms</CardTitle>
+                <CardTitle className="text-base">Glossary</CardTitle>
                 <GlossaryTermPicker
                   open={glossaryPopoverOpen}
                   onOpenChange={setGlossaryPopoverOpen}

@@ -367,7 +367,7 @@ export default function GlossaryPage() {
   return (
     <TermDeleteCtx.Provider value={deleteTermFromGrid}>
     <>
-      <DashboardHeader title="Business Glossary" />
+      <DashboardHeader title="Glossary" />
       <div className="flex flex-1 flex-col gap-4 p-4">
         <div className="flex flex-1 gap-4 min-h-0">
 
