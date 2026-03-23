@@ -138,13 +138,13 @@ export default function StandardsPage() {
               <TabsTrigger value="compliance"><BookOpen className="h-3.5 w-3.5 mr-1" />Compliance</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="words" className="mt-4 flex-1 flex flex-col min-h-0">
+            <TabsContent value="words" className="mt-4 flex-1 flex flex-col min-h-0 h-0">
               <WordsTab dictId={selectedDictId} />
             </TabsContent>
-            <TabsContent value="domains" className="mt-4 flex-1 flex flex-col min-h-0">
+            <TabsContent value="domains" className="mt-4 flex-1 flex flex-col min-h-0 h-0">
               <DomainsTab dictId={selectedDictId} />
             </TabsContent>
-            <TabsContent value="terms" className="mt-4 flex-1 flex flex-col min-h-0">
+            <TabsContent value="terms" className="mt-4 flex-1 flex flex-col min-h-0 h-0">
               <TermsTab dictId={selectedDictId} />
             </TabsContent>
             <TabsContent value="codes" className="mt-4">
@@ -366,7 +366,7 @@ function WordsTab({ dictId }: { dictId: number }) {
 
   return (
     <WordDeleteCtx.Provider value={deleteWord}>
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="flex flex-col flex-1 min-h-0 h-full">
       <div className="flex items-center justify-between mb-3 flex-shrink-0">
         <p className="text-sm text-muted-foreground">{words.length} words</p>
         <Button size="sm" onClick={addWord}>
@@ -480,7 +480,7 @@ function DomainsTab({ dictId }: { dictId: number }) {
 
   return (
     <DomainDeleteCtx.Provider value={deleteDomain}>
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="flex flex-col flex-1 min-h-0 h-full">
       <div className="flex items-center justify-between mb-3 flex-shrink-0">
         <p className="text-sm text-muted-foreground">{domains.length} domains</p>
         <Button size="sm" onClick={addDomain}><Plus className="h-3.5 w-3.5 mr-1" />Add Domain</Button>
@@ -594,7 +594,7 @@ function TermsTab({ dictId }: { dictId: number }) {
 
   return (
     <TermDeleteCtx.Provider value={deleteTerm}>
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="flex flex-col flex-1 min-h-0 h-full">
       <div className="flex items-center gap-3 mb-3 flex-shrink-0">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
