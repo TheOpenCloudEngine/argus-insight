@@ -183,6 +183,48 @@ export const PLATFORM_CONFIGS: Record<string, PlatformFieldDef[]> = {
     ...kerberosFields,
   ],
 
+  // ---- Java Source -------------------------------------------------------
+  java: [
+    { key: 'source_directory', label: 'Source Directory', type: 'text', required: true, placeholder: '/path/to/java/project/src' },
+    { key: 'project_name', label: 'Project Name', type: 'text', required: true },
+    {
+      key: 'framework',
+      label: 'Framework',
+      type: 'select',
+      required: true,
+      defaultValue: 'ALL',
+      options: [
+        { label: 'All Frameworks', value: 'ALL' },
+        { label: 'JPA / Hibernate', value: 'JPA' },
+        { label: 'MyBatis', value: 'MYBATIS' },
+        { label: 'Spring JDBC / JDBC', value: 'JDBC' },
+      ],
+    },
+    { key: 'java_version', label: 'Java Version', type: 'text', placeholder: '17 (auto-detected from pom.xml)' },
+    { key: 'exclude_dirs', label: 'Exclude Directories', type: 'text', placeholder: 'target,build,test (comma-separated)' },
+  ],
+
+  // ---- Python Source ----------------------------------------------------
+  python: [
+    { key: 'source_directory', label: 'Source Directory', type: 'text', required: true, placeholder: '/path/to/python/project/src' },
+    { key: 'project_name', label: 'Project Name', type: 'text', required: true },
+    {
+      key: 'framework',
+      label: 'Framework',
+      type: 'select',
+      required: true,
+      defaultValue: 'ALL',
+      options: [
+        { label: 'All Frameworks', value: 'ALL' },
+        { label: 'SQLAlchemy', value: 'SQLALCHEMY' },
+        { label: 'Django ORM', value: 'DJANGO' },
+        { label: 'DB-API (Raw SQL)', value: 'DBAPI' },
+      ],
+    },
+    { key: 'python_version', label: 'Python Version', type: 'text', placeholder: '3.11 (auto-detected from pyproject.toml)' },
+    { key: 'exclude_dirs', label: 'Exclude Directories', type: 'text', placeholder: '.venv,__pycache__,test (comma-separated)' },
+  ],
+
   // ---- Unity Catalog -----------------------------------------------------
   unity_catalog: [
     { key: 'api_url', label: 'API URL', type: 'text', required: true, placeholder: 'http://localhost:8080/api/2.1/unity-catalog' },

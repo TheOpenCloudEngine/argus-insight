@@ -1,0 +1,52 @@
+프로젝트명	소스파일	패키지명	클래스/함수	Java Version	Java EE Version	프레임워크	테이블명	사용방식
+sample-java-project	sample_entity.java	com.example.domain	User	unknown	Java EE (JPA 2.x)	JPA	users	RW
+sample-java-project	sample_entity.java	com.example.domain	User	unknown	Java EE (JPA 2.x)	JPA	user_details	RW
+sample-java-project	sample_entity.java	com.example.domain	User	unknown	Java EE (JPA 2.x)	JPA	user_roles	RW
+sample-java-project	sample_entity_no_table.java	com.example.domain	Category	unknown	Java EE (JPA 2.x)	JPA	Category	RW
+sample-java-project	sample_inheritance.java	com.example.domain	Payment	unknown	Java EE (JPA 2.x)	JPA	payments	RW
+sample-java-project	sample_jakarta.java	com.example.domain	Product	unknown	Jakarta EE (JPA 3.x+)	JPA/Hibernate	products	RW
+sample-java-project	sample_mybatis_annotation.java	com.example.mapper	OrderMapper.findById	unknown	unknown	MyBatis	orders	R
+sample-java-project	sample_mybatis_annotation.java	com.example.mapper	OrderMapper.findByStatusWithUser	unknown	unknown	MyBatis	orders	R
+sample-java-project	sample_mybatis_annotation.java	com.example.mapper	OrderMapper.findByStatusWithUser	unknown	unknown	MyBatis	users	R
+sample-java-project	sample_mybatis_annotation.java	com.example.mapper	OrderMapper.insert	unknown	unknown	MyBatis	orders	W
+sample-java-project	sample_mybatis_annotation.java	com.example.mapper	OrderMapper.updateStatus	unknown	unknown	MyBatis	orders	W
+sample-java-project	sample_mybatis_annotation.java	com.example.mapper	OrderMapper.deleteById	unknown	unknown	MyBatis	orders	W
+sample-java-project	sample_mybatis_annotation.java	com.example.mapper	OrderMapper.findOrderDetails	unknown	unknown	MyBatis	orders	R
+sample-java-project	sample_mybatis_annotation.java	com.example.mapper	OrderMapper.findOrderDetails	unknown	unknown	MyBatis	order_items	R
+sample-java-project	sample_named_query.java	com.example.domain	Order	unknown	Java EE (JPA 2.x)	JPA	orders	RW
+sample-java-project	sample_named_query.java	com.example.domain	Order	unknown	Java EE (JPA 2.x)	JPA	order_items	R
+sample-java-project	sample_named_query.java	com.example.domain	Order	unknown	Java EE (JPA 2.x)	JPA	Order	R
+sample-java-project	sample_named_query.java	com.example.domain	Order	unknown	Java EE (JPA 2.x)	JPA	o.customer	R
+sample-java-project	sample_raw_jdbc.java	com.example.legacy	LegacyUserDao.findAll	unknown	unknown	JDBC	users	R
+sample-java-project	sample_raw_jdbc.java	com.example.legacy	LegacyUserDao.insertUser	unknown	unknown	JDBC	users	W
+sample-java-project	sample_raw_jdbc.java	com.example.legacy	LegacyUserDao.deleteOldOrders	unknown	unknown	JDBC	orders	W
+sample-java-project	sample_raw_jdbc.java	com.example.legacy	LegacyUserDao.updateStatus	unknown	unknown	JDBC	users	W
+sample-java-project	sample_raw_jdbc.java	com.example.legacy	LegacyUserDao.findOrdersWithItems	unknown	unknown	JDBC	orders	R
+sample-java-project	sample_raw_jdbc.java	com.example.legacy	LegacyUserDao.findOrdersWithItems	unknown	unknown	JDBC	order_items	R
+sample-java-project	sample_repository.java	com.example.repository	UserRepository.findById	unknown	Java EE (JPA 2.x)	JPA	[EntityManager.find]	R
+sample-java-project	sample_repository.java	com.example.repository	UserRepository.save	unknown	Java EE (JPA 2.x)	JPA	[EntityManager.persist]	W
+sample-java-project	sample_repository.java	com.example.repository	UserRepository.findActiveUsers	unknown	Java EE (JPA 2.x)	JPA	User	R
+sample-java-project	sample_repository.java	com.example.repository	UserRepository.findUserStats	unknown	Java EE (JPA 2.x)	JPA	users	R
+sample-java-project	sample_repository.java	com.example.repository	UserRepository.findUserStats	unknown	Java EE (JPA 2.x)	JPA	orders	R
+sample-java-project	sample_repository.java	com.example.repository	UserRepository.deactivateUser	unknown	Java EE (JPA 2.x)	JPA	users	W
+sample-java-project	sample_spring_jdbc.java	com.example.repository	UserJdbcRepository.findAll	unknown	unknown	Spring JDBC	users	R
+sample-java-project	sample_spring_jdbc.java	com.example.repository	UserJdbcRepository.findById	unknown	unknown	Spring JDBC	users	R
+sample-java-project	sample_spring_jdbc.java	com.example.repository	UserJdbcRepository.findUserOrders	unknown	unknown	Spring JDBC	orders	R
+sample-java-project	sample_spring_jdbc.java	com.example.repository	UserJdbcRepository.insert	unknown	unknown	Spring JDBC	users	W
+sample-java-project	sample_spring_jdbc.java	com.example.repository	UserJdbcRepository.updateEmail	unknown	unknown	Spring JDBC	users	W
+sample-java-project	sample_spring_jdbc.java	com.example.repository	UserJdbcRepository.deleteById	unknown	unknown	Spring JDBC	users	W
+sample-java-project	sample_spring_jdbc.java	com.example.repository	UserJdbcRepository.batchInsertRoles	unknown	unknown	Spring JDBC	user_roles	W
+sample-java-project	sample_spring_jdbc.java	com.example.repository	UserJdbcRepository.createTable	unknown	unknown	Spring JDBC	audit_log	W
+sample-java-project	sample_mybatis_dynamic.xml	com.example.mapper	ProductMapper.batchInsert	unknown	unknown	MyBatis	products	W
+sample-java-project	sample_mybatis_dynamic.xml	com.example.mapper	ProductMapper.updateBatch	unknown	unknown	MyBatis	products	W
+sample-java-project	sample_mybatis_dynamic.xml	com.example.mapper	ProductMapper.search	unknown	unknown	MyBatis	products	R
+sample-java-project	sample_mybatis_mapper.xml	com.example.mapper	UserMapper.insert	unknown	unknown	MyBatis	users	W
+sample-java-project	sample_mybatis_mapper.xml	com.example.mapper	UserMapper.updateEmail	unknown	unknown	MyBatis	users	W
+sample-java-project	sample_mybatis_mapper.xml	com.example.mapper	UserMapper.deleteById	unknown	unknown	MyBatis	users	W
+sample-java-project	sample_mybatis_mapper.xml	com.example.mapper	UserMapper.findById	unknown	unknown	MyBatis	users	R
+sample-java-project	sample_mybatis_mapper.xml	com.example.mapper	UserMapper.findByStatus	unknown	unknown	MyBatis	users	R
+sample-java-project	sample_mybatis_mapper.xml	com.example.mapper	UserMapper.findWithOrders	unknown	unknown	MyBatis	users	R
+sample-java-project	sample_mybatis_mapper.xml	com.example.mapper	UserMapper.findWithOrders	unknown	unknown	MyBatis	orders	R
+sample-java-project	sample_mybatis_mapper.xml	com.example.mapper	UserMapper.findUserRoles	unknown	unknown	MyBatis	users	R
+sample-java-project	sample_mybatis_mapper.xml	com.example.mapper	UserMapper.findUserRoles	unknown	unknown	MyBatis	user_roles	R
+sample-java-project	sample_mybatis_mapper.xml	com.example.mapper	UserMapper.findUserRoles	unknown	unknown	MyBatis	roles	R

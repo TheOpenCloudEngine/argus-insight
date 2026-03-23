@@ -1,0 +1,46 @@
+프로젝트명	소스파일	모듈경로	클래스/함수	Python Version	프레임워크	테이블명	사용방식
+sample-python-project	sample_django_models.py	sample_django_models	Author	3.11	Django ORM	authors	RW
+sample-python-project	sample_django_models.py	sample_django_models	Book	3.11	Django ORM	books	RW
+sample-python-project	sample_django_models.py	sample_django_models	Review	3.11	Django ORM	review	RW
+sample-python-project	sample_django_models.py	sample_django_models	AbstractBase	3.11	Django ORM	abstractbase	RW
+sample-python-project	sample_django_views.py	sample_django_views	dashboard_stats	3.11	Django ORM	authors	R
+sample-python-project	sample_django_views.py	sample_django_views	dashboard_stats	3.11	Django ORM	books	R
+sample-python-project	sample_django_views.py	sample_django_views	bulk_update_ratings	3.11	Django ORM	reviews	W
+sample-python-project	sample_psycopg2.py	sample_psycopg2	find_all_users	3.11	DB-API (psycopg2)	users	R
+sample-python-project	sample_psycopg2.py	sample_psycopg2	insert_user	3.11	DB-API (psycopg2)	users	W
+sample-python-project	sample_psycopg2.py	sample_psycopg2	find_user_orders	3.11	DB-API (psycopg2)	orders	R
+sample-python-project	sample_psycopg2.py	sample_psycopg2	delete_inactive_users	3.11	DB-API (psycopg2)	users	W
+sample-python-project	sample_psycopg2.py	sample_psycopg2	batch_insert_logs	3.11	DB-API (psycopg2)	audit_log	W
+sample-python-project	sample_sqlalchemy_core.py	sample_sqlalchemy_core	products	3.11	SQLAlchemy	products	RW
+sample-python-project	sample_sqlalchemy_core.py	sample_sqlalchemy_core	categories	3.11	SQLAlchemy	categories	RW
+sample-python-project	sample_sqlalchemy_core.py	sample_sqlalchemy_core	get_all_products	3.11	SQLAlchemy	products	R
+sample-python-project	sample_sqlalchemy_core.py	sample_sqlalchemy_core	get_all_products	3.11	SQLAlchemy	[session.execute]	RW
+sample-python-project	sample_sqlalchemy_core.py	sample_sqlalchemy_core	insert_product	3.11	SQLAlchemy	[session.execute]	RW
+sample-python-project	sample_sqlalchemy_core.py	sample_sqlalchemy_core	insert_product	3.11	SQLAlchemy	products	W
+sample-python-project	sample_sqlalchemy_core.py	sample_sqlalchemy_core	update_price	3.11	SQLAlchemy	[session.execute]	RW
+sample-python-project	sample_sqlalchemy_core.py	sample_sqlalchemy_core	update_price	3.11	SQLAlchemy	products	W
+sample-python-project	sample_sqlalchemy_core.py	sample_sqlalchemy_core	delete_product	3.11	SQLAlchemy	[session.execute]	RW
+sample-python-project	sample_sqlalchemy_core.py	sample_sqlalchemy_core	delete_product	3.11	SQLAlchemy	products	W
+sample-python-project	sample_sqlalchemy_core.py	sample_sqlalchemy_core	raw_query	3.11	SQLAlchemy	[session.execute]	RW
+sample-python-project	sample_sqlalchemy_core.py	sample_sqlalchemy_core	raw_query	3.11	SQLAlchemy	products	R
+sample-python-project	sample_sqlalchemy_core.py	sample_sqlalchemy_core	raw_query	3.11	SQLAlchemy	categories	R
+sample-python-project	sample_sqlalchemy_core.py	sample_sqlalchemy_core	<module>	3.11	SQLAlchemy	products	RW
+sample-python-project	sample_sqlalchemy_core.py	sample_sqlalchemy_core	<module>	3.11	SQLAlchemy	categories	RW
+sample-python-project	sample_sqlalchemy_orm.py	sample_sqlalchemy_orm	Base	3.11	SQLAlchemy	base	RW
+sample-python-project	sample_sqlalchemy_orm.py	sample_sqlalchemy_orm	user_roles	3.11	SQLAlchemy	user_roles	RW
+sample-python-project	sample_sqlalchemy_orm.py	sample_sqlalchemy_orm	User	3.11	SQLAlchemy	users	RW
+sample-python-project	sample_sqlalchemy_orm.py	sample_sqlalchemy_orm	Role	3.11	SQLAlchemy	roles	RW
+sample-python-project	sample_sqlalchemy_orm.py	sample_sqlalchemy_orm	Order	3.11	SQLAlchemy	orders	RW
+sample-python-project	sample_sqlalchemy_orm.py	sample_sqlalchemy_orm	<module>	3.11	SQLAlchemy	user_roles	RW
+sample-python-project	sample_sqlite3.py	sample_sqlite3	create_table	3.11	DB-API (sqlite3)	tasks	W
+sample-python-project	sample_sqlite3.py	sample_sqlite3	find_all	3.11	DB-API (sqlite3)	tasks	R
+sample-python-project	sample_sqlite3.py	sample_sqlite3	find_pending	3.11	DB-API (sqlite3)	tasks	R
+sample-python-project	sample_sqlite3.py	sample_sqlite3	insert	3.11	DB-API (sqlite3)	tasks	W
+sample-python-project	sample_sqlite3.py	sample_sqlite3	mark_done	3.11	DB-API (sqlite3)	tasks	W
+sample-python-project	sample_sqlite3.py	sample_sqlite3	delete	3.11	DB-API (sqlite3)	tasks	W
+sample-python-project	sample_sqlite3.py	sample_sqlite3	TaskRepository.create_table	3.11	DB-API (sqlite3)	tasks	W
+sample-python-project	sample_sqlite3.py	sample_sqlite3	TaskRepository.find_all	3.11	DB-API (sqlite3)	tasks	R
+sample-python-project	sample_sqlite3.py	sample_sqlite3	TaskRepository.find_pending	3.11	DB-API (sqlite3)	tasks	R
+sample-python-project	sample_sqlite3.py	sample_sqlite3	TaskRepository.insert	3.11	DB-API (sqlite3)	tasks	W
+sample-python-project	sample_sqlite3.py	sample_sqlite3	TaskRepository.mark_done	3.11	DB-API (sqlite3)	tasks	W
+sample-python-project	sample_sqlite3.py	sample_sqlite3	TaskRepository.delete	3.11	DB-API (sqlite3)	tasks	W

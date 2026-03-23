@@ -606,6 +606,42 @@ PLATFORM_METADATA = {
             ("replication_factor", "Replication Factor", "Tablet replication factor (default 3)", "number", "false"),
         ],
     },
+    "java": {
+        "data_types": [],
+        "table_types": [
+            ("TABLE", "Table", "Database table referenced in Java source code", "true"),
+            ("VIEW", "View", "Database view referenced in Java source code", "false"),
+            ("ENTITY", "JPA Entity", "JPA entity class mapped to a database table", "false"),
+            ("JOIN_TABLE", "Join Table", "Association table for many-to-many relationships", "false"),
+        ],
+        "storage_formats": [],
+        "features": [
+            ("source_file", "Source File", "Java source file path where the table is referenced", "text", "false"),
+            ("package_name", "Package Name", "Java package of the class referencing the table", "text", "false"),
+            ("class_or_method", "Class / Method", "Class or method name where the table reference was found", "text", "false"),
+            ("java_version", "Java Version", "Java version detected from pom.xml or build.gradle", "text", "false"),
+            ("java_ee_version", "Java EE Version", "Java EE or Jakarta EE version (from imports)", "text", "false"),
+            ("framework", "Framework", "ORM/DB framework used (JPA, Hibernate, MyBatis, Spring JDBC, JDBC)", "text", "true"),
+            ("access_type", "Access Type", "Table access pattern: R (read), W (write), RW (read/write)", "text", "true"),
+        ],
+    },
+    "python": {
+        "data_types": [],
+        "table_types": [
+            ("TABLE", "Table", "Database table referenced in Python source code", "true"),
+            ("VIEW", "View", "Database view referenced in Python source code", "false"),
+            ("MODEL", "ORM Model", "ORM model class mapped to a database table", "false"),
+        ],
+        "storage_formats": [],
+        "features": [
+            ("source_file", "Source File", "Python source file path where the table is referenced", "text", "false"),
+            ("module_path", "Module Path", "Python module path (e.g. myapp.models)", "text", "false"),
+            ("class_or_function", "Class / Function", "Class or function name where the table reference was found", "text", "false"),
+            ("python_version", "Python Version", "Python version detected from pyproject.toml or setup.py", "text", "false"),
+            ("framework", "Framework", "ORM/DB framework used (SQLAlchemy, Django ORM, DB-API)", "text", "true"),
+            ("access_type", "Access Type", "Table access pattern: R (read), W (write), RW (read/write)", "text", "true"),
+        ],
+    },
     "unity_catalog": {
         "data_types": [
             ("BOOLEAN", "boolean", "True/false values"),

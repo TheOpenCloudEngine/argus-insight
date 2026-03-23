@@ -129,6 +129,8 @@ const PLATFORM_TYPES = [
   { name: "greenplum", display: "Greenplum" },
   { name: "kudu", display: "Apache Kudu" },
   { name: "unity_catalog", display: "Unity Catalog" },
+  { name: "java", display: "Java Source" },
+  { name: "python", display: "Python Source" },
 ]
 
 // ---------------------------------------------------------------------------

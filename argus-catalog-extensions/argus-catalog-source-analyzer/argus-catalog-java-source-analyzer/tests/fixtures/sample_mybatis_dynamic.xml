@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mapper.ProductMapper">
+
+    <select id="search" parameterType="map" resultType="Product">
+        SELECT * FROM products
+        <where>
+            <if test="name != null">
+                AND name LIKE CONCAT('%', #{name}, '%')
+            </if>
+            <if test="minPrice != null">
+                AND price >= #{minPrice}
+            </if>
+            <if test="maxPrice != null">
+                AND price &lt;= #{maxPrice}
+            </if>
+            <if test="categoryId != null">
+                AND category_id = #{categoryId}
+            </if>
+        </where>
+        <choose>
+            <when test="orderBy == 'price'">
+                ORDER BY price
+            </when>
+            <otherwise>
+                ORDER BY created_at DESC
+            </otherwise>
+        </choose>
+    </select>
+
+    <insert id="batchInsert" parameterType="list">
+        INSERT INTO products (name, price, category_id)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.name}, #{item.price}, #{item.categoryId})
+        </foreach>
+    </insert>
+
+    <update id="updateBatch">
+        <foreach collection="products" item="p" separator=";">
+            UPDATE products
+            <set>
+                <if test="p.name != null">name = #{p.name},</if>
+                <if test="p.price != null">price = #{p.price},</if>
+            </set>
+            WHERE id = #{p.id}
+        </foreach>
+    </update>
+
+</mapper>

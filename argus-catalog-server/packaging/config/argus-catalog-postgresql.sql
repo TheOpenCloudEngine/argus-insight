@@ -927,3 +927,15 @@ CREATE INDEX IF NOT EXISTS idx_dataset_embeddings_ivfflat
     ON catalog_dataset_embeddings
     USING ivfflat (embedding vector_cosine_ops)
     WITH (lists = 100);
+
+-- ---------------------------------------------------------------------------
+-- Seed: Source Analysis Platforms (Java / Python)
+-- ---------------------------------------------------------------------------
+
+INSERT INTO catalog_platforms (name, logo_url, platform_id, type)
+VALUES ('java', NULL, gen_random_uuid()::text, 'source_analysis')
+ON CONFLICT (platform_id) DO NOTHING;
+
+INSERT INTO catalog_platforms (name, logo_url, platform_id, type)
+VALUES ('python', NULL, gen_random_uuid()::text, 'source_analysis')
+ON CONFLICT (platform_id) DO NOTHING;

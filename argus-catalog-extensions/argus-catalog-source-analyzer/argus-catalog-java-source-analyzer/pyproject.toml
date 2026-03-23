@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "argus-catalog-java-source-analyzer"
+version = "0.1.0"
+description = "Java source code analyzer for extracting ORM table mappings (JPA, MyBatis, JDBC)"
+requires-python = ">=3.11"
+dependencies = [
+    "javalang>=0.13.0",
+    "sqlglot>=26.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+java-source-analyzer = "java_source_analyzer.cli:main"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.setuptools.packages.find]
+where = ["src"]

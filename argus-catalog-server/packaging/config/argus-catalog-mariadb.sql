@@ -942,4 +942,14 @@ CREATE TABLE IF NOT EXISTS catalog_standard_change_log (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------------
+-- Seed: Source Analysis Platforms (Java / Python)
+-- ---------------------------------------------------------------------------
+
+INSERT IGNORE INTO catalog_platforms (name, logo_url, platform_id, type)
+VALUES ('java', NULL, UUID(), 'source_analysis');
+
+INSERT IGNORE INTO catalog_platforms (name, logo_url, platform_id, type)
+VALUES ('python', NULL, UUID(), 'source_analysis');
+
+-- ---------------------------------------------------------------------------
 
