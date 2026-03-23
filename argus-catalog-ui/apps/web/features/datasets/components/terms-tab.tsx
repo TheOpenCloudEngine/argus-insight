@@ -293,7 +293,7 @@ export function TermsTab({ datasetId }: Props) {
 
                     {/* Actual type */}
                     <TableCell>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-sm text-muted-foreground">
                         {col.native_type || col.column_type}
                       </span>
                     </TableCell>
@@ -310,7 +310,7 @@ export function TermsTab({ datasetId }: Props) {
                       {col.term_name ? (
                         <div>
                           <span className="text-sm font-medium">{col.term_name}</span>
-                          <span className="text-xs text-muted-foreground ml-1.5">
+                          <span className="text-sm text-muted-foreground ml-1.5">
                             ({col.term_physical_name})
                           </span>
                         </div>
@@ -327,7 +327,7 @@ export function TermsTab({ datasetId }: Props) {
                     {/* Standard type */}
                     <TableCell>
                       {col.term_data_type && (
-                        <code className="text-xs">
+                        <code className="text-sm">
                           {col.term_data_type}
                           {col.term_data_length && `(${col.term_data_length})`}
                         </code>
