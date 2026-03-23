@@ -1,0 +1,1 @@
+"""MyBatis table mapping analyzers."""
