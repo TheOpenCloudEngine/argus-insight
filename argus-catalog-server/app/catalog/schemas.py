@@ -132,6 +132,13 @@ class GlossaryTermCreate(BaseModel):
     parent_id: int | None = None
 
 
+class GlossaryTermUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=200)
+    description: str | None = None
+    source: str | None = None
+    parent_id: int | None = None
+
+
 class GlossaryTermResponse(BaseModel):
     id: int
     name: str
