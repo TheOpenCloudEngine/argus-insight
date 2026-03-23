@@ -295,11 +295,16 @@ export default function GlossaryPage() {
                 )}
               </span>
               <div className="flex items-center gap-1">
+                {user?.is_admin && (
+                  <Button variant="outline" size="sm" onClick={addCategory}>
+                    <Plus className="h-3.5 w-3.5 mr-1" />Add
+                  </Button>
+                )}
                 {user?.is_admin && checkedIds.size > 0 && (
                   <Popover open={movePopoverOpen} onOpenChange={setMovePopoverOpen}>
                     <PopoverTrigger asChild>
                       <Button variant="outline" size="sm">
-                        <MoveRight className="h-3.5 w-3.5 mr-1" />Move to
+                        <MoveRight className="h-3.5 w-3.5 mr-1" />Move
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-[240px] p-0" align="end">
@@ -326,11 +331,6 @@ export default function GlossaryPage() {
                       </Command>
                     </PopoverContent>
                   </Popover>
-                )}
-                {user?.is_admin && (
-                  <Button variant="outline" size="sm" onClick={addCategory}>
-                    <Plus className="h-3.5 w-3.5 mr-1" />Add
-                  </Button>
                 )}
               </div>
             </div>
