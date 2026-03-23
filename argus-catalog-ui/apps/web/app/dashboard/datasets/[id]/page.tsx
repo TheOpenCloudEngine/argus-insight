@@ -23,6 +23,7 @@ import {
   Rocket,
   Server,
   Settings2,
+  Shield,
   Tags,
   Trash2,
   Users,
@@ -97,6 +98,7 @@ import { NiFiFlowTab } from "@/features/datasets/components/nifi-flow-tab"
 import { KestraFlowTab } from "@/features/datasets/components/kestra-flow-tab"
 import { AirflowDagTab } from "@/features/datasets/components/airflow-dag-tab"
 import { LineageTab } from "@/features/datasets/components/lineage-tab"
+import { TermsTab } from "@/features/datasets/components/terms-tab"
 import { GitBranch, MessageSquare } from "lucide-react"
 import { CommentSection } from "@/components/comments"
 
@@ -953,6 +955,10 @@ export default function DatasetDetailPage() {
               <BookOpen className="h-4 w-4" />
               Glossary ({dataset.glossary_terms.length})
             </TabsTrigger>
+            <TabsTrigger value="terms" className="gap-1.5">
+              <Shield className="h-4 w-4" />
+              Terms
+            </TabsTrigger>
             <TabsTrigger value="sample" className="gap-1.5">
               <Globe className="h-4 w-4" />
               Sample
@@ -1502,6 +1508,11 @@ export default function DatasetDetailPage() {
           </TabsContent>
 
           {/* =============== Lineage tab =============== */}
+          {/* =============== Terms tab =============== */}
+          <TabsContent value="terms" className="mt-4">
+            <TermsTab datasetId={datasetId} />
+          </TabsContent>
+
           <TabsContent value="lineage" className="mt-4">
             <LineageTab datasetId={datasetId} datasetName={dataset.name} />
           </TabsContent>
