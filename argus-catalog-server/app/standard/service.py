@@ -14,11 +14,12 @@ from app.standard.models import (
     TermColumnMapping,
 )
 from app.standard.schemas import (
-    CodeGroupCreate, CodeGroupResponse, CodeGroupUpdate, CodeValueCreate,
-    CodeValueResponse, ComplianceStats, DictionaryCreate, DictionaryResponse,
-    DictionaryUpdate, DomainCreate, DomainResponse, DomainUpdate,
-    MorphemeResult, TermCreate, TermMappingCreate, TermMappingResponse,
-    TermResponse, TermUpdate, TermWordInfo, WordCreate, WordResponse, WordUpdate,
+    AutoMapResult, CodeGroupCreate, CodeGroupResponse, CodeGroupUpdate,
+    CodeValueCreate, CodeValueResponse, ColumnTermStatus, ComplianceStats,
+    DatasetTermMapping, DictionaryCreate, DictionaryResponse, DictionaryUpdate,
+    DomainCreate, DomainResponse, DomainUpdate, MorphemeResult, TermCreate,
+    TermMappingCreate, TermMappingResponse, TermResponse, TermUpdate,
+    TermWordInfo, WordCreate, WordResponse, WordUpdate,
 )
 from app.catalog.models import Dataset, DatasetSchema
 
@@ -533,6 +534,207 @@ async def get_compliance_stats(
     return ComplianceStats(
         total_columns=total, matched=matched, similar=similar,
         violation=violation, unmapped=unmapped, compliance_rate=round(rate, 1),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Auto-mapping (자동 매핑)
+# ---------------------------------------------------------------------------
+
+async def auto_map_dataset(
+    session: AsyncSession, dictionary_id: int, dataset_id: int,
+) -> AutoMapResult:
+    """데이터셋의 컬럼을 표준 용어와 자동 매핑한다.
+
+    매핑 로직:
+    1. 컬럼의 field_path와 용어의 physical_name을 비교 (소문자 정규화)
+    2. 정확히 일치하면:
+       - 데이터 타입도 호환 → MATCHED
+       - 데이터 타입 불일치 → VIOLATION
+    3. 이미 매핑이 있으면 업데이트, 없으면 새로 생성
+    """
+    # 데이터셋의 모든 컬럼 조회
+    columns = (await session.execute(
+        select(DatasetSchema).where(DatasetSchema.dataset_id == dataset_id)
+    )).scalars().all()
+
+    # 사전의 모든 활성 용어 조회 (physical_name → term 맵)
+    terms = (await session.execute(
+        select(StandardTerm).where(
+            StandardTerm.dictionary_id == dictionary_id,
+            StandardTerm.status == "ACTIVE",
+        )
+    )).scalars().all()
+    term_by_physical = {t.physical_name.lower(): t for t in terms}
+
+    # 용어별 도메인 정보 캐시
+    domain_cache: dict[int, StandardDomain | None] = {}
+    for t in terms:
+        if t.domain_id and t.domain_id not in domain_cache:
+            domain_cache[t.domain_id] = (await session.execute(
+                select(StandardDomain).where(StandardDomain.id == t.domain_id)
+            )).scalar_one_or_none()
+
+    # 기존 매핑 조회
+    existing_mappings = (await session.execute(
+        select(TermColumnMapping).where(TermColumnMapping.dataset_id == dataset_id)
+    )).scalars().all()
+    existing_by_schema = {m.schema_id: m for m in existing_mappings}
+
+    result = AutoMapResult()
+
+    for col in columns:
+        col_name = col.field_path.lower()
+        term = term_by_physical.get(col_name)
+
+        if not term:
+            result.unmapped += 1
+            continue
+
+        # 타입 호환성 확인
+        mapping_type = "MATCHED"
+        if term.domain_id:
+            domain = domain_cache.get(term.domain_id)
+            if domain:
+                if not _types_compatible(col.field_type, col.native_type, domain):
+                    mapping_type = "VIOLATION"
+
+        if col.id in existing_by_schema:
+            # 기존 매핑 업데이트
+            existing = existing_by_schema[col.id]
+            if existing.term_id != term.id or existing.mapping_type != mapping_type:
+                existing.term_id = term.id
+                existing.mapping_type = mapping_type
+                result.updated += 1
+        else:
+            # 새 매핑 생성
+            m = TermColumnMapping(
+                term_id=term.id,
+                dataset_id=dataset_id,
+                schema_id=col.id,
+                mapping_type=mapping_type,
+            )
+            session.add(m)
+            result.created += 1
+
+        if mapping_type == "MATCHED":
+            result.matched += 1
+        elif mapping_type == "VIOLATION":
+            result.violation += 1
+
+    await session.flush()
+    return result
+
+
+def _types_compatible(
+    col_type: str | None, native_type: str | None, domain: StandardDomain,
+) -> bool:
+    """컬럼 타입과 도메인 타입이 호환되는지 확인."""
+    if not col_type:
+        return True
+
+    ct = (col_type or "").upper()
+    dt = domain.data_type.upper()
+
+    # 직접 일치
+    if ct == dt:
+        return True
+
+    # 호환 그룹
+    varchar_types = {"VARCHAR", "CHAR", "CHARACTER VARYING", "STRING", "TEXT", "NVARCHAR"}
+    int_types = {"INT", "INTEGER", "BIGINT", "SMALLINT", "TINYINT", "NUMBER"}
+    decimal_types = {"DECIMAL", "NUMERIC", "FLOAT", "DOUBLE", "REAL", "DOUBLE PRECISION"}
+    date_types = {"DATE", "TIMESTAMP", "DATETIME", "TIMESTAMPTZ", "TIMESTAMP WITH TIME ZONE"}
+
+    for group in [varchar_types, int_types, decimal_types, date_types]:
+        if ct in group and dt in group:
+            return True
+
+    return False
+
+
+async def get_dataset_term_mapping(
+    session: AsyncSession, dictionary_id: int, dataset_id: int,
+) -> DatasetTermMapping:
+    """데이터셋의 전체 컬럼-용어 매핑 현황을 조회한다."""
+    columns = (await session.execute(
+        select(DatasetSchema).where(DatasetSchema.dataset_id == dataset_id)
+        .order_by(DatasetSchema.ordinal)
+    )).scalars().all()
+
+    # 이 데이터셋의 매핑 조회
+    mappings = (await session.execute(
+        select(TermColumnMapping)
+        .join(StandardTerm, TermColumnMapping.term_id == StandardTerm.id)
+        .where(
+            TermColumnMapping.dataset_id == dataset_id,
+            StandardTerm.dictionary_id == dictionary_id,
+        )
+    )).scalars().all()
+    mapping_by_schema = {m.schema_id: m for m in mappings}
+
+    # 용어 정보 캐시
+    term_cache: dict[int, StandardTerm] = {}
+    domain_cache: dict[int, StandardDomain | None] = {}
+    for m in mappings:
+        if m.term_id not in term_cache:
+            t = (await session.execute(
+                select(StandardTerm).where(StandardTerm.id == m.term_id)
+            )).scalar_one_or_none()
+            if t:
+                term_cache[m.term_id] = t
+                if t.domain_id and t.domain_id not in domain_cache:
+                    domain_cache[t.domain_id] = (await session.execute(
+                        select(StandardDomain).where(StandardDomain.id == t.domain_id)
+                    )).scalar_one_or_none()
+
+    col_statuses: list[ColumnTermStatus] = []
+    matched = similar = violation = 0
+
+    for col in columns:
+        m = mapping_by_schema.get(col.id)
+        if m and m.term_id in term_cache:
+            term = term_cache[m.term_id]
+            domain = domain_cache.get(term.domain_id) if term.domain_id else None
+            col_statuses.append(ColumnTermStatus(
+                schema_id=col.id,
+                column_name=col.field_path,
+                column_type=col.field_type,
+                native_type=col.native_type,
+                mapping_id=m.id,
+                mapping_type=m.mapping_type,
+                term_id=term.id,
+                term_name=term.term_name,
+                term_physical_name=term.physical_name,
+                term_data_type=domain.data_type if domain else None,
+                term_data_length=domain.data_length if domain else None,
+            ))
+            if m.mapping_type == "MATCHED":
+                matched += 1
+            elif m.mapping_type == "SIMILAR":
+                similar += 1
+            elif m.mapping_type == "VIOLATION":
+                violation += 1
+        else:
+            col_statuses.append(ColumnTermStatus(
+                schema_id=col.id,
+                column_name=col.field_path,
+                column_type=col.field_type,
+                native_type=col.native_type,
+            ))
+
+    total = len(columns)
+    unmapped = total - matched - similar - violation
+    rate = (matched / total * 100) if total > 0 else 0.0
+
+    return DatasetTermMapping(
+        dataset_id=dataset_id,
+        dictionary_id=dictionary_id,
+        columns=col_statuses,
+        compliance=ComplianceStats(
+            total_columns=total, matched=matched, similar=similar,
+            violation=violation, unmapped=unmapped, compliance_rate=round(rate, 1),
+        ),
     )
 
 

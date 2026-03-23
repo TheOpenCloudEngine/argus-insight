@@ -286,3 +286,40 @@ class ComplianceStats(BaseModel):
     violation: int = 0
     unmapped: int = 0
     compliance_rate: float = 0.0     # (matched / total) * 100
+
+
+# ---------------------------------------------------------------------------
+# Auto-mapping (자동 매핑 결과)
+# ---------------------------------------------------------------------------
+
+class ColumnTermStatus(BaseModel):
+    """데이터셋 컬럼별 표준 용어 매핑 상태."""
+    schema_id: int
+    column_name: str                         # 실제 컬럼명 (field_path)
+    column_type: str                         # 실제 데이터 타입
+    native_type: str | None = None           # 실제 네이티브 타입
+    mapping_id: int | None = None            # 매핑 ID (없으면 미매핑)
+    mapping_type: str | None = None          # MATCHED, SIMILAR, VIOLATION
+    term_id: int | None = None               # 매핑된 용어 ID
+    term_name: str | None = None             # 매핑된 용어 한글명
+    term_physical_name: str | None = None    # 용어의 표준 물리명
+    term_data_type: str | None = None        # 용어 도메인의 표준 데이터 타입
+    term_data_length: int | None = None      # 용어 도메인의 표준 길이
+
+
+class DatasetTermMapping(BaseModel):
+    """데이터셋의 전체 컬럼-용어 매핑 현황."""
+    dataset_id: int
+    dictionary_id: int
+    columns: list[ColumnTermStatus]
+    compliance: ComplianceStats
+
+
+class AutoMapResult(BaseModel):
+    """자동 매핑 실행 결과."""
+    created: int = 0                         # 새로 생성된 매핑 수
+    updated: int = 0                         # 업데이트된 매핑 수
+    matched: int = 0
+    similar: int = 0
+    violation: int = 0
+    unmapped: int = 0

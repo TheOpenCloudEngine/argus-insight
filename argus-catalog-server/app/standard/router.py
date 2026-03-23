@@ -7,11 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.standard import service
 from app.standard.schemas import (
-    CodeGroupCreate, CodeGroupResponse, CodeGroupUpdate, CodeValueCreate, CodeValueResponse,
-    ComplianceStats, DictionaryCreate, DictionaryResponse, DictionaryUpdate,
-    DomainCreate, DomainResponse, DomainUpdate, MorphemeResult,
-    TermCreate, TermMappingCreate, TermMappingResponse, TermResponse, TermUpdate,
-    WordCreate, WordResponse, WordUpdate,
+    AutoMapResult, CodeGroupCreate, CodeGroupResponse, CodeGroupUpdate,
+    CodeValueCreate, CodeValueResponse, ComplianceStats, DatasetTermMapping,
+    DictionaryCreate, DictionaryResponse, DictionaryUpdate, DomainCreate,
+    DomainResponse, DomainUpdate, MorphemeResult, TermCreate, TermMappingCreate,
+    TermMappingResponse, TermResponse, TermUpdate, WordCreate, WordResponse,
+    WordUpdate,
 )
 from app.core.database import get_session
 
@@ -264,6 +265,36 @@ async def delete_mapping(mapping_id: int, session: AsyncSession = Depends(get_se
     if not await service.delete_term_mapping(session, mapping_id):
         raise HTTPException(status_code=404, detail="Mapping not found")
     await session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Auto-mapping + Dataset Term Mapping
+# ---------------------------------------------------------------------------
+
+@router.post("/mappings/auto-map", response_model=AutoMapResult)
+async def auto_map_dataset(
+    dictionary_id: int = Query(...),
+    dataset_id: int = Query(...),
+    session: AsyncSession = Depends(get_session),
+):
+    """데이터셋의 컬럼을 표준 용어와 자동 매핑한다.
+
+    컬럼의 field_path와 용어의 physical_name을 비교하여
+    MATCHED (타입 호환) 또는 VIOLATION (타입 불일치)으로 매핑.
+    """
+    result = await service.auto_map_dataset(session, dictionary_id, dataset_id)
+    await session.commit()
+    return result
+
+
+@router.get("/mappings/dataset", response_model=DatasetTermMapping)
+async def get_dataset_term_mapping(
+    dictionary_id: int = Query(...),
+    dataset_id: int = Query(...),
+    session: AsyncSession = Depends(get_session),
+):
+    """데이터셋의 전체 컬럼-용어 매핑 현황을 조회한다."""
+    return await service.get_dataset_term_mapping(session, dictionary_id, dataset_id)
 
 
 # ---------------------------------------------------------------------------
