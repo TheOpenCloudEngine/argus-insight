@@ -1,7 +1,11 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, createContext } from "react"
+import { AgGridReact } from "ag-grid-react"
+import { AllCommunityModule, ModuleRegistry, type ColDef, type CellValueChangedEvent } from "ag-grid-community"
 import { DashboardHeader } from "@/components/dashboard-header"
+
+ModuleRegistry.registerModules([AllCommunityModule])
 import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
@@ -198,75 +202,204 @@ function DictionaryDialog({ open, onOpenChange, onCreated }: { open: boolean; on
 }
 
 // ---------------------------------------------------------------------------
-// Words Tab
+// Words Tab (AG Grid — inline row editing)
 // ---------------------------------------------------------------------------
+
+// Context for delete handler
+const WordDeleteCtx = createContext<(id: number) => void>(() => {})
+
+function WordDeleteRenderer(props: { value: number }) {
+  const onDelete = useContext(WordDeleteCtx)
+  return (
+    <button
+      type="button"
+      onClick={() => onDelete(props.value)}
+      className="flex items-center justify-center w-full h-full text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
+    >
+      <Trash2 className="h-3.5 w-3.5" />
+    </button>
+  )
+}
 
 function WordsTab({ dictId }: { dictId: number }) {
   const [words, setWords] = useState<Word[]>([])
-  const [addOpen, setAddOpen] = useState(false)
-  const [wn, setWn] = useState(""); const [we, setWe] = useState(""); const [wa, setWa] = useState("")
-  const [wt, setWt] = useState("GENERAL"); const [wd, setWd] = useState("")
+  const gridRef = useRef<AgGridReact>(null)
 
-  const fetch = useCallback(async () => {
+  const fetchWords = useCallback(async () => {
     const r = await authFetch(`${BASE}/words?dictionary_id=${dictId}`)
     if (r.ok) setWords(await r.json())
   }, [dictId])
-  useEffect(() => { fetch() }, [fetch])
+  useEffect(() => { fetchWords() }, [fetchWords])
 
-  const save = async () => {
-    await authFetch(`${BASE}/words`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dictionary_id: dictId, word_name: wn, word_english: we, word_abbr: wa, word_type: wt, description: wd || null }),
+  // Add new empty row
+  const addWord = useCallback(async () => {
+    const resp = await authFetch(`${BASE}/words`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        dictionary_id: dictId,
+        word_name: "(new)",
+        word_english: "(new)",
+        word_abbr: "NEW",
+        word_type: "GENERAL",
+      }),
     })
-    setAddOpen(false); setWn(""); setWe(""); setWa(""); setWd(""); fetch()
-  }
+    if (resp.ok) {
+      await fetchWords()
+      // Focus the new row for editing
+      setTimeout(() => {
+        const api = gridRef.current?.api
+        if (api) {
+          const lastIdx = words.length  // after fetch, this is the new last row
+          api.ensureIndexVisible(lastIdx)
+          api.startEditingCell({ rowIndex: lastIdx, colKey: "word_name" })
+        }
+      }, 200)
+    }
+  }, [dictId, fetchWords, words.length])
 
-  const del = async (id: number) => { await authFetch(`${BASE}/words/${id}`, { method: "DELETE" }); fetch() }
+  // Delete row
+  const deleteWord = useCallback(async (id: number) => {
+    await authFetch(`${BASE}/words/${id}`, { method: "DELETE" })
+    fetchWords()
+  }, [fetchWords])
+
+  // Save on cell edit
+  const onCellValueChanged = useCallback(async (event: CellValueChangedEvent) => {
+    const { data, colDef, newValue, oldValue } = event
+    if (newValue === oldValue) return
+
+    const field = colDef.field
+    if (!field || !data.id) return
+
+    await authFetch(`${BASE}/words/${data.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: newValue }),
+    })
+  }, [])
+
+  const columnDefs = useMemo<ColDef[]>(() => [
+    {
+      headerName: "#",
+      valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1,
+      width: 50, maxWidth: 55,
+      editable: false,
+      sortable: false,
+      cellStyle: { color: "#9ca3af", textAlign: "right" },
+    },
+    {
+      headerName: "Name (한글)",
+      field: "word_name",
+      minWidth: 120,
+      editable: true,
+      cellStyle: { fontWeight: 500 },
+    },
+    {
+      headerName: "English",
+      field: "word_english",
+      minWidth: 130,
+      editable: true,
+    },
+    {
+      headerName: "Abbreviation",
+      field: "word_abbr",
+      width: 120,
+      editable: true,
+      cellStyle: { fontFamily: "monospace" },
+    },
+    {
+      headerName: "Type",
+      field: "word_type",
+      width: 110,
+      editable: true,
+      cellEditor: "agSelectCellEditor",
+      cellEditorParams: { values: ["GENERAL", "SUFFIX", "PREFIX"] },
+      cellRenderer: (p: { value: string }) => {
+        if (p.value === "SUFFIX") return "Suffix"
+        if (p.value === "PREFIX") return "Prefix"
+        return "General"
+      },
+    },
+    {
+      headerName: "Forbidden",
+      field: "is_forbidden",
+      width: 90,
+      editable: true,
+      cellEditor: "agSelectCellEditor",
+      cellEditorParams: { values: ["true", "false"] },
+      cellRenderer: (p: { value: string }) => p.value === "true" ? "Yes" : "",
+      cellStyle: (p) => ({
+        textAlign: "center",
+        color: p.value === "true" ? "#ef4444" : undefined,
+        fontWeight: p.value === "true" ? 600 : undefined,
+      }),
+    },
+    {
+      headerName: "Description",
+      field: "description",
+      minWidth: 200,
+      flex: 1,
+      editable: true,
+    },
+    {
+      headerName: "Status",
+      field: "status",
+      width: 90,
+      editable: true,
+      cellEditor: "agSelectCellEditor",
+      cellEditorParams: { values: ["ACTIVE", "INACTIVE", "DEPRECATED"] },
+      cellRenderer: (p: { value: string }) => p.value === "ACTIVE" ? "Active" : p.value,
+    },
+    {
+      headerName: "",
+      field: "id",
+      width: 45,
+      maxWidth: 45,
+      editable: false,
+      sortable: false,
+      cellRenderer: "deleteRenderer",
+    },
+  ], [])
+
+  const components = useMemo(() => ({ deleteRenderer: WordDeleteRenderer }), [])
 
   return (
-    <>
+    <WordDeleteCtx.Provider value={deleteWord}>
       <div className="flex items-center justify-between mb-3">
         <p className="text-sm text-muted-foreground">{words.length} words</p>
-        <Button size="sm" onClick={() => setAddOpen(true)}><Plus className="h-3.5 w-3.5 mr-1" />Add Word</Button>
+        <Button size="sm" onClick={addWord}>
+          <Plus className="h-3.5 w-3.5 mr-1" />Add Word
+        </Button>
       </div>
-      <Card><CardContent className="p-0">
-        <Table>
-          <TableHeader><TableRow>
-            <TableHead>Name</TableHead><TableHead>English</TableHead><TableHead>Abbr</TableHead>
-            <TableHead className="w-24">Type</TableHead><TableHead className="w-20">Forbidden</TableHead><TableHead className="w-16" />
-          </TableRow></TableHeader>
-          <TableBody>
-            {words.map(w => (
-              <TableRow key={w.id}>
-                <TableCell className="font-medium">{w.word_name}</TableCell>
-                <TableCell>{w.word_english}</TableCell>
-                <TableCell><code className="text-xs">{w.word_abbr}</code></TableCell>
-                <TableCell><WordTypeBadge type={w.word_type} /></TableCell>
-                <TableCell>{w.is_forbidden === "true" && <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Forbidden</Badge>}</TableCell>
-                <TableCell><Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => del(w.id)}><Trash2 className="h-3.5 w-3.5" /></Button></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent></Card>
-
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Add Word</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div><Label className="text-xs">Korean Name</Label><Input value={wn} onChange={e => setWn(e.target.value)} placeholder="고객" className="h-9" /></div>
-            <div><Label className="text-xs">English</Label><Input value={we} onChange={e => setWe(e.target.value)} placeholder="Customer" className="h-9" /></div>
-            <div><Label className="text-xs">Abbreviation</Label><Input value={wa} onChange={e => setWa(e.target.value)} placeholder="CUST" className="h-9" /></div>
-            <div><Label className="text-xs">Type</Label>
-              <Select value={wt} onValueChange={setWt}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="GENERAL">General</SelectItem><SelectItem value="SUFFIX">Suffix (분류어)</SelectItem><SelectItem value="PREFIX">Prefix</SelectItem></SelectContent>
-              </Select></div>
-            <div><Label className="text-xs">Description</Label><Textarea value={wd} onChange={e => setWd(e.target.value)} rows={2} /></div>
-            <div className="flex justify-end"><Button onClick={save} disabled={!wn || !we || !wa}>Add</Button></div>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
+      <div
+        className="border rounded ag-theme-alpine"
+        style={{
+          height: Math.min(words.length * 32 + 44, 600),
+          "--ag-font-size": "13px",
+        } as React.CSSProperties}
+      >
+        <AgGridReact
+          ref={gridRef}
+          columnDefs={columnDefs}
+          rowData={words}
+          defaultColDef={{
+            resizable: true,
+            sortable: true,
+            filter: false,
+            minWidth: 50,
+          }}
+          headerHeight={32}
+          rowHeight={30}
+          singleClickEdit
+          stopEditingWhenCellsLoseFocus
+          onCellValueChanged={onCellValueChanged}
+          animateRows={false}
+          getRowId={(params) => String(params.data.id)}
+          components={components}
+        />
+      </div>
+    </WordDeleteCtx.Provider>
   )
 }
 
