@@ -266,7 +266,7 @@ export function TermsTab({ datasetId }: Props) {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <Table style={{ fontFamily: "var(--font-d2coding), 'D2Coding', Consolas, monospace" }}>
+            <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-10" />
