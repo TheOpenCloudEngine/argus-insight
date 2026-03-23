@@ -129,7 +129,7 @@ export default function StandardsPage() {
         </div>
 
         {selectedDictId && (
-          <Tabs value={tab} onValueChange={setTab}>
+          <Tabs value={tab} onValueChange={setTab} className="flex flex-1 flex-col min-h-0">
             <TabsList>
               <TabsTrigger value="words"><Type className="h-3.5 w-3.5 mr-1" />Words</TabsTrigger>
               <TabsTrigger value="domains"><Grid3X3 className="h-3.5 w-3.5 mr-1" />Domains</TabsTrigger>
@@ -138,13 +138,13 @@ export default function StandardsPage() {
               <TabsTrigger value="compliance"><BookOpen className="h-3.5 w-3.5 mr-1" />Compliance</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="words" className="mt-4">
+            <TabsContent value="words" className="mt-4 flex-1 flex flex-col min-h-0">
               <WordsTab dictId={selectedDictId} />
             </TabsContent>
-            <TabsContent value="domains" className="mt-4">
+            <TabsContent value="domains" className="mt-4 flex-1 flex flex-col min-h-0">
               <DomainsTab dictId={selectedDictId} />
             </TabsContent>
-            <TabsContent value="terms" className="mt-4">
+            <TabsContent value="terms" className="mt-4 flex-1 flex flex-col min-h-0">
               <TermsTab dictId={selectedDictId} />
             </TabsContent>
             <TabsContent value="codes" className="mt-4">
@@ -366,16 +366,16 @@ function WordsTab({ dictId }: { dictId: number }) {
 
   return (
     <WordDeleteCtx.Provider value={deleteWord}>
-      <div className="flex items-center justify-between mb-3">
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex items-center justify-between mb-3 flex-shrink-0">
         <p className="text-sm text-muted-foreground">{words.length} words</p>
         <Button size="sm" onClick={addWord}>
           <Plus className="h-3.5 w-3.5 mr-1" />Add Word
         </Button>
       </div>
       <div
-        className="ag-theme-alpine"
+        className="ag-theme-alpine flex-1 min-h-0"
         style={{
-          height: Math.min(words.length * 32 + 44, 600),
           "--ag-font-family": "var(--font-d2coding), 'D2Coding', Consolas, monospace",
           "--ag-font-size": "13px",
         } as React.CSSProperties}
@@ -400,6 +400,7 @@ function WordsTab({ dictId }: { dictId: number }) {
           components={components}
         />
       </div>
+    </div>
     </WordDeleteCtx.Provider>
   )
 }
@@ -479,17 +480,19 @@ function DomainsTab({ dictId }: { dictId: number }) {
 
   return (
     <DomainDeleteCtx.Provider value={deleteDomain}>
-      <div className="flex items-center justify-between mb-3">
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex items-center justify-between mb-3 flex-shrink-0">
         <p className="text-sm text-muted-foreground">{domains.length} domains</p>
         <Button size="sm" onClick={addDomain}><Plus className="h-3.5 w-3.5 mr-1" />Add Domain</Button>
       </div>
-      <div className="ag-theme-alpine" style={{ height: Math.min(domains.length * 32 + 44, 500), "--ag-font-size": "13px" } as React.CSSProperties}>
+      <div className="ag-theme-alpine flex-1 min-h-0" style={{ "--ag-font-family": "var(--font-d2coding), 'D2Coding', Consolas, monospace", "--ag-font-size": "13px" } as React.CSSProperties}>
         <AgGridReact ref={gridRef} columnDefs={columnDefs} rowData={domains}
           defaultColDef={{ resizable: true, sortable: true, filter: false, minWidth: 50 }}
           headerHeight={32} rowHeight={30} singleClickEdit stopEditingWhenCellsLoseFocus
           onCellValueChanged={onCellValueChanged} animateRows={false}
           getRowId={(params) => String(params.data.id)} components={components} />
       </div>
+    </div>
     </DomainDeleteCtx.Provider>
   )
 }
@@ -591,7 +594,8 @@ function TermsTab({ dictId }: { dictId: number }) {
 
   return (
     <TermDeleteCtx.Provider value={deleteTerm}>
-      <div className="flex items-center gap-3 mb-3">
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex items-center gap-3 mb-3 flex-shrink-0">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
           <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search terms..." className="h-8 pl-8 text-xs" />
@@ -601,7 +605,7 @@ function TermsTab({ dictId }: { dictId: number }) {
           <Plus className="h-3.5 w-3.5 mr-1" />Add Term
         </Button>
       </div>
-      <div className="ag-theme-alpine" style={{ height: Math.min(terms.length * 32 + 44, 600), "--ag-font-size": "13px" } as React.CSSProperties}>
+      <div className="ag-theme-alpine flex-1 min-h-0" style={{ "--ag-font-family": "var(--font-d2coding), 'D2Coding', Consolas, monospace", "--ag-font-size": "13px" } as React.CSSProperties}>
         <AgGridReact columnDefs={columnDefs} rowData={terms}
           defaultColDef={{ resizable: true, sortable: true, filter: false, minWidth: 50 }}
           headerHeight={32} rowHeight={30} singleClickEdit stopEditingWhenCellsLoseFocus
@@ -674,6 +678,7 @@ function TermsTab({ dictId }: { dictId: number }) {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
     </TermDeleteCtx.Provider>
   )
 }
