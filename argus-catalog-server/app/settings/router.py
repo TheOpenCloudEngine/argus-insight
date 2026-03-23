@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.core.database import get_session
 from app.settings.service import (
     get_config_by_category, load_auth_settings, load_cors_settings,
-    load_embedding_settings, load_os_settings, update_config,
+    load_embedding_settings, load_llm_settings, load_os_settings, update_config,
 )
 
 logger = logging.getLogger(__name__)
@@ -241,6 +241,93 @@ async def test_embedding(body: EmbeddingConfig):
     except Exception as e:
         msg = f"Failed: {e}"
         logger.warning("Embedding test failed: %s", msg)
+        return TestResponse(success=False, message=msg)
+
+
+# ---------------------------------------------------------------------------
+# LLM (AI metadata generation) configuration
+# ---------------------------------------------------------------------------
+
+class LLMConfig(BaseModel):
+    enabled: bool = False
+    provider: str = "openai"
+    model: str = "gpt-4o-mini"
+    api_key: str = ""
+    api_url: str = ""
+    temperature: float = 0.3
+    max_tokens: int = 1024
+    auto_generate_on_sync: bool = False
+    language: str = "ko"
+
+
+@router.get("/llm", response_model=LLMConfig)
+async def get_llm_config(session: AsyncSession = Depends(get_session)):
+    """Return current LLM configuration for AI metadata generation."""
+    cfg = await get_config_by_category(session, "llm")
+    return LLMConfig(
+        enabled=cfg.get("llm_enabled", "false").lower() in ("true", "1", "yes"),
+        provider=cfg.get("llm_provider", "openai"),
+        model=cfg.get("llm_model", "gpt-4o-mini"),
+        api_key=cfg.get("llm_api_key", ""),
+        api_url=cfg.get("llm_api_url", ""),
+        temperature=float(cfg.get("llm_temperature", "0.3")),
+        max_tokens=int(cfg.get("llm_max_tokens", "1024")),
+        auto_generate_on_sync=cfg.get("llm_auto_generate_on_sync", "false").lower()
+        in ("true", "1", "yes"),
+        language=cfg.get("llm_language", "ko"),
+    )
+
+
+@router.put("/llm")
+async def update_llm_config(
+    body: LLMConfig,
+    session: AsyncSession = Depends(get_session),
+):
+    """Update LLM configuration and re-initialize provider."""
+    items = {
+        "llm_enabled": str(body.enabled).lower(),
+        "llm_provider": body.provider,
+        "llm_model": body.model,
+        "llm_api_key": body.api_key,
+        "llm_api_url": body.api_url,
+        "llm_temperature": str(body.temperature),
+        "llm_max_tokens": str(body.max_tokens),
+        "llm_auto_generate_on_sync": str(body.auto_generate_on_sync).lower(),
+        "llm_language": body.language,
+    }
+    await update_config(session, "llm", items)
+    await load_llm_settings(session)
+
+    logger.info("LLM config saved: provider=%s, model=%s, enabled=%s",
+                body.provider, body.model, body.enabled)
+    return {"status": "ok", "message": "LLM configuration saved"}
+
+
+@router.post("/llm/test", response_model=TestResponse)
+async def test_llm(body: LLMConfig):
+    """Test LLM provider by generating a sample response."""
+    logger.info("LLM test: provider=%s, model=%s", body.provider, body.model)
+    try:
+        config = {
+            "llm_provider": body.provider,
+            "llm_model": body.model,
+            "llm_api_key": body.api_key,
+            "llm_api_url": body.api_url,
+        }
+        from app.ai.registry import initialize_provider
+        provider = await initialize_provider(config)
+        result = await provider.generate(
+            "Respond with exactly: OK",
+            temperature=0.0,
+            max_tokens=10,
+        )
+        text = result["text"].strip()
+        msg = f"Success: {body.provider}/{body.model} responded: {text[:50]}"
+        logger.info("LLM test succeeded: %s", msg)
+        return TestResponse(success=True, message=msg)
+    except Exception as e:
+        msg = f"Failed: {e}"
+        logger.warning("LLM test failed: %s", msg)
         return TestResponse(success=False, message=msg)
 
 

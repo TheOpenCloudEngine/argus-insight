@@ -1021,4 +1021,36 @@ INSERT IGNORE INTO catalog_platforms (name, logo_url, platform_id, type)
 VALUES ('python', NULL, UUID(), 'source_analysis');
 
 -- ---------------------------------------------------------------------------
+-- AI Metadata Generation
+-- ---------------------------------------------------------------------------
+
+-- Add PII type column to dataset schemas (idempotent via procedure)
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_NAME = 'catalog_dataset_schemas' AND COLUMN_NAME = 'pii_type');
+SET @sql = IF(@col_exists = 0,
+    'ALTER TABLE catalog_dataset_schemas ADD COLUMN pii_type VARCHAR(50)', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- AI generation log for audit, preview/apply workflow, and cost tracking
+CREATE TABLE IF NOT EXISTS catalog_ai_generation_log (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    entity_type VARCHAR(20) NOT NULL,
+    entity_id INT NOT NULL,
+    dataset_id INT NOT NULL,
+    field_name VARCHAR(500),
+    generation_type VARCHAR(30) NOT NULL,
+    generated_text TEXT NOT NULL,
+    applied TINYINT(1) DEFAULT 0,
+    provider VARCHAR(50) NOT NULL,
+    model VARCHAR(100) NOT NULL,
+    prompt_tokens INT,
+    completion_tokens INT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_ai_gen_log_dataset FOREIGN KEY (dataset_id)
+        REFERENCES catalog_datasets(id) ON DELETE CASCADE,
+    INDEX idx_ai_gen_log_dataset (dataset_id),
+    INDEX idx_ai_gen_log_applied (applied)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
 

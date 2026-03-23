@@ -1060,3 +1060,30 @@ ON CONFLICT (platform_id) DO NOTHING;
 INSERT INTO catalog_platforms (name, logo_url, platform_id, type)
 VALUES ('python', NULL, gen_random_uuid()::text, 'source_analysis')
 ON CONFLICT (platform_id) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- AI Metadata Generation
+-- ---------------------------------------------------------------------------
+
+-- Add PII type column to dataset schemas
+ALTER TABLE catalog_dataset_schemas ADD COLUMN IF NOT EXISTS pii_type VARCHAR(50);
+
+-- AI generation log for audit, preview/apply workflow, and cost tracking
+CREATE TABLE IF NOT EXISTS catalog_ai_generation_log (
+    id SERIAL PRIMARY KEY,
+    entity_type VARCHAR(20) NOT NULL,
+    entity_id INT NOT NULL,
+    dataset_id INT NOT NULL REFERENCES catalog_datasets(id) ON DELETE CASCADE,
+    field_name VARCHAR(500),
+    generation_type VARCHAR(30) NOT NULL,
+    generated_text TEXT NOT NULL,
+    applied BOOLEAN DEFAULT FALSE,
+    provider VARCHAR(50) NOT NULL,
+    model VARCHAR(100) NOT NULL,
+    prompt_tokens INT,
+    completion_tokens INT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_gen_log_dataset ON catalog_ai_generation_log (dataset_id);
+CREATE INDEX IF NOT EXISTS idx_ai_gen_log_applied ON catalog_ai_generation_log (applied);

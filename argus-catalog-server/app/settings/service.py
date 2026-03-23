@@ -31,6 +31,20 @@ _EMBEDDING_DEFAULTS: list[tuple[str, str, str]] = [
 ]
 
 
+# Default LLM settings for AI metadata generation
+_LLM_DEFAULTS: list[tuple[str, str, str]] = [
+    ("llm_enabled", "false", "Enable AI-based metadata generation"),
+    ("llm_provider", "openai", "LLM provider: openai, ollama, anthropic"),
+    ("llm_model", "gpt-4o-mini", "LLM model identifier"),
+    ("llm_api_key", "", "API key for LLM provider"),
+    ("llm_api_url", "", "API URL override (for custom/local endpoints)"),
+    ("llm_temperature", "0.3", "Generation temperature (0.0-1.0)"),
+    ("llm_max_tokens", "1024", "Max tokens per generation"),
+    ("llm_auto_generate_on_sync", "false", "Auto-generate descriptions after metadata sync"),
+    ("llm_language", "ko", "Target language for generated descriptions (en, ko, etc.)"),
+]
+
+
 def _build_auth_defaults() -> list[tuple[str, str, str]]:
     """Build auth defaults from config file values (fallback for first startup)."""
     from app.core.config import settings
@@ -61,6 +75,7 @@ async def seed_configuration(session: AsyncSession) -> None:
     all_defaults = [
         ("object_storage", _OS_DEFAULTS),
         ("embedding", _EMBEDDING_DEFAULTS),
+        ("llm", _LLM_DEFAULTS),
         ("auth", _build_auth_defaults()),
         ("cors", _build_cors_defaults()),
     ]
@@ -139,6 +154,23 @@ async def load_embedding_settings(session: AsyncSession) -> dict[str, str]:
             logger.warning("Embedding provider initialization failed: %s", e)
     else:
         logger.info("Embedding is disabled")
+
+    return cfg
+
+
+async def load_llm_settings(session: AsyncSession) -> dict[str, str]:
+    """Load LLM settings from DB and initialize the provider if enabled."""
+    cfg = await get_config_by_category(session, "llm")
+    enabled = cfg.get("llm_enabled", "false").lower() in ("true", "1", "yes")
+
+    if enabled:
+        from app.ai.registry import initialize_provider
+        try:
+            await initialize_provider(cfg)
+        except Exception as e:
+            logger.warning("LLM provider initialization failed: %s", e)
+    else:
+        logger.info("LLM (AI metadata generation) is disabled")
 
     return cfg
 

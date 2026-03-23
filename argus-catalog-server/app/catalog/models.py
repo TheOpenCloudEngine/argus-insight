@@ -91,6 +91,7 @@ class DatasetSchema(Base):
     is_partition_key = Column(String(5), default="false")
     is_distribution_key = Column(String(5), default="false")
     ordinal = Column(Integer, nullable=False, default=0)
+    pii_type = Column(String(50))  # PII classification: EMAIL, PHONE, SSN, NAME, ADDRESS, etc.
 
 
 class SchemaSnapshot(Base):

@@ -869,6 +869,29 @@ async def sync_platform_metadata(
                 result.tables_created, result.tables_updated,
                 result.tables_removed, result.tables_total)
 
+    # 4c. Trigger AI metadata generation for datasets with empty descriptions
+    try:
+        from app.ai.service import generate_descriptions_post_sync
+        empty_desc_ids = []
+        for table in tables:
+            if not table.table_comment:
+                urn = _generate_urn(
+                    platform_id_str, f"{table.database}.{table.name}", "PROD",
+                )
+                ds_result = await session.execute(
+                    select(Dataset.id, Dataset.description).where(Dataset.urn == urn)
+                )
+                ds_row = ds_result.first()
+                if ds_row and not ds_row.description:
+                    empty_desc_ids.append(ds_row.id)
+        if empty_desc_ids:
+            import asyncio
+            asyncio.create_task(generate_descriptions_post_sync(empty_desc_ids))
+            logger.info("Scheduled AI description generation for %d dataset(s)",
+                        len(empty_desc_ids))
+    except Exception as e:
+        logger.warning("Post-sync AI generation scheduling failed: %s", e)
+
     # 5. Fetch sample data and upload as parquet
     logger.info("Collecting sample data for %d table(s)...", len(tables))
     for table in tables:

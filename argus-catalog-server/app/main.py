@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
+from app.ai.router import router as ai_router
 from app.alert.router import router as alert_router
 from app.catalog.router import router as catalog_router
 from app.comments.router import router as comments_router
@@ -64,6 +65,7 @@ async def lifespan(app: FastAPI):
     import app.comments.models  # noqa: F401
     import app.models.models  # noqa: F401
     import app.oci_hub.models  # noqa: F401
+    import app.ai.models  # noqa: F401
     import app.embedding.models  # noqa: F401
     import app.settings.models  # noqa: F401
     import app.usermgr.models  # noqa: F401
@@ -77,7 +79,7 @@ async def lifespan(app: FastAPI):
     from app.catalog.service import seed_platforms, seed_platform_metadata
     from app.settings.service import (
         seed_configuration, load_os_settings, load_embedding_settings,
-        load_auth_settings, load_cors_settings,
+        load_llm_settings, load_auth_settings, load_cors_settings,
     )
     from app.usermgr.service import seed_roles, seed_admin_user
 
@@ -88,6 +90,7 @@ async def lifespan(app: FastAPI):
         await seed_configuration(session)
         await load_os_settings(session)
         await load_embedding_settings(session)
+        await load_llm_settings(session)
         await load_auth_settings(session)
         await load_cors_settings(session)
         await seed_admin_user(session)
@@ -101,8 +104,10 @@ async def lifespan(app: FastAPI):
         logger.warning("S3 bucket check skipped (MinIO may not be available): %s", e)
 
     yield
-    from app.embedding.registry import shutdown_provider
-    await shutdown_provider()
+    from app.embedding.registry import shutdown_provider as shutdown_embedding
+    from app.ai.registry import shutdown_provider as shutdown_llm
+    await shutdown_embedding()
+    await shutdown_llm()
     await close_database()
     logger.info("Catalog Server shutting down")
 
@@ -161,6 +166,7 @@ app.include_router(quality_router, prefix="/api/v1")
 app.include_router(settings_router, prefix="/api/v1")
 app.include_router(standard_router, prefix="/api/v1")
 app.include_router(usermgr_router, prefix="/api/v1")
+app.include_router(ai_router, prefix="/api/v1")
 app.include_router(alert_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")  # Added for SSO AUTH
 
