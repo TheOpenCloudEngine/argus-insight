@@ -369,8 +369,8 @@ function WordsTab({ dictId }: { dictId: number }) {
     <div className="flex flex-col flex-1 min-h-0 h-full">
       <div className="flex items-center justify-between mb-3 flex-shrink-0">
         <p className="text-sm text-muted-foreground">{words.length} words</p>
-        <Button variant="outline" size="sm" className="h-6 text-xs" onClick={addWord}>
-          <Plus className="h-3 w-3 mr-1" />Add
+        <Button variant="outline" size="sm" onClick={addWord}>
+          <Plus className="h-3.5 w-3.5 mr-1" />Add
         </Button>
       </div>
       <div
@@ -482,7 +482,7 @@ function DomainsTab({ dictId }: { dictId: number }) {
     <div className="flex flex-col flex-1 min-h-0 h-full">
       <div className="flex items-center justify-between mb-3 flex-shrink-0">
         <p className="text-sm text-muted-foreground">{domains.length} domains</p>
-        <Button variant="outline" size="sm" className="h-6 text-xs" onClick={addDomain}><Plus className="h-3 w-3 mr-1" />Add</Button>
+        <Button variant="outline" size="sm" onClick={addDomain}><Plus className="h-3.5 w-3.5 mr-1" />Add</Button>
       </div>
       <div className="ag-theme-alpine flex-1 min-h-0" style={{ "--ag-font-family": "var(--font-d2coding), 'D2Coding', Consolas, monospace", "--ag-font-size": "13px" } as React.CSSProperties}>
         <AgGridReact ref={gridRef} columnDefs={columnDefs} rowData={domains}
@@ -600,8 +600,8 @@ function TermsTab({ dictId }: { dictId: number }) {
           <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search terms..." className="h-8 pl-8 text-xs" />
         </div>
         <p className="text-sm text-muted-foreground">{terms.length} terms</p>
-        <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => { setAddOpen(true); setTermName(""); setAnalysis(null) }}>
-          <Plus className="h-3 w-3 mr-1" />Add
+        <Button variant="outline" size="sm" onClick={() => { setAddOpen(true); setTermName(""); setAnalysis(null) }}>
+          <Plus className="h-3.5 w-3.5 mr-1" />Add
         </Button>
       </div>
       <div className="ag-theme-alpine flex-1 min-h-0" style={{ "--ag-font-family": "var(--font-d2coding), 'D2Coding', Consolas, monospace", "--ag-font-size": "13px" } as React.CSSProperties}>
@@ -826,8 +826,8 @@ function CodesTab({ dictId }: { dictId: number }) {
         <div className="flex flex-col w-2/5 min-h-0">
           <div className="flex items-center justify-between mb-2 flex-shrink-0">
             <span className="text-xs font-medium text-muted-foreground">Code Groups</span>
-            <Button variant="outline" size="sm" className="h-6 text-xs" onClick={addGroup}>
-              <Plus className="h-3 w-3 mr-1" />Add
+            <Button variant="outline" size="sm" onClick={addGroup}>
+              <Plus className="h-3.5 w-3.5 mr-1" />Add
             </Button>
           </div>
           <div className="ag-theme-alpine flex-1 min-h-0" style={{
@@ -858,8 +858,8 @@ function CodesTab({ dictId }: { dictId: number }) {
               {selectedGroup ? `${selectedGroup.group_name} — Values` : "Select a group"}
             </span>
             {selectedGroupId && (
-              <Button variant="outline" size="sm" className="h-6 text-xs" onClick={addValue}>
-                <Plus className="h-3 w-3 mr-1" />Add Value
+              <Button variant="outline" size="sm" onClick={addValue}>
+                <Plus className="h-3.5 w-3.5 mr-1" />Add Value
               </Button>
             )}
           </div>
