@@ -332,6 +332,23 @@ async def create_glossary_term(
     return GlossaryTermResponse.model_validate(term)
 
 
+async def update_glossary_term(
+    session: AsyncSession, term_id: int, data: dict,
+) -> GlossaryTermResponse | None:
+    result = await session.execute(
+        select(GlossaryTerm).where(GlossaryTerm.id == term_id)
+    )
+    term = result.scalars().first()
+    if not term:
+        return None
+    for k, v in data.items():
+        if hasattr(term, k):
+            setattr(term, k, v)
+    await session.commit()
+    await session.refresh(term)
+    return GlossaryTermResponse.model_validate(term)
+
+
 async def delete_glossary_term(session: AsyncSession, term_id: int) -> bool:
     """Delete a glossary term and remove all dataset associations."""
     result = await session.execute(

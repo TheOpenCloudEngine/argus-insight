@@ -1,5 +1,5 @@
 import type { GlossaryTerm } from "@/features/datasets/data/schema"
-import { authFetch } from "@/features/auth/auth-fetch" // Added for SSO AUTH
+import { authFetch } from "@/features/auth/auth-fetch"
 
 const BASE = "/api/v1/catalog"
 
@@ -23,6 +23,22 @@ export async function createGlossaryTerm(payload: {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.detail || `Failed to create term: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function updateGlossaryTerm(
+  termId: number,
+  payload: { name?: string; description?: string; source?: string; parent_id?: number | null },
+): Promise<GlossaryTerm> {
+  const res = await authFetch(`${BASE}/glossary/${termId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || `Failed to update term: ${res.status}`)
   }
   return res.json()
 }
