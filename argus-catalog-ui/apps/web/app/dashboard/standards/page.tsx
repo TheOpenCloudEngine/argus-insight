@@ -404,76 +404,110 @@ function WordsTab({ dictId }: { dictId: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Domains Tab
+// Domains Tab (AG Grid — inline editing)
 // ---------------------------------------------------------------------------
+
+const DomainDeleteCtx = createContext<(id: number) => void>(() => {})
+
+function DomainDeleteRenderer(props: { value: number }) {
+  const onDelete = useContext(DomainDeleteCtx)
+  return (
+    <button type="button" onClick={() => onDelete(props.value)}
+      className="flex items-center justify-center w-full h-full text-muted-foreground hover:text-destructive transition-colors cursor-pointer">
+      <Trash2 className="h-3.5 w-3.5" />
+    </button>
+  )
+}
 
 function DomainsTab({ dictId }: { dictId: number }) {
   const [domains, setDomains] = useState<Domain[]>([])
-  const [addOpen, setAddOpen] = useState(false)
-  const [dn, setDn] = useState(""); const [dg, setDg] = useState(""); const [dt, setDt] = useState("VARCHAR"); const [dl, setDl] = useState("")
+  const gridRef = useRef<AgGridReact>(null)
 
-  const fetch = useCallback(async () => {
+  const fetchDomains = useCallback(async () => {
     const r = await authFetch(`${BASE}/domains?dictionary_id=${dictId}`)
     if (r.ok) setDomains(await r.json())
   }, [dictId])
-  useEffect(() => { fetch() }, [fetch])
+  useEffect(() => { fetchDomains() }, [fetchDomains])
 
-  const save = async () => {
+  const addDomain = useCallback(async () => {
     await authFetch(`${BASE}/domains`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dictionary_id: dictId, domain_name: dn, domain_group: dg || null, data_type: dt, data_length: dl ? Number(dl) : null }),
+      body: JSON.stringify({ dictionary_id: dictId, domain_name: "(new)", data_type: "VARCHAR" }),
     })
-    setAddOpen(false); setDn(""); setDg(""); setDt("VARCHAR"); setDl(""); fetch()
-  }
+    await fetchDomains()
+    setTimeout(() => {
+      const api = gridRef.current?.api
+      if (api) {
+        const lastIdx = domains.length
+        api.ensureIndexVisible(lastIdx)
+        api.startEditingCell({ rowIndex: lastIdx, colKey: "domain_name" })
+      }
+    }, 200)
+  }, [dictId, fetchDomains, domains.length])
+
+  const deleteDomain = useCallback(async (id: number) => {
+    await authFetch(`${BASE}/domains/${id}`, { method: "DELETE" })
+    fetchDomains()
+  }, [fetchDomains])
+
+  const onCellValueChanged = useCallback(async (event: CellValueChangedEvent) => {
+    const { data, colDef, newValue, oldValue } = event
+    if (newValue === oldValue) return
+    const field = colDef.field
+    if (!field || !data.id) return
+    await authFetch(`${BASE}/domains/${data.id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: newValue }),
+    })
+  }, [])
+
+  const columnDefs = useMemo<ColDef[]>(() => [
+    { headerName: "#", valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1, width: 50, maxWidth: 55, editable: false, sortable: false, cellStyle: { color: "#9ca3af", textAlign: "right" } },
+    { headerName: "Domain Name", field: "domain_name", minWidth: 120, editable: true, cellStyle: { fontWeight: 500 } },
+    { headerName: "Group", field: "domain_group", width: 110, editable: true },
+    { headerName: "Data Type", field: "data_type", width: 120, editable: true, cellStyle: { fontFamily: "monospace" } },
+    { headerName: "Length", field: "data_length", width: 80, editable: true, cellStyle: { textAlign: "right" } },
+    { headerName: "Precision", field: "data_precision", width: 90, editable: true, cellStyle: { textAlign: "right" } },
+    { headerName: "Scale", field: "data_scale", width: 70, editable: true, cellStyle: { textAlign: "right" } },
+    { headerName: "Description", field: "description", minWidth: 180, flex: 1, editable: true },
+    { headerName: "Status", field: "status", width: 90, editable: true, cellEditor: "agSelectCellEditor", cellEditorParams: { values: ["ACTIVE", "INACTIVE", "DEPRECATED"] } },
+    { headerName: "", field: "id", width: 45, maxWidth: 45, editable: false, sortable: false, cellRenderer: "deleteRenderer" },
+  ], [])
+
+  const components = useMemo(() => ({ deleteRenderer: DomainDeleteRenderer }), [])
 
   return (
-    <>
+    <DomainDeleteCtx.Provider value={deleteDomain}>
       <div className="flex items-center justify-between mb-3">
         <p className="text-sm text-muted-foreground">{domains.length} domains</p>
-        <Button size="sm" onClick={() => setAddOpen(true)}><Plus className="h-3.5 w-3.5 mr-1" />Add Domain</Button>
+        <Button size="sm" onClick={addDomain}><Plus className="h-3.5 w-3.5 mr-1" />Add Domain</Button>
       </div>
-      <Card><CardContent className="p-0">
-        <Table>
-          <TableHeader><TableRow>
-            <TableHead>Name</TableHead><TableHead>Group</TableHead><TableHead>Data Type</TableHead>
-            <TableHead>Length</TableHead><TableHead>Code Group</TableHead><TableHead className="w-16" />
-          </TableRow></TableHeader>
-          <TableBody>
-            {domains.map(d => (
-              <TableRow key={d.id}>
-                <TableCell className="font-medium">{d.domain_name}</TableCell>
-                <TableCell className="text-muted-foreground">{d.domain_group}</TableCell>
-                <TableCell><code className="text-xs">{d.data_type}</code></TableCell>
-                <TableCell>{d.data_length ?? "-"}</TableCell>
-                <TableCell>{d.code_group_name || "-"}</TableCell>
-                <TableCell><Button variant="ghost" size="icon" className="h-7 w-7" onClick={async () => { await authFetch(`${BASE}/domains/${d.id}`, { method: "DELETE" }); fetch() }}><Trash2 className="h-3.5 w-3.5" /></Button></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent></Card>
-
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Add Domain</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div><Label className="text-xs">Domain Name</Label><Input value={dn} onChange={e => setDn(e.target.value)} placeholder="번호" className="h-9" /></div>
-            <div><Label className="text-xs">Group</Label><Input value={dg} onChange={e => setDg(e.target.value)} placeholder="문자형" className="h-9" /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label className="text-xs">Data Type</Label><Input value={dt} onChange={e => setDt(e.target.value)} placeholder="VARCHAR" className="h-9" /></div>
-              <div><Label className="text-xs">Length</Label><Input type="number" value={dl} onChange={e => setDl(e.target.value)} placeholder="20" className="h-9" /></div>
-            </div>
-            <div className="flex justify-end"><Button onClick={save} disabled={!dn || !dt}>Add</Button></div>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
+      <div className="ag-theme-alpine" style={{ height: Math.min(domains.length * 32 + 44, 500), "--ag-font-size": "13px" } as React.CSSProperties}>
+        <AgGridReact ref={gridRef} columnDefs={columnDefs} rowData={domains}
+          defaultColDef={{ resizable: true, sortable: true, filter: false, minWidth: 50 }}
+          headerHeight={32} rowHeight={30} singleClickEdit stopEditingWhenCellsLoseFocus
+          onCellValueChanged={onCellValueChanged} animateRows={false}
+          getRowId={(params) => String(params.data.id)} components={components} />
+      </div>
+    </DomainDeleteCtx.Provider>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Terms Tab (with morpheme analysis)
+// Terms Tab (AG Grid + morpheme analysis dialog)
 // ---------------------------------------------------------------------------
+
+const TermDeleteCtx = createContext<(id: number) => void>(() => {})
+
+function TermDeleteRenderer(props: { value: number }) {
+  const onDelete = useContext(TermDeleteCtx)
+  return (
+    <button type="button" onClick={() => onDelete(props.value)}
+      className="flex items-center justify-center w-full h-full text-muted-foreground hover:text-destructive transition-colors cursor-pointer">
+      <Trash2 className="h-3.5 w-3.5" />
+    </button>
+  )
+}
 
 function TermsTab({ dictId }: { dictId: number }) {
   const [terms, setTerms] = useState<Term[]>([])
@@ -483,13 +517,29 @@ function TermsTab({ dictId }: { dictId: number }) {
   const [analysis, setAnalysis] = useState<MorphemeResult | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
 
-  const fetch = useCallback(async () => {
+  const fetchTerms = useCallback(async () => {
     const params = new URLSearchParams({ dictionary_id: String(dictId) })
     if (search) params.set("search", search)
     const r = await authFetch(`${BASE}/terms?${params}`)
     if (r.ok) setTerms(await r.json())
   }, [dictId, search])
-  useEffect(() => { fetch() }, [fetch])
+  useEffect(() => { fetchTerms() }, [fetchTerms])
+
+  const deleteTerm = useCallback(async (id: number) => {
+    await authFetch(`${BASE}/terms/${id}`, { method: "DELETE" })
+    fetchTerms()
+  }, [fetchTerms])
+
+  const onCellValueChanged = useCallback(async (event: CellValueChangedEvent) => {
+    const { data, colDef, newValue, oldValue } = event
+    if (newValue === oldValue) return
+    const field = colDef.field
+    if (!field || !data.id) return
+    await authFetch(`${BASE}/terms/${data.id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: newValue }),
+    })
+  }, [])
 
   const analyze = async () => {
     if (!termName.trim()) return
@@ -499,7 +549,7 @@ function TermsTab({ dictId }: { dictId: number }) {
     setAnalyzing(false)
   }
 
-  const save = async () => {
+  const saveTerm = async () => {
     await authFetch(`${BASE}/terms`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -509,53 +559,54 @@ function TermsTab({ dictId }: { dictId: number }) {
         domain_id: analysis?.recommended_domain?.id || null,
       }),
     })
-    setAddOpen(false); setTermName(""); setAnalysis(null); fetch()
+    setAddOpen(false); setTermName(""); setAnalysis(null); fetchTerms()
   }
 
+  const columnDefs = useMemo<ColDef[]>(() => [
+    { headerName: "#", valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1, width: 50, maxWidth: 55, editable: false, sortable: false, cellStyle: { color: "#9ca3af", textAlign: "right" } },
+    { headerName: "Term Name", field: "term_name", minWidth: 130, editable: true, cellStyle: { fontWeight: 500 } },
+    { headerName: "English", field: "term_english", minWidth: 150, editable: true },
+    { headerName: "Abbreviation", field: "term_abbr", width: 130, editable: true, cellStyle: { fontFamily: "monospace" } },
+    { headerName: "Physical Name", field: "physical_name", width: 140, editable: true, cellStyle: { fontFamily: "monospace" } },
+    { headerName: "Domain", field: "domain_name", width: 100, editable: false, cellStyle: { color: "#6b7280" } },
+    { headerName: "Type", field: "domain_data_type", width: 90, editable: false, cellStyle: { fontFamily: "monospace", color: "#6b7280" } },
+    {
+      headerName: "Words",
+      field: "words",
+      minWidth: 160,
+      editable: false,
+      cellRenderer: (p: { value: TermWord[] }) => {
+        if (!p.value || p.value.length === 0) return ""
+        return p.value.map((w) => w.word_name).join(" + ")
+      },
+      cellStyle: { color: "#6b7280", fontSize: "12px" },
+    },
+    { headerName: "Maps", field: "mapping_count", width: 65, editable: false, cellStyle: { textAlign: "center" } },
+    { headerName: "Status", field: "status", width: 85, editable: true, cellEditor: "agSelectCellEditor", cellEditorParams: { values: ["ACTIVE", "INACTIVE", "DEPRECATED"] } },
+    { headerName: "", field: "id", width: 45, maxWidth: 45, editable: false, sortable: false, cellRenderer: "deleteRenderer" },
+  ], [])
+
+  const components = useMemo(() => ({ deleteRenderer: TermDeleteRenderer }), [])
+
   return (
-    <>
+    <TermDeleteCtx.Provider value={deleteTerm}>
       <div className="flex items-center gap-3 mb-3">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
           <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search terms..." className="h-8 pl-8 text-xs" />
         </div>
         <p className="text-sm text-muted-foreground">{terms.length} terms</p>
-        <Button size="sm" onClick={() => { setAddOpen(true); setTermName(""); setAnalysis(null) }}><Plus className="h-3.5 w-3.5 mr-1" />Add Term</Button>
+        <Button size="sm" onClick={() => { setAddOpen(true); setTermName(""); setAnalysis(null) }}>
+          <Plus className="h-3.5 w-3.5 mr-1" />Add Term
+        </Button>
       </div>
-      <Card><CardContent className="p-0">
-        <Table>
-          <TableHeader><TableRow>
-            <TableHead>Term Name</TableHead><TableHead>Abbreviation</TableHead><TableHead>Physical Name</TableHead>
-            <TableHead>Domain</TableHead><TableHead>Words</TableHead><TableHead className="w-20">Mappings</TableHead><TableHead className="w-16" />
-          </TableRow></TableHeader>
-          <TableBody>
-            {terms.map(t => (
-              <TableRow key={t.id}>
-                <TableCell className="font-medium">{t.term_name}</TableCell>
-                <TableCell><code className="text-xs">{t.term_abbr}</code></TableCell>
-                <TableCell><code className="text-xs">{t.physical_name}</code></TableCell>
-                <TableCell>
-                  {t.domain_name && (
-                    <span className="text-xs">{t.domain_name} <span className="text-muted-foreground">({t.domain_data_type})</span></span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-0.5">
-                    {t.words.map((w, i) => (
-                      <span key={i}>
-                        {i > 0 && <span className="text-muted-foreground mx-0.5">+</span>}
-                        <Badge variant={w.word_type === "SUFFIX" ? "secondary" : "outline"} className="text-[10px] px-1 py-0">{w.word_name}</Badge>
-                      </span>
-                    ))}
-                  </div>
-                </TableCell>
-                <TableCell className="text-center">{t.mapping_count}</TableCell>
-                <TableCell><Button variant="ghost" size="icon" className="h-7 w-7" onClick={async () => { await authFetch(`${BASE}/terms/${t.id}`, { method: "DELETE" }); fetch() }}><Trash2 className="h-3.5 w-3.5" /></Button></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent></Card>
+      <div className="ag-theme-alpine" style={{ height: Math.min(terms.length * 32 + 44, 600), "--ag-font-size": "13px" } as React.CSSProperties}>
+        <AgGridReact columnDefs={columnDefs} rowData={terms}
+          defaultColDef={{ resizable: true, sortable: true, filter: false, minWidth: 50 }}
+          headerHeight={32} rowHeight={30} singleClickEdit stopEditingWhenCellsLoseFocus
+          onCellValueChanged={onCellValueChanged} animateRows={false}
+          getRowId={(params) => String(params.data.id)} components={components} />
+      </div>
 
       {/* Add Term Dialog with Morpheme Analysis */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
@@ -617,12 +668,12 @@ function TermsTab({ dictId }: { dictId: number }) {
 
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-              <Button onClick={save} disabled={!analysis}>Save Term</Button>
+              <Button onClick={saveTerm} disabled={!analysis}>Save Term</Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
-    </>
+    </TermDeleteCtx.Provider>
   )
 }
 
