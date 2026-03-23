@@ -202,7 +202,7 @@ export function RuleCreateDialog({ open, onOpenChange, onCreated, presetScope }:
         </DialogHeader>
 
         {/* Step indicator */}
-        <div className="flex items-center gap-2 text-xs mb-2">
+        <div className="flex items-center gap-2 text-sm mb-2">
           <StepDot n={1} label="What & When" current={step} />
           <div className="h-px flex-1 bg-border" />
           <StepDot n={2} label="Who & How" current={step} />
