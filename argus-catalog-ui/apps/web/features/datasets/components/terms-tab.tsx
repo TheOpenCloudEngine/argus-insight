@@ -288,12 +288,12 @@ export function TermsTab({ datasetId }: Props) {
 
                     {/* Column name */}
                     <TableCell>
-                      <code className="text-sm font-mono">{col.column_name}</code>
+                      <code className="text-sm font-mono" style={{ fontFamily: "var(--font-d2coding), 'D2Coding', Consolas, monospace" }}>{col.column_name}</code>
                     </TableCell>
 
                     {/* Actual type */}
                     <TableCell>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-sm text-muted-foreground font-mono" style={{ fontFamily: "var(--font-d2coding), 'D2Coding', Consolas, monospace" }}>
                         {col.native_type || col.column_type}
                       </span>
                     </TableCell>
@@ -310,7 +310,7 @@ export function TermsTab({ datasetId }: Props) {
                       {col.term_name ? (
                         <div>
                           <span className="text-sm font-medium">{col.term_name}</span>
-                          <span className="text-xs text-muted-foreground ml-1.5">
+                          <span className="text-sm text-muted-foreground ml-1.5">
                             ({col.term_physical_name})
                           </span>
                         </div>
@@ -327,7 +327,7 @@ export function TermsTab({ datasetId }: Props) {
                     {/* Standard type */}
                     <TableCell>
                       {col.term_data_type && (
-                        <code className="text-xs">
+                        <code className="text-sm" style={{ fontFamily: "var(--font-d2coding), 'D2Coding', Consolas, monospace" }}>
                           {col.term_data_type}
                           {col.term_data_length && `(${col.term_data_length})`}
                         </code>
@@ -422,7 +422,7 @@ function ManualMapPicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-7 text-xs gap-1 font-normal">
+        <Button variant="outline" size="sm" className="h-7 text-sm gap-1 font-normal">
           <ChevronsUpDown className="h-3 w-3" />
           Map to term...
         </Button>
@@ -477,8 +477,8 @@ function StatusIcon({ type }: { type: string | null }) {
 }
 
 function MappingBadge({ type }: { type: string | null }) {
-  if (type === "MATCHED") return <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 text-[10px] px-1.5 py-0 border-0">Matched</Badge>
-  if (type === "SIMILAR") return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 text-[10px] px-1.5 py-0 border-0">Similar</Badge>
-  if (type === "VIOLATION") return <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 text-[10px] px-1.5 py-0 border-0">Violation</Badge>
-  return <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">Unmapped</Badge>
+  if (type === "MATCHED") return <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 text-xs px-2 py-0.5 border-0">Matched</Badge>
+  if (type === "SIMILAR") return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 text-xs px-2 py-0.5 border-0">Similar</Badge>
+  if (type === "VIOLATION") return <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 text-xs px-2 py-0.5 border-0">Violation</Badge>
+  return <Badge variant="outline" className="text-xs px-2 py-0.5 text-muted-foreground">Unmapped</Badge>
 }

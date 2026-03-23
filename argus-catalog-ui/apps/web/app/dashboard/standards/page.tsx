@@ -1,7 +1,11 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, createContext } from "react"
+import { AgGridReact } from "ag-grid-react"
+import { AllCommunityModule, ModuleRegistry, type ColDef, type CellValueChangedEvent } from "ag-grid-community"
 import { DashboardHeader } from "@/components/dashboard-header"
+
+ModuleRegistry.registerModules([AllCommunityModule])
 import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
@@ -115,7 +119,7 @@ export default function StandardsPage() {
           </Button>
 
           {selectedDict && (
-            <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="ml-auto flex items-center gap-3 text-sm text-muted-foreground">
               <span>Words: <span className="text-foreground font-medium">{selectedDict.word_count}</span></span>
               <span>Domains: <span className="text-foreground font-medium">{selectedDict.domain_count}</span></span>
               <span>Terms: <span className="text-foreground font-medium">{selectedDict.term_count}</span></span>
@@ -125,7 +129,7 @@ export default function StandardsPage() {
         </div>
 
         {selectedDictId && (
-          <Tabs value={tab} onValueChange={setTab}>
+          <Tabs value={tab} onValueChange={setTab} className="flex flex-1 flex-col min-h-0">
             <TabsList>
               <TabsTrigger value="words"><Type className="h-3.5 w-3.5 mr-1" />Words</TabsTrigger>
               <TabsTrigger value="domains"><Grid3X3 className="h-3.5 w-3.5 mr-1" />Domains</TabsTrigger>
@@ -134,16 +138,16 @@ export default function StandardsPage() {
               <TabsTrigger value="compliance"><BookOpen className="h-3.5 w-3.5 mr-1" />Compliance</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="words" className="mt-4">
+            <TabsContent value="words" className="mt-4 flex-1 flex flex-col min-h-0 h-0">
               <WordsTab dictId={selectedDictId} />
             </TabsContent>
-            <TabsContent value="domains" className="mt-4">
+            <TabsContent value="domains" className="mt-4 flex-1 flex flex-col min-h-0 h-0">
               <DomainsTab dictId={selectedDictId} />
             </TabsContent>
-            <TabsContent value="terms" className="mt-4">
+            <TabsContent value="terms" className="mt-4 flex-1 flex flex-col min-h-0 h-0">
               <TermsTab dictId={selectedDictId} />
             </TabsContent>
-            <TabsContent value="codes" className="mt-4">
+            <TabsContent value="codes" className="mt-4 flex-1 flex flex-col min-h-0 h-0">
               <CodesTab dictId={selectedDictId} />
             </TabsContent>
             <TabsContent value="compliance" className="mt-4">
@@ -198,149 +202,315 @@ function DictionaryDialog({ open, onOpenChange, onCreated }: { open: boolean; on
 }
 
 // ---------------------------------------------------------------------------
-// Words Tab
+// Words Tab (AG Grid — inline row editing)
 // ---------------------------------------------------------------------------
+
+// Context for delete handler
+const WordDeleteCtx = createContext<(id: number) => void>(() => {})
+
+function WordDeleteRenderer(props: { value: number }) {
+  const onDelete = useContext(WordDeleteCtx)
+  return (
+    <button
+      type="button"
+      onClick={() => onDelete(props.value)}
+      className="flex items-center justify-center w-full h-full text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
+    >
+      <Trash2 className="h-3.5 w-3.5" />
+    </button>
+  )
+}
 
 function WordsTab({ dictId }: { dictId: number }) {
   const [words, setWords] = useState<Word[]>([])
-  const [addOpen, setAddOpen] = useState(false)
-  const [wn, setWn] = useState(""); const [we, setWe] = useState(""); const [wa, setWa] = useState("")
-  const [wt, setWt] = useState("GENERAL"); const [wd, setWd] = useState("")
+  const gridRef = useRef<AgGridReact>(null)
 
-  const fetch = useCallback(async () => {
+  const fetchWords = useCallback(async () => {
     const r = await authFetch(`${BASE}/words?dictionary_id=${dictId}`)
     if (r.ok) setWords(await r.json())
   }, [dictId])
-  useEffect(() => { fetch() }, [fetch])
+  useEffect(() => { fetchWords() }, [fetchWords])
 
-  const save = async () => {
-    await authFetch(`${BASE}/words`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dictionary_id: dictId, word_name: wn, word_english: we, word_abbr: wa, word_type: wt, description: wd || null }),
+  // Add new empty row
+  const addWord = useCallback(async () => {
+    const resp = await authFetch(`${BASE}/words`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        dictionary_id: dictId,
+        word_name: "(new)",
+        word_english: "(new)",
+        word_abbr: "NEW",
+        word_type: "GENERAL",
+      }),
     })
-    setAddOpen(false); setWn(""); setWe(""); setWa(""); setWd(""); fetch()
-  }
+    if (resp.ok) {
+      await fetchWords()
+      // Focus the new row for editing
+      setTimeout(() => {
+        const api = gridRef.current?.api
+        if (api) {
+          const lastIdx = words.length  // after fetch, this is the new last row
+          api.ensureIndexVisible(lastIdx)
+          api.startEditingCell({ rowIndex: lastIdx, colKey: "word_name" })
+        }
+      }, 200)
+    }
+  }, [dictId, fetchWords, words.length])
 
-  const del = async (id: number) => { await authFetch(`${BASE}/words/${id}`, { method: "DELETE" }); fetch() }
+  // Delete row
+  const deleteWord = useCallback(async (id: number) => {
+    await authFetch(`${BASE}/words/${id}`, { method: "DELETE" })
+    fetchWords()
+  }, [fetchWords])
+
+  // Save on cell edit
+  const onCellValueChanged = useCallback(async (event: CellValueChangedEvent) => {
+    const { data, colDef, newValue, oldValue } = event
+    if (newValue === oldValue) return
+
+    const field = colDef.field
+    if (!field || !data.id) return
+
+    await authFetch(`${BASE}/words/${data.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: newValue }),
+    })
+  }, [])
+
+  const columnDefs = useMemo<ColDef[]>(() => [
+    {
+      headerName: "#",
+      valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1,
+      width: 50, maxWidth: 55,
+      editable: false,
+      sortable: false,
+      cellStyle: { color: "#9ca3af", textAlign: "right" },
+    },
+    {
+      headerName: "Name (한글)",
+      field: "word_name",
+      minWidth: 120,
+      editable: true,
+      cellStyle: { fontWeight: 500 },
+    },
+    {
+      headerName: "English",
+      field: "word_english",
+      minWidth: 130,
+      editable: true,
+    },
+    {
+      headerName: "Abbreviation",
+      field: "word_abbr",
+      width: 120,
+      editable: true,
+      cellStyle: { fontFamily: "monospace" },
+    },
+    {
+      headerName: "Type",
+      field: "word_type",
+      width: 110,
+      editable: true,
+      cellEditor: "agSelectCellEditor",
+      cellEditorParams: { values: ["GENERAL", "SUFFIX", "PREFIX"] },
+      cellRenderer: (p: { value: string }) => {
+        if (p.value === "SUFFIX") return "Suffix"
+        if (p.value === "PREFIX") return "Prefix"
+        return "General"
+      },
+    },
+    {
+      headerName: "Forbidden",
+      field: "is_forbidden",
+      width: 90,
+      editable: true,
+      cellEditor: "agSelectCellEditor",
+      cellEditorParams: { values: ["true", "false"] },
+      cellRenderer: (p: { value: string }) => p.value === "true" ? "Yes" : "",
+      cellStyle: (p) => ({
+        textAlign: "center",
+        color: p.value === "true" ? "#ef4444" : undefined,
+        fontWeight: p.value === "true" ? 600 : undefined,
+      }),
+    },
+    {
+      headerName: "Description",
+      field: "description",
+      minWidth: 200,
+      flex: 1,
+      editable: true,
+    },
+    {
+      headerName: "Status",
+      field: "status",
+      width: 90,
+      editable: true,
+      cellEditor: "agSelectCellEditor",
+      cellEditorParams: { values: ["ACTIVE", "INACTIVE", "DEPRECATED"] },
+      cellRenderer: (p: { value: string }) => p.value === "ACTIVE" ? "Active" : p.value,
+    },
+    {
+      headerName: "",
+      field: "id",
+      width: 45,
+      maxWidth: 45,
+      editable: false,
+      sortable: false,
+      cellRenderer: "deleteRenderer",
+    },
+  ], [])
+
+  const components = useMemo(() => ({ deleteRenderer: WordDeleteRenderer }), [])
 
   return (
-    <>
-      <div className="flex items-center justify-between mb-3">
+    <WordDeleteCtx.Provider value={deleteWord}>
+    <div className="flex flex-col flex-1 min-h-0 h-full">
+      <div className="flex items-center justify-between mb-3 flex-shrink-0">
         <p className="text-sm text-muted-foreground">{words.length} words</p>
-        <Button size="sm" onClick={() => setAddOpen(true)}><Plus className="h-3.5 w-3.5 mr-1" />Add Word</Button>
+        <Button variant="outline" size="sm" onClick={addWord}>
+          <Plus className="h-3.5 w-3.5 mr-1" />Add
+        </Button>
       </div>
-      <Card><CardContent className="p-0">
-        <Table>
-          <TableHeader><TableRow>
-            <TableHead>Name</TableHead><TableHead>English</TableHead><TableHead>Abbr</TableHead>
-            <TableHead className="w-24">Type</TableHead><TableHead className="w-20">Forbidden</TableHead><TableHead className="w-16" />
-          </TableRow></TableHeader>
-          <TableBody>
-            {words.map(w => (
-              <TableRow key={w.id}>
-                <TableCell className="font-medium">{w.word_name}</TableCell>
-                <TableCell>{w.word_english}</TableCell>
-                <TableCell><code className="text-xs">{w.word_abbr}</code></TableCell>
-                <TableCell><WordTypeBadge type={w.word_type} /></TableCell>
-                <TableCell>{w.is_forbidden === "true" && <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Forbidden</Badge>}</TableCell>
-                <TableCell><Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => del(w.id)}><Trash2 className="h-3.5 w-3.5" /></Button></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent></Card>
-
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Add Word</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div><Label className="text-xs">Korean Name</Label><Input value={wn} onChange={e => setWn(e.target.value)} placeholder="고객" className="h-9" /></div>
-            <div><Label className="text-xs">English</Label><Input value={we} onChange={e => setWe(e.target.value)} placeholder="Customer" className="h-9" /></div>
-            <div><Label className="text-xs">Abbreviation</Label><Input value={wa} onChange={e => setWa(e.target.value)} placeholder="CUST" className="h-9" /></div>
-            <div><Label className="text-xs">Type</Label>
-              <Select value={wt} onValueChange={setWt}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="GENERAL">General</SelectItem><SelectItem value="SUFFIX">Suffix (분류어)</SelectItem><SelectItem value="PREFIX">Prefix</SelectItem></SelectContent>
-              </Select></div>
-            <div><Label className="text-xs">Description</Label><Textarea value={wd} onChange={e => setWd(e.target.value)} rows={2} /></div>
-            <div className="flex justify-end"><Button onClick={save} disabled={!wn || !we || !wa}>Add</Button></div>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
+      <div
+        className="ag-theme-alpine flex-1 min-h-0"
+        style={{
+          "--ag-font-family": "var(--font-d2coding), 'D2Coding', Consolas, monospace",
+          "--ag-font-size": "13px",
+        } as React.CSSProperties}
+      >
+        <AgGridReact
+          ref={gridRef}
+          columnDefs={columnDefs}
+          rowData={words}
+          defaultColDef={{
+            resizable: true,
+            sortable: true,
+            filter: false,
+            minWidth: 50,
+          }}
+          headerHeight={32}
+          rowHeight={30}
+          stopEditingWhenCellsLoseFocus
+          onCellValueChanged={onCellValueChanged}
+          animateRows={false}
+          getRowId={(params) => String(params.data.id)}
+          components={components}
+        />
+      </div>
+    </div>
+    </WordDeleteCtx.Provider>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Domains Tab
+// Domains Tab (AG Grid — inline editing)
 // ---------------------------------------------------------------------------
+
+const DomainDeleteCtx = createContext<(id: number) => void>(() => {})
+
+function DomainDeleteRenderer(props: { value: number }) {
+  const onDelete = useContext(DomainDeleteCtx)
+  return (
+    <button type="button" onClick={() => onDelete(props.value)}
+      className="flex items-center justify-center w-full h-full text-muted-foreground hover:text-destructive transition-colors cursor-pointer">
+      <Trash2 className="h-3.5 w-3.5" />
+    </button>
+  )
+}
 
 function DomainsTab({ dictId }: { dictId: number }) {
   const [domains, setDomains] = useState<Domain[]>([])
-  const [addOpen, setAddOpen] = useState(false)
-  const [dn, setDn] = useState(""); const [dg, setDg] = useState(""); const [dt, setDt] = useState("VARCHAR"); const [dl, setDl] = useState("")
+  const gridRef = useRef<AgGridReact>(null)
 
-  const fetch = useCallback(async () => {
+  const fetchDomains = useCallback(async () => {
     const r = await authFetch(`${BASE}/domains?dictionary_id=${dictId}`)
     if (r.ok) setDomains(await r.json())
   }, [dictId])
-  useEffect(() => { fetch() }, [fetch])
+  useEffect(() => { fetchDomains() }, [fetchDomains])
 
-  const save = async () => {
+  const addDomain = useCallback(async () => {
     await authFetch(`${BASE}/domains`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dictionary_id: dictId, domain_name: dn, domain_group: dg || null, data_type: dt, data_length: dl ? Number(dl) : null }),
+      body: JSON.stringify({ dictionary_id: dictId, domain_name: "(new)", data_type: "VARCHAR" }),
     })
-    setAddOpen(false); setDn(""); setDg(""); setDt("VARCHAR"); setDl(""); fetch()
-  }
+    await fetchDomains()
+    setTimeout(() => {
+      const api = gridRef.current?.api
+      if (api) {
+        const lastIdx = domains.length
+        api.ensureIndexVisible(lastIdx)
+        api.startEditingCell({ rowIndex: lastIdx, colKey: "domain_name" })
+      }
+    }, 200)
+  }, [dictId, fetchDomains, domains.length])
+
+  const deleteDomain = useCallback(async (id: number) => {
+    await authFetch(`${BASE}/domains/${id}`, { method: "DELETE" })
+    fetchDomains()
+  }, [fetchDomains])
+
+  const onCellValueChanged = useCallback(async (event: CellValueChangedEvent) => {
+    const { data, colDef, newValue, oldValue } = event
+    if (newValue === oldValue) return
+    const field = colDef.field
+    if (!field || !data.id) return
+    await authFetch(`${BASE}/domains/${data.id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: newValue }),
+    })
+  }, [])
+
+  const columnDefs = useMemo<ColDef[]>(() => [
+    { headerName: "#", valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1, width: 50, maxWidth: 55, editable: false, sortable: false, cellStyle: { color: "#9ca3af", textAlign: "right" } },
+    { headerName: "Domain Name", field: "domain_name", minWidth: 120, editable: true, cellStyle: { fontWeight: 500 } },
+    { headerName: "Group", field: "domain_group", width: 110, editable: true },
+    { headerName: "Data Type", field: "data_type", width: 120, editable: true, cellStyle: { fontFamily: "monospace" } },
+    { headerName: "Length", field: "data_length", width: 80, editable: true, cellStyle: { textAlign: "right" } },
+    { headerName: "Precision", field: "data_precision", width: 90, editable: true, cellStyle: { textAlign: "right" } },
+    { headerName: "Scale", field: "data_scale", width: 70, editable: true, cellStyle: { textAlign: "right" } },
+    { headerName: "Description", field: "description", minWidth: 180, flex: 1, editable: true },
+    { headerName: "Status", field: "status", width: 90, editable: true, cellEditor: "agSelectCellEditor", cellEditorParams: { values: ["ACTIVE", "INACTIVE", "DEPRECATED"] } },
+    { headerName: "", field: "id", width: 45, maxWidth: 45, editable: false, sortable: false, cellRenderer: "deleteRenderer" },
+  ], [])
+
+  const components = useMemo(() => ({ deleteRenderer: DomainDeleteRenderer }), [])
 
   return (
-    <>
-      <div className="flex items-center justify-between mb-3">
+    <DomainDeleteCtx.Provider value={deleteDomain}>
+    <div className="flex flex-col flex-1 min-h-0 h-full">
+      <div className="flex items-center justify-between mb-3 flex-shrink-0">
         <p className="text-sm text-muted-foreground">{domains.length} domains</p>
-        <Button size="sm" onClick={() => setAddOpen(true)}><Plus className="h-3.5 w-3.5 mr-1" />Add Domain</Button>
+        <Button variant="outline" size="sm" onClick={addDomain}><Plus className="h-3.5 w-3.5 mr-1" />Add</Button>
       </div>
-      <Card><CardContent className="p-0">
-        <Table>
-          <TableHeader><TableRow>
-            <TableHead>Name</TableHead><TableHead>Group</TableHead><TableHead>Data Type</TableHead>
-            <TableHead>Length</TableHead><TableHead>Code Group</TableHead><TableHead className="w-16" />
-          </TableRow></TableHeader>
-          <TableBody>
-            {domains.map(d => (
-              <TableRow key={d.id}>
-                <TableCell className="font-medium">{d.domain_name}</TableCell>
-                <TableCell className="text-muted-foreground">{d.domain_group}</TableCell>
-                <TableCell><code className="text-xs">{d.data_type}</code></TableCell>
-                <TableCell>{d.data_length ?? "-"}</TableCell>
-                <TableCell>{d.code_group_name || "-"}</TableCell>
-                <TableCell><Button variant="ghost" size="icon" className="h-7 w-7" onClick={async () => { await authFetch(`${BASE}/domains/${d.id}`, { method: "DELETE" }); fetch() }}><Trash2 className="h-3.5 w-3.5" /></Button></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent></Card>
-
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Add Domain</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div><Label className="text-xs">Domain Name</Label><Input value={dn} onChange={e => setDn(e.target.value)} placeholder="번호" className="h-9" /></div>
-            <div><Label className="text-xs">Group</Label><Input value={dg} onChange={e => setDg(e.target.value)} placeholder="문자형" className="h-9" /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label className="text-xs">Data Type</Label><Input value={dt} onChange={e => setDt(e.target.value)} placeholder="VARCHAR" className="h-9" /></div>
-              <div><Label className="text-xs">Length</Label><Input type="number" value={dl} onChange={e => setDl(e.target.value)} placeholder="20" className="h-9" /></div>
-            </div>
-            <div className="flex justify-end"><Button onClick={save} disabled={!dn || !dt}>Add</Button></div>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
+      <div className="ag-theme-alpine flex-1 min-h-0" style={{ "--ag-font-family": "var(--font-d2coding), 'D2Coding', Consolas, monospace", "--ag-font-size": "13px" } as React.CSSProperties}>
+        <AgGridReact ref={gridRef} columnDefs={columnDefs} rowData={domains}
+          defaultColDef={{ resizable: true, sortable: true, filter: false, minWidth: 50 }}
+          headerHeight={32} rowHeight={30} stopEditingWhenCellsLoseFocus
+          onCellValueChanged={onCellValueChanged} animateRows={false}
+          getRowId={(params) => String(params.data.id)} components={components} />
+      </div>
+    </div>
+    </DomainDeleteCtx.Provider>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Terms Tab (with morpheme analysis)
+// Terms Tab (AG Grid + morpheme analysis dialog)
 // ---------------------------------------------------------------------------
+
+const TermDeleteCtx = createContext<(id: number) => void>(() => {})
+
+function TermDeleteRenderer(props: { value: number }) {
+  const onDelete = useContext(TermDeleteCtx)
+  return (
+    <button type="button" onClick={() => onDelete(props.value)}
+      className="flex items-center justify-center w-full h-full text-muted-foreground hover:text-destructive transition-colors cursor-pointer">
+      <Trash2 className="h-3.5 w-3.5" />
+    </button>
+  )
+}
 
 function TermsTab({ dictId }: { dictId: number }) {
   const [terms, setTerms] = useState<Term[]>([])
@@ -350,13 +520,29 @@ function TermsTab({ dictId }: { dictId: number }) {
   const [analysis, setAnalysis] = useState<MorphemeResult | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
 
-  const fetch = useCallback(async () => {
+  const fetchTerms = useCallback(async () => {
     const params = new URLSearchParams({ dictionary_id: String(dictId) })
     if (search) params.set("search", search)
     const r = await authFetch(`${BASE}/terms?${params}`)
     if (r.ok) setTerms(await r.json())
   }, [dictId, search])
-  useEffect(() => { fetch() }, [fetch])
+  useEffect(() => { fetchTerms() }, [fetchTerms])
+
+  const deleteTerm = useCallback(async (id: number) => {
+    await authFetch(`${BASE}/terms/${id}`, { method: "DELETE" })
+    fetchTerms()
+  }, [fetchTerms])
+
+  const onCellValueChanged = useCallback(async (event: CellValueChangedEvent) => {
+    const { data, colDef, newValue, oldValue } = event
+    if (newValue === oldValue) return
+    const field = colDef.field
+    if (!field || !data.id) return
+    await authFetch(`${BASE}/terms/${data.id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: newValue }),
+    })
+  }, [])
 
   const analyze = async () => {
     if (!termName.trim()) return
@@ -366,7 +552,7 @@ function TermsTab({ dictId }: { dictId: number }) {
     setAnalyzing(false)
   }
 
-  const save = async () => {
+  const saveTerm = async () => {
     await authFetch(`${BASE}/terms`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -376,53 +562,55 @@ function TermsTab({ dictId }: { dictId: number }) {
         domain_id: analysis?.recommended_domain?.id || null,
       }),
     })
-    setAddOpen(false); setTermName(""); setAnalysis(null); fetch()
+    setAddOpen(false); setTermName(""); setAnalysis(null); fetchTerms()
   }
 
+  const columnDefs = useMemo<ColDef[]>(() => [
+    { headerName: "#", valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1, width: 50, maxWidth: 55, editable: false, sortable: false, cellStyle: { color: "#9ca3af", textAlign: "right" } },
+    { headerName: "Term Name", field: "term_name", minWidth: 130, editable: true, cellStyle: { fontWeight: 500 } },
+    { headerName: "English", field: "term_english", minWidth: 150, editable: true },
+    { headerName: "Abbreviation", field: "term_abbr", width: 130, editable: true, cellStyle: { fontFamily: "monospace" } },
+    { headerName: "Physical Name", field: "physical_name", width: 140, editable: true, cellStyle: { fontFamily: "monospace" } },
+    { headerName: "Domain", field: "domain_name", width: 100, editable: false, cellStyle: { color: "#6b7280" } },
+    { headerName: "Type", field: "domain_data_type", width: 90, editable: false, cellStyle: { fontFamily: "monospace", color: "#6b7280" } },
+    {
+      headerName: "Words",
+      field: "words",
+      minWidth: 160,
+      editable: false,
+      cellRenderer: (p: { value: TermWord[] }) => {
+        if (!p.value || p.value.length === 0) return ""
+        return p.value.map((w) => w.word_name).join(" + ")
+      },
+      cellStyle: { color: "#6b7280", fontSize: "12px" },
+    },
+    { headerName: "Maps", field: "mapping_count", width: 65, editable: false, cellStyle: { textAlign: "center" } },
+    { headerName: "Status", field: "status", width: 85, editable: true, cellEditor: "agSelectCellEditor", cellEditorParams: { values: ["ACTIVE", "INACTIVE", "DEPRECATED"] } },
+    { headerName: "", field: "id", width: 45, maxWidth: 45, editable: false, sortable: false, cellRenderer: "deleteRenderer" },
+  ], [])
+
+  const components = useMemo(() => ({ deleteRenderer: TermDeleteRenderer }), [])
+
   return (
-    <>
-      <div className="flex items-center gap-3 mb-3">
+    <TermDeleteCtx.Provider value={deleteTerm}>
+    <div className="flex flex-col flex-1 min-h-0 h-full">
+      <div className="flex items-center gap-3 mb-3 flex-shrink-0">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
           <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search terms..." className="h-8 pl-8 text-xs" />
         </div>
         <p className="text-sm text-muted-foreground">{terms.length} terms</p>
-        <Button size="sm" onClick={() => { setAddOpen(true); setTermName(""); setAnalysis(null) }}><Plus className="h-3.5 w-3.5 mr-1" />Add Term</Button>
+        <Button variant="outline" size="sm" onClick={() => { setAddOpen(true); setTermName(""); setAnalysis(null) }}>
+          <Plus className="h-3.5 w-3.5 mr-1" />Add
+        </Button>
       </div>
-      <Card><CardContent className="p-0">
-        <Table>
-          <TableHeader><TableRow>
-            <TableHead>Term Name</TableHead><TableHead>Abbreviation</TableHead><TableHead>Physical Name</TableHead>
-            <TableHead>Domain</TableHead><TableHead>Words</TableHead><TableHead className="w-20">Mappings</TableHead><TableHead className="w-16" />
-          </TableRow></TableHeader>
-          <TableBody>
-            {terms.map(t => (
-              <TableRow key={t.id}>
-                <TableCell className="font-medium">{t.term_name}</TableCell>
-                <TableCell><code className="text-xs">{t.term_abbr}</code></TableCell>
-                <TableCell><code className="text-xs">{t.physical_name}</code></TableCell>
-                <TableCell>
-                  {t.domain_name && (
-                    <span className="text-xs">{t.domain_name} <span className="text-muted-foreground">({t.domain_data_type})</span></span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-0.5">
-                    {t.words.map((w, i) => (
-                      <span key={i}>
-                        {i > 0 && <span className="text-muted-foreground mx-0.5">+</span>}
-                        <Badge variant={w.word_type === "SUFFIX" ? "secondary" : "outline"} className="text-[10px] px-1 py-0">{w.word_name}</Badge>
-                      </span>
-                    ))}
-                  </div>
-                </TableCell>
-                <TableCell className="text-center">{t.mapping_count}</TableCell>
-                <TableCell><Button variant="ghost" size="icon" className="h-7 w-7" onClick={async () => { await authFetch(`${BASE}/terms/${t.id}`, { method: "DELETE" }); fetch() }}><Trash2 className="h-3.5 w-3.5" /></Button></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent></Card>
+      <div className="ag-theme-alpine flex-1 min-h-0" style={{ "--ag-font-family": "var(--font-d2coding), 'D2Coding', Consolas, monospace", "--ag-font-size": "13px" } as React.CSSProperties}>
+        <AgGridReact columnDefs={columnDefs} rowData={terms}
+          defaultColDef={{ resizable: true, sortable: true, filter: false, minWidth: 50 }}
+          headerHeight={32} rowHeight={30} stopEditingWhenCellsLoseFocus
+          onCellValueChanged={onCellValueChanged} animateRows={false}
+          getRowId={(params) => String(params.data.id)} components={components} />
+      </div>
 
       {/* Add Term Dialog with Morpheme Analysis */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
@@ -484,12 +672,13 @@ function TermsTab({ dictId }: { dictId: number }) {
 
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-              <Button onClick={save} disabled={!analysis}>Save Term</Button>
+              <Button onClick={saveTerm} disabled={!analysis}>Save Term</Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
+    </TermDeleteCtx.Provider>
   )
 }
 
@@ -497,81 +686,210 @@ function TermsTab({ dictId }: { dictId: number }) {
 // Codes Tab
 // ---------------------------------------------------------------------------
 
+// Delete renderers for code grids
+const CodeGroupDeleteCtx = createContext<(id: number) => void>(() => {})
+function CodeGroupDeleteRenderer(props: { value: number }) {
+  const onDelete = useContext(CodeGroupDeleteCtx)
+  return (
+    <button type="button" onClick={() => onDelete(props.value)}
+      className="flex items-center justify-center w-full h-full text-muted-foreground hover:text-destructive transition-colors cursor-pointer">
+      <Trash2 className="h-3.5 w-3.5" />
+    </button>
+  )
+}
+
+const CodeValueDeleteCtx = createContext<(id: number) => void>(() => {})
+function CodeValueDeleteRenderer(props: { value: number }) {
+  const onDelete = useContext(CodeValueDeleteCtx)
+  return (
+    <button type="button" onClick={() => onDelete(props.value)}
+      className="flex items-center justify-center w-full h-full text-muted-foreground hover:text-destructive transition-colors cursor-pointer">
+      <Trash2 className="h-3.5 w-3.5" />
+    </button>
+  )
+}
+
 function CodesTab({ dictId }: { dictId: number }) {
   const [groups, setGroups] = useState<CodeGroup[]>([])
-  const [addOpen, setAddOpen] = useState(false)
-  const [gn, setGn] = useState(""); const [ge, setGe] = useState("")
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
+  const [values, setValues] = useState<CodeGroup["values"]>([])
 
-  const fetch = useCallback(async () => {
+  // Fetch groups
+  const fetchGroups = useCallback(async () => {
     const r = await authFetch(`${BASE}/code-groups?dictionary_id=${dictId}`)
-    if (r.ok) setGroups(await r.json())
-  }, [dictId])
-  useEffect(() => { fetch() }, [fetch])
+    if (r.ok) {
+      const data = await r.json()
+      setGroups(data)
+      // Auto-select first group if none selected
+      if (data.length > 0 && !selectedGroupId) setSelectedGroupId(data[0].id)
+    }
+  }, [dictId, selectedGroupId])
+  useEffect(() => { fetchGroups() }, [fetchGroups])
 
-  const saveGroup = async () => {
+  // Fetch values when group changes
+  const fetchValues = useCallback(async () => {
+    if (!selectedGroupId) { setValues([]); return }
+    const r = await authFetch(`${BASE}/code-groups/${selectedGroupId}`)
+    if (r.ok) {
+      const data = await r.json()
+      setValues(data.values || [])
+    }
+  }, [selectedGroupId])
+  useEffect(() => { fetchValues() }, [fetchValues])
+
+  // Group CRUD
+  const addGroup = useCallback(async () => {
     await authFetch(`${BASE}/code-groups`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dictionary_id: dictId, group_name: gn, group_english: ge || null }),
+      body: JSON.stringify({ dictionary_id: dictId, group_name: "(new)" }),
     })
-    setAddOpen(false); setGn(""); setGe(""); fetch()
-  }
+    await fetchGroups()
+  }, [dictId, fetchGroups])
 
-  const addValue = async (groupId: number) => {
-    const val = prompt("Code value (e.g., M)")
-    if (!val) return
-    const name = prompt("Code name (e.g., 남성)")
-    if (!name) return
-    await authFetch(`${BASE}/code-groups/${groupId}/values`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code_value: val, code_name: name }),
+  const deleteGroup = useCallback(async (id: number) => {
+    await authFetch(`${BASE}/code-groups/${id}`, { method: "DELETE" })
+    if (selectedGroupId === id) setSelectedGroupId(null)
+    fetchGroups()
+  }, [selectedGroupId, fetchGroups])
+
+  const onGroupCellChanged = useCallback(async (event: CellValueChangedEvent) => {
+    const { data, colDef, newValue, oldValue } = event
+    if (newValue === oldValue) return
+    const field = colDef.field
+    if (!field || !data.id) return
+    await authFetch(`${BASE}/code-groups/${data.id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: newValue }),
     })
-    fetch()
-  }
+  }, [])
+
+  // Value CRUD
+  const addValue = useCallback(async () => {
+    if (!selectedGroupId) return
+    await authFetch(`${BASE}/code-groups/${selectedGroupId}/values`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code_value: "(new)", code_name: "(new)" }),
+    })
+    fetchValues()
+  }, [selectedGroupId, fetchValues])
+
+  const deleteValue = useCallback(async (id: number) => {
+    await authFetch(`${BASE}/code-values/${id}`, { method: "DELETE" })
+    fetchValues()
+  }, [fetchValues])
+
+  const onValueCellChanged = useCallback(async (event: CellValueChangedEvent) => {
+    const { data, colDef, newValue, oldValue } = event
+    if (newValue === oldValue) return
+    const field = colDef.field
+    if (!field || !data.id) return
+    await authFetch(`${BASE}/code-values/${data.id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: newValue }),
+    })
+  }, [])
+
+  // Group row click → select
+  const onGroupRowClicked = useCallback((event: { data: { id: number } }) => {
+    if (event.data?.id) setSelectedGroupId(event.data.id)
+  }, [])
+
+  const selectedGroup = groups.find(g => g.id === selectedGroupId)
+
+  // Column defs
+  const groupColDefs = useMemo<ColDef[]>(() => [
+    { headerName: "#", valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1, width: 45, maxWidth: 45, editable: false, sortable: false, cellStyle: { color: "#9ca3af", textAlign: "right" } },
+    { headerName: "Group Name", field: "group_name", flex: 1, minWidth: 120, editable: true, cellStyle: { fontWeight: 500 } },
+    { headerName: "English", field: "group_english", flex: 1, minWidth: 100, editable: true },
+    { headerName: "Status", field: "status", width: 85, editable: true, cellEditor: "agSelectCellEditor", cellEditorParams: { values: ["ACTIVE", "INACTIVE"] } },
+    { headerName: "", field: "id", width: 40, maxWidth: 40, editable: false, sortable: false, cellRenderer: "deleteRenderer" },
+  ], [])
+
+  const valueColDefs = useMemo<ColDef[]>(() => [
+    { headerName: "#", valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1, width: 45, maxWidth: 45, editable: false, sortable: false, cellStyle: { color: "#9ca3af", textAlign: "right" } },
+    { headerName: "Code", field: "code_value", width: 100, editable: true, cellStyle: { fontFamily: "monospace", fontWeight: 500 } },
+    { headerName: "Name (한글)", field: "code_name", flex: 1, minWidth: 120, editable: true },
+    { headerName: "English", field: "code_english", flex: 1, minWidth: 100, editable: true },
+    { headerName: "Order", field: "sort_order", width: 70, editable: true, cellStyle: { textAlign: "right" } },
+    { headerName: "", field: "id", width: 40, maxWidth: 40, editable: false, sortable: false, cellRenderer: "deleteRenderer" },
+  ], [])
+
+  const groupComponents = useMemo(() => ({ deleteRenderer: CodeGroupDeleteRenderer }), [])
+  const valueComponents = useMemo(() => ({ deleteRenderer: CodeValueDeleteRenderer }), [])
 
   return (
-    <>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-sm text-muted-foreground">{groups.length} code groups</p>
-        <Button size="sm" onClick={() => setAddOpen(true)}><Plus className="h-3.5 w-3.5 mr-1" />Add Code Group</Button>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        {groups.map(g => (
-          <Card key={g.id}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center justify-between">
-                {g.group_name}
-                <Button variant="ghost" size="sm" className="text-xs h-6" onClick={() => addValue(g.id)}><Plus className="h-3 w-3 mr-1" />Add Value</Button>
-              </CardTitle>
-              {g.group_english && <p className="text-xs text-muted-foreground">{g.group_english}</p>}
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="space-y-1">
-                {g.values.map(v => (
-                  <div key={v.id} className="flex items-center gap-2 text-xs bg-muted/50 rounded px-2.5 py-1.5">
-                    <code className="font-mono font-medium min-w-[40px]">{v.code_value}</code>
-                    <span className="text-muted-foreground">→</span>
-                    <span>{v.code_name}</span>
-                    {v.code_english && <span className="text-muted-foreground ml-auto">{v.code_english}</span>}
-                  </div>
-                ))}
-                {g.values.length === 0 && <p className="text-xs text-muted-foreground text-center py-2">No values</p>}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Add Code Group</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div><Label className="text-xs">Group Name</Label><Input value={gn} onChange={e => setGn(e.target.value)} placeholder="성별코드" className="h-9" /></div>
-            <div><Label className="text-xs">English</Label><Input value={ge} onChange={e => setGe(e.target.value)} placeholder="Gender Code" className="h-9" /></div>
-            <div className="flex justify-end"><Button onClick={saveGroup} disabled={!gn.trim()}>Add</Button></div>
+    <CodeGroupDeleteCtx.Provider value={deleteGroup}>
+    <CodeValueDeleteCtx.Provider value={deleteValue}>
+    <div className="flex flex-col flex-1 min-h-0 h-full">
+      <div className="flex flex-1 gap-4 min-h-0">
+        {/* Left: Code Groups */}
+        <div className="flex flex-col w-2/5 min-h-0">
+          <div className="flex items-center justify-between mb-2 flex-shrink-0">
+            <span className="text-sm font-medium text-muted-foreground">Code Groups</span>
+            <Button variant="outline" size="sm" onClick={addGroup}>
+              <Plus className="h-3.5 w-3.5 mr-1" />Add
+            </Button>
           </div>
-        </DialogContent>
-      </Dialog>
-    </>
+          <div className="ag-theme-alpine flex-1 min-h-0" style={{
+            "--ag-font-family": "var(--font-d2coding), 'D2Coding', Consolas, monospace",
+            "--ag-font-size": "13px",
+            "--ag-selected-row-background-color": "rgba(59, 130, 246, 0.1)",
+          } as React.CSSProperties}>
+            <AgGridReact
+              columnDefs={groupColDefs}
+              rowData={groups}
+              defaultColDef={{ resizable: true, sortable: false, filter: false, minWidth: 40 }}
+              headerHeight={32} rowHeight={30}
+              stopEditingWhenCellsLoseFocus
+              onCellValueChanged={onGroupCellChanged}
+              onRowClicked={onGroupRowClicked}
+              rowSelection="single"
+              animateRows={false}
+              getRowId={(params) => String(params.data.id)}
+              components={groupComponents}
+            />
+          </div>
+        </div>
+
+        {/* Right: Code Values */}
+        <div className="flex flex-col w-3/5 min-h-0">
+          <div className="flex items-center justify-between mb-2 flex-shrink-0">
+            <span className="text-sm font-medium text-muted-foreground">
+              {selectedGroup ? `${selectedGroup.group_name} — Values` : "Select a group"}
+            </span>
+            {selectedGroupId && (
+              <Button variant="outline" size="sm" onClick={addValue}>
+                <Plus className="h-3.5 w-3.5 mr-1" />Add Value
+              </Button>
+            )}
+          </div>
+          <div className="ag-theme-alpine flex-1 min-h-0" style={{
+            "--ag-font-family": "var(--font-d2coding), 'D2Coding', Consolas, monospace",
+            "--ag-font-size": "13px",
+          } as React.CSSProperties}>
+            {selectedGroupId ? (
+              <AgGridReact
+                columnDefs={valueColDefs}
+                rowData={values}
+                defaultColDef={{ resizable: true, sortable: false, filter: false, minWidth: 40 }}
+                headerHeight={32} rowHeight={30}
+                stopEditingWhenCellsLoseFocus
+                onCellValueChanged={onValueCellChanged}
+                animateRows={false}
+                getRowId={(params) => String(params.data.id)}
+                components={valueComponents}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                Select a code group to view values
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+    </CodeValueDeleteCtx.Provider>
+    </CodeGroupDeleteCtx.Provider>
   )
 }
 
@@ -603,7 +921,7 @@ function ComplianceTab({ dictId }: { dictId: number }) {
           <div className="w-full bg-muted rounded-full h-4 mb-4">
             <div className="bg-green-500 h-4 rounded-full transition-all" style={{ width: `${pct}%` }} />
           </div>
-          <div className="grid grid-cols-5 gap-4 text-center text-xs">
+          <div className="grid grid-cols-5 gap-4 text-center text-sm">
             <div><p className="text-lg font-semibold">{stats.total_columns}</p><p className="text-muted-foreground">Total</p></div>
             <div><p className="text-lg font-semibold text-green-600">{stats.matched}</p><p className="text-muted-foreground">Matched</p></div>
             <div><p className="text-lg font-semibold text-amber-600">{stats.similar}</p><p className="text-muted-foreground">Similar</p></div>

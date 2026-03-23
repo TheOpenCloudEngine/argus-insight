@@ -41,7 +41,7 @@ _SEVERITY_RANK = {"INFO": 0, "WARNING": 1, "BREAKING": 2}
 
 
 # ---------------------------------------------------------------------------
-# Rule Engine — 스키마 변경 시 활성 Rule 평가
+# Rule Engine — evaluate active rules on schema changes
 # ---------------------------------------------------------------------------
 
 async def evaluate_rules_and_create_alerts(
@@ -49,14 +49,14 @@ async def evaluate_rules_and_create_alerts(
     dataset_id: int,
     changes: list[dict],
 ) -> list[LineageAlert]:
-    """스키마 변경 시 모든 활성 Rule을 평가하여 알림을 생성한다.
+    """Evaluate all active rules against schema changes and create alerts.
 
-    save_schema_snapshot()에서 호출.
+    Called from save_schema_snapshot() when changes are detected.
 
-    흐름:
-    1. 활성 Rule 전체 조회
-    2. 각 Rule에 대해 scope 매칭 → trigger 매칭 → 알림 생성
-    3. 생성된 알림에 대해 구독자/Owner에게 전달
+    Flow:
+    1. Fetch all active rules
+    2. For each rule: scope matching → trigger evaluation → alert creation
+    3. Dispatch notifications to subscribers/owners for created alerts
     """
     if not changes:
         return []
@@ -68,19 +68,19 @@ async def evaluate_rules_and_create_alerts(
     if not rules:
         return []
 
-    # 변경된 데이터셋 정보 조회
+    # Fetch changed dataset info
     dataset = (await session.execute(
         select(Dataset).where(Dataset.id == dataset_id)
     )).scalar_one_or_none()
     if not dataset:
         return []
 
-    # 데이터셋에 붙은 태그 ID 목록
+    # Tag IDs attached to this dataset
     tag_ids = set((await session.execute(
         select(DatasetTag.tag_id).where(DatasetTag.dataset_id == dataset_id)
     )).scalars().all())
 
-    # 데이터셋이 참여하는 리니지 관계
+    # Lineage relationships involving this dataset
     lineages = (await session.execute(
         select(DatasetLineage).where(
             or_(
@@ -95,11 +95,11 @@ async def evaluate_rules_and_create_alerts(
     created_alerts: list[LineageAlert] = []
 
     for rule in rules:
-        # ── 1. Scope 매칭 ──
+        # ── 1. Scope matching ──
         if not _match_scope(rule, dataset_id, dataset.platform_id, tag_ids, lineage_ids):
             continue
 
-        # ── 2. Trigger 매칭 + 알림 생성 ──
+        # ── 2. Trigger evaluation + alert creation ──
         alerts = await _evaluate_trigger(
             session, rule, dataset_id, changes, change_map, lineages,
         )
@@ -113,6 +113,8 @@ async def evaluate_rules_and_create_alerts(
         for alert in created_alerts:
             await _dispatch_notifications(session, alert)
 
+    if created_alerts:
+        logger.info("Rule evaluation completed: dataset_id=%d, alerts_created=%d", dataset_id, len(created_alerts))
     return created_alerts
 
 
@@ -123,7 +125,7 @@ def _match_scope(
     tag_ids: set[int],
     lineage_ids: set[int],
 ) -> bool:
-    """Rule의 scope가 변경된 데이터셋에 해당하는지 확인."""
+    """Check if rule scope matches the changed dataset."""
     if rule.scope_type == "ALL":
         return True
     if rule.scope_type == "DATASET":
@@ -145,12 +147,12 @@ async def _evaluate_trigger(
     change_map: dict[str, dict],
     lineages: list,
 ) -> list[LineageAlert]:
-    """Rule의 trigger 조건을 평가하여 Alert 객체를 생성한다."""
+    """Evaluate rule trigger condition and create Alert objects."""
     config = _json.loads(rule.trigger_config) if rule.trigger_config else {}
     alerts: list[LineageAlert] = []
 
     if rule.trigger_type == "ANY":
-        # 모든 변경에 대해 알림
+        # Alert on any change
         severity = rule.severity_override or _auto_severity(changes)
         alerts.append(_create_alert(
             rule, dataset_id, None, None, severity,
@@ -159,7 +161,7 @@ async def _evaluate_trigger(
         ))
 
     elif rule.trigger_type == "SCHEMA_CHANGE":
-        # 특정 변경 유형(DROP/MODIFY/ADD) 필터
+        # Filter by change types (DROP/MODIFY/ADD)
         allowed_types = set(config.get("change_types", ["DROP", "MODIFY", "ADD"]))
         filtered = [c for c in changes if c["type"] in allowed_types]
         if filtered:
@@ -171,7 +173,7 @@ async def _evaluate_trigger(
             ))
 
     elif rule.trigger_type == "COLUMN_WATCH":
-        # 특정 컬럼만 감시
+        # Watch specific columns only
         watch_cols = set(config.get("columns", []))
         allowed_types = set(config.get("change_types", ["DROP", "MODIFY", "ADD"]))
         matched = [c for c in changes if c["field"] in watch_cols and c["type"] in allowed_types]
@@ -188,9 +190,9 @@ async def _evaluate_trigger(
             ))
 
     elif rule.trigger_type == "MAPPING_BROKEN":
-        # 매핑된 컬럼이 변경될 때만 발동
+        # Fire only when mapped columns change
         if rule.scope_type == "LINEAGE" and rule.scope_id:
-            # 특정 리니지만 검사
+            # Check only the specific lineage
             target_lineages = [l for l in lineages if l.id == rule.scope_id]
         else:
             target_lineages = lineages
@@ -211,7 +213,7 @@ async def _check_mapping_impact(
     lineage,
     change_map: dict[str, dict],
 ) -> list[LineageAlert]:
-    """특정 리니지의 컬럼 매핑과 변경 컬럼을 대조하여 Alert를 생성."""
+    """Check column mappings against changes for a specific lineage relationship."""
     if lineage.source_dataset_id == dataset_id:
         affected_id = lineage.target_dataset_id
         mapping_field = "source_column"
@@ -328,11 +330,11 @@ def _build_generic_summary(changes: list[dict]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 알림 전달
+# Notification Dispatch
 # ---------------------------------------------------------------------------
 
 async def _dispatch_notifications(session: AsyncSession, alert: LineageAlert) -> None:
-    """Rule의 subscribers + Owner에게 알림 전달."""
+    """Dispatch notifications to rule subscribers and dataset owners."""
     rule = None
     if alert.rule_id:
         rule = (await session.execute(
@@ -341,14 +343,14 @@ async def _dispatch_notifications(session: AsyncSession, alert: LineageAlert) ->
 
     recipients: set[str] = set()
 
-    # Rule의 구독자
+    # Rule subscribers
     if rule and rule.subscribers:
         for sub in rule.subscribers.split(","):
             sub = sub.strip()
             if sub:
                 recipients.add(sub)
 
-    # Owner 알림
+    # Owner notifications
     if not rule or rule.notify_owners == "true":
         for ds_id in (alert.source_dataset_id, alert.affected_dataset_id):
             if ds_id:
@@ -370,7 +372,7 @@ async def _dispatch_notifications(session: AsyncSession, alert: LineageAlert) ->
             )
             session.add(notification)
 
-    # Webhook 전송
+    # Webhook dispatch
     webhook_url = rule.webhook_url if rule else None
     if webhook_url and "WEBHOOK" in channels:
         await _send_webhook(session, alert, webhook_url)
@@ -379,7 +381,7 @@ async def _dispatch_notifications(session: AsyncSession, alert: LineageAlert) ->
 
 
 async def _send_webhook(session: AsyncSession, alert: LineageAlert, webhook_url: str) -> None:
-    """알림 payload를 외부 webhook URL로 전송."""
+    """Send alert payload to an external webhook URL."""
     src_name, src_platform = "", ""
     if alert.source_dataset_id:
         row = (await session.execute(
@@ -400,7 +402,7 @@ async def _send_webhook(session: AsyncSession, alert: LineageAlert, webhook_url:
         if row:
             aff_name, aff_platform = row
 
-    # Rule 이름
+    # Rule name
     rule_name = None
     if alert.rule_id:
         rule = (await session.execute(
@@ -422,9 +424,9 @@ async def _send_webhook(session: AsyncSession, alert: LineageAlert, webhook_url:
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(webhook_url, json=payload)
-            logger.info("Webhook 전송: %s (HTTP %d)", webhook_url, resp.status_code)
+            logger.info("Webhook sent: %s (HTTP %d)", webhook_url, resp.status_code)
     except Exception as e:
-        logger.warning("Webhook 실패: %s - %s", webhook_url, e)
+        logger.warning("Webhook failed: %s - %s", webhook_url, e)
 
 
 # ---------------------------------------------------------------------------
@@ -449,6 +451,7 @@ async def create_rule(session: AsyncSession, data: AlertRuleCreate) -> AlertRule
     session.add(rule)
     await session.flush()
     await session.refresh(rule)
+    logger.info("Alert rule created: id=%d, name=%s, scope=%s/%s", rule.id, rule.rule_name, rule.scope_type, rule.scope_id)
     return await _build_rule_response(session, rule)
 
 
@@ -488,13 +491,14 @@ async def delete_rule(session: AsyncSession, rule_id: int) -> bool:
     rule = await get_rule(session, rule_id)
     if not rule:
         return False
+    logger.info("Alert rule deleted: id=%d, name=%s", rule.id, rule.rule_name)
     await session.delete(rule)
     await session.flush()
     return True
 
 
 async def _build_rule_response(session: AsyncSession, rule: AlertRule) -> AlertRuleResponse:
-    """Rule 응답 빌드. scope 대상 이름과 알림 수를 포함."""
+    """Build rule response with scope target name and alert count."""
     scope_name = None
     if rule.scope_type == "DATASET" and rule.scope_id:
         ds = (await session.execute(
@@ -525,7 +529,7 @@ async def _build_rule_response(session: AsyncSession, rule: AlertRule) -> AlertR
         )).scalar_one_or_none()
         scope_name = p
 
-    # 이 Rule로 생성된 알림 수
+    # Count alerts generated by this rule
     alert_count = (await session.execute(
         select(func.count(LineageAlert.id)).where(LineageAlert.rule_id == rule.id)
     )).scalar() or 0

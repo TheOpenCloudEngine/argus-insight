@@ -128,16 +128,23 @@ class TagResponse(BaseModel):
 class GlossaryTermCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     description: str | None = None
-    source: str | None = None
     parent_id: int | None = None
+    term_type: str = "TERM"  # CATEGORY or TERM
+
+
+class GlossaryTermUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=200)
+    description: str | None = None
+    parent_id: int | None = None
+    term_type: str | None = None
 
 
 class GlossaryTermResponse(BaseModel):
     id: int
     name: str
     description: str | None = None
-    source: str | None = None
     parent_id: int | None = None
+    term_type: str = "TERM"
     created_at: datetime
     updated_at: datetime
 

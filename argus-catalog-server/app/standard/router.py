@@ -169,12 +169,37 @@ async def get_code_group(group_id: int, session: AsyncSession = Depends(get_sess
     return await service._build_code_group_response(session, cg)
 
 
+@router.put("/code-groups/{group_id}", response_model=CodeGroupResponse)
+async def update_code_group(group_id: int, data: CodeGroupUpdate, session: AsyncSession = Depends(get_session)):
+    result = await service.update_code_group(session, group_id, data)
+    if not result:
+        raise HTTPException(status_code=404, detail="Code group not found")
+    await session.commit()
+    return result
+
+
+@router.delete("/code-groups/{group_id}", status_code=204)
+async def delete_code_group(group_id: int, session: AsyncSession = Depends(get_session)):
+    if not await service.delete_code_group(session, group_id):
+        raise HTTPException(status_code=404, detail="Code group not found")
+    await session.commit()
+
+
 @router.post("/code-groups/{group_id}/values", response_model=CodeValueResponse, status_code=201)
 async def add_code_value(group_id: int, data: CodeValueCreate, session: AsyncSession = Depends(get_session)):
     cg = await service.get_code_group(session, group_id)
     if not cg:
         raise HTTPException(status_code=404, detail="Code group not found")
     result = await service.add_code_value(session, group_id, data)
+    await session.commit()
+    return result
+
+
+@router.put("/code-values/{value_id}", response_model=CodeValueResponse)
+async def update_code_value(value_id: int, data: CodeValueCreate, session: AsyncSession = Depends(get_session)):
+    result = await service.update_code_value(session, value_id, data)
+    if not result:
+        raise HTTPException(status_code=404, detail="Code value not found")
     await session.commit()
     return result
 

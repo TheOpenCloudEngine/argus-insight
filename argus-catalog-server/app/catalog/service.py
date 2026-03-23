@@ -323,12 +323,31 @@ async def create_glossary_term(
 ) -> GlossaryTermResponse:
     term = GlossaryTerm(
         name=req.name, description=req.description,
-        source=req.source, parent_id=req.parent_id,
+        parent_id=req.parent_id,
+        term_type=req.term_type,
     )
     session.add(term)
     await session.commit()
     await session.refresh(term)
     logger.info("Glossary term created: %s (id=%d)", term.name, term.id)
+    return GlossaryTermResponse.model_validate(term)
+
+
+async def update_glossary_term(
+    session: AsyncSession, term_id: int, data: dict,
+) -> GlossaryTermResponse | None:
+    result = await session.execute(
+        select(GlossaryTerm).where(GlossaryTerm.id == term_id)
+    )
+    term = result.scalars().first()
+    if not term:
+        return None
+    for k, v in data.items():
+        if hasattr(term, k):
+            setattr(term, k, v)
+    await session.commit()
+    await session.refresh(term)
+    logger.info("Glossary term updated: id=%d, name=%s", term.id, term.name)
     return GlossaryTermResponse.model_validate(term)
 
 
@@ -1335,6 +1354,7 @@ async def create_pipeline(session: AsyncSession, data: PipelineCreate) -> Pipeli
     session.add(pipeline)
     await session.flush()
     await session.refresh(pipeline)
+    logger.info("Pipeline created: id=%d, name=%s, type=%s", pipeline.id, pipeline.pipeline_name, pipeline.pipeline_type)
     return PipelineResponse.model_validate(pipeline)
 
 
@@ -1410,6 +1430,9 @@ async def create_dataset_lineage(
         session.add(mapping)
     await session.flush()
 
+    logger.info("Dataset lineage created: id=%d, source=%d, target=%d, type=%s, mappings=%d",
+                lineage.id, data.source_dataset_id, data.target_dataset_id,
+                data.relation_type.value, len(data.column_mappings))
     return await _build_lineage_response(session, lineage.id)
 
 

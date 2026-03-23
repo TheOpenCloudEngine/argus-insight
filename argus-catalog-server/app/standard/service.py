@@ -1,6 +1,7 @@
 """데이터 표준 서비스 레이어.
 
-표준 사전/단어/도메인/용어/코드 CRUD와 형태소 분석, 준수율 계산.
+CRUD for dictionaries, words, domains, terms, codes.
+Includes morpheme analysis, auto-mapping, and compliance calculation.
 """
 
 import logging
@@ -35,6 +36,7 @@ async def create_dictionary(session: AsyncSession, data: DictionaryCreate) -> Di
     session.add(d)
     await session.flush()
     await session.refresh(d)
+    logger.info("Dictionary created: id=%d, name=%s", d.id, d.dict_name)
     return await _build_dict_response(session, d)
 
 
@@ -95,6 +97,7 @@ async def create_word(session: AsyncSession, data: WordCreate) -> WordResponse:
     await session.flush()
     await session.refresh(w)
     await _log_change(session, "WORD", w.id, "CREATE")
+    logger.info("Standard word created: id=%d, name=%s, type=%s", w.id, w.word_name, w.word_type)
     return WordResponse.model_validate(w)
 
 
@@ -129,6 +132,7 @@ async def delete_word(session: AsyncSession, word_id: int) -> bool:
     if not w:
         return False
     await _log_change(session, "WORD", w.id, "DELETE")
+    logger.info("Standard word deleted: id=%d, name=%s", w.id, w.word_name)
     await session.delete(w)
     await session.flush()
     return True
@@ -144,6 +148,7 @@ async def create_domain(session: AsyncSession, data: DomainCreate) -> DomainResp
     await session.flush()
     await session.refresh(d)
     await _log_change(session, "DOMAIN", d.id, "CREATE")
+    logger.info("Standard domain created: id=%d, name=%s, type=%s", d.id, d.domain_name, d.data_type)
     return await _build_domain_response(session, d)
 
 
@@ -229,6 +234,37 @@ async def add_code_value(session: AsyncSession, group_id: int, data: CodeValueCr
     return CodeValueResponse.model_validate(cv)
 
 
+async def update_code_group(session: AsyncSession, group_id: int, data) -> CodeGroupResponse | None:
+    cg = await get_code_group(session, group_id)
+    if not cg:
+        return None
+    for k, v in data.model_dump(exclude_unset=True).items():
+        setattr(cg, k, v)
+    await session.flush()
+    await session.refresh(cg)
+    return await _build_code_group_response(session, cg)
+
+
+async def delete_code_group(session: AsyncSession, group_id: int) -> bool:
+    cg = await get_code_group(session, group_id)
+    if not cg:
+        return False
+    await session.delete(cg)
+    await session.flush()
+    return True
+
+
+async def update_code_value(session: AsyncSession, value_id: int, data) -> CodeValueResponse | None:
+    cv = (await session.execute(select(CodeValue).where(CodeValue.id == value_id))).scalar_one_or_none()
+    if not cv:
+        return None
+    for k, v in data.model_dump(exclude_unset=True).items():
+        setattr(cv, k, v)
+    await session.flush()
+    await session.refresh(cv)
+    return CodeValueResponse.model_validate(cv)
+
+
 async def delete_code_value(session: AsyncSession, value_id: int) -> bool:
     cv = (await session.execute(select(CodeValue).where(CodeValue.id == value_id))).scalar_one_or_none()
     if not cv:
@@ -255,9 +291,9 @@ async def _build_code_group_response(session: AsyncSession, cg: CodeGroup) -> Co
 # ---------------------------------------------------------------------------
 
 async def analyze_term(session: AsyncSession, dictionary_id: int, term_name: str) -> MorphemeResult:
-    """용어를 형태소 분석하여 단어 분해, 영문 약어, 도메인 추천 결과를 반환.
+    """Analyze a term using greedy longest-match against the word dictionary.
 
-    탐욕적(greedy) 최장 매치 알고리즘으로 단어 사전에서 매칭.
+    Returns word decomposition, auto-generated abbreviation, and domain recommendation.
     """
     words = (await session.execute(
         select(StandardWord)
@@ -268,7 +304,7 @@ async def analyze_term(session: AsyncSession, dictionary_id: int, term_name: str
     word_map = {w.word_name: w for w in words}
     sorted_names = sorted(word_map.keys(), key=len, reverse=True)
 
-    # 최장 매치 분해
+    # Greedy longest-match decomposition
     remaining = term_name
     matched_words: list[tuple[int, StandardWord]] = []
     unmatched: list[str] = []
@@ -288,12 +324,12 @@ async def analyze_term(session: AsyncSession, dictionary_id: int, term_name: str
             unmatched.append(remaining[0])
             remaining = remaining[1:]
 
-    # 자동 생성
+    # Auto-generate English name, abbreviation, physical name
     term_english = " ".join(w.word_english for _, w in matched_words)
     term_abbr = "_".join(w.word_abbr for _, w in matched_words)
     physical_name = term_abbr.lower()
 
-    # SUFFIX 단어 기반 도메인 추천
+    # Recommend domain based on last SUFFIX word
     recommended_domain = None
     suffix_words = [w for _, w in matched_words if w.word_type == "SUFFIX"]
     if suffix_words:
@@ -328,8 +364,8 @@ async def analyze_term(session: AsyncSession, dictionary_id: int, term_name: str
 
 
 async def create_term(session: AsyncSession, data: TermCreate) -> TermResponse:
-    """용어 생성. 영문명/약어/물리명이 없으면 형태소 분석으로 자동 생성."""
-    # 자동 생성 필요 시 형태소 분석
+    """Create a term. If English/abbreviation/physical_name not provided, auto-generate via morpheme analysis."""
+    # Auto-generate English name, abbreviation, physical name 필요 시 형태소 분석
     if not data.term_english or not data.term_abbr or not data.physical_name:
         analysis = await analyze_term(session, data.dictionary_id, data.term_name)
         term_english = data.term_english or analysis.term_english
@@ -360,13 +396,14 @@ async def create_term(session: AsyncSession, data: TermCreate) -> TermResponse:
     await session.flush()
     await session.refresh(t)
 
-    # 단어 연결
+    # Link term to its constituent words
     for wi in word_infos:
         tw = StandardTermWord(term_id=t.id, word_id=wi.word_id, ordinal=wi.ordinal)
         session.add(tw)
     await session.flush()
 
     await _log_change(session, "TERM", t.id, "CREATE")
+    logger.info("Standard term created: id=%d, name=%s, physical=%s", t.id, t.term_name, t.physical_name)
     return await _build_term_response(session, t)
 
 
@@ -497,8 +534,8 @@ async def _build_mapping_response(session: AsyncSession, m: TermColumnMapping) -
 async def get_compliance_stats(
     session: AsyncSession, dictionary_id: int, dataset_id: int | None = None,
 ) -> ComplianceStats:
-    """표준 준수율을 계산한다."""
-    # 전체 컬럼 수
+    """Calculate standard compliance rate for a dataset or globally."""
+    # Total column count
     col_stmt = select(func.count(DatasetSchema.id))
     if dataset_id:
         col_stmt = col_stmt.where(DatasetSchema.dataset_id == dataset_id)
@@ -507,7 +544,7 @@ async def get_compliance_stats(
     if total == 0:
         return ComplianceStats()
 
-    # 매핑된 컬럼 수 (by type)
+    # Mapped column count by type
     map_stmt = (
         select(TermColumnMapping.mapping_type, func.count(TermColumnMapping.id))
         .join(StandardTerm, TermColumnMapping.term_id == StandardTerm.id)
@@ -544,7 +581,7 @@ async def get_compliance_stats(
 async def auto_map_dataset(
     session: AsyncSession, dictionary_id: int, dataset_id: int,
 ) -> AutoMapResult:
-    """데이터셋의 컬럼을 표준 용어와 자동 매핑한다.
+    """Auto-map dataset columns against standard terms by matching physical_name.
 
     매핑 로직:
     1. 컬럼의 field_path와 용어의 physical_name을 비교 (소문자 정규화)
@@ -567,7 +604,7 @@ async def auto_map_dataset(
     )).scalars().all()
     term_by_physical = {t.physical_name.lower(): t for t in terms}
 
-    # 용어별 도메인 정보 캐시
+    # Cache domain info per term
     domain_cache: dict[int, StandardDomain | None] = {}
     for t in terms:
         if t.domain_id and t.domain_id not in domain_cache:
@@ -575,7 +612,7 @@ async def auto_map_dataset(
                 select(StandardDomain).where(StandardDomain.id == t.domain_id)
             )).scalar_one_or_none()
 
-    # 기존 매핑 조회
+    # Fetch existing mappings
     existing_mappings = (await session.execute(
         select(TermColumnMapping).where(TermColumnMapping.dataset_id == dataset_id)
     )).scalars().all()
@@ -591,7 +628,7 @@ async def auto_map_dataset(
             result.unmapped += 1
             continue
 
-        # 타입 호환성 확인
+        # Check type compatibility
         mapping_type = "MATCHED"
         if term.domain_id:
             domain = domain_cache.get(term.domain_id)
@@ -600,14 +637,14 @@ async def auto_map_dataset(
                     mapping_type = "VIOLATION"
 
         if col.id in existing_by_schema:
-            # 기존 매핑 업데이트
+            # Update existing mapping
             existing = existing_by_schema[col.id]
             if existing.term_id != term.id or existing.mapping_type != mapping_type:
                 existing.term_id = term.id
                 existing.mapping_type = mapping_type
                 result.updated += 1
         else:
-            # 새 매핑 생성
+            # Create new mapping
             m = TermColumnMapping(
                 term_id=term.id,
                 dataset_id=dataset_id,
@@ -623,24 +660,26 @@ async def auto_map_dataset(
             result.violation += 1
 
     await session.flush()
+    logger.info("Auto-map completed: dataset_id=%d, created=%d, matched=%d, violation=%d, unmapped=%d",
+                dataset_id, result.created, result.matched, result.violation, result.unmapped)
     return result
 
 
 def _types_compatible(
     col_type: str | None, native_type: str | None, domain: StandardDomain,
 ) -> bool:
-    """컬럼 타입과 도메인 타입이 호환되는지 확인."""
+    """Check if column type is compatible with domain type."""
     if not col_type:
         return True
 
     ct = (col_type or "").upper()
     dt = domain.data_type.upper()
 
-    # 직접 일치
+    # Exact match
     if ct == dt:
         return True
 
-    # 호환 그룹
+    # Compatible type groups
     varchar_types = {"VARCHAR", "CHAR", "CHARACTER VARYING", "STRING", "TEXT", "NVARCHAR"}
     int_types = {"INT", "INTEGER", "BIGINT", "SMALLINT", "TINYINT", "NUMBER"}
     decimal_types = {"DECIMAL", "NUMERIC", "FLOAT", "DOUBLE", "REAL", "DOUBLE PRECISION"}
@@ -656,7 +695,7 @@ def _types_compatible(
 async def get_dataset_term_mapping(
     session: AsyncSession, dictionary_id: int, dataset_id: int,
 ) -> DatasetTermMapping:
-    """데이터셋의 전체 컬럼-용어 매핑 현황을 조회한다."""
+    """Get full column-term mapping status for a dataset."""
     columns = (await session.execute(
         select(DatasetSchema).where(DatasetSchema.dataset_id == dataset_id)
         .order_by(DatasetSchema.ordinal)

@@ -20,6 +20,7 @@ from app.catalog.schemas import (
     DatasetResponse,
     DatasetUpdate,
     GlossaryTermCreate,
+    GlossaryTermUpdate,
     GlossaryTermResponse,
     OwnerCreate,
     OwnerResponse,
@@ -237,6 +238,18 @@ async def create_glossary_term(
 ):
     """Create a new glossary term. Requires admin role."""
     return await service.create_glossary_term(session, req)
+
+
+@router.put("/glossary/{term_id}", response_model=GlossaryTermResponse)
+async def update_glossary_term(
+    term_id: int, req: GlossaryTermUpdate, _admin: AdminUser,
+    session: AsyncSession = Depends(get_session),
+):
+    """Update a glossary term. Requires admin role."""
+    result = await service.update_glossary_term(session, term_id, req.model_dump(exclude_unset=True))
+    if not result:
+        raise HTTPException(status_code=404, detail="Glossary term not found")
+    return result
 
 
 @router.delete("/glossary/{term_id}")

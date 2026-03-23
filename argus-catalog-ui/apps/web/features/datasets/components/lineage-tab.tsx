@@ -778,8 +778,7 @@ export function LineageTab({
               onEdgeClick={onEdgeClick}
               onPaneClick={() => setSelectedEdge(null)}
               nodeTypes={nodeTypes}
-              fitView
-              fitViewOptions={{ padding: 0.3 }}
+              defaultViewport={{ x: 50, y: 150, zoom: 1 }}
               minZoom={0.3}
               maxZoom={2}
               proOptions={{ hideAttribution: true }}
