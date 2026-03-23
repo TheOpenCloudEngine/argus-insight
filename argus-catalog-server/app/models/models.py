@@ -18,7 +18,7 @@ Naming convention:
 """
 
 from sqlalchemy import (
-    BigInteger, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func,
+    BigInteger, Column, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func,
 )
 
 from app.core.database import Base
@@ -114,6 +114,55 @@ class ModelVersion(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     created_by = Column(String(200))
     updated_by = Column(String(200))
+    # Stage lifecycle: NONE → STAGING → PRODUCTION → ARCHIVED
+    stage = Column(String(20), default="NONE")
+    stage_changed_at = Column(DateTime(timezone=True))
+    stage_changed_by = Column(String(200))
+
+
+class ModelDatasetLineage(Base):
+    """Link between a model and the dataset used for training/evaluation."""
+
+    __tablename__ = "catalog_model_dataset_lineage"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    model_id = Column(Integer, ForeignKey("catalog_registered_models.id", ondelete="CASCADE"), nullable=False)
+    model_version = Column(Integer)
+    dataset_id = Column(Integer, ForeignKey("catalog_datasets.id", ondelete="CASCADE"), nullable=False)
+    relation_type = Column(String(30), nullable=False, default="TRAINING_DATA")  # TRAINING_DATA, EVALUATION_DATA, FEATURE_SOURCE
+    description = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ModelMetric(Base):
+    """Per-version performance metric for a model."""
+
+    __tablename__ = "catalog_model_metrics"
+    __table_args__ = (UniqueConstraint("model_id", "version", "metric_key"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    model_id = Column(Integer, ForeignKey("catalog_registered_models.id", ondelete="CASCADE"), nullable=False)
+    version = Column(Integer, nullable=False)
+    metric_key = Column(String(100), nullable=False)
+    metric_value = Column(Numeric(15, 6), nullable=False)
+    recorded_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ModelCard(Base):
+    """Structured model card with governance fields."""
+
+    __tablename__ = "catalog_model_card"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    model_id = Column(Integer, ForeignKey("catalog_registered_models.id", ondelete="CASCADE"), nullable=False, unique=True)
+    purpose = Column(Text)
+    performance = Column(Text)
+    limitations = Column(Text)
+    training_data = Column(Text)
+    framework = Column(String(200))
+    license = Column(String(200))
+    contact = Column(String(200))
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class CatalogModel(Base):

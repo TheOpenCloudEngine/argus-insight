@@ -290,7 +290,60 @@ CREATE TABLE IF NOT EXISTS catalog_model_versions (
     updated_at TIMESTAMPTZ DEFAULT now(),
     created_by VARCHAR(200),
     updated_by VARCHAR(200),
+    stage VARCHAR(20) DEFAULT 'NONE',
+    stage_changed_at TIMESTAMPTZ,
+    stage_changed_by VARCHAR(200),
     UNIQUE (model_id, version)
+);
+
+-- ---------------------------------------------------------------------------
+-- ML Model Registry - Model-Dataset Lineage
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS catalog_model_dataset_lineage (
+    id SERIAL PRIMARY KEY,
+    model_id INT NOT NULL REFERENCES catalog_registered_models(id) ON DELETE CASCADE,
+    model_version INT,
+    dataset_id INT NOT NULL REFERENCES catalog_datasets(id) ON DELETE CASCADE,
+    relation_type VARCHAR(30) NOT NULL DEFAULT 'TRAINING_DATA',
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_model_ds_lineage_model ON catalog_model_dataset_lineage (model_id);
+CREATE INDEX IF NOT EXISTS idx_model_ds_lineage_dataset ON catalog_model_dataset_lineage (dataset_id);
+
+-- ---------------------------------------------------------------------------
+-- ML Model Registry - Model Metrics
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS catalog_model_metrics (
+    id SERIAL PRIMARY KEY,
+    model_id INT NOT NULL REFERENCES catalog_registered_models(id) ON DELETE CASCADE,
+    version INT NOT NULL,
+    metric_key VARCHAR(100) NOT NULL,
+    metric_value DECIMAL(15,6) NOT NULL,
+    recorded_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE (model_id, version, metric_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_model_metrics_model ON catalog_model_metrics (model_id, version);
+
+-- ---------------------------------------------------------------------------
+-- ML Model Registry - Model Card
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS catalog_model_card (
+    id SERIAL PRIMARY KEY,
+    model_id INT NOT NULL UNIQUE REFERENCES catalog_registered_models(id) ON DELETE CASCADE,
+    purpose TEXT,
+    performance TEXT,
+    limitations TEXT,
+    training_data TEXT,
+    framework VARCHAR(200),
+    license VARCHAR(200),
+    contact VARCHAR(200),
+    updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- ---------------------------------------------------------------------------
