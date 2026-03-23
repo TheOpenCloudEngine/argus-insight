@@ -254,7 +254,7 @@ export function LineageAddDialog({
         </DialogHeader>
 
         {/* Step indicator */}
-        <div className="flex items-center gap-2 text-xs mb-2">
+        <div className="flex items-center gap-2 text-sm mb-2">
           <StepIndicator n={1} label="Direction" current={step} />
           <div className="h-px flex-1 bg-border" />
           <StepIndicator n={2} label="Dataset" current={step} />
@@ -273,7 +273,7 @@ export function LineageAddDialog({
           <div className="space-y-4">
             <div className="rounded-lg border px-4 py-3 bg-muted/30">
               <p className="text-sm font-medium">{datasetName}</p>
-              <p className="text-xs text-muted-foreground">Current dataset</p>
+              <p className="text-sm text-muted-foreground">Current dataset</p>
             </div>
 
             <Label className="text-sm font-medium">This dataset is:</Label>
@@ -292,7 +292,7 @@ export function LineageAddDialog({
                   <ArrowDown className="h-5 w-5 text-blue-500" />
                   <span className="font-medium text-sm">Source (Upstream)</span>
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   This dataset provides data to another dataset
                 </p>
               </button>
@@ -310,7 +310,7 @@ export function LineageAddDialog({
                   <ArrowUp className="h-5 w-5 text-green-500" />
                   <span className="font-medium text-sm">Target (Downstream)</span>
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   This dataset receives data from another dataset
                 </p>
               </button>
@@ -344,7 +344,7 @@ export function LineageAddDialog({
 
             {/* Platform filter */}
             <div className="space-y-1.5">
-              <Label className="text-xs">Platform</Label>
+              <Label className="text-sm">Platform</Label>
               <Select value={selectedPlatformId} onValueChange={setSelectedPlatformId}>
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="All Platforms" />
@@ -362,7 +362,7 @@ export function LineageAddDialog({
 
             {/* Dataset search */}
             <div className="space-y-1.5">
-              <Label className="text-xs">
+              <Label className="text-sm">
                 {direction === "source" ? "Target Dataset" : "Source Dataset"}
               </Label>
               <Popover open={datasetPopoverOpen} onOpenChange={setDatasetPopoverOpen}>
@@ -402,11 +402,11 @@ export function LineageAddDialog({
                                 selectedDatasetId === d.id ? "opacity-100" : "opacity-0"
                               }`}
                             />
-                            <Badge variant="outline" className="mr-2 text-[10px] px-1.5 py-0">
+                            <Badge variant="outline" className="mr-2 text-sm px-1.5 py-0">
                               {d.platform_type}
                             </Badge>
                             <span className="truncate">{d.name}</span>
-                            <span className="ml-auto text-xs text-muted-foreground truncate">
+                            <span className="ml-auto text-sm text-muted-foreground truncate">
                               {d.platform_name}
                             </span>
                           </CommandItem>
@@ -420,7 +420,7 @@ export function LineageAddDialog({
 
             {/* Relation type */}
             <div className="space-y-1.5">
-              <Label className="text-xs">Relation Type</Label>
+              <Label className="text-sm">Relation Type</Label>
               <Select value={relationType} onValueChange={setRelationType}>
                 <SelectTrigger className="h-9">
                   <SelectValue />
@@ -438,7 +438,7 @@ export function LineageAddDialog({
 
             {/* Pipeline (optional) */}
             <div className="space-y-1.5">
-              <Label className="text-xs">Pipeline (optional)</Label>
+              <Label className="text-sm">Pipeline (optional)</Label>
               <Select value={selectedPipelineId} onValueChange={setSelectedPipelineId}>
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="None" />
@@ -456,7 +456,7 @@ export function LineageAddDialog({
 
             {/* Description */}
             <div className="space-y-1.5">
-              <Label className="text-xs">Description (optional)</Label>
+              <Label className="text-sm">Description (optional)</Label>
               <Textarea
                 value={description}
                 onChange={e => setDescription(e.target.value)}
@@ -492,7 +492,7 @@ export function LineageAddDialog({
             <div className="flex items-center justify-between">
               <Label className="text-sm font-medium">
                 Column Mapping
-                <span className="text-xs text-muted-foreground font-normal ml-2">
+                <span className="text-sm text-muted-foreground font-normal ml-2">
                   (optional - for impact analysis)
                 </span>
               </Label>
@@ -505,7 +505,7 @@ export function LineageAddDialog({
             {columnMappings.length > 0 && (
               <div className="space-y-2">
                 {/* Header */}
-                <div className="grid grid-cols-[1fr_auto_1fr_100px_32px] gap-2 items-center text-xs text-muted-foreground px-1">
+                <div className="grid grid-cols-[1fr_auto_1fr_100px_32px] gap-2 items-center text-sm text-muted-foreground px-1">
                   <span>Source Column</span>
                   <span />
                   <span>Target Column</span>
@@ -523,7 +523,7 @@ export function LineageAddDialog({
                       value={m.source_column}
                       onValueChange={v => updateMapping(i, "source_column", v)}
                     >
-                      <SelectTrigger className="h-8 text-xs">
+                      <SelectTrigger className="h-9 text-sm">
                         <SelectValue placeholder="Select..." />
                       </SelectTrigger>
                       <SelectContent>
@@ -543,7 +543,7 @@ export function LineageAddDialog({
                       value={m.target_column}
                       onValueChange={v => updateMapping(i, "target_column", v)}
                     >
-                      <SelectTrigger className="h-8 text-xs">
+                      <SelectTrigger className="h-9 text-sm">
                         <SelectValue placeholder="Select..." />
                       </SelectTrigger>
                       <SelectContent>
@@ -561,7 +561,7 @@ export function LineageAddDialog({
                       value={m.transform_type}
                       onValueChange={v => updateMapping(i, "transform_type", v)}
                     >
-                      <SelectTrigger className="h-8 text-xs">
+                      <SelectTrigger className="h-9 text-sm">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -590,7 +590,7 @@ export function LineageAddDialog({
               <div className="text-center py-6 text-sm text-muted-foreground border rounded-lg border-dashed">
                 No column mappings added.
                 <br />
-                <span className="text-xs">
+                <span className="text-sm">
                   You can skip this step and add mappings later.
                 </span>
               </div>
@@ -639,7 +639,7 @@ function StepIndicator({
   return (
     <div className="flex items-center gap-1.5">
       <div
-        className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-medium ${
+        className={`w-5 h-5 rounded-full flex items-center justify-center text-sm font-medium ${
           done
             ? "bg-primary text-primary-foreground"
             : active

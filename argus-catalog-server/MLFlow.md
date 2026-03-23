@@ -331,3 +331,122 @@ app/models/
 ├── models.py        ← RegisteredModel, ModelVersion, CatalogModel ORM
 └── uc_compat.py     ← Unity Catalog OSS 호환 API (/api/2.1/unity-catalog)
 ```
+
+## 확장 기능
+
+### Stage 관리 (버전 승인 워크플로우)
+
+모델 버전의 배포 단계를 관리합니다. 각 단계 전환 시 변경자와 시각이 기록됩니다.
+
+```
+NONE → STAGING → PRODUCTION → ARCHIVED
+```
+
+```bash
+# 버전을 Staging으로 전환
+PUT /api/v1/models/{name}/versions/{ver}/stage
+{ "stage": "STAGING", "changed_by": "ml-team" }
+
+# Production으로 승격
+PUT /api/v1/models/{name}/versions/{ver}/stage
+{ "stage": "PRODUCTION", "changed_by": "ops-team" }
+```
+
+| Stage | 의미 |
+|-------|------|
+| NONE | 초기 상태 (등록 직후) |
+| STAGING | 검증 중 (테스트 환경 배포) |
+| PRODUCTION | 운영 환경 배포 중 |
+| ARCHIVED | 이전 버전 (보관) |
+
+### 모델-데이터셋 리니지
+
+모델이 어떤 데이터셋으로 학습되었는지 추적합니다. 원천 데이터 변경 시 모델 재학습 필요성을 파악하는 데 활용합니다.
+
+```bash
+# 학습 데이터 등록
+POST /api/v1/models/{name}/lineage
+{
+  "dataset_id": 42,
+  "model_version": 3,
+  "relation_type": "TRAINING_DATA",
+  "description": "2025년 고객 주문 데이터"
+}
+
+# 연결된 데이터셋 조회
+GET /api/v1/models/{name}/lineage
+→ [
+    { "dataset_name": "ecommerce.orders", "platform_type": "mysql",
+      "relation_type": "TRAINING_DATA", "model_version": 3 },
+    { "dataset_name": "ecommerce.users", "platform_type": "mysql",
+      "relation_type": "FEATURE_SOURCE", "model_version": 3 }
+  ]
+```
+
+| relation_type | 의미 |
+|--------------|------|
+| TRAINING_DATA | 학습에 사용된 데이터 |
+| EVALUATION_DATA | 평가/검증에 사용된 데이터 |
+| FEATURE_SOURCE | 피처 추출 원천 |
+
+### 모델 메트릭 비교
+
+버전별 성능 지표를 기록하고 비교합니다.
+
+```bash
+# 메트릭 기록
+POST /api/v1/models/{name}/versions/3/metrics
+{ "metrics": { "accuracy": 0.91, "f1": 0.88, "latency_ms": 18, "model_size_mb": 5.2 } }
+
+# 전체 버전 메트릭 비교
+GET /api/v1/models/{name}/metrics
+→ [
+    { "version": 1, "metrics": { "accuracy": 0.82, "f1": 0.78, "latency_ms": 12 } },
+    { "version": 2, "metrics": { "accuracy": 0.87, "f1": 0.83, "latency_ms": 15 } },
+    { "version": 3, "metrics": { "accuracy": 0.91, "f1": 0.88, "latency_ms": 18 } }
+  ]
+```
+
+### 모델 카드 (Model Card)
+
+모델의 용도, 성능, 제한사항, 학습 데이터, 프레임워크, 라이선스 등 거버넌스 정보를 구조화하여 관리합니다.
+
+```bash
+# 모델 카드 작성/수정
+PUT /api/v1/models/{name}/card
+{
+  "purpose": "고객 이탈 예측. CRM 시스템에서 실시간 이탈 위험 점수 제공.",
+  "performance": "AUC 0.91, F1 0.88 (2025년 테스트셋 기준)",
+  "limitations": "30일 미만 신규 고객 정확도 저하. 해외 고객 미학습.",
+  "training_data": "ecommerce.orders + ecommerce.users (2025.01~2025.12, 1.5M rows)",
+  "framework": "scikit-learn 1.3.0 / Python 3.11",
+  "license": "Internal Use Only",
+  "contact": "ml-team@company.com"
+}
+
+# 모델 카드 조회
+GET /api/v1/models/{name}/card
+```
+
+| 필드 | 설명 |
+|------|------|
+| purpose | 모델의 용도와 비즈니스 목적 |
+| performance | 정량적 성능 지표 (정확도, F1 등) |
+| limitations | 알려진 제한사항과 편향 |
+| training_data | 학습에 사용된 데이터 출처와 기간 |
+| framework | 사용된 ML 프레임워크와 버전 |
+| license | 사용 허가 범위 |
+| contact | 모델 관리 담당자 연락처 |
+
+## 확장 API 엔드포인트
+
+| Method | Path | 설명 |
+|--------|------|------|
+| PUT | `/models/{name}/versions/{ver}/stage` | 버전 Stage 변경 |
+| POST | `/models/{name}/lineage` | 모델-데이터셋 리니지 등록 |
+| GET | `/models/{name}/lineage` | 모델-데이터셋 리니지 조회 |
+| DELETE | `/models/{name}/lineage/{id}` | 리니지 삭제 |
+| POST | `/models/{name}/versions/{ver}/metrics` | 메트릭 기록 |
+| GET | `/models/{name}/metrics` | 전체 버전 메트릭 비교 |
+| GET | `/models/{name}/card` | 모델 카드 조회 |
+| PUT | `/models/{name}/card` | 모델 카드 작성/수정 |

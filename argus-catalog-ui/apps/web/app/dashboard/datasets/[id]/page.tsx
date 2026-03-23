@@ -9,6 +9,7 @@ import {
   ArrowLeft,
   BookOpen,
   Check,
+  CheckCircle,
   ChevronDown,
   ChevronRight,
   Circle,
@@ -101,6 +102,7 @@ import { NiFiFlowTab } from "@/features/datasets/components/nifi-flow-tab"
 import { KestraFlowTab } from "@/features/datasets/components/kestra-flow-tab"
 import { AirflowDagTab } from "@/features/datasets/components/airflow-dag-tab"
 import { LineageTab } from "@/features/datasets/components/lineage-tab"
+import { QualityTab } from "@/features/datasets/components/quality-tab"
 import { TermsTab } from "@/features/datasets/components/terms-tab"
 import { GitBranch, MessageSquare } from "lucide-react"
 import { CommentSection } from "@/components/comments"
@@ -963,6 +965,10 @@ export default function DatasetDetailPage() {
               <Shield className="h-4 w-4" />
               Terms
             </TabsTrigger>
+            <TabsTrigger value="quality" className="gap-1.5">
+              <CheckCircle className="h-4 w-4" />
+              Quality
+            </TabsTrigger>
             <TabsTrigger value="sample" className="gap-1.5">
               <Globe className="h-4 w-4" />
               Sample
@@ -1480,6 +1486,11 @@ export default function DatasetDetailPage() {
           {/* =============== Terms tab =============== */}
           <TabsContent value="terms" className="mt-4">
             <TermsTab datasetId={datasetId} />
+          </TabsContent>
+
+          {/* =============== Quality tab =============== */}
+          <TabsContent value="quality" className="mt-4">
+            <QualityTab datasetId={datasetId} />
           </TabsContent>
 
           <TabsContent value="lineage" className="mt-4">

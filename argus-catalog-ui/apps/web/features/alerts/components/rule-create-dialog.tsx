@@ -21,12 +21,27 @@ import { authFetch } from "@/features/auth/auth-fetch"
 
 const BASE = "/api/v1"
 
+type EditRule = {
+  id: number
+  rule_name: string
+  scope_type: string
+  scope_id: number | null
+  trigger_type: string
+  trigger_config: string
+  severity_override: string | null
+  channels: string
+  notify_owners: string
+  webhook_url: string | null
+  subscribers: string | null
+  description: string | null
+}
+
 type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated: () => void
-  // 사전 설정된 scope (lineage 탭에서 진입 시)
   presetScope?: { type: string; id: number; name: string }
+  editRule?: EditRule | null
 }
 
 type Tag = { id: number; name: string; color: string }
@@ -40,7 +55,8 @@ type LineageSummary = {
   target_platform_type: string | null
 }
 
-export function RuleCreateDialog({ open, onOpenChange, onCreated, presetScope }: Props) {
+export function RuleCreateDialog({ open, onOpenChange, onCreated, presetScope, editRule }: Props) {
+  const isEdit = !!editRule
   const [step, setStep] = useState(1)
 
   // Step 1
@@ -70,24 +86,40 @@ export function RuleCreateDialog({ open, onOpenChange, onCreated, presetScope }:
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Reset on open
+  // Reset on open — populate from editRule if editing
   useEffect(() => {
     if (!open) return
     setStep(1)
-    setRuleName("")
-    setScopeType(presetScope?.type || "ALL")
-    setScopeId(presetScope?.id || null)
-    setTriggerType(presetScope?.type === "LINEAGE" ? "MAPPING_BROKEN" : "ANY")
-    setChangeTypes(["DROP", "MODIFY"])
-    setWatchColumns("")
-    setSeverityOverride("auto")
-    setChannels(["IN_APP"])
-    setWebhookUrl("")
-    setSubscribers("")
-    setNotifyOwners(true)
-    setDescription("")
     setError(null)
-  }, [open, presetScope])
+    if (editRule) {
+      setRuleName(editRule.rule_name)
+      setScopeType(editRule.scope_type)
+      setScopeId(editRule.scope_id)
+      setTriggerType(editRule.trigger_type)
+      const config = editRule.trigger_config ? JSON.parse(editRule.trigger_config) : {}
+      setChangeTypes(config.change_types || ["DROP", "MODIFY"])
+      setWatchColumns((config.columns || []).join(", "))
+      setSeverityOverride(editRule.severity_override || "auto")
+      setChannels(editRule.channels ? editRule.channels.split(",") : ["IN_APP"])
+      setWebhookUrl(editRule.webhook_url || "")
+      setSubscribers(editRule.subscribers || "")
+      setNotifyOwners(editRule.notify_owners === "true")
+      setDescription(editRule.description || "")
+    } else {
+      setRuleName("")
+      setScopeType(presetScope?.type || "ALL")
+      setScopeId(presetScope?.id || null)
+      setTriggerType(presetScope?.type === "LINEAGE" ? "MAPPING_BROKEN" : "ANY")
+      setChangeTypes(["DROP", "MODIFY"])
+      setWatchColumns("")
+      setSeverityOverride("auto")
+      setChannels(["IN_APP"])
+      setWebhookUrl("")
+      setSubscribers("")
+      setNotifyOwners(true)
+      setDescription("")
+    }
+  }, [open, presetScope, editRule])
 
   // Load lookup data
   useEffect(() => {
@@ -176,8 +208,10 @@ export function RuleCreateDialog({ open, onOpenChange, onCreated, presetScope }:
     }
 
     try {
-      const resp = await authFetch(`${BASE}/alerts/rules`, {
-        method: "POST",
+      const url = isEdit ? `${BASE}/alerts/rules/${editRule!.id}` : `${BASE}/alerts/rules`
+      const method = isEdit ? "PUT" : "POST"
+      const resp = await authFetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       })
@@ -198,11 +232,11 @@ export function RuleCreateDialog({ open, onOpenChange, onCreated, presetScope }:
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create Alert Rule</DialogTitle>
+          <DialogTitle>{isEdit ? "Edit Alert Rule" : "Create Alert Rule"}</DialogTitle>
         </DialogHeader>
 
         {/* Step indicator */}
-        <div className="flex items-center gap-2 text-xs mb-2">
+        <div className="flex items-center gap-2 text-sm mb-2">
           <StepDot n={1} label="What & When" current={step} />
           <div className="h-px flex-1 bg-border" />
           <StepDot n={2} label="Who & How" current={step} />
@@ -216,7 +250,7 @@ export function RuleCreateDialog({ open, onOpenChange, onCreated, presetScope }:
         {step === 1 && (
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label className="text-xs">Rule Name</Label>
+              <Label className="text-sm">Rule Name</Label>
               <Input
                 value={ruleName}
                 onChange={e => setRuleName(e.target.value)}
@@ -235,7 +269,7 @@ export function RuleCreateDialog({ open, onOpenChange, onCreated, presetScope }:
                   key={t}
                   variant={scopeType === t ? "default" : "outline"}
                   size="sm"
-                  className="text-xs h-7"
+                  className="text-sm h-8"
                   onClick={() => { setScopeType(t); setScopeId(null) }}
                 >
                   {t === "DATASET" && "Dataset"}
@@ -276,7 +310,7 @@ export function RuleCreateDialog({ open, onOpenChange, onCreated, presetScope }:
             {scopeType === "DATASET" && (
               <Popover open={scopePopoverOpen} onOpenChange={setScopePopoverOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full justify-between h-9 font-normal text-xs">
+                  <Button variant="outline" className="w-full justify-between h-9 font-normal text-sm">
                     {scopeId ? scopeDisplayName() : "Search and select dataset..."}
                     <ChevronsUpDown className="ml-2 h-3.5 w-3.5 opacity-50" />
                   </Button>
@@ -303,10 +337,10 @@ export function RuleCreateDialog({ open, onOpenChange, onCreated, presetScope }:
 
             {scopeType === "LINEAGE" && (
               <Select value={scopeId ? String(scopeId) : ""} onValueChange={v => setScopeId(Number(v))}>
-                <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Select lineage..." /></SelectTrigger>
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select lineage..." /></SelectTrigger>
                 <SelectContent>
                   {lineages.map(l => (
-                    <SelectItem key={l.id} value={String(l.id)} className="text-xs">
+                    <SelectItem key={l.id} value={String(l.id)} className="text-sm">
                       {l.source_platform_type}.{l.source_dataset_name} → {l.target_platform_type}.{l.target_dataset_name}
                     </SelectItem>
                   ))}
@@ -329,9 +363,9 @@ export function RuleCreateDialog({ open, onOpenChange, onCreated, presetScope }:
 
             {(triggerType === "SCHEMA_CHANGE" || triggerType === "COLUMN_WATCH") && (
               <div className="flex items-center gap-4">
-                <Label className="text-xs text-muted-foreground">Change Types:</Label>
+                <Label className="text-sm text-muted-foreground">Change Types:</Label>
                 {["DROP", "MODIFY", "ADD"].map(ct => (
-                  <label key={ct} className="flex items-center gap-1.5 text-xs">
+                  <label key={ct} className="flex items-center gap-1.5 text-sm">
                     <Checkbox
                       checked={changeTypes.includes(ct)}
                       onCheckedChange={() => toggleChangeType(ct)}
@@ -344,18 +378,18 @@ export function RuleCreateDialog({ open, onOpenChange, onCreated, presetScope }:
 
             {triggerType === "COLUMN_WATCH" && (
               <div className="space-y-1.5">
-                <Label className="text-xs">Watch Columns (콤마 구분)</Label>
+                <Label className="text-sm">Watch Columns (콤마 구분)</Label>
                 <Input
                   value={watchColumns}
                   onChange={e => setWatchColumns(e.target.value)}
                   placeholder="amount, currency, status"
-                  className="h-9 text-xs"
+                  className="h-9 text-sm"
                 />
               </div>
             )}
 
             <div className="space-y-1.5">
-              <Label className="text-xs">Severity</Label>
+              <Label className="text-sm">Severity</Label>
               <Select value={severityOverride} onValueChange={setSeverityOverride}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -381,7 +415,7 @@ export function RuleCreateDialog({ open, onOpenChange, onCreated, presetScope }:
             {/* Summary */}
             <div className="rounded-lg border px-4 py-3 bg-muted/30 text-sm">
               <p className="font-medium">{ruleName}</p>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 Scope: {scopeType} {scopeId ? `(${scopeDisplayName()})` : ""} | Trigger: {triggerType}
               </p>
             </div>
@@ -389,7 +423,7 @@ export function RuleCreateDialog({ open, onOpenChange, onCreated, presetScope }:
             <Label className="text-sm font-medium">Channels (알림 채널)</Label>
             <div className="flex items-center gap-4">
               {["IN_APP", "WEBHOOK", "EMAIL"].map(ch => (
-                <label key={ch} className="flex items-center gap-1.5 text-xs">
+                <label key={ch} className="flex items-center gap-1.5 text-sm">
                   <Checkbox
                     checked={channels.includes(ch)}
                     onCheckedChange={() => toggleChannel(ch)}
@@ -401,28 +435,28 @@ export function RuleCreateDialog({ open, onOpenChange, onCreated, presetScope }:
 
             {channels.includes("WEBHOOK") && (
               <div className="space-y-1.5">
-                <Label className="text-xs">Webhook URL</Label>
+                <Label className="text-sm">Webhook URL</Label>
                 <Input
                   value={webhookUrl}
                   onChange={e => setWebhookUrl(e.target.value)}
                   placeholder="https://hooks.slack.com/services/..."
-                  className="h-9 text-xs"
+                  className="h-9 text-sm"
                 />
               </div>
             )}
 
             <div className="space-y-1.5">
-              <Label className="text-xs">Subscribers (콤마 구분)</Label>
+              <Label className="text-sm">Subscribers (콤마 구분)</Label>
               <Textarea
                 value={subscribers}
                 onChange={e => setSubscribers(e.target.value)}
                 placeholder="security-team@company.com, dpo@company.com"
                 rows={2}
-                className="text-xs"
+                className="text-sm"
               />
             </div>
 
-            <label className="flex items-center gap-2 text-xs">
+            <label className="flex items-center gap-2 text-sm">
               <Checkbox
                 checked={notifyOwners}
                 onCheckedChange={(v) => setNotifyOwners(!!v)}
@@ -431,13 +465,13 @@ export function RuleCreateDialog({ open, onOpenChange, onCreated, presetScope }:
             </label>
 
             <div className="space-y-1.5">
-              <Label className="text-xs">Description (선택)</Label>
+              <Label className="text-sm">Description (선택)</Label>
               <Textarea
                 value={description}
                 onChange={e => setDescription(e.target.value)}
                 placeholder="이 규칙의 목적을 설명하세요..."
                 rows={2}
-                className="text-xs"
+                className="text-sm"
               />
             </div>
 
@@ -445,7 +479,7 @@ export function RuleCreateDialog({ open, onOpenChange, onCreated, presetScope }:
             <div className="flex justify-between">
               <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
               <Button onClick={handleSave} disabled={saving}>
-                {saving ? "Saving..." : "Save Rule"}
+                {saving ? "Saving..." : isEdit ? "Update Rule" : "Save Rule"}
               </Button>
             </div>
           </div>

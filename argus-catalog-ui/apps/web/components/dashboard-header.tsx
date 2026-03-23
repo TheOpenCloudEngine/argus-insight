@@ -89,7 +89,7 @@ export function DashboardHeader({ title }: DashboardHeaderProps) {
             <Button variant="ghost" size="icon" className="relative h-9 w-9">
               <Bell className="h-4 w-4" />
               {totalOpen > 0 && (
-                <span className={`absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white ${
+                <span className={`absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-sm font-bold text-white ${
                   (summary?.breaking_count ?? 0) > 0
                     ? "bg-red-500"
                     : "bg-amber-500"
@@ -99,17 +99,17 @@ export function DashboardHeader({ title }: DashboardHeaderProps) {
               )}
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-96 p-0" align="end">
+          <PopoverContent className="w-[460px] p-0" align="end">
             <div className="flex items-center justify-between px-4 py-3 border-b">
               <span className="text-sm font-medium">Alerts</span>
               <div className="flex items-center gap-1.5">
                 {(summary?.breaking_count ?? 0) > 0 && (
-                  <Badge className="bg-red-500 text-white text-[10px] px-1.5 py-0 border-0">
+                  <Badge className="bg-red-500 text-white text-sm px-1.5 py-0 border-0">
                     {summary!.breaking_count} Breaking
                   </Badge>
                 )}
                 {(summary?.warning_count ?? 0) > 0 && (
-                  <Badge className="bg-amber-500 text-white text-[10px] px-1.5 py-0 border-0">
+                  <Badge className="bg-amber-500 text-white text-sm px-1.5 py-0 border-0">
                     {summary!.warning_count} Warning
                   </Badge>
                 )}
@@ -135,15 +135,15 @@ export function DashboardHeader({ title }: DashboardHeaderProps) {
                     <div className="flex items-start gap-2">
                       <SeverityDot severity={alert.severity} />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium truncate">
+                        <p className="text-sm font-medium truncate">
                           {alert.change_summary}
                         </p>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                        <p className="text-sm text-muted-foreground mt-0.5">
                           {alert.source_platform_type && `${alert.source_platform_type}`}
                           {alert.source_dataset_name && `.${alert.source_dataset_name}`}
                           {alert.affected_dataset_name && ` → ${alert.affected_platform_type}.${alert.affected_dataset_name}`}
                         </p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                        <p className="text-sm text-muted-foreground mt-0.5">
                           {formatTimeAgo(alert.created_at)}
                         </p>
                       </div>
@@ -158,7 +158,7 @@ export function DashboardHeader({ title }: DashboardHeaderProps) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="w-full text-xs"
+                  className="w-full text-sm"
                   onClick={() => {
                     setPopoverOpen(false)
                     router.push("/dashboard/alerts")

@@ -2,9 +2,15 @@
 
 import { useEffect, useState } from "react"
 import dynamic from "next/dynamic"
+import { useCallback } from "react"
 import {
-  ArrowLeft, User, Clock, GitBranch, Loader2, Activity,
+  ArrowLeft, User, Clock, GitBranch, Loader2, Activity, FileText, BarChart3, Link2, Shield,
 } from "lucide-react"
+import { Input } from "@workspace/ui/components/input"
+import { Label } from "@workspace/ui/components/label"
+import { Textarea } from "@workspace/ui/components/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@workspace/ui/components/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@workspace/ui/components/table"
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,
@@ -16,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/componen
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@workspace/ui/components/tabs"
 
 import { CommentSection } from "@/components/comments"
+import { authFetch } from "@/features/auth/auth-fetch"
 import {
   fetchModelDetail,
   fetchModelVersions,
@@ -269,6 +276,7 @@ function VersionsTab({ modelName }: { modelName: string }) {
           <tr>
             <th className="px-3 py-2 text-left font-medium w-20">Version</th>
             <th className="px-3 py-2 text-center font-medium w-24">Status</th>
+            <th className="px-3 py-2 text-center font-medium w-28">Stage</th>
             <th className="px-3 py-2 text-center font-medium w-20">Files</th>
             <th className="px-3 py-2 text-center font-medium w-24">Size</th>
             <th className="px-3 py-2 text-center font-medium w-28">Finished</th>
@@ -280,6 +288,25 @@ function VersionsTab({ modelName }: { modelName: string }) {
             <tr key={v.id} className="hover:bg-muted/30">
               <td className="px-3 py-2">v{v.version}</td>
               <td className="px-3 py-2 text-center"><StatusBadge status={v.status} /></td>
+              <td className="px-3 py-2 text-center">
+                <select
+                  className="text-sm border rounded px-1 py-0.5 bg-background"
+                  value={(v as Record<string, unknown>).stage as string || "NONE"}
+                  onChange={async (e) => {
+                    await authFetch(`/api/v1/models/${encodeURIComponent(modelName)}/versions/${v.version}/stage`, {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ stage: e.target.value }),
+                    })
+                    fetchModelVersions(modelName, 1, 100).then(d => setVersions(d.items))
+                  }}
+                >
+                  <option value="NONE">None</option>
+                  <option value="STAGING">Staging</option>
+                  <option value="PRODUCTION">Production</option>
+                  <option value="ARCHIVED">Archived</option>
+                </select>
+              </td>
               <td className="px-3 py-2 text-center">{v.artifact_count}</td>
               <td className="px-3 py-2 text-center">{formatSize(v.artifact_size)}</td>
               <td className="px-3 py-2 text-center" title={v.finished_at || ""}>
@@ -462,6 +489,9 @@ export function ModelsDetail({ modelName, onBack }: ModelsDetailProps) {
           <TabsTrigger value="overview" className="text-base">Overview</TabsTrigger>
           <TabsTrigger value="usage" className="text-base">Usage</TabsTrigger>
           <TabsTrigger value="versions" className="text-base">Versions</TabsTrigger>
+          <TabsTrigger value="metrics" className="text-base">Metrics</TabsTrigger>
+          <TabsTrigger value="lineage" className="text-base">Lineage</TabsTrigger>
+          <TabsTrigger value="card" className="text-base">Model Card</TabsTrigger>
           <TabsTrigger value="download" className="text-base">Download</TabsTrigger>
           <TabsTrigger value="comments" className="text-base">Comments</TabsTrigger>
         </TabsList>
@@ -474,6 +504,15 @@ export function ModelsDetail({ modelName, onBack }: ModelsDetailProps) {
         <TabsContent value="versions" className="mt-4">
           <VersionsTab modelName={detail.name} />
         </TabsContent>
+        <TabsContent value="metrics" className="mt-4">
+          <MetricsTab modelName={detail.name} />
+        </TabsContent>
+        <TabsContent value="lineage" className="mt-4">
+          <ModelLineageTab modelName={detail.name} />
+        </TabsContent>
+        <TabsContent value="card" className="mt-4">
+          <ModelCardTab modelName={detail.name} />
+        </TabsContent>
         <TabsContent value="download" className="mt-4">
           <DownloadTab modelName={detail.name} />
         </TabsContent>
@@ -482,5 +521,197 @@ export function ModelsDetail({ modelName, onBack }: ModelsDetailProps) {
         </TabsContent>
       </Tabs>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Metrics Tab — compare metrics across versions
+// ---------------------------------------------------------------------------
+
+function MetricsTab({ modelName }: { modelName: string }) {
+  const [data, setData] = useState<{ version: number; metrics: Record<string, number> }[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    authFetch(`/api/v1/models/${encodeURIComponent(modelName)}/metrics`)
+      .then(r => r.json()).then(setData).catch(() => {})
+      .finally(() => setLoading(false))
+  }, [modelName])
+
+  if (loading) return <p className="text-sm text-muted-foreground text-center py-8">Loading metrics...</p>
+  if (data.length === 0) return (
+    <Card><CardContent className="text-center py-12 text-sm text-muted-foreground">
+      <BarChart3 className="h-10 w-10 mx-auto mb-2 text-muted-foreground/40" />
+      No metrics recorded. Use the API to log metrics for each version.
+    </CardContent></Card>
+  )
+
+  const allKeys = Array.from(new Set(data.flatMap(d => Object.keys(d.metrics)))).sort()
+
+  return (
+    <Card><CardContent className="p-0">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-20">Version</TableHead>
+            {allKeys.map(k => <TableHead key={k}>{k}</TableHead>)}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {data.map(d => (
+            <TableRow key={d.version}>
+              <TableCell className="font-medium">v{d.version}</TableCell>
+              {allKeys.map(k => (
+                <TableCell key={k} className="font-mono text-sm">
+                  {d.metrics[k] !== undefined ? d.metrics[k].toFixed(4) : "—"}
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </CardContent></Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Model Lineage Tab — training data links
+// ---------------------------------------------------------------------------
+
+function ModelLineageTab({ modelName }: { modelName: string }) {
+  const [lineages, setLineages] = useState<{
+    id: number; dataset_id: number; dataset_name: string | null; platform_type: string | null
+    model_version: number | null; relation_type: string; description: string | null
+  }[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const fetch = useCallback(() => {
+    setLoading(true)
+    authFetch(`/api/v1/models/${encodeURIComponent(modelName)}/lineage`)
+      .then(r => r.json()).then(setLineages).catch(() => {})
+      .finally(() => setLoading(false))
+  }, [modelName])
+
+  useEffect(() => { fetch() }, [fetch])
+
+  const remove = async (id: number) => {
+    await authFetch(`/api/v1/models/${encodeURIComponent(modelName)}/lineage/${id}`, { method: "DELETE" })
+    fetch()
+  }
+
+  if (loading) return <p className="text-sm text-muted-foreground text-center py-8">Loading lineage...</p>
+  if (lineages.length === 0) return (
+    <Card><CardContent className="text-center py-12 text-sm text-muted-foreground">
+      <Link2 className="h-10 w-10 mx-auto mb-2 text-muted-foreground/40" />
+      No dataset lineage linked. Use the API to connect training datasets.
+    </CardContent></Card>
+  )
+
+  return (
+    <Card><CardContent className="p-0">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Dataset</TableHead>
+            <TableHead className="w-28">Platform</TableHead>
+            <TableHead className="w-20">Version</TableHead>
+            <TableHead className="w-36">Relation</TableHead>
+            <TableHead>Description</TableHead>
+            <TableHead className="w-16" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {lineages.map(l => (
+            <TableRow key={l.id}>
+              <TableCell className="font-medium">{l.dataset_name || `ID: ${l.dataset_id}`}</TableCell>
+              <TableCell><Badge variant="outline">{l.platform_type}</Badge></TableCell>
+              <TableCell>{l.model_version ? `v${l.model_version}` : "All"}</TableCell>
+              <TableCell><Badge variant="secondary">{l.relation_type}</Badge></TableCell>
+              <TableCell className="text-muted-foreground">{l.description || "—"}</TableCell>
+              <TableCell>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => remove(l.id)}>
+                  <span className="text-muted-foreground hover:text-destructive">×</span>
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </CardContent></Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Model Card Tab — structured governance info
+// ---------------------------------------------------------------------------
+
+function ModelCardTab({ modelName }: { modelName: string }) {
+  const [card, setCard] = useState<Record<string, string | null>>({})
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setLoading(true)
+    authFetch(`/api/v1/models/${encodeURIComponent(modelName)}/card`)
+      .then(r => r.json()).then(setCard).catch(() => {})
+      .finally(() => setLoading(false))
+  }, [modelName])
+
+  const save = async () => {
+    setSaving(true)
+    await authFetch(`/api/v1/models/${encodeURIComponent(modelName)}/card`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(card),
+    })
+    setSaving(false)
+  }
+
+  const update = (key: string, value: string) => setCard(prev => ({ ...prev, [key]: value || null }))
+
+  if (loading) return <p className="text-sm text-muted-foreground text-center py-8">Loading model card...</p>
+
+  const fields = [
+    { key: "purpose", label: "Purpose", placeholder: "What is this model for?", rows: 3 },
+    { key: "performance", label: "Performance", placeholder: "AUC, F1, accuracy, latency...", rows: 2 },
+    { key: "limitations", label: "Limitations", placeholder: "Known limitations, biases, edge cases...", rows: 3 },
+    { key: "training_data", label: "Training Data", placeholder: "Datasets, date range, row count...", rows: 2 },
+    { key: "framework", label: "Framework", placeholder: "scikit-learn 1.3.0 / Python 3.11", rows: 1 },
+    { key: "license", label: "License", placeholder: "Apache 2.0, Internal Use Only, etc.", rows: 1 },
+    { key: "contact", label: "Contact", placeholder: "ml-team@company.com", rows: 1 },
+  ]
+
+  return (
+    <Card>
+      <CardContent className="p-6 space-y-4">
+        {fields.map(f => (
+          <div key={f.key} className="space-y-1.5">
+            <Label className="text-sm font-medium">{f.label}</Label>
+            {f.rows > 1 ? (
+              <Textarea
+                value={card[f.key] || ""}
+                onChange={e => update(f.key, e.target.value)}
+                placeholder={f.placeholder}
+                rows={f.rows}
+                className="text-sm"
+              />
+            ) : (
+              <Input
+                value={card[f.key] || ""}
+                onChange={e => update(f.key, e.target.value)}
+                placeholder={f.placeholder}
+                className="h-9 text-sm"
+              />
+            )}
+          </div>
+        ))}
+        <div className="flex justify-end pt-2">
+          <Button onClick={save} disabled={saving}>
+            {saving ? "Saving..." : "Save Model Card"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   )
 }

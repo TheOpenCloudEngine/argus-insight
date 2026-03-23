@@ -942,6 +942,75 @@ CREATE TABLE IF NOT EXISTS catalog_standard_change_log (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------------
+-- Data Quality - Profile
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS catalog_data_profile (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    dataset_id INT NOT NULL,
+    row_count BIGINT NOT NULL DEFAULT 0,
+    profile_json TEXT NOT NULL,
+    profiled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_data_profile_dataset (dataset_id),
+    FOREIGN KEY (dataset_id) REFERENCES catalog_datasets(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Data Quality - Rule
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS catalog_quality_rule (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    dataset_id INT NOT NULL,
+    rule_name VARCHAR(255) NOT NULL,
+    check_type VARCHAR(50) NOT NULL,
+    column_name VARCHAR(256),
+    expected_value TEXT,
+    threshold DECIMAL(5,2) DEFAULT 100.00,
+    severity VARCHAR(16) NOT NULL DEFAULT 'WARNING',
+    is_active VARCHAR(5) NOT NULL DEFAULT 'true',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_quality_rule_dataset (dataset_id),
+    FOREIGN KEY (dataset_id) REFERENCES catalog_datasets(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Data Quality - Result
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS catalog_quality_result (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    rule_id INT NOT NULL,
+    dataset_id INT NOT NULL,
+    passed VARCHAR(5) NOT NULL,
+    actual_value TEXT,
+    detail TEXT,
+    checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_quality_result_rule (rule_id),
+    INDEX idx_quality_result_dataset (dataset_id),
+    FOREIGN KEY (rule_id) REFERENCES catalog_quality_rule(id) ON DELETE CASCADE,
+    FOREIGN KEY (dataset_id) REFERENCES catalog_datasets(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Data Quality - Score
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS catalog_quality_score (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    dataset_id INT NOT NULL,
+    score DECIMAL(5,2) NOT NULL DEFAULT 0,
+    total_rules INT NOT NULL DEFAULT 0,
+    passed_rules INT NOT NULL DEFAULT 0,
+    warning_rules INT NOT NULL DEFAULT 0,
+    failed_rules INT NOT NULL DEFAULT 0,
+    scored_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_quality_score_dataset (dataset_id),
+    FOREIGN KEY (dataset_id) REFERENCES catalog_datasets(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
 -- Seed: Source Analysis Platforms (Java / Python)
 -- ---------------------------------------------------------------------------
 

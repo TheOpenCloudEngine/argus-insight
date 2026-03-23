@@ -17,7 +17,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@workspace/ui/components/alert-dialog"
-import { Bell, Check, Eye, X, Plus, Trash2, Database, Tag, GitBranch, Server, Globe } from "lucide-react"
+import { Bell, Check, Eye, X, Plus, Pencil, Trash2, Database, Tag, GitBranch, Server, Globe } from "lucide-react"
+import { toast } from "sonner"
 import { authFetch } from "@/features/auth/auth-fetch"
 import { RuleCreateDialog } from "@/features/alerts/components/rule-create-dialog"
 
@@ -55,6 +56,7 @@ type AlertRule = {
 export default function AlertsPage() {
   const [tab, setTab] = useState("alerts")
   const [ruleDialogOpen, setRuleDialogOpen] = useState(false)
+  const [editingRule, setEditingRule] = useState<AlertRule | null>(null)
 
   return (
     <>
@@ -67,7 +69,7 @@ export default function AlertsPage() {
               <TabsTrigger value="rules">Rules</TabsTrigger>
             </TabsList>
             {tab === "rules" && (
-              <Button size="sm" onClick={() => setRuleDialogOpen(true)} className="gap-1.5">
+              <Button size="sm" onClick={() => { setEditingRule(null); setRuleDialogOpen(true) }} className="gap-1.5">
                 <Plus className="h-3.5 w-3.5" />
                 Add Rule
               </Button>
@@ -78,15 +80,16 @@ export default function AlertsPage() {
             <AlertsTab />
           </TabsContent>
           <TabsContent value="rules" className="mt-4">
-            <RulesTab onAddRule={() => setRuleDialogOpen(true)} />
+            <RulesTab onAddRule={() => setRuleDialogOpen(true)} onEditRule={(rule) => { setEditingRule(rule); setRuleDialogOpen(true) }} />
           </TabsContent>
         </Tabs>
       </div>
 
       <RuleCreateDialog
         open={ruleDialogOpen}
-        onOpenChange={setRuleDialogOpen}
+        onOpenChange={(o) => { setRuleDialogOpen(o); if (!o) setEditingRule(null) }}
         onCreated={() => setTab("rules")}
+        editRule={editingRule}
       />
     </>
   )
@@ -186,25 +189,25 @@ function AlertsTab() {
                   <TableCell>
                     <p className="text-sm truncate max-w-sm">{alert.change_summary}</p>
                     {alert.rule_name && (
-                      <p className="text-[10px] text-muted-foreground mt-0.5">Rule: {alert.rule_name}</p>
+                      <p className="text-sm text-muted-foreground mt-0.5">Rule: {alert.rule_name}</p>
                     )}
                   </TableCell>
                   <TableCell>
-                    <div className="text-xs">
+                    <div className="text-sm">
                       <span className="text-muted-foreground">{alert.source_platform_type}</span>
                       <p className="font-medium truncate">{alert.source_dataset_name}</p>
                     </div>
                   </TableCell>
                   <TableCell>
                     {alert.affected_dataset_name ? (
-                      <div className="text-xs">
+                      <div className="text-sm">
                         <span className="text-muted-foreground">{alert.affected_platform_type}</span>
                         <p className="font-medium truncate">{alert.affected_dataset_name}</p>
                       </div>
-                    ) : <span className="text-xs text-muted-foreground">-</span>}
+                    ) : <span className="text-sm text-muted-foreground">-</span>}
                   </TableCell>
                   <TableCell><StatusBadge status={alert.status} /></TableCell>
-                  <TableCell><span className="text-xs text-muted-foreground">{formatTimeAgo(alert.created_at)}</span></TableCell>
+                  <TableCell><span className="text-sm text-muted-foreground">{formatTimeAgo(alert.created_at)}</span></TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                       {alert.status === "OPEN" && (
@@ -246,45 +249,45 @@ function AlertsTab() {
                 {selectedAlert && (
                   <>
                     <div>
-                      <span className="text-xs text-muted-foreground">Change</span>
+                      <span className="text-sm text-muted-foreground">Change</span>
                       <p className="text-sm font-medium">{selectedAlert.change_summary}</p>
                     </div>
                     {selectedAlert.rule_name && (
                       <div>
-                        <span className="text-xs text-muted-foreground">Rule</span>
+                        <span className="text-sm text-muted-foreground">Rule</span>
                         <p className="text-sm">{selectedAlert.rule_name}</p>
                       </div>
                     )}
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <span className="text-xs text-muted-foreground">Source</span>
+                        <span className="text-sm text-muted-foreground">Source</span>
                         <p className="text-sm">{selectedAlert.source_platform_type}.{selectedAlert.source_dataset_name}</p>
                       </div>
                       <div>
-                        <span className="text-xs text-muted-foreground">Affected</span>
+                        <span className="text-sm text-muted-foreground">Affected</span>
                         <p className="text-sm">{selectedAlert.affected_dataset_name ? `${selectedAlert.affected_platform_type}.${selectedAlert.affected_dataset_name}` : "-"}</p>
                       </div>
                     </div>
                     {selectedAlert.change_detail && (
                       <div>
-                        <span className="text-xs text-muted-foreground">Detail</span>
+                        <span className="text-sm text-muted-foreground">Detail</span>
                         <div className="mt-1 max-h-48 overflow-y-auto">
                           {(() => {
                             try {
                               const details = JSON.parse(selectedAlert.change_detail!)
                               return <div className="space-y-1.5">{details.map((d: Record<string, string>, i: number) => (
-                                <div key={i} className="text-xs bg-muted/50 rounded px-3 py-2">
+                                <div key={i} className="text-sm bg-muted/50 rounded px-3 py-2">
                                   <span className="font-medium">{d.changed_column || d.field}</span>
                                   <span className="text-muted-foreground ml-1">({d.change_type || d.type})</span>
                                   {d.mapped_to && <span className="text-muted-foreground ml-1">→ {d.mapped_to}</span>}
                                 </div>
                               ))}</div>
-                            } catch { return <pre className="text-xs whitespace-pre-wrap">{selectedAlert.change_detail}</pre> }
+                            } catch { return <pre className="text-sm whitespace-pre-wrap">{selectedAlert.change_detail}</pre> }
                           })()}
                         </div>
                       </div>
                     )}
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-sm text-muted-foreground">
                       Created: {new Date(selectedAlert.created_at).toLocaleString()}
                     </div>
                   </>
@@ -308,9 +311,11 @@ function AlertsTab() {
 // Rules Tab
 // ---------------------------------------------------------------------------
 
-function RulesTab({ onAddRule }: { onAddRule: () => void }) {
+function RulesTab({ onAddRule, onEditRule }: { onAddRule: () => void; onEditRule: (rule: AlertRule) => void }) {
   const [rules, setRules] = useState<AlertRule[]>([])
   const [loading, setLoading] = useState(true)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleteTargetRule, setDeleteTargetRule] = useState<AlertRule | null>(null)
 
   const fetchRules = useCallback(async () => {
     setLoading(true)
@@ -332,8 +337,20 @@ function RulesTab({ onAddRule }: { onAddRule: () => void }) {
     fetchRules()
   }
 
-  const deleteRule = async (ruleId: number) => {
-    await authFetch(`${BASE}/rules/${ruleId}`, { method: "DELETE" })
+  const handleDeleteClick = (rule: AlertRule) => {
+    if (rule.is_active === "true") {
+      toast.error("Cannot delete an active rule. Please deactivate it first.")
+      return
+    }
+    setDeleteTargetRule(rule)
+    setDeleteConfirmOpen(true)
+  }
+
+  const confirmDelete = async () => {
+    if (!deleteTargetRule) return
+    await authFetch(`${BASE}/rules/${deleteTargetRule.id}`, { method: "DELETE" })
+    setDeleteConfirmOpen(false)
+    setDeleteTargetRule(null)
     fetchRules()
   }
 
@@ -367,7 +384,7 @@ function RulesTab({ onAddRule }: { onAddRule: () => void }) {
                   {rule.severity_override ? (
                     <SeverityBadge severity={rule.severity_override} />
                   ) : (
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">Auto</Badge>
+                    <Badge variant="outline" className="text-sm px-1.5 py-0">Auto</Badge>
                   )}
                   <span className="font-medium text-sm">{rule.rule_name}</span>
                 </div>
@@ -375,13 +392,13 @@ function RulesTab({ onAddRule }: { onAddRule: () => void }) {
                 {/* Scope */}
                 <div className="flex items-center gap-2 mb-2">
                   <ScopeIcon type={rule.scope_type} />
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-sm text-muted-foreground">
                     {rule.scope_type}: {rule.scope_name || "All"}
                   </span>
                 </div>
 
                 {/* Trigger + Channels */}
-                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <div className="flex items-center gap-4 text-smtext-muted-foreground">
                   <span>Trigger: <span className="text-foreground">{rule.trigger_type}</span></span>
                   <span>Channels: <span className="text-foreground">{rule.channels}</span></span>
                   {rule.subscribers && (
@@ -391,7 +408,7 @@ function RulesTab({ onAddRule }: { onAddRule: () => void }) {
                 </div>
 
                 {rule.description && (
-                  <p className="text-xs text-muted-foreground mt-2">{rule.description}</p>
+                  <p className="text-sm text-muted-foreground mt-2">{rule.description}</p>
                 )}
               </div>
 
@@ -401,7 +418,10 @@ function RulesTab({ onAddRule }: { onAddRule: () => void }) {
                   checked={rule.is_active === "true"}
                   onCheckedChange={() => toggleActive(rule)}
                 />
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => deleteRule(rule.id)}>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEditRule(rule)}>
+                  <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDeleteClick(rule)}>
                   <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                 </Button>
               </div>
@@ -409,6 +429,22 @@ function RulesTab({ onAddRule }: { onAddRule: () => void }) {
           </CardContent>
         </Card>
       ))}
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Rule</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the rule &quot;{deleteTargetRule?.rule_name}&quot;? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -429,17 +465,17 @@ function ScopeIcon({ type }: { type: string }) {
 }
 
 function SeverityBadge({ severity }: { severity: string }) {
-  if (severity === "BREAKING") return <Badge className="bg-red-500 text-white text-[10px] px-1.5 py-0 border-0">Breaking</Badge>
-  if (severity === "WARNING") return <Badge className="bg-amber-500 text-white text-[10px] px-1.5 py-0 border-0">Warning</Badge>
-  return <Badge variant="outline" className="text-[10px] px-1.5 py-0">Info</Badge>
+  if (severity === "BREAKING") return <Badge className="bg-red-500 text-white text-sm px-1.5 py-0 border-0">Breaking</Badge>
+  if (severity === "WARNING") return <Badge className="bg-amber-500 text-white text-sm px-1.5 py-0 border-0">Warning</Badge>
+  return <Badge variant="outline" className="text-sm px-1.5 py-0">Info</Badge>
 }
 
 function StatusBadge({ status }: { status: string }) {
-  if (status === "OPEN") return <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-red-300 text-red-600">Open</Badge>
-  if (status === "ACKNOWLEDGED") return <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-300 text-amber-600">Ack</Badge>
-  if (status === "RESOLVED") return <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-green-300 text-green-600">Resolved</Badge>
-  if (status === "DISMISSED") return <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-gray-300 text-gray-500">Dismissed</Badge>
-  return <Badge variant="outline" className="text-[10px] px-1.5 py-0">{status}</Badge>
+  if (status === "OPEN") return <Badge variant="outline" className="text-sm px-1.5 py-0 border-red-300 text-red-600">Open</Badge>
+  if (status === "ACKNOWLEDGED") return <Badge variant="outline" className="text-sm px-1.5 py-0 border-amber-300 text-amber-600">Ack</Badge>
+  if (status === "RESOLVED") return <Badge variant="outline" className="text-sm px-1.5 py-0 border-green-300 text-green-600">Resolved</Badge>
+  if (status === "DISMISSED") return <Badge variant="outline" className="text-sm px-1.5 py-0 border-gray-300 text-gray-500">Dismissed</Badge>
+  return <Badge variant="outline" className="text-sm px-1.5 py-0">{status}</Badge>
 }
 
 function formatTimeAgo(dateStr: string): string {

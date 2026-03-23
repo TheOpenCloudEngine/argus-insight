@@ -272,3 +272,264 @@ async def delete_model_version(
         )
     logger.info("Version deleted: %s v%d", model_name, version)
     return {"status": "ok", "message": f"Version {version} of model '{model_name}' deleted"}
+
+
+# ---------------------------------------------------------------------------
+# Stage Management
+# ---------------------------------------------------------------------------
+
+@router.put("/{model_name}/versions/{version}/stage")
+async def update_version_stage(
+    model_name: str, version: int,
+    body: dict,
+    session: AsyncSession = Depends(get_session),
+):
+    """Update model version stage (NONE → STAGING → PRODUCTION → ARCHIVED)."""
+    from app.models.models import RegisteredModel, ModelVersion
+    from sqlalchemy import select
+    from datetime import datetime, timezone
+
+    stage = body.get("stage", "NONE")
+    changed_by = body.get("changed_by", "")
+
+    if stage not in ("NONE", "STAGING", "PRODUCTION", "ARCHIVED"):
+        raise HTTPException(status_code=400, detail=f"Invalid stage: {stage}")
+
+    model = (await session.execute(
+        select(RegisteredModel).where(RegisteredModel.name == model_name)
+    )).scalar_one_or_none()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    ver = (await session.execute(
+        select(ModelVersion).where(ModelVersion.model_id == model.id, ModelVersion.version == version)
+    )).scalar_one_or_none()
+    if not ver:
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    ver.stage = stage
+    ver.stage_changed_at = datetime.now(timezone.utc)
+    ver.stage_changed_by = changed_by
+    await session.commit()
+    logger.info("Stage updated: %s v%d → %s by %s", model_name, version, stage, changed_by)
+    return {"status": "ok", "model": model_name, "version": version, "stage": stage}
+
+
+# ---------------------------------------------------------------------------
+# Model-Dataset Lineage
+# ---------------------------------------------------------------------------
+
+@router.post("/{model_name}/lineage")
+async def add_model_dataset_lineage(
+    model_name: str, body: dict,
+    session: AsyncSession = Depends(get_session),
+):
+    """Link a model to a training/evaluation dataset."""
+    from app.models.models import RegisteredModel, ModelDatasetLineage
+    from sqlalchemy import select
+
+    model = (await session.execute(
+        select(RegisteredModel).where(RegisteredModel.name == model_name)
+    )).scalar_one_or_none()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    lineage = ModelDatasetLineage(
+        model_id=model.id,
+        model_version=body.get("model_version"),
+        dataset_id=body["dataset_id"],
+        relation_type=body.get("relation_type", "TRAINING_DATA"),
+        description=body.get("description"),
+    )
+    session.add(lineage)
+    await session.commit()
+    await session.refresh(lineage)
+    logger.info("Model-dataset lineage created: %s → dataset_id=%d", model_name, body["dataset_id"])
+    return {"id": lineage.id, "model": model_name, "dataset_id": body["dataset_id"], "relation_type": lineage.relation_type}
+
+
+@router.get("/{model_name}/lineage")
+async def get_model_dataset_lineage(model_name: str, session: AsyncSession = Depends(get_session)):
+    """Get datasets linked to a model."""
+    from app.models.models import RegisteredModel, ModelDatasetLineage
+    from app.catalog.models import Dataset, Platform
+    from sqlalchemy import select
+
+    model = (await session.execute(
+        select(RegisteredModel).where(RegisteredModel.name == model_name)
+    )).scalar_one_or_none()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    lineages = (await session.execute(
+        select(ModelDatasetLineage).where(ModelDatasetLineage.model_id == model.id)
+    )).scalars().all()
+
+    results = []
+    for l in lineages:
+        ds = (await session.execute(
+            select(Dataset.name, Platform.type)
+            .join(Platform, Dataset.platform_id == Platform.id)
+            .where(Dataset.id == l.dataset_id)
+        )).first()
+        results.append({
+            "id": l.id,
+            "model_version": l.model_version,
+            "dataset_id": l.dataset_id,
+            "dataset_name": ds[0] if ds else None,
+            "platform_type": ds[1] if ds else None,
+            "relation_type": l.relation_type,
+            "description": l.description,
+            "created_at": l.created_at.isoformat() if l.created_at else None,
+        })
+    return results
+
+
+@router.delete("/{model_name}/lineage/{lineage_id}")
+async def delete_model_dataset_lineage(
+    model_name: str, lineage_id: int, session: AsyncSession = Depends(get_session),
+):
+    """Remove a model-dataset lineage link."""
+    from app.models.models import ModelDatasetLineage
+    from sqlalchemy import select
+
+    l = (await session.execute(
+        select(ModelDatasetLineage).where(ModelDatasetLineage.id == lineage_id)
+    )).scalar_one_or_none()
+    if not l:
+        raise HTTPException(status_code=404, detail="Lineage not found")
+    await session.delete(l)
+    await session.commit()
+    return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Model Metrics
+# ---------------------------------------------------------------------------
+
+@router.post("/{model_name}/versions/{version}/metrics")
+async def add_model_metrics(
+    model_name: str, version: int, body: dict,
+    session: AsyncSession = Depends(get_session),
+):
+    """Add or update metrics for a model version. body: {"metrics": {"accuracy": 0.95, "f1": 0.88}}"""
+    from app.models.models import RegisteredModel, ModelMetric
+    from sqlalchemy import select
+
+    model = (await session.execute(
+        select(RegisteredModel).where(RegisteredModel.name == model_name)
+    )).scalar_one_or_none()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    metrics = body.get("metrics", {})
+    for key, value in metrics.items():
+        existing = (await session.execute(
+            select(ModelMetric).where(
+                ModelMetric.model_id == model.id,
+                ModelMetric.version == version,
+                ModelMetric.metric_key == key,
+            )
+        )).scalar_one_or_none()
+        if existing:
+            existing.metric_value = value
+        else:
+            session.add(ModelMetric(
+                model_id=model.id, version=version,
+                metric_key=key, metric_value=value,
+            ))
+
+    await session.commit()
+    logger.info("Metrics recorded: %s v%d, %d metrics", model_name, version, len(metrics))
+    return {"status": "ok", "model": model_name, "version": version, "metrics_count": len(metrics)}
+
+
+@router.get("/{model_name}/metrics")
+async def get_model_metrics(model_name: str, session: AsyncSession = Depends(get_session)):
+    """Get metrics for all versions of a model (for comparison)."""
+    from app.models.models import RegisteredModel, ModelMetric
+    from sqlalchemy import select
+
+    model = (await session.execute(
+        select(RegisteredModel).where(RegisteredModel.name == model_name)
+    )).scalar_one_or_none()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    metrics = (await session.execute(
+        select(ModelMetric).where(ModelMetric.model_id == model.id)
+        .order_by(ModelMetric.version, ModelMetric.metric_key)
+    )).scalars().all()
+
+    # Group by version
+    by_version: dict[int, dict] = {}
+    for m in metrics:
+        if m.version not in by_version:
+            by_version[m.version] = {"version": m.version, "metrics": {}}
+        by_version[m.version]["metrics"][m.metric_key] = float(m.metric_value)
+
+    return list(by_version.values())
+
+
+# ---------------------------------------------------------------------------
+# Model Card
+# ---------------------------------------------------------------------------
+
+@router.get("/{model_name}/card")
+async def get_model_card(model_name: str, session: AsyncSession = Depends(get_session)):
+    """Get the model card."""
+    from app.models.models import RegisteredModel, ModelCard
+    from sqlalchemy import select
+
+    model = (await session.execute(
+        select(RegisteredModel).where(RegisteredModel.name == model_name)
+    )).scalar_one_or_none()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    card = (await session.execute(
+        select(ModelCard).where(ModelCard.model_id == model.id)
+    )).scalar_one_or_none()
+
+    if not card:
+        return {"model_id": model.id, "purpose": None, "performance": None,
+                "limitations": None, "training_data": None, "framework": None,
+                "license": None, "contact": None}
+
+    return {
+        "model_id": card.model_id, "purpose": card.purpose,
+        "performance": card.performance, "limitations": card.limitations,
+        "training_data": card.training_data, "framework": card.framework,
+        "license": card.license, "contact": card.contact,
+        "updated_at": card.updated_at.isoformat() if card.updated_at else None,
+    }
+
+
+@router.put("/{model_name}/card")
+async def update_model_card(model_name: str, body: dict, session: AsyncSession = Depends(get_session)):
+    """Create or update the model card."""
+    from app.models.models import RegisteredModel, ModelCard
+    from sqlalchemy import select
+
+    model = (await session.execute(
+        select(RegisteredModel).where(RegisteredModel.name == model_name)
+    )).scalar_one_or_none()
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    card = (await session.execute(
+        select(ModelCard).where(ModelCard.model_id == model.id)
+    )).scalar_one_or_none()
+
+    if card:
+        for k in ("purpose", "performance", "limitations", "training_data", "framework", "license", "contact"):
+            if k in body:
+                setattr(card, k, body[k])
+    else:
+        card = ModelCard(model_id=model.id, **{k: body.get(k) for k in
+            ("purpose", "performance", "limitations", "training_data", "framework", "license", "contact")})
+        session.add(card)
+
+    await session.commit()
+    logger.info("Model card updated: %s", model_name)
+    return {"status": "ok", "model": model_name}

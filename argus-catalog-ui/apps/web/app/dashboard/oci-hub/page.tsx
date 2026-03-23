@@ -249,8 +249,7 @@ function LineageGraph({ modelName, lineage }: { modelName: string; lineage: Line
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         nodeTypes={lineageNodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.3 }}
+        defaultViewport={{ x: 50, y: 150, zoom: 1 }}
         proOptions={{ hideAttribution: true }}
       >
         <Controls showInteractive={false} />
