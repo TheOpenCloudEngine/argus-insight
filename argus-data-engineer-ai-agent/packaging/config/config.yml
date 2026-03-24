@@ -1,0 +1,62 @@
+app:
+  name: argus-data-engineer-ai-agent
+  version: "0.1.0"
+  debug: false
+
+server:
+  host: "0.0.0.0"
+  port: 4700
+
+logging:
+  level: INFO
+  dir: logs
+  filename: argus-de-agent.log
+  rolling:
+    type: daily
+    backup_count: 30
+
+database:
+  type: postgresql
+  host: "${db.host:localhost}"
+  port: "${db.port:5432}"
+  name: "${db.name:argus_de_agent}"
+  username: "${db.username:argus}"
+  password: "${db.password:argus}"
+  pool:
+    size: 5
+    max_overflow: 10
+    recycle: 3600
+  echo: false
+
+catalog:
+  base_url: "${catalog.url:http://localhost:4600}"
+  api_prefix: "/api/v1"
+  timeout: 30
+
+llm:
+  provider: "anthropic"
+  model: "claude-sonnet-4-20250514"
+  api_key: ""
+  api_url: ""
+  temperature: 0.3
+  max_tokens: 4096
+
+agent:
+  max_steps: 20
+  auto_approve_reads: true
+  auto_approve_writes: false
+
+cors:
+  origins:
+    - "*"
+
+auth:
+  type: local
+  keycloak:
+    server_url: "http://localhost:8180"
+    realm: argus
+    client_id: argus-client
+    client_secret: argus-client-secret
+    admin_role: argus-admin
+    superuser_role: argus-superuser
+    user_role: argus-user
