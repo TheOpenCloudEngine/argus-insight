@@ -100,4 +100,8 @@ def _create_connector(source_type: str, config: dict):
         from app.source.db_query_connector import DBQueryConnector
 
         return DBQueryConnector(config)
+    if source_type == "http":
+        from app.source.http_connector import HTTPConnector
+
+        return HTTPConnector(config)
     raise ValueError(f"Unsupported source type: {source_type}")

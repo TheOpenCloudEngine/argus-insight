@@ -106,3 +106,45 @@ async def query_preview(
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# HTTP URL Preview
+# ---------------------------------------------------------------------------
+
+
+class URLPreviewRequest(BaseModel):
+    """Request to preview content from an HTTP URL."""
+
+    url: str = Field(..., description="URL to fetch")
+    method: str = Field("GET", description="HTTP method")
+    headers: dict = Field(default_factory=dict, description="Custom headers")
+    body: dict | None = Field(None, description="Request body for POST")
+    response_type: str = Field("json_array", description="json_array, json_object, text")
+    max_rows: int = Field(10, ge=1, le=100)
+
+
+@router.post("/url-preview")
+async def url_preview(
+    body: URLPreviewRequest,
+    user: OptionalUser = None,
+):
+    """Fetch a URL and return preview data (columns + sample rows)."""
+    from app.source.http_connector import HTTPConnector
+
+    config = {
+        "urls": [body.url],
+        "method": body.method,
+        "headers": body.headers,
+        "body": body.body,
+        "response_type": body.response_type,
+    }
+
+    connector = HTTPConnector(config)
+    try:
+        result = await connector.preview(max_rows=body.max_rows)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        await connector.close()

@@ -137,7 +137,23 @@ export const queryPreview = (data: QueryPreviewRequest) =>
     body: JSON.stringify(data),
   });
 
+// --- URL Preview ---
+export const urlPreview = (data: URLPreviewRequest) =>
+  apiFetch<QueryPreviewResult>("/sync/url-preview", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
 // --- Types ---
+export interface URLPreviewRequest {
+  url: string;
+  method?: string;
+  headers?: Record<string, string>;
+  body?: any;
+  response_type?: string;
+  max_rows?: number;
+}
+
 export interface QueryPreviewRequest {
   db_type: string;
   host: string;
