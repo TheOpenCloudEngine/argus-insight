@@ -130,7 +130,33 @@ export const updateChunkingSettings = (data: ChunkingSettings) =>
     body: JSON.stringify(data),
   });
 
+// --- Query Preview ---
+export const queryPreview = (data: QueryPreviewRequest) =>
+  apiFetch<QueryPreviewResult>("/sync/query-preview", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
 // --- Types ---
+export interface QueryPreviewRequest {
+  db_type: string;
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  database: string;
+  query: string;
+  max_rows?: number;
+}
+
+export interface QueryPreviewResult {
+  columns: string[];
+  rows: Record<string, any>[];
+  total_rows: number;
+  db_type: string;
+  database: string;
+}
+
 export interface DashboardStats {
   total_collections: number;
   total_documents: number;

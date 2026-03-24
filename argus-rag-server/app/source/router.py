@@ -1,8 +1,9 @@
-"""Sync API router — trigger sync operations."""
+"""Sync API router — trigger sync and query preview operations."""
 
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,3 +56,53 @@ async def trigger_collection_sync(
         r = await sync_data_source(session, ds)
         results.append({"source_id": ds.id, "source_name": ds.name, **r})
     return {"syncs": results}
+
+
+# ---------------------------------------------------------------------------
+# Query Preview — test a SQL query and see columns + sample data
+# ---------------------------------------------------------------------------
+
+
+class QueryPreviewRequest(BaseModel):
+    """Request to preview a SQL query against a source database."""
+
+    db_type: str = Field(..., description="mysql, postgresql, oracle, mssql")
+    host: str = Field(...)
+    port: int = Field(0, description="0 = use default port for db_type")
+    username: str = Field("")
+    password: str = Field("")
+    database: str = Field(...)
+    query: str = Field(..., description="SELECT query to preview")
+    max_rows: int = Field(10, ge=1, le=100)
+
+
+@router.post("/query-preview")
+async def query_preview(
+    body: QueryPreviewRequest,
+    user: OptionalUser = None,
+):
+    """Execute a SQL query and return column names + sample rows.
+
+    This is used by the UI to let users:
+    1. Enter connection details and a SQL query
+    2. Preview the data
+    3. Select which columns to use for id, title, and embedding text
+    """
+    from app.source.db_query_connector import DBQueryConnector
+
+    config = {
+        "db_type": body.db_type,
+        "host": body.host,
+        "port": body.port or None,
+        "username": body.username,
+        "password": body.password,
+        "database": body.database,
+        "query": body.query,
+    }
+
+    connector = DBQueryConnector(config)
+    try:
+        result = await connector.preview(max_rows=body.max_rows)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
