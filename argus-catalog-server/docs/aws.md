@@ -905,6 +905,474 @@ metering.meter_usage(
 
 ---
 
+## 14. 고객 여정 (구매~운영 전체 흐름)
+
+### 14.1 전체 흐름 개요
+
+```
+① 탐색 → ② 가입 → ③ 결제 → ④ 프로비저닝 → ⑤ 초기설정 → ⑥ 운영
+                                                │
+                               ⑦ 월간 정산 ◄────┘
+                                    │
+                      ⑧ 플랜변경/해지 ◄──┘
+```
+
+### 14.2 ① 탐색 단계
+
+```
+고객 ──► 랜딩 페이지 (catalog.example.com)
+         │
+         ├─ 기능 소개 (데이터 카탈로그, 리니지, ML 모델 레지스트리 등)
+         ├─ 요금제 비교 (Starter $99 / Pro $299 / Enterprise 문의)
+         ├─ 데모 영상 또는 라이브 데모
+         └─ "무료 체험 시작" 또는 "플랜 선택" 버튼
+```
+
+선택 사항으로 **14일 무료 체험**을 제공할 수 있습니다. Stripe에서 `trial_period_days=14`로 설정하면 체험 기간 후 자동 과금됩니다.
+
+### 14.3 ② 가입 단계
+
+```
+고객이 "Starter 시작하기" 클릭
+         │
+         ▼
+┌─────────────────────────────────┐
+│  가입 폼                         │
+│                                  │
+│  회사명:  [ABC 데이터팀         ] │
+│  이름:    [김민수                ] │
+│  이메일:  [minsu@abc.co.kr      ] │
+│  비밀번호: [••••••••             ] │
+│  플랜:    ● Starter  ○ Pro       │
+│                                  │
+│  [다음: 결제 정보 입력 →]         │
+└─────────────────────────────────┘
+```
+
+**서버 처리:**
+
+```python
+# POST /api/v1/signup
+async def signup(body: SignupRequest, db: AsyncSession):
+    # 1. 이메일 중복 확인
+    existing = await get_tenant_by_email(body.email, db)
+    if existing:
+        raise HTTPException(409, "Email already registered")
+
+    # 2. 테넌트 생성 (status: pending — 결제 전)
+    tenant = Tenant(
+        name=body.company_name,
+        slug=generate_slug(body.company_name),  # "abc-데이터팀" → "abc-datateam"
+        plan=body.plan,
+        status="pending",
+        max_users=PLAN_LIMITS[body.plan]["users"],
+        max_platforms=PLAN_LIMITS[body.plan]["platforms"],
+        max_datasets=PLAN_LIMITS[body.plan]["datasets"],
+        # ...
+    )
+    db.add(tenant)
+    await db.flush()
+
+    # 3. 관리자 계정 생성 (아직 로그인 불가)
+    admin_user = CatalogUser(
+        tenant_id=tenant.id,
+        username=body.email,
+        email=body.email,
+        first_name=body.name,
+        password_hash=hash_password(body.password),
+        roles=["admin"],
+    )
+    db.add(admin_user)
+    await db.commit()
+
+    # 4. Stripe Checkout 세션 생성 → 결제 URL 반환
+    checkout_url = await create_stripe_checkout(tenant.id, body.plan, body.email)
+    return {"checkout_url": checkout_url}
+```
+
+### 14.4 ③ 결제 단계
+
+```
+가입 폼 제출
+    │
+    ▼
+Stripe Checkout 페이지로 리다이렉트
+    │
+    ├─ 카드 번호: [4242 4242 4242 4242]
+    ├─ 만료일:    [12/27]
+    ├─ CVC:      [123]
+    └─ [구독 시작 →]
+         │
+         ▼
+    ┌─────────────────────────────────────────────┐
+    │  Stripe 내부 처리                            │
+    │                                             │
+    │  1. 카드 유효성 검증                          │
+    │  2. Customer 생성                            │
+    │  3. Subscription 생성 (월 $99)               │
+    │  4. 첫 결제 실행                             │
+    │  5. Invoice 발행                             │
+    │  6. Webhook 발송 → 우리 서버                  │
+    └─────────────────────────────────────────────┘
+         │
+         ▼
+    성공 시: catalog.example.com/billing/success 리다이렉트
+    실패 시: catalog.example.com/billing/cancel 리다이렉트
+```
+
+### 14.5 ④ 자동 프로비저닝 (Stripe Webhook 수신)
+
+결제 완료 직후 Stripe이 Webhook을 보내고, 서버가 자동으로 환경을 준비합니다.
+
+```
+Stripe Webhook (checkout.session.completed)
+    │
+    ▼
+┌──────────────────────────────────────────────────────┐
+│  프로비저닝 처리 순서 (수 초 내 완료)                   │
+│                                                      │
+│  1. 테넌트 활성화                                     │
+│     └─ tenants.status: "pending" → "active"          │
+│     └─ tenants.stripe_customer_id 저장                │
+│     └─ tenants.stripe_subscription_id 저장            │
+│                                                      │
+│  2. 기본 설정 생성                                    │
+│     └─ catalog_configuration에 테넌트별 기본값         │
+│        ├─ embedding_provider: "local"                 │
+│        ├─ cors_origins: "https://{slug}.catalog..." │
+│        └─ ...                                        │
+│                                                      │
+│  3. S3 경로 준비                                      │
+│     └─ s3://catalog-artifacts/{tenant_id}/            │
+│                                                      │
+│  4. 환영 이메일 발송 (SES)                             │
+│     └─ 로그인 URL, 시작 가이드 링크 포함               │
+│                                                      │
+│  5. 사용량 레코드 초기화                               │
+│     └─ tenant_usage (이번 달, 모든 카운터 0)           │
+└──────────────────────────────────────────────────────┘
+```
+
+```python
+# Webhook 처리
+async def handle_checkout_completed(data: dict, db: AsyncSession):
+    tenant_id = data["metadata"]["tenant_id"]
+    customer_id = data["customer"]
+    subscription_id = data["subscription"]
+
+    # 1. 테넌트 활성화
+    tenant = await db.get(Tenant, tenant_id)
+    tenant.status = "active"
+    tenant.stripe_customer_id = customer_id
+    tenant.stripe_subscription_id = subscription_id
+
+    # 2. 기본 설정 생성
+    await create_default_configurations(tenant, db)
+
+    # 3. 사용량 초기화
+    usage = TenantUsage(tenant_id=tenant.id, month=date.today().replace(day=1))
+    db.add(usage)
+    await db.commit()
+
+    # 4. 환영 이메일
+    await send_welcome_email(tenant)
+```
+
+### 14.6 ⑤ 초기 설정 (고객이 직접)
+
+고객이 환영 이메일의 링크를 클릭하면 초기 설정 위저드가 시작됩니다.
+
+```
+로그인 (이메일 + 비밀번호)
+    │
+    ▼
+┌──────────────────────────────────────────────────────┐
+│  Step 1: 데이터 플랫폼 등록                            │
+│                                                      │
+│  "분석할 데이터베이스를 연결하세요"                      │
+│                                                      │
+│  플랫폼 종류: [PostgreSQL ▼]                          │
+│  호스트:      [db.abc-company.com ]                   │
+│  포트:        [5432               ]                   │
+│  데이터베이스: [analytics          ]                   │
+│  사용자:      [readonly           ]                   │
+│  비밀번호:    [••••••••           ]                   │
+│                                                      │
+│  [연결 테스트]  [다음 →]                               │
+└──────────────────────────────────────────────────────┘
+    │
+    ▼
+┌──────────────────────────────────────────────────────┐
+│  Step 2: 메타데이터 동기화                             │
+│                                                      │
+│  "등록된 플랫폼에서 테이블/컬럼 정보를 수집합니다"       │
+│                                                      │
+│  ✅ PostgreSQL (db.abc-company.com)                   │
+│     └─ [동기화 실행]                                  │
+│                                                      │
+│  동기화 진행 중... ████████░░ 80%                     │
+│  발견된 테이블: 47개, 컬럼: 312개                      │
+│                                                      │
+│  [다음 →]                                            │
+└──────────────────────────────────────────────────────┘
+    │
+    ▼
+┌──────────────────────────────────────────────────────┐
+│  Step 3: 팀원 초대 (선택)                              │
+│                                                      │
+│  "팀원을 초대하세요 (Starter 플랜: 최대 5명)"           │
+│                                                      │
+│  이메일: [colleague@abc.co.kr] [초대]                 │
+│                                                      │
+│  초대됨:                                             │
+│  ├─ park@abc.co.kr (대기 중)                          │
+│  └─ lee@abc.co.kr (대기 중)                           │
+│                                                      │
+│  [설정 완료 →]                                        │
+└──────────────────────────────────────────────────────┘
+    │
+    ▼
+  메인 대시보드 진입
+```
+
+### 14.7 ⑥ 일상 운영 (고객 사용)
+
+고객이 서비스를 사용하는 동안 시스템에서 일어나는 일들입니다.
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│  고객의 일상 사용                                               │
+│                                                               │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌─────────────┐  │
+│  │데이터셋   │  │리니지     │  │AI 생성    │  │ML 모델 등록  │  │
+│  │검색/조회  │  │탐색      │  │설명/태그  │  │MLflow 연동   │  │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └──────┬──────┘  │
+│       │              │              │               │         │
+│       ▼              ▼              ▼               ▼         │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │  모든 API 요청 처리 흐름                                 │  │
+│  │                                                        │  │
+│  │  Request                                               │  │
+│  │    │                                                   │  │
+│  │    ▼                                                   │  │
+│  │  Auth 미들웨어 ─── JWT 검증, tenant_id 추출             │  │
+│  │    │                                                   │  │
+│  │    ▼                                                   │  │
+│  │  Tenant 미들웨어 ─── tenant status 확인                 │  │
+│  │    │           (suspended면 402 Payment Required)       │  │
+│  │    ▼                                                   │  │
+│  │  Quota 체크 ─── 한도 초과 시 429 반환                    │  │
+│  │    │       "Plan limit exceeded, upgrade needed"        │  │
+│  │    ▼                                                   │  │
+│  │  비즈니스 로직 실행                                      │  │
+│  │    │                                                   │  │
+│  │    ▼                                                   │  │
+│  │  사용량 카운터 증가 (tenant_usage)                       │  │
+│  │    │                                                   │  │
+│  │    ▼                                                   │  │
+│  │  Response                                              │  │
+│  └────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────┘
+```
+
+#### 한도 접근 시 알림
+
+```
+사용량 80% 도달
+    │
+    ▼
+┌──────────────────────────────────────────────┐
+│  UI 알림 배너                                 │
+│                                              │
+│  ⚠ 데이터셋 등록이 400/500에 도달했습니다.     │
+│    플랜 업그레이드를 고려해 주세요.             │
+│    [업그레이드] [닫기]                         │
+└──────────────────────────────────────────────┘
+    │
+    ▼
+이메일 알림 발송 (SES)
+    │
+    ▼
+사용량 100% 도달 (Starter)
+    └─ 추가 생성 API 호출 시 429 반환
+       "Plan limit exceeded for datasets. Please upgrade your plan."
+
+사용량 100% 초과 (Pro)
+    └─ 계속 사용 가능, 초과분 월말 정산
+```
+
+### 14.8 ⑦ 월간 정산 사이클
+
+매월 자동으로 처리됩니다.
+
+```
+매월 1일 00:00 UTC
+    │
+    ▼
+┌──────────────────────────────────────────────────────────┐
+│  자동 정산 프로세스                                        │
+│                                                          │
+│  1. Stripe 자동 결제 (구독 갱신)                           │
+│     └─ Starter: $99 / Pro: $299 자동 청구                 │
+│     └─ 결제 성공 → invoice.paid Webhook                   │
+│     └─ 결제 실패 → invoice.payment_failed Webhook         │
+│                                                          │
+│  2. 초과 사용량 정산 (billing_cron.py)                     │
+│     ├─ 지난 달 tenant_usage 집계                          │
+│     ├─ Pro 플랜: 한도 초과분 × 단가 계산                   │
+│     │   예) 데이터셋 5,200개 (한도 5,000)                  │
+│     │       → 200 × $0.02 = $4.00 추가 청구               │
+│     └─ Stripe InvoiceItem 생성 → 다음 Invoice에 합산      │
+│                                                          │
+│  3. 사용량 카운터 리셋                                     │
+│     └─ 새 월의 tenant_usage 레코드 생성 (모든 카운터 0)     │
+│                                                          │
+│  4. billing_history 기록                                  │
+│     └─ tenant_id, month, plan, base_amount, overage, total│
+└──────────────────────────────────────────────────────────┘
+```
+
+#### 결제 실패 처리 흐름
+
+```
+1차 결제 실패 (D+0)
+    │  Stripe가 자동 재시도 스케줄 시작
+    │  고객에게 "결제 실패" 이메일 발송
+    │
+    ▼
+2차 재시도 (D+3)
+    │  실패 시 추가 이메일
+    │
+    ▼
+3차 재시도 (D+5)
+    │  실패 시 추가 이메일
+    │
+    ▼
+최종 실패 (D+7)
+    │
+    ▼
+Webhook: invoice.payment_failed (final)
+    │
+    ▼
+서버 처리:
+    ├─ tenants.status → "suspended"
+    ├─ 고객 로그인 시 "결제 업데이트 필요" 안내 페이지 표시
+    ├─ API 호출 시 402 Payment Required 반환
+    └─ 데이터는 보존 (삭제하지 않음)
+         │
+         ▼
+    고객이 카드 정보 업데이트 → Stripe Customer Portal
+         │
+         ▼
+    결제 성공 → Webhook → tenants.status → "active" 복구
+```
+
+### 14.9 ⑧ 플랜 변경 / 해지
+
+#### 플랜 업그레이드
+
+```
+고객: 설정 → 구독 관리 → "Pro로 업그레이드"
+    │
+    ▼
+┌──────────────────────────────────────────────────┐
+│  업그레이드 확인                                   │
+│                                                  │
+│  현재: Starter ($99/월)                           │
+│  변경: Pro ($299/월)                              │
+│                                                  │
+│  즉시 적용 사항:                                   │
+│  ├─ 사용자 한도: 5 → 20명                         │
+│  ├─ 플랫폼 한도: 3 → 10개                         │
+│  ├─ 데이터셋 한도: 500 → 5,000개                   │
+│  └─ AI 생성 한도: 100 → 1,000회                   │
+│                                                  │
+│  요금: 이번 달은 일할 계산 적용                     │
+│                                                  │
+│  [업그레이드 확인]  [취소]                          │
+└──────────────────────────────────────────────────┘
+    │
+    ▼
+서버 처리:
+    ├─ Stripe Subscription 업데이트 (proration 자동 계산)
+    ├─ tenants.plan → "pro"
+    ├─ tenants.max_* 한도 즉시 변경
+    └─ 확인 이메일 발송
+```
+
+#### 서비스 해지
+
+```
+고객: 설정 → 구독 관리 → "구독 해지"
+    │
+    ▼
+┌──────────────────────────────────────────────────┐
+│  해지 확인                                        │
+│                                                  │
+│  ⚠ 정말 해지하시겠습니까?                          │
+│                                                  │
+│  현재 구독 기간: 2026-03-01 ~ 2026-03-31          │
+│  해지 시점: 현재 구독 기간 종료 후 (2026-03-31)     │
+│                                                  │
+│  해지 후:                                         │
+│  ├─ 서비스 접근이 중단됩니다                        │
+│  ├─ 데이터는 30일간 보존됩니다                      │
+│  └─ 30일 내 재가입 시 데이터 복구 가능              │
+│                                                  │
+│  해지 사유: [서비스가 필요 없어졌습니다 ▼]           │
+│                                                  │
+│  [해지 확인]  [돌아가기]                            │
+└──────────────────────────────────────────────────┘
+    │
+    ▼
+서버 처리:
+    │
+    ├─ Stripe: cancel_at_period_end = True
+    │  (현재 기간 끝까지는 정상 사용 가능)
+    │
+    ▼ 구독 기간 종료 (D+0)
+    │
+    ├─ Webhook: customer.subscription.deleted
+    ├─ tenants.status → "cancelled"
+    ├─ API 접근 차단, 로그인 차단
+    ├─ "서비스 종료" 이메일 발송
+    │  └─ "30일 내 재가입하면 데이터를 복구할 수 있습니다"
+    │
+    ▼ 유예 기간 (D+30)
+    │
+    ├─ 데이터 삭제 크론 실행
+    │  ├─ 해당 tenant_id의 모든 DB 레코드 삭제
+    │  ├─ S3 아티팩트 삭제 (s3://artifacts/{tenant_id}/)
+    │  └─ tenants.status → "deleted"
+    │
+    ▼ 완전 삭제 완료
+```
+
+### 14.10 전체 타임라인 요약
+
+```
+시간           이벤트                          시스템 처리
+──────────────────────────────────────────────────────────────
+T+0s          고객이 가입 폼 제출               tenant 생성 (pending)
+T+30s         Stripe Checkout 결제 완료
+T+31s         Webhook 수신                     tenant 활성화 + 프로비저닝
+T+32s         환영 이메일 발송                  SES
+T+1m          고객 첫 로그인                    초기 설정 위저드 시작
+T+5m          플랫폼 등록 + 동기화 실행          메타데이터 수집
+T+10m         대시보드에서 데이터 탐색 시작       정상 운영
+
+Day 1~30      일상 사용                        사용량 카운터 누적
+Day 25        사용량 80% 도달                   경고 이메일 + UI 배너
+Day 30        월말                             Stripe 자동 결제 + 초과 정산
+
+Month 2~      반복                             매월 자동 결제 사이클
+Month N       해지 요청                         기간 만료까지 사용
+Month N+1     구독 종료                         서비스 차단 + 30일 유예
+Month N+2     유예 만료                         데이터 완전 삭제
+```
+
+---
+
 ## 부록: 설정 변경 요약
 
 기존 argus-catalog-server 코드에서 SaaS 전환 시 변경이 필요한 영역:
