@@ -1,9 +1,10 @@
-"""Thread-safe LRU cache with TTL expiration for external metadata API.
+"""Thread-safe LRU cache with TTL expiration for external APIs.
 
 Features:
 - Configurable max size (LRU eviction when full)
 - Per-entry TTL expiration (monotonic clock)
 - Async-safe via asyncio.Lock
+- String keys for multi-purpose caching (e.g. "metadata:42", "avro:42")
 - Hit/miss statistics for monitoring
 """
 
@@ -26,16 +27,17 @@ class CacheEntry:
 
 
 class MetadataCache:
-    """Async-safe LRU cache with TTL for dataset metadata.
+    """Async-safe LRU cache with TTL.
 
-    Thread safety is provided by asyncio.Lock which serializes
-    concurrent access within the async event loop.
+    Keys are strings to support multiple data types:
+    - "metadata:{dataset_id}" for dataset metadata
+    - "avro:{dataset_id}" for Avro schema
     """
 
     def __init__(self, max_size: int = 1000, ttl_seconds: int = 300) -> None:
         self._max_size = max_size
         self._ttl_seconds = ttl_seconds
-        self._cache: OrderedDict[int, CacheEntry] = OrderedDict()
+        self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
         self._lock = asyncio.Lock()
         self._hits = 0
         self._misses = 0
@@ -48,52 +50,58 @@ class MetadataCache:
     def ttl_seconds(self) -> int:
         return self._ttl_seconds
 
-    async def get(self, dataset_id: int) -> dict | None:
-        """Get cached metadata. Returns None on miss or expiration."""
+    async def get(self, key: str) -> dict | None:
+        """Get cached data. Returns None on miss or expiration."""
         async with self._lock:
-            entry = self._cache.get(dataset_id)
+            entry = self._cache.get(key)
             if entry is None:
                 self._misses += 1
                 return None
 
-            # Check TTL
             elapsed = time.monotonic() - entry.created_at
             if elapsed > self._ttl_seconds:
-                del self._cache[dataset_id]
+                del self._cache[key]
                 self._misses += 1
-                logger.debug("Cache expired: dataset_id=%d (%.1fs)", dataset_id, elapsed)
+                logger.debug("Cache expired: key=%s (%.1fs)", key, elapsed)
                 return None
 
-            # LRU: move to end (most recently used)
-            self._cache.move_to_end(dataset_id)
+            self._cache.move_to_end(key)
             entry.hit_count += 1
             self._hits += 1
             return entry.data
 
-    async def put(self, dataset_id: int, data: dict) -> None:
-        """Store metadata in cache. Evicts LRU entry if at capacity."""
+    async def put(self, key: str, data: dict) -> None:
+        """Store data in cache. Evicts LRU entry if at capacity."""
         async with self._lock:
-            # Update existing
-            if dataset_id in self._cache:
-                self._cache[dataset_id] = CacheEntry(data=data, created_at=time.monotonic())
-                self._cache.move_to_end(dataset_id)
+            if key in self._cache:
+                self._cache[key] = CacheEntry(data=data, created_at=time.monotonic())
+                self._cache.move_to_end(key)
                 return
 
-            # Evict LRU if full
             while len(self._cache) >= self._max_size:
                 evicted_key, _ = self._cache.popitem(last=False)
-                logger.debug("Cache LRU eviction: dataset_id=%d", evicted_key)
+                logger.debug("Cache LRU eviction: key=%s", evicted_key)
 
-            self._cache[dataset_id] = CacheEntry(data=data, created_at=time.monotonic())
+            self._cache[key] = CacheEntry(data=data, created_at=time.monotonic())
 
-    async def invalidate(self, dataset_id: int) -> bool:
+    async def invalidate(self, key: str) -> bool:
         """Remove a specific entry. Returns True if found and removed."""
         async with self._lock:
-            if dataset_id in self._cache:
-                del self._cache[dataset_id]
-                logger.debug("Cache invalidated: dataset_id=%d", dataset_id)
+            if key in self._cache:
+                del self._cache[key]
+                logger.debug("Cache invalidated: key=%s", key)
                 return True
             return False
+
+    async def invalidate_prefix(self, prefix: str) -> int:
+        """Remove all entries whose key starts with prefix. Returns count."""
+        async with self._lock:
+            keys_to_remove = [k for k in self._cache if k.startswith(prefix)]
+            for k in keys_to_remove:
+                del self._cache[k]
+            if keys_to_remove:
+                logger.debug("Cache invalidated %d keys prefix=%s", len(keys_to_remove), prefix)
+            return len(keys_to_remove)
 
     async def clear(self) -> int:
         """Clear all entries. Returns count of removed entries."""
@@ -128,7 +136,6 @@ class MetadataCache:
         async with self._lock:
             if max_size is not None:
                 self._max_size = max_size
-                # Evict excess entries
                 while len(self._cache) > self._max_size:
                     self._cache.popitem(last=False)
 

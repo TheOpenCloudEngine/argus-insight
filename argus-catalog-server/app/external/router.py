@@ -1,4 +1,4 @@
-"""External metadata API — cached dataset metadata for external systems."""
+"""External API — cached dataset metadata and Avro schema for external systems."""
 
 import logging
 
@@ -10,10 +10,15 @@ from app.core.config import settings
 from app.core.database import get_session
 from app.external.cache import get_cache
 from app.external.schemas import CacheConfigResponse, CacheConfigUpdate
-from app.external.service import get_dataset_metadata
+from app.external.service import get_dataset_avro_schema, get_dataset_metadata
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/external", tags=["external"])
+
+
+# ---------------------------------------------------------------------------
+# Dataset Metadata
+# ---------------------------------------------------------------------------
 
 
 @router.get("/datasets/{dataset_id}/metadata")
@@ -23,10 +28,7 @@ async def get_metadata(
     user: OptionalUser = None,
     session: AsyncSession = Depends(get_session),
 ):
-    """Get dataset metadata JSON for external systems.
-
-    Returns cached data when available. Use no_cache=true to force DB fetch.
-    """
+    """Get dataset metadata JSON for external systems."""
     if not settings.cache_enabled and not no_cache:
         no_cache = True
 
@@ -36,20 +38,54 @@ async def get_metadata(
     return result
 
 
+# ---------------------------------------------------------------------------
+# Avro Schema
+# ---------------------------------------------------------------------------
+
+
+@router.get("/datasets/{dataset_id}/avro-schema")
+async def get_avro_schema(
+    dataset_id: int,
+    no_cache: bool = Query(False, description="Bypass cache"),
+    user: OptionalUser = None,
+    session: AsyncSession = Depends(get_session),
+):
+    """Get Avro schema for a dataset.
+
+    Converts catalog schema to Apache Avro format with:
+    - Native type → Avro type mapping
+    - Nullable fields as union ["null", type]
+    - Logical types (decimal, date, timestamp-millis, uuid)
+    - PII and primary_key metadata annotations
+    """
+    if not settings.cache_enabled and not no_cache:
+        no_cache = True
+
+    result = await get_dataset_avro_schema(session, dataset_id, no_cache=no_cache)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Cache Management
+# ---------------------------------------------------------------------------
+
+
 @router.delete("/datasets/{dataset_id}/cache")
 async def invalidate_cache_entry(
     dataset_id: int,
     user: OptionalUser = None,
 ):
-    """Invalidate cached metadata for a specific dataset."""
+    """Invalidate all cached data (metadata + avro) for a dataset."""
     cache = get_cache()
-    removed = await cache.invalidate(dataset_id)
-    return {"invalidated": removed, "dataset_id": dataset_id}
+    count = await cache.invalidate(f"metadata:{dataset_id}")
+    count += await cache.invalidate(f"avro:{dataset_id}")
+    return {"invalidated": count, "dataset_id": dataset_id}
 
 
 @router.delete("/cache")
 async def clear_cache(user: OptionalUser = None):
-    """Clear all cached metadata."""
     cache = get_cache()
     count = await cache.clear()
     return {"cleared": count}
@@ -57,14 +93,12 @@ async def clear_cache(user: OptionalUser = None):
 
 @router.get("/cache/stats")
 async def cache_stats(user: OptionalUser = None):
-    """Get cache statistics: size, hit rate, etc."""
     cache = get_cache()
     return await cache.stats()
 
 
 @router.get("/cache/config", response_model=CacheConfigResponse)
 async def get_cache_config(user: OptionalUser = None):
-    """Get current cache configuration."""
     cache = get_cache()
     return CacheConfigResponse(
         max_size=cache.max_size,
@@ -75,17 +109,11 @@ async def get_cache_config(user: OptionalUser = None):
 
 
 @router.put("/cache/config", response_model=CacheConfigResponse)
-async def update_cache_config(
-    body: CacheConfigUpdate,
-    user: CurrentUser = None,
-):
-    """Update cache configuration (max_size, ttl, enabled)."""
-    # Update runtime settings
+async def update_cache_config(body: CacheConfigUpdate, user: CurrentUser = None):
     settings.cache_max_size = body.max_size
     settings.cache_ttl_seconds = body.ttl_seconds
     settings.cache_enabled = body.enabled
 
-    # Reconfigure the live cache
     cache = get_cache()
     await cache.reconfigure(max_size=body.max_size, ttl_seconds=body.ttl_seconds)
 
@@ -95,7 +123,6 @@ async def update_cache_config(
         body.ttl_seconds,
         body.enabled,
     )
-
     return CacheConfigResponse(
         max_size=body.max_size,
         ttl_seconds=body.ttl_seconds,
