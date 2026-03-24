@@ -23,7 +23,7 @@ cors:
 
 # Added for SSO AUTH - Keycloak OIDC settings
 auth:
-  type: ${auth.type:keycloak}
+  type: ${auth.type:local}
   keycloak:
     server_url: ${auth.keycloak.server_url:http://localhost:8180}
     realm: ${auth.keycloak.realm:argus}
