@@ -13,23 +13,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import __version__
 from app.ai.router import router as ai_router
 from app.alert.router import router as alert_router
+from app.auth.router import router as auth_router  # Added for SSO AUTH
 from app.catalog.router import router as catalog_router
 from app.comments.router import router as comments_router
-from app.filesystemmgr.router import router as filesystem_router
-from app.models.router import router as models_router
-from app.models.store_router import router as model_store_router
-from app.oci_hub.router import router as oci_hub_router
-from app.models.uc_compat import router as uc_compat_router
-from app.quality.router import router as quality_router
-from app.search.router import router as search_router
-from app.standard.router import router as standard_router
-from app.settings.router import router as settings_router
-from app.usermgr.router import router as usermgr_router
-from app.auth.router import router as auth_router  # Added for SSO AUTH
 from app.core.config import settings
 from app.core.database import Base, close_database, engine, init_database
 from app.core.logging import setup_logging
 from app.core.security import SecurityHeadersMiddleware
+from app.external.router import router as external_router
+from app.filesystemmgr.router import router as filesystem_router
+from app.models.router import router as models_router
+from app.models.store_router import router as model_store_router
+from app.models.uc_compat import router as uc_compat_router
+from app.oci_hub.router import router as oci_hub_router
+from app.quality.router import router as quality_router
+from app.search.router import router as search_router
+from app.settings.router import router as settings_router
+from app.standard.router import router as standard_router
+from app.usermgr.router import router as usermgr_router
 
 logger = logging.getLogger(__name__)
 _start_time: float = 0.0
@@ -61,12 +62,12 @@ async def lifespan(app: FastAPI):
     logger.info("Catalog Server %s starting", __version__)
     await init_database()
 
+    import app.ai.models  # noqa: F401
     import app.catalog.models  # noqa: F401
     import app.comments.models  # noqa: F401
+    import app.embedding.models  # noqa: F401
     import app.models.models  # noqa: F401
     import app.oci_hub.models  # noqa: F401
-    import app.ai.models  # noqa: F401
-    import app.embedding.models  # noqa: F401
     import app.settings.models  # noqa: F401
     import app.usermgr.models  # noqa: F401
 
@@ -75,13 +76,17 @@ async def lifespan(app: FastAPI):
     logger.info("Database tables verified")
 
     # Seed default data
+    from app.catalog.service import seed_platform_metadata, seed_platforms
     from app.core.database import async_session
-    from app.catalog.service import seed_platforms, seed_platform_metadata
     from app.settings.service import (
-        seed_configuration, load_os_settings, load_embedding_settings,
-        load_llm_settings, load_auth_settings, load_cors_settings,
+        load_auth_settings,
+        load_cors_settings,
+        load_embedding_settings,
+        load_llm_settings,
+        load_os_settings,
+        seed_configuration,
     )
-    from app.usermgr.service import seed_roles, seed_admin_user
+    from app.usermgr.service import seed_admin_user, seed_roles
 
     async with async_session() as session:
         await seed_platforms(session)
@@ -104,8 +109,8 @@ async def lifespan(app: FastAPI):
         logger.warning("S3 bucket check skipped (MinIO may not be available): %s", e)
 
     yield
-    from app.embedding.registry import shutdown_provider as shutdown_embedding
     from app.ai.registry import shutdown_provider as shutdown_llm
+    from app.embedding.registry import shutdown_provider as shutdown_embedding
     await shutdown_embedding()
     await shutdown_llm()
     await close_database()
@@ -169,6 +174,7 @@ app.include_router(usermgr_router, prefix="/api/v1")
 app.include_router(ai_router, prefix="/api/v1")
 app.include_router(alert_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")  # Added for SSO AUTH
+app.include_router(external_router, prefix="/api/v1")
 
 
 @app.get("/health")

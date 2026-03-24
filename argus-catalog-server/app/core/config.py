@@ -72,7 +72,7 @@ class Settings:
         self.db_echo: bool = _to_bool(_get("database", "echo", False))
 
         # Added for SSO AUTH - Keycloak OIDC configuration
-        self.auth_type: str = _get("auth", "type", "keycloak")
+        self.auth_type: str = _get("auth", "type", "local")
         self.auth_keycloak_server_url: str = _get_nested("auth", "keycloak", "server_url", "http://localhost:8180")
         self.auth_keycloak_realm: str = _get_nested("auth", "keycloak", "realm", "argus")
         self.auth_keycloak_client_id: str = _get_nested("auth", "keycloak", "client_id", "argus-client")
@@ -89,6 +89,11 @@ class Settings:
         self.os_use_ssl: bool = False
         self.os_bucket: str = "model-artifacts"
         self.os_presigned_url_expiry: int = 3600
+
+        # External API Cache
+        self.cache_max_size: int = int(_get_nested("external", "cache", "max_size", 1000))
+        self.cache_ttl_seconds: int = int(_get_nested("external", "cache", "ttl_seconds", 300))
+        self.cache_enabled: bool = _to_bool(_get_nested("external", "cache", "enabled", True))
 
 
 def init_settings(

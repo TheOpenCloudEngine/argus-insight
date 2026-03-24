@@ -7,6 +7,7 @@ import { EmbeddingSettings } from "@/features/settings/embedding-settings"
 import { LLMSettings } from "@/features/settings/llm-settings"
 import { AuthSettings } from "@/features/settings/auth-settings"
 import { CorsSettings } from "@/features/settings/cors-settings"
+import { CacheSettings } from "@/features/settings/cache-settings"
 
 export default function SettingsPage() {
   return (
@@ -20,6 +21,7 @@ export default function SettingsPage() {
             <TabsTrigger value="oci-model-registry">OCI Model Registry</TabsTrigger>
             <TabsTrigger value="embedding">Embedding</TabsTrigger>
             <TabsTrigger value="llm">LLM / AI</TabsTrigger>
+            <TabsTrigger value="cache">Cache</TabsTrigger>
           </TabsList>
           <TabsContent value="auth" className="mt-4">
             <AuthSettings />
@@ -35,6 +37,9 @@ export default function SettingsPage() {
           </TabsContent>
           <TabsContent value="llm" className="mt-4">
             <LLMSettings />
+          </TabsContent>
+          <TabsContent value="cache" className="mt-4">
+            <CacheSettings />
           </TabsContent>
         </Tabs>
       </div>

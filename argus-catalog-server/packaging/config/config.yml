@@ -23,7 +23,7 @@ cors:
 
 # Added for SSO AUTH - Keycloak OIDC settings
 auth:
-  type: ${auth.type:keycloak}
+  type: ${auth.type:local}
   keycloak:
     server_url: ${auth.keycloak.server_url:http://localhost:8180}
     realm: ${auth.keycloak.realm:argus}
@@ -45,3 +45,9 @@ database:
     max_overflow: ${db.pool.max_overflow:10}
     recycle: ${db.pool.recycle:3600}
   echo: ${db.echo:false}
+
+external:
+  cache:
+    max_size: 1000
+    ttl_seconds: 300
+    enabled: true

@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Database, FileText, Layers, CheckCircle, AlertCircle } from "lucide-react";
+import {
+  Database,
+  FileText,
+  Layers,
+  CheckCircle,
+  Percent,
+  AlertCircle,
+} from "lucide-react";
 import { fetchStats, type DashboardStats } from "@/lib/api";
 
 export default function DashboardPage() {
@@ -14,106 +21,120 @@ export default function DashboardPage() {
 
   if (error) {
     return (
-      <div className="text-red-600">
-        <AlertCircle className="inline h-5 w-5 mr-2" />
+      <div className="flex items-center gap-2 text-[var(--destructive)] p-4">
+        <AlertCircle className="h-5 w-5" />
         Failed to load dashboard: {error}
       </div>
     );
   }
 
   if (!stats) {
-    return <div className="text-gray-500">Loading...</div>;
+    return (
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div
+            key={i}
+            className="h-24 animate-pulse rounded-[var(--radius)] bg-[var(--muted)]"
+          />
+        ))}
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">RAG Dashboard</h1>
-
-      {/* Stats cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* Stats cards — catalog-ui Card style */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
-          icon={<Database className="h-5 w-5 text-blue-600" />}
+          icon={<Database className="h-4 w-4" />}
           label="Collections"
           value={stats.total_collections}
+          color="text-blue-500"
         />
         <StatCard
-          icon={<FileText className="h-5 w-5 text-green-600" />}
+          icon={<FileText className="h-4 w-4" />}
           label="Documents"
-          value={stats.total_documents}
+          value={stats.total_documents.toLocaleString()}
+          color="text-emerald-500"
         />
         <StatCard
-          icon={<Layers className="h-5 w-5 text-purple-600" />}
+          icon={<Layers className="h-4 w-4" />}
           label="Chunks"
-          value={stats.total_chunks}
+          value={stats.total_chunks.toLocaleString()}
+          color="text-violet-500"
         />
         <StatCard
-          icon={<CheckCircle className="h-5 w-5 text-emerald-600" />}
+          icon={<CheckCircle className="h-4 w-4" />}
           label="Embedded"
-          value={stats.embedded_chunks}
+          value={stats.embedded_chunks.toLocaleString()}
+          color="text-teal-500"
         />
         <StatCard
-          icon={<CheckCircle className="h-5 w-5 text-amber-600" />}
+          icon={<Percent className="h-4 w-4" />}
           label="Coverage"
           value={`${stats.coverage_pct}%`}
+          color="text-amber-500"
         />
       </div>
 
-      {/* Embedding info */}
-      <div className="bg-gray-50 rounded-lg p-4">
-        <h2 className="text-sm font-medium text-gray-500 mb-2">Embedding Model</h2>
-        <p className="text-lg font-semibold">
+      {/* Embedding model info card */}
+      <div
+        className="rounded-[var(--radius)] border p-4"
+        style={{ background: "var(--card)", color: "var(--card-foreground)" }}
+      >
+        <div className="text-xs font-medium uppercase tracking-wider text-[var(--muted-foreground)] mb-1">
+          Embedding Model
+        </div>
+        <div className="text-lg font-semibold">
           {stats.embedding_model || "Not configured"}
-          <span className="text-sm font-normal text-gray-500 ml-2">
+          <span className="text-sm font-normal text-[var(--muted-foreground)] ml-2">
             ({stats.embedding_provider || "none"})
           </span>
-        </p>
+        </div>
       </div>
 
       {/* Recent jobs */}
-      <div>
-        <h2 className="text-lg font-semibold mb-3">Recent Jobs</h2>
-        {stats.recent_jobs.length === 0 ? (
-          <p className="text-gray-500 text-sm">No recent jobs</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="text-gray-500 border-b">
-              <tr>
-                <th className="text-left py-2">ID</th>
-                <th className="text-left py-2">Type</th>
-                <th className="text-left py-2">Status</th>
-                <th className="text-right py-2">Items</th>
-                <th className="text-right py-2">Started</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stats.recent_jobs.map((job) => (
-                <tr key={job.id} className="border-b">
-                  <td className="py-2">{job.id}</td>
-                  <td className="py-2">{job.job_type}</td>
-                  <td className="py-2">
-                    <span
-                      className={`px-2 py-0.5 rounded text-xs ${
-                        job.status === "completed"
-                          ? "bg-green-100 text-green-800"
-                          : job.status === "failed"
-                            ? "bg-red-100 text-red-800"
-                            : "bg-yellow-100 text-yellow-800"
-                      }`}
-                    >
-                      {job.status}
-                    </span>
-                  </td>
-                  <td className="py-2 text-right">
-                    {job.processed_items}/{job.total_items}
-                  </td>
-                  <td className="py-2 text-right text-gray-500">
-                    {new Date(job.started_at).toLocaleString()}
-                  </td>
+      <div
+        className="rounded-[var(--radius)] border"
+        style={{ background: "var(--card)" }}
+      >
+        <div className="px-4 py-3 border-b">
+          <h2 className="text-sm font-semibold">Recent Jobs</h2>
+        </div>
+        <div className="p-4">
+          {stats.recent_jobs.length === 0 ? (
+            <p className="text-sm text-[var(--muted-foreground)]">No recent jobs</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-[var(--muted-foreground)] text-xs uppercase tracking-wider">
+                  <th className="text-left py-2 font-medium">ID</th>
+                  <th className="text-left py-2 font-medium">Type</th>
+                  <th className="text-left py-2 font-medium">Status</th>
+                  <th className="text-right py-2 font-medium">Items</th>
+                  <th className="text-right py-2 font-medium">Started</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+              </thead>
+              <tbody>
+                {stats.recent_jobs.map((job) => (
+                  <tr key={job.id} className="border-t border-[var(--border)]">
+                    <td className="py-2.5">{job.id}</td>
+                    <td className="py-2.5">{job.job_type}</td>
+                    <td className="py-2.5">
+                      <StatusBadge status={job.status} />
+                    </td>
+                    <td className="py-2.5 text-right">
+                      {job.processed_items}/{job.total_items}
+                    </td>
+                    <td className="py-2.5 text-right text-[var(--muted-foreground)] text-xs">
+                      {new Date(job.started_at).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -123,18 +144,40 @@ function StatCard({
   icon,
   label,
   value,
+  color,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | number;
+  color: string;
 }) {
   return (
-    <div className="bg-white rounded-lg border p-4">
-      <div className="flex items-center gap-2 mb-1">
-        {icon}
-        <span className="text-sm text-gray-500">{label}</span>
+    <div
+      className="rounded-[var(--radius)] border p-4"
+      style={{ background: "var(--card)" }}
+    >
+      <div className="flex items-center gap-1.5 mb-2">
+        <span className={color}>{icon}</span>
+        <span className="text-xs font-medium text-[var(--muted-foreground)]">
+          {label}
+        </span>
       </div>
-      <p className="text-2xl font-bold">{value}</p>
+      <div className="text-2xl font-bold">{value}</div>
     </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    failed: "bg-red-50 text-red-700 border-red-200",
+    running: "bg-amber-50 text-amber-700 border-amber-200",
+  };
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${styles[status] || "bg-gray-50 text-gray-700 border-gray-200"}`}
+    >
+      {status}
+    </span>
   );
 }
