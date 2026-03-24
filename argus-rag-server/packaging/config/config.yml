@@ -1,0 +1,57 @@
+app:
+  name: argus-rag-server
+  version: "0.1.0"
+  debug: false
+
+server:
+  host: "0.0.0.0"
+  port: 4800
+
+logging:
+  level: INFO
+  dir: logs
+  filename: argus-rag-server.log
+  rolling:
+    type: daily
+    backup_count: 30
+
+database:
+  type: postgresql
+  host: "${db.host:localhost}"
+  port: "${db.port:5432}"
+  name: "${db.name:argus_rag}"
+  username: "${db.username:argus}"
+  password: "${db.password:argus}"
+  pool:
+    size: 5
+    max_overflow: 10
+    recycle: 3600
+  echo: false
+
+embedding:
+  provider: "local"
+  model: "paraphrase-multilingual-MiniLM-L12-v2"
+  api_key: ""
+  api_url: ""
+  dimension: 384
+
+chunking:
+  default_strategy: "paragraph"
+  max_chunk_size: 512
+  min_chunk_size: 50
+  overlap: 50
+
+cors:
+  origins:
+    - "*"
+
+auth:
+  type: local
+  keycloak:
+    server_url: "http://localhost:8180"
+    realm: argus
+    client_id: argus-client
+    client_secret: argus-client-secret
+    admin_role: argus-admin
+    superuser_role: argus-superuser
+    user_role: argus-user
