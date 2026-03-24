@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Search as SearchIcon } from "lucide-react";
-import { searchHybrid, type SearchHit, type SearchResult } from "@/lib/api";
+import { searchHybrid, type SearchHit } from "@/lib/api";
 
 export default function SearchPlaygroundPage() {
   const [query, setQuery] = useState("");
@@ -20,121 +20,68 @@ export default function SearchPlaygroundPage() {
     const start = performance.now();
     try {
       const res = await searchHybrid({
-        q: query,
-        threshold,
-        keyword_weight: kwWeight,
-        semantic_weight: semWeight,
-        limit: 20,
+        q: query, threshold,
+        keyword_weight: kwWeight, semantic_weight: semWeight, limit: 20,
       });
       setResults(res.results);
       setTotal(res.total);
-    } catch {
-      setResults([]);
-      setTotal(0);
-    }
+    } catch { setResults([]); setTotal(0); }
     setElapsed(Math.round(performance.now() - start));
     setLoading(false);
   };
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Search Playground</h1>
-
       {/* Search bar */}
       <div className="flex gap-2">
         <div className="flex-1 relative">
-          <SearchIcon className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+          <SearchIcon className="absolute left-3 top-2.5 h-4 w-4 text-[var(--muted-foreground)]" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             placeholder="Search across all collections..."
-            className="w-full border rounded-md pl-10 pr-3 py-2 text-sm"
+            className="w-full rounded-[var(--radius)] border bg-transparent pl-10 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
           />
         </div>
         <button
           onClick={handleSearch}
           disabled={loading}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm disabled:opacity-50"
+          className="px-4 py-2 rounded-[var(--radius)] text-sm font-medium disabled:opacity-50"
+          style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}
         >
           {loading ? "Searching..." : "Search"}
         </button>
       </div>
 
       {/* Options */}
-      <div className="flex gap-4 text-xs text-gray-500">
-        <label>
-          Threshold:{" "}
-          <input
-            type="number"
-            step="0.1"
-            min="0"
-            max="1"
-            value={threshold}
-            onChange={(e) => setThreshold(Number(e.target.value))}
-            className="w-16 border rounded px-1 py-0.5"
-          />
-        </label>
-        <label>
-          Keyword weight:{" "}
-          <input
-            type="number"
-            step="0.1"
-            min="0"
-            max="1"
-            value={kwWeight}
-            onChange={(e) => setKwWeight(Number(e.target.value))}
-            className="w-16 border rounded px-1 py-0.5"
-          />
-        </label>
-        <label>
-          Semantic weight:{" "}
-          <input
-            type="number"
-            step="0.1"
-            min="0"
-            max="1"
-            value={semWeight}
-            onChange={(e) => setSemWeight(Number(e.target.value))}
-            className="w-16 border rounded px-1 py-0.5"
-          />
-        </label>
+      <div className="flex gap-4 text-xs text-[var(--muted-foreground)]">
+        <label>Threshold: <input type="number" step="0.1" min="0" max="1" value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} className="w-16 rounded border bg-transparent px-1.5 py-0.5" /></label>
+        <label>Keyword: <input type="number" step="0.1" min="0" max="1" value={kwWeight} onChange={(e) => setKwWeight(Number(e.target.value))} className="w-16 rounded border bg-transparent px-1.5 py-0.5" /></label>
+        <label>Semantic: <input type="number" step="0.1" min="0" max="1" value={semWeight} onChange={(e) => setSemWeight(Number(e.target.value))} className="w-16 rounded border bg-transparent px-1.5 py-0.5" /></label>
       </div>
 
-      {/* Results */}
       {total > 0 && (
-        <p className="text-sm text-gray-500">
-          {total} results ({elapsed}ms)
-        </p>
+        <p className="text-sm text-[var(--muted-foreground)]">{total} results ({elapsed}ms)</p>
       )}
-      <div className="space-y-3">
+
+      {/* Results */}
+      <div className="space-y-2">
         {results.map((hit, idx) => (
-          <div key={idx} className="border rounded-lg p-4 space-y-1">
-            <div className="flex items-center justify-between">
+          <div key={idx} className="rounded-[var(--radius)] border p-4" style={{ background: "var(--card)" }}>
+            <div className="flex items-center justify-between mb-1.5">
               <div className="flex items-center gap-2">
-                <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
+                <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}>
                   {hit.collection_name}
                 </span>
-                <span className="font-medium text-sm">
-                  {hit.title || hit.external_id}
-                </span>
+                <span className="font-medium text-sm">{hit.title || hit.external_id}</span>
               </div>
-              <div className="flex items-center gap-2 text-xs text-gray-500">
-                <span
-                  className={`px-1.5 py-0.5 rounded ${
-                    hit.match_type === "hybrid"
-                      ? "bg-purple-100 text-purple-700"
-                      : hit.match_type === "semantic"
-                        ? "bg-green-100 text-green-700"
-                        : "bg-gray-100 text-gray-700"
-                  }`}
-                >
-                  {hit.match_type}
-                </span>
+              <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
+                <MatchBadge type={hit.match_type} />
                 <span className="font-mono">{hit.similarity.toFixed(4)}</span>
               </div>
             </div>
-            <p className="text-sm text-gray-600 whitespace-pre-wrap line-clamp-3">
+            <p className="text-sm text-[var(--muted-foreground)] whitespace-pre-wrap line-clamp-3">
               {hit.chunk_text}
             </p>
           </div>
@@ -142,4 +89,13 @@ export default function SearchPlaygroundPage() {
       </div>
     </div>
   );
+}
+
+function MatchBadge({ type }: { type: string }) {
+  const s: Record<string, string> = {
+    hybrid: "bg-violet-50 text-violet-700 border-violet-200",
+    semantic: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    keyword: "bg-gray-50 text-gray-600 border-gray-200",
+  };
+  return <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${s[type] || s.keyword}`}>{type}</span>;
 }

@@ -96,4 +96,8 @@ def _create_connector(source_type: str, config: dict):
     """Factory for data source connectors."""
     if source_type == "catalog_api":
         return CatalogConnector(config)
+    if source_type == "db_query":
+        from app.source.db_query_connector import DBQueryConnector
+
+        return DBQueryConnector(config)
     raise ValueError(f"Unsupported source type: {source_type}")

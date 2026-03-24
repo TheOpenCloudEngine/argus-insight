@@ -2,12 +2,9 @@
 
 import { useEffect, useState } from "react";
 import {
-  fetchEmbeddingSettings,
-  updateEmbeddingSettings,
-  fetchChunkingSettings,
-  updateChunkingSettings,
-  type EmbeddingSettings,
-  type ChunkingSettings,
+  fetchEmbeddingSettings, updateEmbeddingSettings,
+  fetchChunkingSettings, updateChunkingSettings,
+  type EmbeddingSettings, type ChunkingSettings,
 } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -18,143 +15,69 @@ export default function SettingsPage() {
   const [chunkForm, setChunkForm] = useState({ default_strategy: "", max_chunk_size: 512, min_chunk_size: 50, overlap: 50 });
 
   useEffect(() => {
-    fetchEmbeddingSettings().then((s) => {
-      setEmb(s);
-      setEmbForm({ provider: s.provider, model: s.model, api_key: "", api_url: s.api_url });
-    }).catch(() => {});
-    fetchChunkingSettings().then((s) => {
-      setChunk(s);
-      setChunkForm(s);
-    }).catch(() => {});
+    fetchEmbeddingSettings().then((s) => { setEmb(s); setEmbForm({ provider: s.provider, model: s.model, api_key: "", api_url: s.api_url }); }).catch(() => {});
+    fetchChunkingSettings().then((s) => { setChunk(s); setChunkForm(s); }).catch(() => {});
   }, []);
 
-  const saveEmbedding = async () => {
-    try {
-      const result = await updateEmbeddingSettings(embForm);
-      setEmb(result);
-      toast.success("Embedding settings saved");
-    } catch (e: any) {
-      toast.error(e.message);
-    }
+  const saveEmb = async () => {
+    try { const r = await updateEmbeddingSettings(embForm); setEmb(r); toast.success("Saved"); }
+    catch (e: any) { toast.error(e.message); }
+  };
+  const saveChunk = async () => {
+    try { const r = await updateChunkingSettings(chunkForm); setChunk(r); toast.success("Saved"); }
+    catch (e: any) { toast.error(e.message); }
   };
 
-  const saveChunking = async () => {
-    try {
-      const result = await updateChunkingSettings(chunkForm);
-      setChunk(result);
-      toast.success("Chunking settings saved");
-    } catch (e: any) {
-      toast.error(e.message);
-    }
-  };
+  const inputCls = "w-full rounded-[var(--radius)] border bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ring)]";
+  const labelCls = "text-xs font-medium text-[var(--muted-foreground)]";
 
   return (
     <div className="space-y-8 max-w-2xl">
-      <h1 className="text-2xl font-bold">Settings</h1>
-
       {/* Embedding */}
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Embedding Model</h2>
-        {emb && (
-          <p className="text-sm text-gray-500">
-            Current: {emb.provider} / {emb.model} ({emb.dimension}dim)
-          </p>
-        )}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-gray-500">Provider</label>
-            <select
-              value={embForm.provider}
-              onChange={(e) => setEmbForm({ ...embForm, provider: e.target.value })}
-              className="w-full border rounded px-3 py-2 text-sm"
-            >
-              <option value="local">Local (SentenceTransformer)</option>
-              <option value="openai">OpenAI</option>
-              <option value="ollama">Ollama</option>
-            </select>
+      <div className="rounded-[var(--radius)] border" style={{ background: "var(--card)" }}>
+        <div className="px-4 py-3 border-b"><h2 className="text-sm font-semibold">Embedding Model</h2></div>
+        <div className="p-4 space-y-3">
+          {emb && <p className="text-xs text-[var(--muted-foreground)]">Current: {emb.provider} / {emb.model} ({emb.dimension}dim)</p>}
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={labelCls}>Provider</label>
+              <select value={embForm.provider} onChange={(e) => setEmbForm({ ...embForm, provider: e.target.value })} className={inputCls}>
+                <option value="local">Local (SentenceTransformer)</option>
+                <option value="openai">OpenAI</option>
+                <option value="ollama">Ollama</option>
+              </select></div>
+            <div><label className={labelCls}>Model</label>
+              <input value={embForm.model} onChange={(e) => setEmbForm({ ...embForm, model: e.target.value })} className={inputCls} /></div>
+            <div><label className={labelCls}>API Key</label>
+              <input type="password" value={embForm.api_key} onChange={(e) => setEmbForm({ ...embForm, api_key: e.target.value })} className={inputCls} placeholder="Empty for local" /></div>
+            <div><label className={labelCls}>API URL</label>
+              <input value={embForm.api_url} onChange={(e) => setEmbForm({ ...embForm, api_url: e.target.value })} className={inputCls} placeholder="http://localhost:11434" /></div>
           </div>
-          <div>
-            <label className="text-xs text-gray-500">Model</label>
-            <input
-              value={embForm.model}
-              onChange={(e) => setEmbForm({ ...embForm, model: e.target.value })}
-              className="w-full border rounded px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">API Key</label>
-            <input
-              type="password"
-              value={embForm.api_key}
-              onChange={(e) => setEmbForm({ ...embForm, api_key: e.target.value })}
-              className="w-full border rounded px-3 py-2 text-sm"
-              placeholder="Empty for local/Ollama"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">API URL</label>
-            <input
-              value={embForm.api_url}
-              onChange={(e) => setEmbForm({ ...embForm, api_url: e.target.value })}
-              className="w-full border rounded px-3 py-2 text-sm"
-              placeholder="http://localhost:11434"
-            />
-          </div>
+          <button onClick={saveEmb} className="px-3 py-1.5 rounded-[var(--radius)] text-sm font-medium" style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}>Save</button>
         </div>
-        <button onClick={saveEmbedding} className="px-4 py-2 bg-blue-600 text-white rounded text-sm">
-          Save Embedding Settings
-        </button>
-      </section>
+      </div>
 
       {/* Chunking */}
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Default Chunking</h2>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-gray-500">Strategy</label>
-            <select
-              value={chunkForm.default_strategy}
-              onChange={(e) => setChunkForm({ ...chunkForm, default_strategy: e.target.value })}
-              className="w-full border rounded px-3 py-2 text-sm"
-            >
-              <option value="single">Single (no split)</option>
-              <option value="paragraph">Paragraph</option>
-              <option value="fixed">Fixed size</option>
-              <option value="sliding">Sliding window</option>
-            </select>
+      <div className="rounded-[var(--radius)] border" style={{ background: "var(--card)" }}>
+        <div className="px-4 py-3 border-b"><h2 className="text-sm font-semibold">Default Chunking</h2></div>
+        <div className="p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={labelCls}>Strategy</label>
+              <select value={chunkForm.default_strategy} onChange={(e) => setChunkForm({ ...chunkForm, default_strategy: e.target.value })} className={inputCls}>
+                <option value="single">Single</option>
+                <option value="paragraph">Paragraph</option>
+                <option value="fixed">Fixed size</option>
+                <option value="sliding">Sliding window</option>
+              </select></div>
+            <div><label className={labelCls}>Max Size</label>
+              <input type="number" value={chunkForm.max_chunk_size} onChange={(e) => setChunkForm({ ...chunkForm, max_chunk_size: Number(e.target.value) })} className={inputCls} /></div>
+            <div><label className={labelCls}>Min Size</label>
+              <input type="number" value={chunkForm.min_chunk_size} onChange={(e) => setChunkForm({ ...chunkForm, min_chunk_size: Number(e.target.value) })} className={inputCls} /></div>
+            <div><label className={labelCls}>Overlap</label>
+              <input type="number" value={chunkForm.overlap} onChange={(e) => setChunkForm({ ...chunkForm, overlap: Number(e.target.value) })} className={inputCls} /></div>
           </div>
-          <div>
-            <label className="text-xs text-gray-500">Max Chunk Size</label>
-            <input
-              type="number"
-              value={chunkForm.max_chunk_size}
-              onChange={(e) => setChunkForm({ ...chunkForm, max_chunk_size: Number(e.target.value) })}
-              className="w-full border rounded px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">Min Chunk Size</label>
-            <input
-              type="number"
-              value={chunkForm.min_chunk_size}
-              onChange={(e) => setChunkForm({ ...chunkForm, min_chunk_size: Number(e.target.value) })}
-              className="w-full border rounded px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500">Overlap</label>
-            <input
-              type="number"
-              value={chunkForm.overlap}
-              onChange={(e) => setChunkForm({ ...chunkForm, overlap: Number(e.target.value) })}
-              className="w-full border rounded px-3 py-2 text-sm"
-            />
-          </div>
+          <button onClick={saveChunk} className="px-3 py-1.5 rounded-[var(--radius)] text-sm font-medium" style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}>Save</button>
         </div>
-        <button onClick={saveChunking} className="px-4 py-2 bg-blue-600 text-white rounded text-sm">
-          Save Chunking Settings
-        </button>
-      </section>
+      </div>
     </div>
   );
 }
