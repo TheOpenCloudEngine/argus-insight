@@ -1,4 +1,8 @@
-"""External metadata and Avro schema service — builds JSON and manages cache."""
+"""External metadata and Avro schema service — builds JSON and manages cache.
+
+Supports lookup by both dataset_id (int) and URN (string).
+Cache keys use URN as the canonical identifier for external access.
+"""
 
 import json
 import logging
@@ -42,8 +46,18 @@ NATIVE_AVRO_OVERRIDES = {
     "real": "float",
     "double": "double",
     "double precision": "double",
-    "decimal": {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 10},
-    "numeric": {"type": "bytes", "logicalType": "decimal", "precision": 38, "scale": 10},
+    "decimal": {
+        "type": "bytes",
+        "logicalType": "decimal",
+        "precision": 38,
+        "scale": 10,
+    },
+    "numeric": {
+        "type": "bytes",
+        "logicalType": "decimal",
+        "precision": 38,
+        "scale": 10,
+    },
     "date": {"type": "int", "logicalType": "date"},
     "time": {"type": "long", "logicalType": "time-millis"},
     "timestamp": {"type": "long", "logicalType": "timestamp-millis"},
@@ -58,23 +72,81 @@ NATIVE_AVRO_OVERRIDES = {
 
 
 # ---------------------------------------------------------------------------
+# URN Resolution — fast indexed lookup with caching
+# ---------------------------------------------------------------------------
+
+
+async def _resolve_dataset_id(
+    session: AsyncSession,
+    identifier: str | int,
+) -> tuple[int, str] | None:
+    """Resolve identifier to (dataset_id, urn).
+
+    If identifier is int → lookup by ID.
+    If identifier is str → lookup by URN (indexed unique column).
+
+    Returns (dataset_id, urn) or None if not found.
+    Uses the cache to avoid repeated URN→ID lookups.
+    """
+    cache = get_cache()
+
+    if isinstance(identifier, int):
+        # ID lookup — get URN for cache key
+        result = await session.execute(
+            select(Dataset.id, Dataset.urn).where(Dataset.id == identifier)
+        )
+        row = result.first()
+        return (row[0], row[1]) if row else None
+
+    # URN lookup — check mapping cache first
+    mapping_key = f"urn_map:{identifier}"
+    cached_id = await cache.get(mapping_key)
+    if cached_id is not None:
+        return (cached_id["dataset_id"], identifier)
+
+    # DB lookup by URN (unique indexed column — fast)
+    result = await session.execute(select(Dataset.id, Dataset.urn).where(Dataset.urn == identifier))
+    row = result.first()
+    if row is None:
+        return None
+
+    # Cache the URN→ID mapping (lightweight, long-lived)
+    await cache.put(mapping_key, {"dataset_id": row[0]})
+    return (row[0], row[1])
+
+
+# ---------------------------------------------------------------------------
 # Dataset Metadata
 # ---------------------------------------------------------------------------
 
 
 async def get_dataset_metadata(
     session: AsyncSession,
-    dataset_id: int,
+    identifier: str | int,
     no_cache: bool = False,
 ) -> dict | None:
-    """Get dataset metadata JSON, using cache when available."""
+    """Get dataset metadata JSON, using cache when available.
+
+    Args:
+        identifier: Dataset ID (int) or URN (string).
+        no_cache: Bypass cache.
+    """
+    resolved = await _resolve_dataset_id(session, identifier)
+    if resolved is None:
+        return None
+    dataset_id, urn = resolved
+
     cache = get_cache()
-    cache_key = f"metadata:{dataset_id}"
+    cache_key = f"metadata:{urn}"
 
     if not no_cache:
         cached = await cache.get(cache_key)
         if cached is not None:
-            cached["_cache"] = {"cached": True, "hit": True, "ttl_seconds": cache.ttl_seconds}
+            cached["_cache"] = {
+                "cached": True,
+                "hit": True,
+                "ttl_seconds": cache.ttl_seconds,
+            }
             return cached
 
     metadata = await _build_metadata(session, dataset_id)
@@ -82,7 +154,11 @@ async def get_dataset_metadata(
         return None
 
     await cache.put(cache_key, metadata)
-    metadata["_cache"] = {"cached": False, "hit": False, "ttl_seconds": cache.ttl_seconds}
+    metadata["_cache"] = {
+        "cached": False,
+        "hit": False,
+        "ttl_seconds": cache.ttl_seconds,
+    }
     return metadata
 
 
@@ -93,17 +169,31 @@ async def get_dataset_metadata(
 
 async def get_dataset_avro_schema(
     session: AsyncSession,
-    dataset_id: int,
+    identifier: str | int,
     no_cache: bool = False,
 ) -> dict | None:
-    """Get Avro schema for a dataset, using cache when available."""
+    """Get Avro schema for a dataset, using cache when available.
+
+    Args:
+        identifier: Dataset ID (int) or URN (string).
+        no_cache: Bypass cache.
+    """
+    resolved = await _resolve_dataset_id(session, identifier)
+    if resolved is None:
+        return None
+    dataset_id, urn = resolved
+
     cache = get_cache()
-    cache_key = f"avro:{dataset_id}"
+    cache_key = f"avro:{urn}"
 
     if not no_cache:
         cached = await cache.get(cache_key)
         if cached is not None:
-            cached["_cache"] = {"cached": True, "hit": True, "ttl_seconds": cache.ttl_seconds}
+            cached["_cache"] = {
+                "cached": True,
+                "hit": True,
+                "ttl_seconds": cache.ttl_seconds,
+            }
             return cached
 
     avro = await _build_avro_schema(session, dataset_id)
@@ -111,13 +201,21 @@ async def get_dataset_avro_schema(
         return None
 
     await cache.put(cache_key, avro)
-    avro["_cache"] = {"cached": False, "hit": False, "ttl_seconds": cache.ttl_seconds}
+    avro["_cache"] = {
+        "cached": False,
+        "hit": False,
+        "ttl_seconds": cache.ttl_seconds,
+    }
     return avro
+
+
+# ---------------------------------------------------------------------------
+# Builders
+# ---------------------------------------------------------------------------
 
 
 async def _build_avro_schema(session: AsyncSession, dataset_id: int) -> dict | None:
     """Build an Avro schema from dataset metadata."""
-    # Dataset + Platform
     result = await session.execute(
         select(
             Dataset.id,
@@ -134,7 +232,6 @@ async def _build_avro_schema(session: AsyncSession, dataset_id: int) -> dict | N
     if not row:
         return None
 
-    # Schema fields
     schema_result = await session.execute(
         select(DatasetSchema)
         .where(DatasetSchema.dataset_id == dataset_id)
@@ -142,17 +239,12 @@ async def _build_avro_schema(session: AsyncSession, dataset_id: int) -> dict | N
     )
     schema_rows = schema_result.scalars().all()
 
-    # Build Avro fields
     avro_fields = []
     for s in schema_rows:
         avro_type = _resolve_avro_type(s.field_type, s.native_type, s.nullable == "true")
-        field: dict = {
-            "name": s.field_path,
-            "type": avro_type,
-        }
+        field: dict = {"name": s.field_path, "type": avro_type}
         if s.description:
             field["doc"] = s.description
-        # Add field metadata
         field_meta = {}
         if s.native_type:
             field_meta["native_type"] = s.native_type
@@ -162,14 +254,11 @@ async def _build_avro_schema(session: AsyncSession, dataset_id: int) -> dict | N
             field_meta["pii_type"] = s.pii_type
         if field_meta:
             field["metadata"] = field_meta
-
         avro_fields.append(field)
 
-    # Build namespace from qualified_name
-    name_parts = (row.name or "").replace(".", "_")
-    namespace_parts = (row.qualified_name or row.name or "").split(".")
-    namespace = ".".join(namespace_parts[:-1]) if len(namespace_parts) > 1 else "default"
-    record_name = namespace_parts[-1] if namespace_parts else name_parts
+    name_parts = (row.qualified_name or row.name or "").split(".")
+    namespace = ".".join(name_parts[:-1]) if len(name_parts) > 1 else "default"
+    record_name = name_parts[-1] if name_parts else (row.name or "").replace(".", "_")
 
     return {
         "type": "record",
@@ -189,16 +278,12 @@ async def _build_avro_schema(session: AsyncSession, dataset_id: int) -> dict | N
 
 def _resolve_avro_type(field_type: str, native_type: str | None, nullable: bool):
     """Resolve catalog type to Avro type, with nullable union support."""
-    # Try native type override first (more precise)
     avro_type = None
     if native_type:
-        # Extract base type (e.g., "varchar(200)" → "varchar", "decimal(5,2)" → "decimal")
         base_native = native_type.split("(")[0].strip().lower()
-        # Remove "unsigned" suffix
         base_native = base_native.replace(" unsigned", "")
         avro_type = NATIVE_AVRO_OVERRIDES.get(base_native)
 
-        # Handle decimal precision from native_type
         if base_native in ("decimal", "numeric") and "(" in native_type:
             try:
                 params = native_type.split("(")[1].rstrip(")")
@@ -214,19 +299,12 @@ def _resolve_avro_type(field_type: str, native_type: str | None, nullable: bool)
             except (ValueError, IndexError):
                 pass
 
-    # Fall back to generic type mapping
     if avro_type is None:
         avro_type = AVRO_TYPE_MAP.get(field_type, "string")
 
-    # Wrap in nullable union if needed
     if nullable:
         return ["null", avro_type]
     return avro_type
-
-
-# ---------------------------------------------------------------------------
-# Shared: Build metadata dict
-# ---------------------------------------------------------------------------
 
 
 async def _build_metadata(session: AsyncSession, dataset_id: int) -> dict | None:
