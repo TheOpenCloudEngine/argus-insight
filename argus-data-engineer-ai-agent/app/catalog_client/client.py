@@ -153,6 +153,62 @@ class CatalogClient:
             params["dictionary_id"] = dictionary_id
         return await self.get("/standards/terms", params=params)
 
+    async def list_standard_dictionaries(self) -> list:
+        """List all standard dictionaries."""
+        return await self.get("/standards/dictionaries")
+
+    async def search_standard_words(
+        self,
+        dictionary_id: int,
+        word_type: str | None = None,
+        limit: int = 100,
+    ) -> list:
+        """Search standard words in a dictionary."""
+        params: dict = {"dictionary_id": dictionary_id, "limit": limit}
+        if word_type:
+            params["word_type"] = word_type
+        return await self.get("/standards/words", params=params)
+
+    async def search_standard_terms(
+        self,
+        dictionary_id: int,
+        search: str | None = None,
+        limit: int = 100,
+    ) -> list:
+        """Search standard terms with optional keyword filter."""
+        params: dict = {"dictionary_id": dictionary_id, "limit": limit}
+        if search:
+            params["search"] = search
+        return await self.get("/standards/terms", params=params)
+
+    async def analyze_term(self, dictionary_id: int, term_name: str) -> dict:
+        """Analyze a term name using morpheme decomposition."""
+        return await self.get(
+            "/standards/terms/analyze",
+            params={"dictionary_id": dictionary_id, "term_name": term_name},
+        )
+
+    async def get_dataset_compliance(self, dictionary_id: int, dataset_id: int) -> dict:
+        """Get compliance stats for a dataset against a standard dictionary."""
+        return await self.get(
+            "/standards/compliance",
+            params={"dictionary_id": dictionary_id, "dataset_id": dataset_id},
+        )
+
+    async def get_dataset_term_mapping(self, dictionary_id: int, dataset_id: int) -> dict:
+        """Get full term mapping status for all columns in a dataset."""
+        return await self.get(
+            "/standards/mappings/dataset",
+            params={"dictionary_id": dictionary_id, "dataset_id": dataset_id},
+        )
+
+    async def auto_map_dataset(self, dictionary_id: int, dataset_id: int) -> dict:
+        """Auto-map dataset columns to standard terms."""
+        return await self.post(
+            "/standards/mappings/auto-map",
+            json={"dictionary_id": dictionary_id, "dataset_id": dataset_id},
+        )
+
     async def get_catalog_stats(self) -> dict:
         """Get catalog dashboard statistics."""
         return await self.get("/catalog/stats")
