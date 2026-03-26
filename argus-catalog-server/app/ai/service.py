@@ -22,9 +22,144 @@ from app.ai.prompts import (
     build_tag_suggestion_prompt,
 )
 from app.ai.registry import get_provider
-from app.catalog.models import Dataset, DatasetSchema, DatasetTag, Platform, Tag
+from app.catalog.models import Dataset, DatasetLineage, DatasetSchema, DatasetTag, Platform, Tag
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Enhanced context loaders (glossary, lineage, few-shot)
+# ---------------------------------------------------------------------------
+
+async def _load_glossary_context(session: AsyncSession) -> list[dict]:
+    """Load StandardWord entries as abbreviation→name mappings for prompt context.
+
+    Returns: [{"abbr": "EQP", "name": "장비", "english": "Equipment"}, ...]
+    """
+    from app.standard.models import StandardDictionary, StandardWord
+
+    # Find active dictionaries
+    dict_result = await session.execute(
+        select(StandardDictionary.id)
+        .where(StandardDictionary.status == "ACTIVE")
+        .order_by(StandardDictionary.id)
+    )
+    dict_ids = [r[0] for r in dict_result.all()]
+    if not dict_ids:
+        return []
+
+    result = await session.execute(
+        select(
+            StandardWord.word_abbr,
+            StandardWord.word_name,
+            StandardWord.word_english,
+            StandardWord.word_type,
+        )
+        .where(
+            StandardWord.dictionary_id.in_(dict_ids),
+            StandardWord.status == "ACTIVE",
+        )
+        .order_by(StandardWord.word_abbr)
+    )
+
+    return [
+        {
+            "abbr": r.word_abbr,
+            "name": r.word_name,
+            "english": r.word_english,
+            "type": r.word_type,
+        }
+        for r in result.all()
+    ]
+
+
+async def _load_lineage_context(
+    session: AsyncSession, dataset_id: int,
+) -> dict[str, list[str]]:
+    """Load upstream and downstream dataset names for lineage context.
+
+    Returns: {"upstream": ["db.table1", ...], "downstream": ["db.table2", ...]}
+    """
+    # Upstream: datasets that feed into this one
+    upstream_result = await session.execute(
+        select(Dataset.name)
+        .join(DatasetLineage, DatasetLineage.source_dataset_id == Dataset.id)
+        .where(DatasetLineage.target_dataset_id == dataset_id)
+        .limit(10)
+    )
+    upstream = [r[0] for r in upstream_result.all()]
+
+    # Downstream: datasets that consume from this one
+    downstream_result = await session.execute(
+        select(Dataset.name)
+        .join(DatasetLineage, DatasetLineage.target_dataset_id == Dataset.id)
+        .where(DatasetLineage.source_dataset_id == dataset_id)
+        .limit(10)
+    )
+    downstream = [r[0] for r in downstream_result.all()]
+
+    return {"upstream": upstream, "downstream": downstream}
+
+
+async def _load_fewshot_examples(
+    session: AsyncSession,
+    platform_type: str,
+    generation_type: str,
+    exclude_dataset_id: int,
+    limit: int = 3,
+) -> list[dict]:
+    """Load applied AI generation results as few-shot examples.
+
+    Selects examples from same platform type where the result was applied (approved).
+    Returns: [{"dataset_name": "...", "generated_text": "..."}, ...]
+    """
+    result = await session.execute(
+        select(
+            Dataset.name.label("dataset_name"),
+            AIGenerationLog.generated_text,
+        )
+        .join(Dataset, AIGenerationLog.dataset_id == Dataset.id)
+        .join(Platform, Dataset.platform_id == Platform.id)
+        .where(
+            AIGenerationLog.applied == True,  # noqa: E712
+            AIGenerationLog.generation_type == generation_type,
+            AIGenerationLog.entity_type == "dataset",
+            Platform.type == platform_type,
+            AIGenerationLog.dataset_id != exclude_dataset_id,
+        )
+        .order_by(AIGenerationLog.created_at.desc())
+        .limit(limit)
+    )
+
+    examples = []
+    for r in result.all():
+        examples.append({
+            "dataset_name": r.dataset_name,
+            "generated_text": r.generated_text,
+        })
+
+    # If no applied AI results, fallback to manually described datasets
+    if not examples and generation_type == "description":
+        manual_result = await session.execute(
+            select(Dataset.name, Dataset.description)
+            .join(Platform, Dataset.platform_id == Platform.id)
+            .where(
+                Platform.type == platform_type,
+                Dataset.description.isnot(None),
+                Dataset.description != "",
+                Dataset.status != "removed",
+                Dataset.id != exclude_dataset_id,
+            )
+            .order_by(func.length(Dataset.description).desc())
+            .limit(limit)
+        )
+        for r in manual_result.all():
+            examples.append({
+                "dataset_name": r.name,
+                "generated_text": r.description,
+            })
+
+    return examples
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +414,13 @@ async def generate_dataset_description(
     cfg = await _get_llm_config(session)
     lang = language or cfg.get("llm_language", "ko")
 
+    # Load enhanced context
+    glossary = await _load_glossary_context(session)
+    lineage = await _load_lineage_context(session, dataset_id)
+    fewshot = await _load_fewshot_examples(
+        session, ctx["platform_type"], "description", dataset_id,
+    )
+
     prompt = build_dataset_description_prompt(
         table_name=ctx["table_name"],
         database=ctx["database"],
@@ -288,6 +430,9 @@ async def generate_dataset_description(
         sample_rows=ctx.get("sample_rows"),
         row_count=ctx["row_count"],
         language=lang,
+        glossary=glossary,
+        lineage=lineage,
+        fewshot_examples=fewshot,
     )
 
     llm_result = await _call_llm(prompt, max_tokens=int(cfg.get("llm_max_tokens", "1024")))
@@ -374,6 +519,10 @@ async def generate_column_descriptions(
     cfg = await _get_llm_config(session)
     lang = language or cfg.get("llm_language", "ko")
 
+    # Load enhanced context
+    glossary = await _load_glossary_context(session)
+    lineage = await _load_lineage_context(session, dataset_id)
+
     prompt = build_column_descriptions_prompt(
         table_name=ctx["table_name"],
         database=ctx["database"],
@@ -381,6 +530,8 @@ async def generate_column_descriptions(
         columns=target_columns,
         sample_values=ctx.get("sample_values"),
         language=lang,
+        glossary=glossary,
+        lineage=lineage,
     )
 
     llm_result = await _call_llm(
@@ -467,6 +618,10 @@ async def suggest_tags(
     cfg = await _get_llm_config(session)
     lang = language or cfg.get("llm_language", "ko")
 
+    # Load enhanced context
+    glossary = await _load_glossary_context(session)
+    lineage = await _load_lineage_context(session, dataset_id)
+
     prompt = build_tag_suggestion_prompt(
         table_name=ctx["table_name"],
         database=ctx["database"],
@@ -474,6 +629,8 @@ async def suggest_tags(
         columns=ctx["columns"],
         existing_tags=existing_tags,
         language=lang,
+        glossary=glossary,
+        lineage=lineage,
     )
 
     llm_result = await _call_llm(prompt, max_tokens=int(cfg.get("llm_max_tokens", "1024")))
@@ -578,11 +735,15 @@ async def detect_pii(
 
     cfg = await _get_llm_config(session)
 
+    # Load enhanced context
+    glossary = await _load_glossary_context(session)
+
     prompt = build_pii_detection_prompt(
         table_name=ctx["table_name"],
         database=ctx["database"],
         columns=ctx["columns"],
         sample_values=ctx.get("sample_values"),
+        glossary=glossary,
     )
 
     llm_result = await _call_llm(prompt, max_tokens=int(cfg.get("llm_max_tokens", "1024")))

@@ -2,6 +2,11 @@
 
 Each function builds a structured prompt from available catalog context
 (table info, columns, DDL, sample data) for a specific generation task.
+
+Enhanced context (optional):
+- glossary: StandardWord abbreviation→name mappings (domain-specific terminology)
+- lineage: upstream/downstream dataset relationships
+- fewshot_examples: previously approved AI generations as reference
 """
 
 SYSTEM_PROMPT = (
@@ -9,6 +14,86 @@ SYSTEM_PROMPT = (
     "Always respond with valid JSON only, no markdown fences or extra text."
 )
 
+
+# ---------------------------------------------------------------------------
+# Shared context builders
+# ---------------------------------------------------------------------------
+
+def _build_glossary_section(glossary: list[dict] | None, columns: list[dict]) -> str:
+    """Build a glossary section that maps abbreviations found in column names.
+
+    Only includes glossary entries whose abbreviation appears in the actual column names,
+    keeping the prompt focused and token-efficient.
+    """
+    if not glossary:
+        return ""
+
+    # Collect all tokens from column names (split by _ and lowercase)
+    col_tokens = set()
+    for c in columns:
+        for token in c["field_path"].upper().replace("-", "_").split("_"):
+            if token:
+                col_tokens.add(token)
+
+    # Filter glossary to entries matching column tokens
+    relevant = [g for g in glossary if g["abbr"].upper() in col_tokens]
+
+    if not relevant:
+        return ""
+
+    lines = []
+    for g in relevant[:50]:  # Limit to 50 entries
+        lines.append(f"  {g['abbr']}: {g['name']} ({g['english']})")
+
+    return (
+        "\n== Terminology glossary (abbreviation → meaning) ==\n"
+        + "\n".join(lines)
+        + "\n"
+    )
+
+
+def _build_lineage_section(lineage: dict[str, list[str]] | None) -> str:
+    """Build a lineage context section showing data flow relationships."""
+    if not lineage:
+        return ""
+
+    upstream = lineage.get("upstream", [])
+    downstream = lineage.get("downstream", [])
+
+    if not upstream and not downstream:
+        return ""
+
+    section = "\n== Data lineage ==\n"
+    if upstream:
+        section += f"  Upstream (source tables): {', '.join(upstream)}\n"
+    if downstream:
+        section += f"  Downstream (consuming tables): {', '.join(downstream)}\n"
+    return section
+
+
+def _build_fewshot_section(
+    examples: list[dict] | None, generation_type: str,
+) -> str:
+    """Build a few-shot examples section from previously approved generations."""
+    if not examples:
+        return ""
+
+    section = "\n== Reference examples (previously approved descriptions in this catalog) ==\n"
+    for i, ex in enumerate(examples[:3], 1):
+        name = ex.get("dataset_name", "")
+        text = ex.get("generated_text", "")
+        # Truncate long texts
+        if len(text) > 200:
+            text = text[:200] + "..."
+        section += f"  {i}. {name}: {text}\n"
+
+    section += "Use a similar style and level of detail.\n"
+    return section
+
+
+# ---------------------------------------------------------------------------
+# Prompt builders
+# ---------------------------------------------------------------------------
 
 def build_dataset_description_prompt(
     table_name: str,
@@ -19,6 +104,9 @@ def build_dataset_description_prompt(
     sample_rows: list[dict] | None = None,
     row_count: int | None = None,
     language: str = "ko",
+    glossary: list[dict] | None = None,
+    lineage: dict[str, list[str]] | None = None,
+    fewshot_examples: list[dict] | None = None,
 ) -> str:
     """Build prompt for generating a table description."""
     col_lines = []
@@ -33,7 +121,7 @@ def build_dataset_description_prompt(
         col_lines.append("  " + " ".join(parts))
 
     prompt = f"""Generate a concise description for this database table.
-
+{_build_glossary_section(glossary, columns)}{_build_fewshot_section(fewshot_examples, "description")}{_build_lineage_section(lineage)}
 Table: {database}.{table_name}
 Platform: {platform_type}
 Columns:
@@ -41,7 +129,6 @@ Columns:
 """
 
     if ddl:
-        # Truncate DDL to 2000 chars
         prompt += f"\nDDL:\n{ddl[:2000]}\n"
 
     if sample_rows:
@@ -67,6 +154,9 @@ def build_column_descriptions_prompt(
     columns: list[dict],
     sample_values: dict[str, list] | None = None,
     language: str = "ko",
+    glossary: list[dict] | None = None,
+    lineage: dict[str, list[str]] | None = None,
+    fewshot_examples: list[dict] | None = None,
 ) -> str:
     """Build prompt for generating column descriptions in batch."""
     col_lines = []
@@ -89,7 +179,7 @@ def build_column_descriptions_prompt(
         col_lines.append(" ".join(parts))
 
     prompt = f"""Generate descriptions for all columns in this table.
-
+{_build_glossary_section(glossary, columns)}{_build_lineage_section(lineage)}
 Table: {database}.{table_name}
 """
     if table_description:
@@ -122,12 +212,14 @@ def build_tag_suggestion_prompt(
     columns: list[dict],
     existing_tags: list[str],
     language: str = "ko",
+    glossary: list[dict] | None = None,
+    lineage: dict[str, list[str]] | None = None,
 ) -> str:
     """Build prompt for suggesting tags for a dataset."""
     col_names = [c["field_path"] for c in columns[:50]]
 
     prompt = f"""Suggest relevant classification tags for this database table.
-
+{_build_glossary_section(glossary, columns)}{_build_lineage_section(lineage)}
 Table: {database}.{table_name}
 """
     if description:
@@ -153,6 +245,7 @@ def build_pii_detection_prompt(
     database: str,
     columns: list[dict],
     sample_values: dict[str, list] | None = None,
+    glossary: list[dict] | None = None,
 ) -> str:
     """Build prompt for detecting PII columns."""
     col_lines = []
@@ -160,7 +253,7 @@ def build_pii_detection_prompt(
         col_lines.append(f"  {c['field_path']} ({c['field_type']})")
 
     prompt = f"""Analyze columns for Personally Identifiable Information (PII).
-
+{_build_glossary_section(glossary, columns)}
 Table: {database}.{table_name}
 Columns:
 {chr(10).join(col_lines)}
