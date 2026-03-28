@@ -26,6 +26,10 @@ export type UserInfo = {
   role: string
   is_admin: boolean
   is_superuser: boolean
+  auth_type: string
+  s3_access_key: string | null
+  s3_secret_key: string | null
+  s3_bucket: string | null
 }
 
 export async function login(

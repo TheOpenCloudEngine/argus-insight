@@ -31,8 +31,12 @@ from minio.versioningconfig import VersioningConfig
 logger = logging.getLogger(__name__)
 
 
-def _build_readwrite_policy(bucket_name: str) -> dict:
-    """Build an S3 bucket policy granting full read/write access to a bucket.
+def _build_owner_policy(bucket_name: str) -> dict:
+    """Build an S3 bucket policy granting full owner access to a bucket.
+
+    Includes all object operations, bucket management, versioning,
+    lifecycle, replication, and policy management — equivalent to
+    bucket owner permissions.
 
     Args:
         bucket_name: Target bucket name.
@@ -45,15 +49,7 @@ def _build_readwrite_policy(bucket_name: str) -> dict:
         "Statement": [
             {
                 "Effect": "Allow",
-                "Action": [
-                    "s3:GetObject",
-                    "s3:PutObject",
-                    "s3:DeleteObject",
-                    "s3:ListBucket",
-                    "s3:GetBucketLocation",
-                    "s3:ListMultipartUploadParts",
-                    "s3:AbortMultipartUpload",
-                ],
+                "Action": ["s3:*"],
                 "Resource": [
                     f"arn:aws:s3:::{bucket_name}",
                     f"arn:aws:s3:::{bucket_name}/*",
@@ -301,8 +297,8 @@ class MinioAdminClient:
             access_key: Target user's access key.
             bucket_name: Bucket to grant access to.
         """
-        policy_name = f"rw-{bucket_name}"
-        policy_doc = _build_readwrite_policy(bucket_name)
+        policy_name = f"owner-{bucket_name}"
+        policy_doc = _build_owner_policy(bucket_name)
 
         # Create policy file via mc admin
         # mc admin policy create requires a JSON file, so we write to a temp approach

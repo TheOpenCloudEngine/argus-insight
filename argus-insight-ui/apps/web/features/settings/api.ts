@@ -45,7 +45,7 @@ type InfraConfig = {
  * Internal: fetch all categories and return items for a specific category.
  */
 async function fetchCategory(category: string): Promise<Record<string, string>> {
-  const res = await fetch(`${BASE}/configuration`)
+  const res = await authFetch(`${BASE}/configuration`)
   if (!res.ok) throw new Error(await extractErrorMessage(res, `Failed to fetch ${category} config`))
   const data: InfraConfig = await res.json()
   const cat = data.categories.find((c) => c.category === category)
@@ -59,7 +59,7 @@ async function updateCategory(
   category: string,
   items: Record<string, string>,
 ): Promise<void> {
-  const res = await fetch(`${BASE}/configuration/category`, {
+  const res = await authFetch(`${BASE}/configuration/category`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ category, items }),
@@ -119,7 +119,7 @@ export async function updateCommandConfig(items: Record<string, string>): Promis
  * Check if a file path exists on the server.
  */
 export async function checkPath(path: string): Promise<boolean> {
-  const res = await fetch(`${BASE}/check-path`, {
+  const res = await authFetch(`${BASE}/check-path`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path }),
@@ -160,7 +160,7 @@ export type CaCertViewData = {
  * Check the status of the CA certificate file.
  */
 export async function fetchCaCertStatus(): Promise<CaCertStatus> {
-  const res = await fetch(`${SECURITY_BASE}/ca/status`)
+  const res = await authFetch(`${SECURITY_BASE}/ca/status`)
   if (!res.ok) throw new Error(`Failed to fetch CA cert status: ${res.status}`)
   return res.json()
 }
@@ -171,7 +171,7 @@ export async function fetchCaCertStatus(): Promise<CaCertStatus> {
 export async function uploadCaCert(file: File): Promise<{ success: boolean; filename: string; path: string }> {
   const formData = new FormData()
   formData.append("file", file)
-  const res = await fetch(`${SECURITY_BASE}/ca/upload`, {
+  const res = await authFetch(`${SECURITY_BASE}/ca/upload`, {
     method: "POST",
     body: formData,
   })
@@ -186,7 +186,7 @@ export async function uploadCaCert(file: File): Promise<{ success: boolean; file
  * View the CA certificate content and decoded information.
  */
 export async function viewCaCert(): Promise<CaCertViewData> {
-  const res = await fetch(`${SECURITY_BASE}/ca/view`)
+  const res = await authFetch(`${SECURITY_BASE}/ca/view`)
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: `View failed: ${res.status}` }))
     throw new Error(data.detail || `View failed: ${res.status}`)
@@ -198,7 +198,7 @@ export async function viewCaCert(): Promise<CaCertViewData> {
  * Delete the CA certificate file.
  */
 export async function deleteCaCert(): Promise<void> {
-  const res = await fetch(`${SECURITY_BASE}/ca`, {
+  const res = await authFetch(`${SECURITY_BASE}/ca`, {
     method: "DELETE",
   })
   if (!res.ok) {
@@ -226,7 +226,7 @@ export type CaKeyViewData = {
  * Check the status of the CA key file.
  */
 export async function fetchCaKeyStatus(): Promise<CaKeyStatus> {
-  const res = await fetch(`${SECURITY_BASE}/ca-key/status`)
+  const res = await authFetch(`${SECURITY_BASE}/ca-key/status`)
   if (!res.ok) throw new Error(`Failed to fetch CA key status: ${res.status}`)
   return res.json()
 }
@@ -237,7 +237,7 @@ export async function fetchCaKeyStatus(): Promise<CaKeyStatus> {
 export async function uploadCaKey(file: File): Promise<{ success: boolean; filename: string; path: string }> {
   const formData = new FormData()
   formData.append("file", file)
-  const res = await fetch(`${SECURITY_BASE}/ca-key/upload`, {
+  const res = await authFetch(`${SECURITY_BASE}/ca-key/upload`, {
     method: "POST",
     body: formData,
   })
@@ -252,7 +252,7 @@ export async function uploadCaKey(file: File): Promise<{ success: boolean; filen
  * View the CA key content and decoded information.
  */
 export async function viewCaKey(): Promise<CaKeyViewData> {
-  const res = await fetch(`${SECURITY_BASE}/ca-key/view`)
+  const res = await authFetch(`${SECURITY_BASE}/ca-key/view`)
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: `View failed: ${res.status}` }))
     throw new Error(data.detail || `View failed: ${res.status}`)
@@ -264,7 +264,7 @@ export async function viewCaKey(): Promise<CaKeyViewData> {
  * Delete the CA key file.
  */
 export async function deleteCaKey(): Promise<void> {
-  const res = await fetch(`${SECURITY_BASE}/ca-key`, {
+  const res = await authFetch(`${SECURITY_BASE}/ca-key`, {
     method: "DELETE",
   })
   if (!res.ok) {
@@ -302,7 +302,7 @@ export type GenerateSelfSignedCaResult = {
 export async function generateSelfSignedCa(
   params: GenerateSelfSignedCaParams,
 ): Promise<GenerateSelfSignedCaResult> {
-  const res = await fetch(`${SECURITY_BASE}/ca/generate`, {
+  const res = await authFetch(`${SECURITY_BASE}/ca/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
@@ -330,7 +330,7 @@ export async function testUnityCatalog(
   url: string,
   accessToken: string,
 ): Promise<{ success: boolean; message: string }> {
-  const res = await fetch(`${BASE}/unity-catalog/test`, {
+  const res = await authFetch(`${BASE}/unity-catalog/test`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url, access_token: accessToken }),
@@ -346,7 +346,7 @@ export async function initializeUnityCatalog(
   url: string,
   accessToken: string,
 ): Promise<{ success: boolean; message: string }> {
-  const res = await fetch(`${BASE}/unity-catalog/initialize`, {
+  const res = await authFetch(`${BASE}/unity-catalog/initialize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url, access_token: accessToken }),
@@ -364,7 +364,7 @@ export async function testObjectStorage(
   secretKey: string,
   region: string,
 ): Promise<{ success: boolean; message: string }> {
-  const res = await fetch(`${BASE}/object-storage/test`, {
+  const res = await authFetch(`${BASE}/object-storage/test`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ endpoint, access_key: accessKey, secret_key: secretKey, region }),
@@ -382,7 +382,7 @@ export async function initializeObjectStorage(
   secretKey: string,
   region: string,
 ): Promise<{ success: boolean; message: string }> {
-  const res = await fetch(`${BASE}/object-storage/initialize`, {
+  const res = await authFetch(`${BASE}/object-storage/initialize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ endpoint, access_key: accessKey, secret_key: secretKey, region }),
@@ -398,7 +398,7 @@ export async function testPrometheus(
   host: string,
   port: string,
 ): Promise<{ success: boolean; message: string }> {
-  const res = await fetch(`${BASE}/prometheus/test`, {
+  const res = await authFetch(`${BASE}/prometheus/test`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ host, port: parseInt(port, 10) }),
@@ -415,7 +415,7 @@ export async function testDockerRegistry(
   username: string,
   password: string,
 ): Promise<{ success: boolean; message: string }> {
-  const res = await fetch(`${BASE}/docker-registry/test`, {
+  const res = await authFetch(`${BASE}/docker-registry/test`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url, username, password }),

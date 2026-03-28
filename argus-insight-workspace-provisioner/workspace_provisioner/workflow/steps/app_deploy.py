@@ -43,23 +43,97 @@ async def ensure_namespace(namespace: str) -> None:
         raise RuntimeError(f"Failed to ensure namespace '{namespace}': {err.decode().strip()}")
 
 
-async def prepare_s3(username: str) -> dict[str, str]:
-    """Prepare S3 bucket and return deploy settings."""
-    from app.core.s3 import ensure_bucket, get_s3_settings
+async def prepare_s3(username: str, user_id: int) -> dict[str, str]:
+    """Prepare S3 bucket, create per-user credentials, and store in user table.
 
-    logger.info("[s3] Loading S3 settings for user '%s'", username)
+    If the user already has S3 credentials in the DB, reuse them.
+    Otherwise, generate new access key / secret key via MinIO admin API.
+    """
+    import secrets
+
+    from sqlalchemy import select
+    from app.core.database import async_session
+    from app.core.s3 import ensure_bucket, get_s3_settings
+    from app.usermgr.models import ArgusUser
+
+    logger.info("[s3] Loading S3 settings for user '%s' (id=%d)", username, user_id)
     cfg = await get_s3_settings()
-    s3 = {
-        "S3_ENDPOINT": cfg.get("object_storage_endpoint", "http://localhost:9000"),
-        "S3_ACCESS_KEY": cfg.get("object_storage_access_key", "minioadmin"),
-        "S3_SECRET_KEY": cfg.get("object_storage_secret_key", "minioadmin"),
-        "S3_USE_SSL": cfg.get("object_storage_use_ssl", "false"),
-    }
+    endpoint = cfg.get("object_storage_endpoint", "http://localhost:9000")
+    root_access = cfg.get("object_storage_access_key", "minioadmin")
+    root_secret = cfg.get("object_storage_secret_key", "minioadmin")
+    use_ssl = cfg.get("object_storage_use_ssl", "false")
     bucket_name = f"user-{username}"
-    logger.info("[s3] Ensuring bucket '%s' exists at %s", bucket_name, s3["S3_ENDPOINT"])
+
+    # Ensure bucket exists
+    logger.info("[s3] Ensuring bucket '%s' exists at %s", bucket_name, endpoint)
     await ensure_bucket(bucket_name)
     logger.info("[s3] Bucket '%s' ready", bucket_name)
-    return s3
+
+    # Check if user already has S3 credentials
+    async with async_session() as session:
+        result = await session.execute(
+            select(ArgusUser).where(ArgusUser.id == user_id)
+        )
+        user = result.scalars().first()
+
+    if user and user.s3_access_key and user.s3_secret_key:
+        logger.info("[s3] Reusing existing S3 credentials for '%s'", username)
+        return {
+            "S3_ENDPOINT": endpoint,
+            "S3_ACCESS_KEY": user.s3_access_key,
+            "S3_SECRET_KEY": user.s3_secret_key,
+            "S3_USE_SSL": use_ssl,
+        }
+
+    # Generate per-user credentials
+    access_key = f"user-{username}"
+    secret_key = secrets.token_urlsafe(24)
+    logger.info("[s3] Creating MinIO user '%s' with bucket policy for '%s'", access_key, bucket_name)
+
+    try:
+        from workspace_provisioner.minio.client import MinioAdminClient
+
+        # Strip protocol from endpoint for MinIO SDK
+        minio_endpoint = endpoint.replace("http://", "").replace("https://", "")
+        minio_client = MinioAdminClient(
+            endpoint=minio_endpoint,
+            root_user=root_access,
+            root_password=root_secret,
+            secure=(use_ssl == "true"),
+        )
+        await minio_client.create_user(access_key, secret_key)
+        await minio_client.set_user_bucket_policy(access_key, bucket_name)
+        logger.info("[s3] MinIO user '%s' created with RW policy on '%s'", access_key, bucket_name)
+    except Exception:
+        logger.warning("[s3] Failed to create MinIO user '%s', falling back to root credentials",
+                       access_key, exc_info=True)
+        # Fallback to root credentials
+        return {
+            "S3_ENDPOINT": endpoint,
+            "S3_ACCESS_KEY": root_access,
+            "S3_SECRET_KEY": root_secret,
+            "S3_USE_SSL": use_ssl,
+        }
+
+    # Store credentials in user table
+    async with async_session() as session:
+        result = await session.execute(
+            select(ArgusUser).where(ArgusUser.id == user_id)
+        )
+        user = result.scalars().first()
+        if user:
+            user.s3_access_key = access_key
+            user.s3_secret_key = secret_key
+            user.s3_bucket = bucket_name
+            await session.commit()
+            logger.info("[s3] S3 credentials stored for user '%s' (bucket=%s)", username, bucket_name)
+
+    return {
+        "S3_ENDPOINT": endpoint,
+        "S3_ACCESS_KEY": access_key,
+        "S3_SECRET_KEY": secret_key,
+        "S3_USE_SSL": use_ssl,
+    }
 
 
 async def build_variables(

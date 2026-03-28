@@ -5,6 +5,8 @@
  * (`/api/v1/notes/*`). All requests are proxied through the Next.js middleware.
  */
 
+import { authFetch } from "@/features/auth/auth-fetch"
+
 const BASE = "/api/v1/notes"
 
 // ---------------------------------------------------------------------------
@@ -162,7 +164,7 @@ function mapVersion(raw: Record<string, unknown>): Version {
 export async function fetchNotebooks(search?: string): Promise<{ items: Notebook[]; total: number }> {
   const query = new URLSearchParams()
   if (search) query.set("search", search)
-  const res = await fetch(`${BASE}/notebooks?${query.toString()}`)
+  const res = await authFetch(`${BASE}/notebooks?${query.toString()}`)
   if (!res.ok) throw new Error(`Failed to fetch notebooks: ${res.status}`)
   const data = await res.json()
   return {
@@ -172,7 +174,7 @@ export async function fetchNotebooks(search?: string): Promise<{ items: Notebook
 }
 
 export async function fetchNotebook(id: number): Promise<Notebook> {
-  const res = await fetch(`${BASE}/notebooks/${id}`)
+  const res = await authFetch(`${BASE}/notebooks/${id}`)
   if (!res.ok) throw new Error(`Failed to fetch notebook: ${res.status}`)
   return mapNotebook(await res.json())
 }
@@ -182,7 +184,7 @@ export async function createNotebook(payload: {
   description?: string
   color?: string
 }): Promise<Notebook> {
-  const res = await fetch(`${BASE}/notebooks`, {
+  const res = await authFetch(`${BASE}/notebooks`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -195,7 +197,7 @@ export async function updateNotebook(
   id: number,
   payload: { title?: string; description?: string; color?: string; is_pinned?: boolean },
 ): Promise<Notebook> {
-  const res = await fetch(`${BASE}/notebooks/${id}`, {
+  const res = await authFetch(`${BASE}/notebooks/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -205,7 +207,7 @@ export async function updateNotebook(
 }
 
 export async function deleteNotebook(id: number): Promise<void> {
-  const res = await fetch(`${BASE}/notebooks/${id}`, { method: "DELETE" })
+  const res = await authFetch(`${BASE}/notebooks/${id}`, { method: "DELETE" })
   if (!res.ok) throw new Error(`Failed to delete notebook: ${res.status}`)
 }
 
@@ -214,7 +216,7 @@ export async function deleteNotebook(id: number): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function fetchSections(notebookId: number): Promise<Section[]> {
-  const res = await fetch(`${BASE}/notebooks/${notebookId}/sections`)
+  const res = await authFetch(`${BASE}/notebooks/${notebookId}/sections`)
   if (!res.ok) throw new Error(`Failed to fetch sections: ${res.status}`)
   const data = await res.json()
   return (data as Record<string, unknown>[]).map(mapSection)
@@ -224,7 +226,7 @@ export async function createSection(
   notebookId: number,
   payload: { title: string; color?: string },
 ): Promise<Section> {
-  const res = await fetch(`${BASE}/notebooks/${notebookId}/sections`, {
+  const res = await authFetch(`${BASE}/notebooks/${notebookId}/sections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -237,7 +239,7 @@ export async function updateSection(
   sectionId: number,
   payload: { title?: string; color?: string },
 ): Promise<Section> {
-  const res = await fetch(`${BASE}/sections/${sectionId}`, {
+  const res = await authFetch(`${BASE}/sections/${sectionId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -247,7 +249,7 @@ export async function updateSection(
 }
 
 export async function deleteSection(sectionId: number): Promise<void> {
-  const res = await fetch(`${BASE}/sections/${sectionId}`, { method: "DELETE" })
+  const res = await authFetch(`${BASE}/sections/${sectionId}`, { method: "DELETE" })
   if (!res.ok) throw new Error(`Failed to delete section: ${res.status}`)
 }
 
@@ -256,14 +258,14 @@ export async function deleteSection(sectionId: number): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function fetchPages(sectionId: number): Promise<PageListItem[]> {
-  const res = await fetch(`${BASE}/sections/${sectionId}/pages`)
+  const res = await authFetch(`${BASE}/sections/${sectionId}/pages`)
   if (!res.ok) throw new Error(`Failed to fetch pages: ${res.status}`)
   const data = await res.json()
   return (data as Record<string, unknown>[]).map(mapPageListItem)
 }
 
 export async function fetchPage(pageId: number): Promise<Page> {
-  const res = await fetch(`${BASE}/pages/${pageId}`)
+  const res = await authFetch(`${BASE}/pages/${pageId}`)
   if (!res.ok) throw new Error(`Failed to fetch page: ${res.status}`)
   return mapPage(await res.json())
 }
@@ -272,7 +274,7 @@ export async function createPage(
   sectionId: number,
   payload: { title: string; content?: string },
 ): Promise<Page> {
-  const res = await fetch(`${BASE}/sections/${sectionId}/pages`, {
+  const res = await authFetch(`${BASE}/sections/${sectionId}/pages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -285,7 +287,7 @@ export async function updatePage(
   pageId: number,
   payload: { title?: string; content?: string; is_pinned?: boolean; change_summary?: string },
 ): Promise<Page> {
-  const res = await fetch(`${BASE}/pages/${pageId}`, {
+  const res = await authFetch(`${BASE}/pages/${pageId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -295,7 +297,7 @@ export async function updatePage(
 }
 
 export async function deletePage(pageId: number): Promise<void> {
-  const res = await fetch(`${BASE}/pages/${pageId}`, { method: "DELETE" })
+  const res = await authFetch(`${BASE}/pages/${pageId}`, { method: "DELETE" })
   if (!res.ok) throw new Error(`Failed to delete page: ${res.status}`)
 }
 
@@ -304,20 +306,20 @@ export async function deletePage(pageId: number): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function fetchVersions(pageId: number): Promise<VersionListItem[]> {
-  const res = await fetch(`${BASE}/pages/${pageId}/versions`)
+  const res = await authFetch(`${BASE}/pages/${pageId}/versions`)
   if (!res.ok) throw new Error(`Failed to fetch versions: ${res.status}`)
   const data = await res.json()
   return (data as Record<string, unknown>[]).map(mapVersionListItem)
 }
 
 export async function fetchVersion(pageId: number, version: number): Promise<Version> {
-  const res = await fetch(`${BASE}/pages/${pageId}/versions/${version}`)
+  const res = await authFetch(`${BASE}/pages/${pageId}/versions/${version}`)
   if (!res.ok) throw new Error(`Failed to fetch version: ${res.status}`)
   return mapVersion(await res.json())
 }
 
 export async function restoreVersion(pageId: number, version: number): Promise<Page> {
-  const res = await fetch(`${BASE}/pages/${pageId}/versions/${version}/restore`, {
+  const res = await authFetch(`${BASE}/pages/${pageId}/versions/${version}/restore`, {
     method: "POST",
   })
   if (!res.ok) throw new Error(`Failed to restore version: ${res.status}`)

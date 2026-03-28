@@ -88,8 +88,12 @@ CREATE TABLE IF NOT EXISTS argus_users (
     first_name      VARCHAR(100)    NOT NULL,
     last_name       VARCHAR(100)    NOT NULL,
     phone_number    VARCHAR(30),
-    password_hash   VARCHAR(255)    NOT NULL,
+    password_hash   VARCHAR(255)    NOT NULL DEFAULT '',
     status          VARCHAR(20)     NOT NULL DEFAULT 'active',
+    auth_type       VARCHAR(20)     NOT NULL DEFAULT 'local',
+    s3_access_key   VARCHAR(100),
+    s3_secret_key   VARCHAR(100),
+    s3_bucket       VARCHAR(255),
     role_id         INTEGER         NOT NULL REFERENCES argus_roles(id),
     created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
@@ -102,8 +106,9 @@ COMMENT ON COLUMN argus_users.email IS 'Unique email address';
 COMMENT ON COLUMN argus_users.first_name IS 'User first name';
 COMMENT ON COLUMN argus_users.last_name IS 'User last name';
 COMMENT ON COLUMN argus_users.phone_number IS 'User phone number (optional)';
-COMMENT ON COLUMN argus_users.password_hash IS 'Bcrypt-hashed password';
+COMMENT ON COLUMN argus_users.password_hash IS 'SHA-256 hashed password (empty for keycloak users)';
 COMMENT ON COLUMN argus_users.status IS 'Account status: active | inactive';
+COMMENT ON COLUMN argus_users.auth_type IS 'Authentication type: local | keycloak';
 COMMENT ON COLUMN argus_users.role_id IS 'Foreign key to argus_roles(id)';
 COMMENT ON COLUMN argus_users.created_at IS 'Account creation timestamp';
 COMMENT ON COLUMN argus_users.updated_at IS 'Account last update timestamp';

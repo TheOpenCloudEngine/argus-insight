@@ -58,8 +58,12 @@ class ArgusUser(Base):
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)
     phone_number = Column(String(30))
-    password_hash = Column(String(255), nullable=False)
+    password_hash = Column(String(255), nullable=False, default="")
     status = Column(String(20), nullable=False, default="active")
+    auth_type = Column(String(20), nullable=False, default="local")  # "local" or "keycloak"
+    s3_access_key = Column(String(100))   # MinIO per-user access key
+    s3_secret_key = Column(String(100))   # MinIO per-user secret key
+    s3_bucket = Column(String(255))       # MinIO bucket name (e.g. "user-admin")
     role_id = Column(Integer, ForeignKey("argus_roles.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

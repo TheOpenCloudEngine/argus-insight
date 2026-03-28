@@ -248,7 +248,7 @@ async def launch_instance(
 
     asyncio.create_task(
         _deploy_instance(instance.id, short_id, app.app_type, app.template_dir,
-                         username, domain, hostname, namespace)
+                         user_id, username, domain, hostname, namespace)
     )
     return instance
 
@@ -258,6 +258,7 @@ async def _deploy_instance(
     instance_id: str,
     app_type: str,
     template_dir: str,
+    user_id: int,
     username: str,
     domain: str,
     hostname: str,
@@ -285,7 +286,7 @@ async def _deploy_instance(
             raise
 
     try:
-        s3 = await _step("Prepare S3 storage", prepare_s3(username))
+        s3 = await _step("Prepare S3 storage", prepare_s3(username, user_id))
         await _step("Create namespace", ensure_namespace(namespace))
 
         async with async_session() as session:
@@ -333,7 +334,7 @@ async def destroy_instance(
     asyncio.create_task(
         _destroy_instance(
             instance.id, instance.instance_id, app.app_type, app.template_dir,
-            instance.username, instance.domain, instance.hostname, instance.k8s_namespace,
+            user_id, instance.username, instance.domain, instance.hostname, instance.k8s_namespace,
         )
     )
 
@@ -343,6 +344,7 @@ async def _destroy_instance(
     instance_id: str,
     app_type: str,
     template_dir: str,
+    user_id: int,
     username: str,
     domain: str,
     hostname: str,
@@ -372,7 +374,7 @@ async def _destroy_instance(
             return None
 
     try:
-        s3 = await prepare_s3(username)
+        s3 = await prepare_s3(username, user_id)
 
         async with async_session() as session:
             server_ip = await get_server_ip(session)
