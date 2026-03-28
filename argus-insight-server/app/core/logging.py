@@ -94,9 +94,6 @@ def setup_logging() -> None:
     root_logger.handlers.clear()
     root_logger.addHandler(file_handler)
 
-    # SQLAlchemy engine logger: emit SQL + params only when app log level is DEBUG
-    sa_logger = logging.getLogger("sqlalchemy.engine")
-    if log_level <= logging.DEBUG:
-        sa_logger.setLevel(logging.DEBUG)
-    else:
-        sa_logger.setLevel(logging.WARNING)
+    # SQLAlchemy engine logger: always suppress SQL query logging
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)

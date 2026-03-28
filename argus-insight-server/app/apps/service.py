@@ -1,8 +1,7 @@
-"""Generic app deployment and authentication service.
+"""App instance lifecycle and authentication service.
 
-Manages the lifecycle of per-user app instances on K3s.
-App-agnostic: uses ArgusApp.template_dir and hostname_pattern
-to render K8s manifests and build hostnames dynamically.
+Orchestrates deploy/destroy of per-user app instances.
+Delegates K8s, DNS, and S3 operations to workspace_provisioner modules.
 """
 
 from __future__ import annotations
@@ -12,24 +11,17 @@ import hashlib
 import hmac as _hmac
 import json
 import logging
-import string
 import time
 from base64 import urlsafe_b64decode, urlsafe_b64encode
-from pathlib import Path
 
-import httpx
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.apps.models import ArgusApp, ArgusAppInstance
 from app.core.database import async_session
-from app.core.s3 import ensure_bucket, get_s3_settings
-from app.settings.models import ArgusConfiguration
 
 logger = logging.getLogger(__name__)
-
-TEMPLATES_DIR = Path(__file__).parent / "kubernetes" / "templates"
 
 # Cookie token settings
 _APP_COOKIE_SECRET = "argus-insight-app-cookie-secret"
@@ -104,11 +96,7 @@ def build_hostname(app: ArgusApp, instance_id: str, domain: str) -> str:
 
 
 def extract_instance_id_from_host(host: str, app: ArgusApp) -> str | None:
-    """Extract instance_id from hostname.
-
-    The pattern 'argus-{app_type}-{instance_id}.{domain}'
-    produces hostnames like 'argus-vscode-f7a3b2c1.dev.net'.
-    """
+    """Extract instance_id from hostname like argus-vscode-f7a3b2c1.dev.net."""
     if not host:
         return None
     prefix = f"argus-{app.app_type}-"
@@ -116,157 +104,6 @@ def extract_instance_id_from_host(host: str, app: ArgusApp) -> str | None:
     if first_part.startswith(prefix):
         return first_part[len(prefix):]
     return None
-
-
-# ---------------------------------------------------------------------------
-# K8s helpers
-# ---------------------------------------------------------------------------
-
-def _render_template(template_path: Path, variables: dict[str, str]) -> str:
-    """Render a YAML template with ${VAR} substitution."""
-    raw = template_path.read_text()
-    tmpl = string.Template(raw)
-    return tmpl.safe_substitute(variables)
-
-
-def render_manifests(app: ArgusApp, variables: dict[str, str]) -> str:
-    """Render all K8s templates for an app in deterministic order."""
-    template_dir = TEMPLATES_DIR / app.template_dir
-    if not template_dir.is_dir():
-        raise RuntimeError(f"Template directory not found: {template_dir}")
-
-    order = ["secret", "deployment", "service"]
-    yaml_files = sorted(
-        template_dir.glob("*.yaml"),
-        key=lambda p: next((i for i, o in enumerate(order) if o in p.stem), 99),
-    )
-    parts = [_render_template(f, variables) for f in yaml_files]
-    return "\n---\n".join(parts)
-
-
-async def kubectl_apply(manifest_yaml: str) -> str:
-    """Apply YAML manifest via kubectl."""
-    proc = await asyncio.create_subprocess_exec(
-        "kubectl", "apply", "-f", "-",
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate(manifest_yaml.encode())
-    stdout_str = stdout.decode().strip()
-    stderr_str = stderr.decode().strip()
-    if proc.returncode != 0:
-        logger.error("kubectl apply failed: %s", stderr_str)
-        raise RuntimeError(f"kubectl apply failed (rc={proc.returncode}): {stderr_str}")
-    logger.info("kubectl apply: %s", stdout_str)
-    return stdout_str
-
-
-async def kubectl_delete(manifest_yaml: str) -> str:
-    """Delete resources via kubectl."""
-    proc = await asyncio.create_subprocess_exec(
-        "kubectl", "delete", "-f", "-", "--ignore-not-found",
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate(manifest_yaml.encode())
-    stdout_str = stdout.decode().strip()
-    if proc.returncode != 0:
-        logger.warning("kubectl delete warning: %s", stderr.decode().strip())
-    logger.info("kubectl delete: %s", stdout_str)
-    return stdout_str
-
-
-async def ensure_namespace(namespace: str) -> None:
-    """Ensure a K8s namespace exists."""
-    proc = await asyncio.create_subprocess_exec(
-        "kubectl", "create", "namespace", namespace,
-        "--dry-run=client", "-o", "yaml",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, _ = await proc.communicate()
-    apply_proc = await asyncio.create_subprocess_exec(
-        "kubectl", "apply", "-f", "-",
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    await apply_proc.communicate(stdout)
-
-
-# ---------------------------------------------------------------------------
-# DNS helpers (PowerDNS)
-# ---------------------------------------------------------------------------
-
-async def _get_pdns_settings(session: AsyncSession) -> dict[str, str]:
-    """Read PowerDNS settings from database."""
-    result = await session.execute(
-        select(ArgusConfiguration).where(ArgusConfiguration.category == "domain")
-    )
-    return {row.config_key: row.config_value for row in result.scalars().all()}
-
-
-async def register_dns(session: AsyncSession, hostname: str, server_ip: str) -> None:
-    """Register A record in PowerDNS."""
-    cfg = await _get_pdns_settings(session)
-    if not cfg.get("pdns_ip") or not cfg.get("domain_name"):
-        logger.warning("PowerDNS not configured, skipping DNS registration")
-        return
-
-    domain_name = cfg["domain_name"]
-    zone = domain_name if domain_name.endswith(".") else f"{domain_name}."
-    fqdn = hostname if hostname.endswith(".") else f"{hostname}."
-    base_url = f"http://{cfg['pdns_ip']}:{cfg['pdns_port']}/api/v1/servers/localhost"
-
-    body = {"rrsets": [{"name": fqdn, "type": "A", "ttl": 300, "changetype": "REPLACE",
-                        "records": [{"content": server_ip, "disabled": False}]}]}
-    logger.info("Registering DNS: %s -> %s", fqdn, server_ip)
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.patch(f"{base_url}/zones/{zone}", json=body,
-                                      headers={"X-API-Key": cfg["pdns_api_key"]})
-        if resp.status_code not in (200, 204):
-            logger.warning("DNS registration returned %d: %s", resp.status_code, resp.text[:200])
-    except Exception:
-        logger.warning("DNS registration failed for %s", hostname, exc_info=True)
-
-
-async def delete_dns(session: AsyncSession, hostname: str) -> None:
-    """Remove A record from PowerDNS."""
-    cfg = await _get_pdns_settings(session)
-    if not cfg.get("pdns_ip") or not cfg.get("domain_name"):
-        return
-
-    domain_name = cfg["domain_name"]
-    zone = domain_name if domain_name.endswith(".") else f"{domain_name}."
-    fqdn = hostname if hostname.endswith(".") else f"{hostname}."
-    base_url = f"http://{cfg['pdns_ip']}:{cfg['pdns_port']}/api/v1/servers/localhost"
-
-    body = {"rrsets": [{"name": fqdn, "type": "A", "changetype": "DELETE"}]}
-    logger.info("Deleting DNS record: %s", fqdn)
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            await client.patch(f"{base_url}/zones/{zone}", json=body,
-                               headers={"X-API-Key": cfg["pdns_api_key"]})
-    except Exception:
-        logger.warning("DNS deletion failed for %s", hostname, exc_info=True)
-
-
-# ---------------------------------------------------------------------------
-# S3 helpers
-# ---------------------------------------------------------------------------
-
-async def get_s3_deploy_settings() -> dict[str, str]:
-    """Get S3 settings for the sidecar container."""
-    cfg = await get_s3_settings()
-    return {
-        "S3_ENDPOINT": cfg.get("object_storage_endpoint", "http://localhost:9000"),
-        "S3_ACCESS_KEY": cfg.get("object_storage_access_key", "minioadmin"),
-        "S3_SECRET_KEY": cfg.get("object_storage_secret_key", "minioadmin"),
-        "S3_USE_SSL": cfg.get("object_storage_use_ssl", "false"),
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +133,7 @@ async def seed_apps(session: AsyncSession) -> None:
             "icon": "Code",
             "template_dir": "vscode",
             "default_namespace": "argus-apps",
-            "hostname_pattern": "argus-vscode-{username}.argus-insight.{domain}",
+            "hostname_pattern": "argus-vscode-{instance_id}.{domain}",
         },
     ]
     for d in defaults:
@@ -310,7 +147,7 @@ async def seed_apps(session: AsyncSession) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Instance lifecycle
+# Instance queries
 # ---------------------------------------------------------------------------
 
 async def get_instance(
@@ -337,6 +174,40 @@ async def get_instance_by_instance_id(
     return result.scalar_one_or_none()
 
 
+# ---------------------------------------------------------------------------
+# Step tracking
+# ---------------------------------------------------------------------------
+
+async def _update_steps(pk: int, steps: list[dict]) -> None:
+    """Persist deploy steps to the instance record."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(ArgusAppInstance).where(ArgusAppInstance.id == pk)
+        )
+        inst = result.scalar_one_or_none()
+        if inst:
+            inst.deploy_steps = json.dumps(steps)
+            await session.commit()
+
+
+async def _set_status(pk: int, status: str, steps: list[dict] | None = None) -> None:
+    """Update instance status (and optionally steps)."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(ArgusAppInstance).where(ArgusAppInstance.id == pk)
+        )
+        inst = result.scalar_one_or_none()
+        if inst:
+            inst.status = status
+            if steps is not None:
+                inst.deploy_steps = json.dumps(steps)
+            await session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Instance lifecycle — deploy
+# ---------------------------------------------------------------------------
+
 async def launch_instance(
     session: AsyncSession,
     app: ArgusApp,
@@ -345,7 +216,6 @@ async def launch_instance(
     domain: str,
 ) -> ArgusAppInstance:
     """Deploy an app instance for the user."""
-    # Check for existing active instance
     existing = await get_instance(session, app, user_id)
     if existing and existing.status in ("deploying", "running"):
         raise HTTPException(
@@ -353,7 +223,6 @@ async def launch_instance(
             detail=f"Instance already exists with status: {existing.status}",
         )
 
-    # Clean up failed/deleting instances
     if existing:
         await session.delete(existing)
         await session.flush()
@@ -384,18 +253,6 @@ async def launch_instance(
     return instance
 
 
-async def _update_steps(pk: int, steps: list[dict]) -> None:
-    """Persist deploy steps to the instance record."""
-    async with async_session() as session:
-        result = await session.execute(
-            select(ArgusAppInstance).where(ArgusAppInstance.id == pk)
-        )
-        inst = result.scalar_one_or_none()
-        if inst:
-            inst.deploy_steps = json.dumps(steps)
-            await session.commit()
-
-
 async def _deploy_instance(
     pk: int,
     instance_id: str,
@@ -407,10 +264,14 @@ async def _deploy_instance(
     namespace: str,
 ) -> None:
     """Background task to deploy K8s resources and update status."""
+    from workspace_provisioner.workflow.steps.app_deploy import (
+        build_variables, deploy_manifests, ensure_namespace,
+        get_server_ip, prepare_s3, register_app_dns, wait_for_ready,
+    )
+
     steps: list[dict] = []
 
     async def _step(name: str, coro):
-        """Run a step, record result, and abort on failure."""
         steps.append({"step": name, "status": "running", "message": ""})
         await _update_steps(pk, steps)
         try:
@@ -424,95 +285,39 @@ async def _deploy_instance(
             raise
 
     try:
-        s3 = await _step("Prepare S3 storage", _prepare_s3(username))
-
+        s3 = await _step("Prepare S3 storage", prepare_s3(username))
         await _step("Create namespace", ensure_namespace(namespace))
 
         async with async_session() as session:
-            pdns_cfg = await _get_pdns_settings(session)
-        server_ip = pdns_cfg.get("pdns_ip", "127.0.0.1")
+            server_ip = await get_server_ip(session)
 
-        app = ArgusApp(app_type=app_type, template_dir=template_dir,
-                       default_namespace=namespace, display_name="", hostname_pattern="")
+        variables = await build_variables(
+            username, instance_id, app_type, namespace, hostname, domain, s3, server_ip,
+        )
 
-        variables = {
-            "USERNAME": username,
-            "INSTANCE_ID": instance_id,
-            "K8S_NAMESPACE": namespace,
-            "HOSTNAME": hostname,
-            "DOMAIN": domain,
-            "S3_ENDPOINT": s3["S3_ENDPOINT"],
-            "S3_ACCESS_KEY": s3["S3_ACCESS_KEY"],
-            "S3_SECRET_KEY": s3["S3_SECRET_KEY"],
-            "S3_USE_SSL": s3["S3_USE_SSL"],
-            "ARGUS_SERVER_HOST": server_ip,
-            "APP_TYPE": app_type,
-        }
-
-        manifests = render_manifests(app, variables)
-        await _step("Apply K8s manifests", kubectl_apply(manifests))
+        await _step("Apply K8s manifests", deploy_manifests(template_dir, variables))
 
         async with async_session() as session:
-            await _step("Register DNS", register_dns(session, hostname, server_ip))
+            await _step("Register DNS", register_app_dns(session, hostname, server_ip))
 
         ready = await _step("Wait for deployment ready",
-                            _wait_for_deployment(app_type, instance_id, namespace))
+                            wait_for_ready(app_type, instance_id, namespace))
 
         if not ready:
             steps.append({"step": "Deployment readiness", "status": "failed", "message": "Timed out"})
-            await _update_steps(pk, steps)
 
-        async with async_session() as session:
-            result = await session.execute(
-                select(ArgusAppInstance).where(ArgusAppInstance.id == pk)
-            )
-            inst = result.scalar_one_or_none()
-            if inst:
-                inst.status = "running" if ready else "failed"
-                inst.deploy_steps = json.dumps(steps)
-                await session.commit()
-
+        await _set_status(pk, "running" if ready else "failed", steps)
         logger.info("App %s instance %s deployed: status=%s", app_type, hostname,
                      "running" if ready else "failed")
 
     except Exception:
         logger.error("Failed to deploy %s for %s", app_type, username, exc_info=True)
-        async with async_session() as session:
-            result = await session.execute(
-                select(ArgusAppInstance).where(ArgusAppInstance.id == pk)
-            )
-            inst = result.scalar_one_or_none()
-            if inst:
-                inst.status = "failed"
-                inst.deploy_steps = json.dumps(steps)
-                await session.commit()
+        await _set_status(pk, "failed", steps)
 
 
-async def _prepare_s3(username: str) -> dict[str, str]:
-    """Prepare S3 bucket and return deploy settings."""
-    s3 = await get_s3_deploy_settings()
-    bucket_name = f"user-{username}"
-    await ensure_bucket(bucket_name)
-    return s3
-
-
-async def _wait_for_deployment(app_type: str, instance_id: str, namespace: str, timeout: int = 180) -> bool:
-    """Wait for the deployment to become ready."""
-    resource = f"deployment/argus-{app_type}-{instance_id}"
-    proc = await asyncio.create_subprocess_exec(
-        "kubectl", "rollout", "status", resource,
-        f"--namespace={namespace}",
-        f"--timeout={timeout}s",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
-    if proc.returncode != 0:
-        logger.warning("Rollout failed for %s: %s", resource, stderr.decode().strip())
-        return False
-    logger.info("Deployment %s ready", resource)
-    return True
-
+# ---------------------------------------------------------------------------
+# Instance lifecycle — destroy
+# ---------------------------------------------------------------------------
 
 async def destroy_instance(
     session: AsyncSession, app: ArgusApp, user_id: int
@@ -544,10 +349,14 @@ async def _destroy_instance(
     namespace: str,
 ) -> None:
     """Background task to delete K8s resources with step-by-step tracking."""
+    from workspace_provisioner.workflow.steps.app_deploy import (
+        build_variables, delete_app_dns, delete_manifests,
+        get_server_ip, prepare_s3, verify_pods_deleted,
+    )
+
     steps: list[dict] = []
 
     async def _step(name: str, coro):
-        """Run a destruction step, record result, continue on failure."""
         steps.append({"step": name, "status": "running", "message": ""})
         await _update_steps(pk, steps)
         try:
@@ -560,58 +369,27 @@ async def _destroy_instance(
             steps[-1] = {"step": name, "status": "failed", "message": msg}
             await _update_steps(pk, steps)
             logger.warning("Destroy step '%s' failed for %s/%s: %s", name, app_type, username, msg)
-            # Continue — best-effort cleanup
             return None
 
-    has_errors = False
     try:
-        s3 = await get_s3_deploy_settings()
+        s3 = await prepare_s3(username)
 
         async with async_session() as session:
-            pdns_cfg = await _get_pdns_settings(session)
-        server_ip = pdns_cfg.get("pdns_ip", "127.0.0.1")
+            server_ip = await get_server_ip(session)
 
-        app = ArgusApp(app_type=app_type, template_dir=template_dir,
-                       default_namespace=namespace, display_name="", hostname_pattern="")
+        variables = await build_variables(
+            username, instance_id, app_type, namespace, hostname, domain, s3, server_ip,
+        )
 
-        variables = {
-            "USERNAME": username,
-            "INSTANCE_ID": instance_id,
-            "K8S_NAMESPACE": namespace,
-            "HOSTNAME": hostname,
-            "DOMAIN": domain,
-            "S3_ENDPOINT": s3["S3_ENDPOINT"],
-            "S3_ACCESS_KEY": s3["S3_ACCESS_KEY"],
-            "S3_SECRET_KEY": s3["S3_SECRET_KEY"],
-            "S3_USE_SSL": s3["S3_USE_SSL"],
-            "ARGUS_SERVER_HOST": server_ip,
-            "APP_TYPE": app_type,
-        }
+        await _step("Delete K8s resources", delete_manifests(template_dir, variables))
+        await _step("Verify pods terminated", verify_pods_deleted(app_type, instance_id, namespace))
 
-        # Step 1: Delete K8s manifests (Ingress, Service, Deployment, Secret)
-        manifests = render_manifests(app, variables)
-        await _step("Delete K8s resources", kubectl_delete(manifests))
-
-        # Step 2: Verify pods are terminated
-        await _step("Verify pods terminated", _verify_pods_deleted(app_type, instance_id, namespace))
-
-        # Step 3: Delete DNS record
         async with async_session() as session:
-            await _step("Delete DNS record", delete_dns(session, hostname))
+            await _step("Delete DNS record", delete_app_dns(session, hostname))
 
         has_errors = any(s["status"] == "failed" for s in steps)
-
-        # Final status
         final_status = "deleted" if not has_errors else "failed"
-        async with async_session() as session:
-            result = await session.execute(
-                select(ArgusAppInstance).where(ArgusAppInstance.id == pk)
-            )
-            inst = result.scalar_one_or_none()
-            if inst:
-                inst.status = final_status
-                inst.deploy_steps = json.dumps(steps)
-                await session.commit()
+        await _set_status(pk, final_status, steps)
 
         if has_errors:
             logger.warning("App %s instance %s destroyed with errors", app_type, hostname)
@@ -620,36 +398,4 @@ async def _destroy_instance(
 
     except Exception:
         logger.error("Failed to destroy %s for %s", app_type, username, exc_info=True)
-        async with async_session() as session:
-            result = await session.execute(
-                select(ArgusAppInstance).where(ArgusAppInstance.id == pk)
-            )
-            inst = result.scalar_one_or_none()
-            if inst:
-                inst.status = "failed"
-                inst.deploy_steps = json.dumps(steps)
-                await session.commit()
-
-
-async def _verify_pods_deleted(app_type: str, instance_id: str, namespace: str, timeout: int = 60) -> None:
-    """Wait until pods for the deployment are fully terminated."""
-    label = f"app.kubernetes.io/name=code-server,app.kubernetes.io/instance={instance_id}"
-    deadline = asyncio.get_event_loop().time() + timeout
-
-    while asyncio.get_event_loop().time() < deadline:
-        proc = await asyncio.create_subprocess_exec(
-            "kubectl", "get", "pods", "-n", namespace, "-l", label,
-            "--no-headers", "-o", "custom-columns=NAME:.metadata.name",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, _ = await proc.communicate()
-        pods = stdout.decode().strip()
-        if not pods:
-            logger.info("All pods terminated for %s-%s in %s", app_type, instance_id, namespace)
-            return
-        logger.info("Waiting for pods to terminate: %s", pods.replace("\n", ", "))
-        await asyncio.sleep(3)
-
-    remaining = pods if pods else "unknown"
-    raise RuntimeError(f"Pods not terminated after {timeout}s: {remaining}")
+        await _set_status(pk, "failed", steps)
