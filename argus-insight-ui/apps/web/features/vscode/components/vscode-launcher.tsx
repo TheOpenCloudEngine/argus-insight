@@ -1,7 +1,15 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { AlertCircle, ExternalLink, Loader2, Play, Trash2 } from "lucide-react"
+import {
+  AlertCircle,
+  CheckCircle2,
+  ExternalLink,
+  Loader2,
+  Play,
+  Trash2,
+  XCircle,
+} from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import {
   Card,
@@ -23,11 +31,12 @@ import {
   AlertDialogTrigger,
 } from "@workspace/ui/components/alert-dialog"
 import {
+  type DeployStep,
   type VscodeStatus,
   fetchVscodeStatus,
   launchVscode,
   destroyVscode,
-  getAuthCookieUrl,
+  getAuthLaunchUrl,
 } from "../api"
 
 const STATUS_BADGE_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -36,6 +45,35 @@ const STATUS_BADGE_VARIANT: Record<string, "default" | "secondary" | "destructiv
   failed: "destructive",
   deleting: "secondary",
   deleted: "outline",
+}
+
+function StepIcon({ status }: { status: string }) {
+  if (status === "completed") return <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+  if (status === "running") return <Loader2 className="h-4 w-4 animate-spin text-blue-500 shrink-0" />
+  if (status === "failed") return <XCircle className="h-4 w-4 text-red-500 shrink-0" />
+  return <div className="h-4 w-4 rounded-full border-2 border-muted shrink-0" />
+}
+
+function DeploySteps({ steps }: { steps: DeployStep[] }) {
+  if (steps.length === 0) return null
+
+  return (
+    <div className="space-y-2 rounded-md border p-3">
+      {steps.map((s, i) => (
+        <div key={i} className="flex items-center gap-2 text-sm">
+          <StepIcon status={s.status} />
+          <span className={s.status === "failed" ? "text-red-600 font-medium" : s.status === "running" ? "text-blue-600 font-medium" : "text-muted-foreground"}>
+            {s.step}
+          </span>
+          {s.status === "failed" && s.message && (
+            <span className="text-xs text-red-500 truncate max-w-[300px]" title={s.message}>
+              — {s.message}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export function VscodeLauncher() {
@@ -60,13 +98,13 @@ export function VscodeLauncher() {
     refresh()
   }, [refresh])
 
-  // Auto-refresh while deploying or deleting
+  // Auto-refresh while deploying or deleting (faster polling for step updates)
   useEffect(() => {
     if (
       status?.exists &&
       (status.status === "deploying" || status.status === "deleting")
     ) {
-      const interval = setInterval(refresh, 5000)
+      const interval = setInterval(refresh, 2000)
       return () => clearInterval(interval)
     }
   }, [status, refresh])
@@ -97,9 +135,16 @@ export function VscodeLauncher() {
     }
   }
 
-  const handleOpen = () => {
-    // Use auth-cookie endpoint to set cookie and redirect
-    window.open(getAuthCookieUrl(), "_blank")
+  const handleOpen = async () => {
+    try {
+      // Derive backend URL: same hostname as the UI, port 4500
+      const backendBase = `${window.location.protocol}//${window.location.hostname}:4500`
+      const url = await getAuthLaunchUrl(backendBase)
+      // Open backend directly — it sets the cookie and redirects to the app
+      window.open(url, "_blank")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to open")
+    }
   }
 
   if (loading) {
@@ -153,6 +198,11 @@ export function VscodeLauncher() {
           </div>
         )}
 
+        {/* Deploy/Destroy steps progress */}
+        {hasInstance && status.deploySteps.length > 0 && (isDeploying || isDeleting || isFailed) && (
+          <DeploySteps steps={status.deploySteps} />
+        )}
+
         <div className="flex gap-2 pt-2">
           {!hasInstance && (
             <Button onClick={handleLaunch} disabled={actionLoading}>
@@ -163,12 +213,6 @@ export function VscodeLauncher() {
               )}
               Launch VS Code
             </Button>
-          )}
-
-          {isDeploying && (
-            <p className="text-sm text-muted-foreground pt-2">
-              Deploying your VS Code Server. This may take a minute...
-            </p>
           )}
 
           {isRunning && (

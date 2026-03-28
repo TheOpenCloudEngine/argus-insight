@@ -1,11 +1,11 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: argus-vscode-${USERNAME}
+  name: argus-vscode-${INSTANCE_ID}
   namespace: ${K8S_NAMESPACE}
   labels:
     app.kubernetes.io/name: code-server
-    app.kubernetes.io/instance: ${USERNAME}
+    app.kubernetes.io/instance: "${INSTANCE_ID}"
     app.kubernetes.io/part-of: argus-insight
     argus-insight/component: vscode
 spec:
@@ -17,27 +17,24 @@ spec:
       protocol: TCP
   selector:
     app.kubernetes.io/name: code-server
-    app.kubernetes.io/instance: ${USERNAME}
+    app.kubernetes.io/instance: "${INSTANCE_ID}"
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: argus-vscode-${USERNAME}
+  name: argus-vscode-${INSTANCE_ID}
   namespace: ${K8S_NAMESPACE}
   labels:
     app.kubernetes.io/name: code-server
-    app.kubernetes.io/instance: ${USERNAME}
+    app.kubernetes.io/instance: "${INSTANCE_ID}"
     app.kubernetes.io/part-of: argus-insight
     argus-insight/component: vscode
   annotations:
-    nginx.ingress.kubernetes.io/auth-url: "http://${ARGUS_SERVER_HOST}:4500/api/v1/apps/vscode/auth-verify"
-    nginx.ingress.kubernetes.io/auth-snippet: |
-      proxy_set_header X-Original-Host $host;
+    nginx.ingress.kubernetes.io/auth-url: "http://${ARGUS_SERVER_HOST}:4500/api/v1/apps/instances/${APP_TYPE}/auth-verify"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "upgrade";
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr"
 spec:
   ingressClassName: nginx
   rules:
@@ -48,6 +45,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: argus-vscode-${USERNAME}
+                name: argus-vscode-${INSTANCE_ID}
                 port:
                   name: http

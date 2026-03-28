@@ -1,3 +1,5 @@
+import { authFetch } from "@/features/auth/auth-fetch"
+
 const BASE = "/api/v1/settings"
 const SECURITY_BASE = "/api/v1/security"
 
@@ -422,5 +424,83 @@ export async function testDockerRegistry(
     const data = await res.json().catch(() => ({ detail: `Test failed: ${res.status}` }))
     throw new Error(data.detail || `Test failed: ${res.status}`)
   }
+  return res.json()
+}
+
+
+// --------------------------------------------------------------------------- //
+// Authentication (Keycloak) configuration
+// --------------------------------------------------------------------------- //
+
+export type AuthConfig = {
+  type: string
+  server_url: string
+  realm: string
+  client_id: string
+  client_secret: string
+  admin_role: string
+  superuser_role: string
+  user_role: string
+}
+
+export type InitStep = {
+  step: string
+  status: "ok" | "skip" | "created" | "error"
+  message: string
+}
+
+export async function fetchAuthConfig(): Promise<AuthConfig> {
+  const res = await authFetch(`${BASE}/auth`)
+  if (!res.ok) throw new Error(`Failed to fetch auth config: ${res.status}`)
+  return res.json()
+}
+
+export async function fetchAuthSecret(): Promise<string> {
+  const res = await authFetch(`${BASE}/auth/secret`)
+  if (!res.ok) throw new Error(`Failed to fetch secret: ${res.status}`)
+  const data = await res.json()
+  return data.client_secret
+}
+
+export async function updateAuthConfig(config: AuthConfig): Promise<void> {
+  const res = await authFetch(`${BASE}/auth`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  })
+  if (!res.ok) throw new Error(`Failed to update auth config: ${res.status}`)
+}
+
+type KeycloakInitRequest = {
+  server_url: string
+  admin_username: string
+  admin_password: string
+  realm: string
+  client_id: string
+  client_secret: string
+  roles: string[]
+}
+
+export async function initializeKeycloak(
+  req: KeycloakInitRequest,
+): Promise<{ steps: InitStep[] }> {
+  const res = await authFetch(`${BASE}/auth/initialize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) throw new Error(`Initialize failed: ${res.status}`)
+  return res.json()
+}
+
+export async function testAuthConnection(
+  config: AuthConfig,
+): Promise<{ success: boolean; message: string }> {
+  const res = await authFetch(`${BASE}/auth/test`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  })
+  if (!res.ok) throw new Error(`Test failed: ${res.status}`)
   return res.json()
 }

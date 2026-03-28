@@ -55,6 +55,7 @@ class RoleResponse(BaseModel):
     """
 
     id: int
+    role_id: str
     name: str
     description: str | None = None
     created_at: datetime

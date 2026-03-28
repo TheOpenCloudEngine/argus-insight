@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.models import ArgusAgent
+from app.core.config import settings
 from app.settings.models import ArgusConfiguration
 from app.settings.schemas import InfraCategoryResponse, InfraConfigResponse
 
@@ -410,6 +411,15 @@ async def seed_infra_config(session: AsyncSession) -> None:
         ("command", "openssl_path", "/usr/bin/openssl", "Path to OpenSSL binary"),
         # Security
         ("security", "ca_cert_dir", "/opt/argus-insight-server/certs", "CA certificate directory"),
+        # Auth (Keycloak OIDC) — defaults from config file
+        ("auth", "auth_type", settings.auth_type, "Authentication type (local or keycloak)"),
+        ("auth", "auth_keycloak_server_url", settings.auth_keycloak_server_url, "Keycloak server URL"),
+        ("auth", "auth_keycloak_realm", settings.auth_keycloak_realm, "Keycloak realm"),
+        ("auth", "auth_keycloak_client_id", settings.auth_keycloak_client_id, "Keycloak client ID"),
+        ("auth", "auth_keycloak_client_secret", settings.auth_keycloak_client_secret, "Keycloak client secret"),
+        ("auth", "auth_keycloak_admin_role", settings.auth_keycloak_admin_role, "Admin role name"),
+        ("auth", "auth_keycloak_superuser_role", settings.auth_keycloak_superuser_role, "Superuser role name"),
+        ("auth", "auth_keycloak_user_role", settings.auth_keycloak_user_role, "User role name"),
     ]
     for category, key, value, description in defaults:
         result = await session.execute(
@@ -425,3 +435,42 @@ async def seed_infra_config(session: AsyncSession) -> None:
                 description=description,
             ))
     await session.commit()
+
+
+async def get_config_by_category(
+    session: AsyncSession, category: str,
+) -> dict[str, str]:
+    """Get all config items for a specific category as a dict."""
+    result = await session.execute(
+        select(ArgusConfiguration).where(ArgusConfiguration.category == category)
+    )
+    rows = result.scalars().all()
+    return {row.config_key: row.config_value for row in rows}
+
+
+async def load_auth_settings(session: AsyncSession) -> dict[str, str]:
+    """Load Keycloak auth settings from DB and update the global settings object."""
+    from app.core.config import settings as app_settings
+
+    cfg = await get_config_by_category(session, "auth")
+    if not cfg:
+        logger.info("No auth settings in DB, using config file defaults")
+        return {}
+
+    app_settings.auth_type = cfg.get("auth_type", app_settings.auth_type)
+    app_settings.auth_keycloak_server_url = cfg.get("auth_keycloak_server_url", app_settings.auth_keycloak_server_url)
+    app_settings.auth_keycloak_realm = cfg.get("auth_keycloak_realm", app_settings.auth_keycloak_realm)
+    app_settings.auth_keycloak_client_id = cfg.get("auth_keycloak_client_id", app_settings.auth_keycloak_client_id)
+    app_settings.auth_keycloak_client_secret = cfg.get("auth_keycloak_client_secret", app_settings.auth_keycloak_client_secret)
+    app_settings.auth_keycloak_admin_role = cfg.get("auth_keycloak_admin_role", app_settings.auth_keycloak_admin_role)
+    app_settings.auth_keycloak_superuser_role = cfg.get("auth_keycloak_superuser_role", app_settings.auth_keycloak_superuser_role)
+    app_settings.auth_keycloak_user_role = cfg.get("auth_keycloak_user_role", app_settings.auth_keycloak_user_role)
+
+    # Clear JWKS cache so next request fetches keys from the (potentially new) Keycloak server
+    from app.core.auth import _jwks_cache
+    _jwks_cache.clear()
+
+    logger.info("Auth settings loaded from DB: type=%s, server_url=%s, realm=%s",
+                app_settings.auth_type, app_settings.auth_keycloak_server_url,
+                app_settings.auth_keycloak_realm)
+    return cfg
