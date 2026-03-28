@@ -100,6 +100,16 @@ class Settings:
         self.db_pool_recycle: int = int(_get_nested("database", "pool", "recycle", 3600))
         self.db_echo: bool = _to_bool(_get("database", "echo", False))
 
+        # Auth (Keycloak OIDC)
+        self.auth_type: str = _get("auth", "type", "local")
+        self.auth_keycloak_server_url: str = _get_nested("auth", "keycloak", "server_url", "http://localhost:8180")
+        self.auth_keycloak_realm: str = _get_nested("auth", "keycloak", "realm", "argus")
+        self.auth_keycloak_client_id: str = _get_nested("auth", "keycloak", "client_id", "argus-client")
+        self.auth_keycloak_client_secret: str = _get_nested("auth", "keycloak", "client_secret", "argus-client-secret")
+        self.auth_keycloak_admin_role: str = _get_nested("auth", "keycloak", "admin_role", "argus-admin")
+        self.auth_keycloak_superuser_role: str = _get_nested("auth", "keycloak", "superuser_role", "argus-superuser")
+        self.auth_keycloak_user_role: str = _get_nested("auth", "keycloak", "user_role", "argus-user")
+
         # GitLab (Workspace Provisioner)
         self.gitlab_url: str = _get("gitlab", "url", "")
         self.gitlab_token: str = _get("gitlab", "token", "")

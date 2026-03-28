@@ -6,7 +6,7 @@ from fastapi import APIRouter, Cookie, Depends, Header, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.service import get_current_user_info
+from app.core.auth import CurrentUser
 from app.core.database import get_session
 from app.apps.vscode import service
 from app.apps.vscode.schemas import (
@@ -22,11 +22,11 @@ router = APIRouter(prefix="/apps/vscode", tags=["vscode"])
 
 @router.get("/status", response_model=VscodeStatusResponse)
 async def get_status(
+    user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ):
     """Get current user's VS Code instance status."""
-    user = await get_current_user_info(session)
-    instance = await service.get_instance_status(session, user.id)
+    instance = await service.get_instance_status(session, int(user.sub))
 
     if not instance or instance.status == "deleted":
         return VscodeStatusResponse(exists=False)
@@ -44,6 +44,7 @@ async def get_status(
 
 @router.post("/launch", response_model=VscodeLaunchResponse)
 async def launch(
+    user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ):
     """Deploy a code-server instance for the current user.
@@ -52,8 +53,6 @@ async def launch(
     key='domain_name'). Creates K8s resources, registers DNS, and
     tracks the instance in the database.
     """
-    user = await get_current_user_info(session)
-
     # Get domain from settings
     from sqlalchemy import select
     from app.settings.models import ArgusConfiguration
@@ -75,7 +74,7 @@ async def launch(
 
     instance = await service.launch_instance(
         session,
-        user_id=user.id,
+        user_id=int(user.sub),
         username=user.username,
         domain=domain,
     )
@@ -91,11 +90,11 @@ async def launch(
 
 @router.delete("/destroy", response_model=VscodeDestroyResponse)
 async def destroy(
+    user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ):
     """Destroy the current user's code-server instance."""
-    user = await get_current_user_info(session)
-    await service.destroy_instance(session, user.id)
+    await service.destroy_instance(session, int(user.sub))
     return VscodeDestroyResponse(
         status="deleting",
         message="VS Code Server is being destroyed.",
@@ -129,6 +128,7 @@ async def auth_verify(
 
 @router.get("/auth-cookie")
 async def auth_cookie(
+    user: CurrentUser,
     session: AsyncSession = Depends(get_session),
 ):
     """Set authentication cookie and redirect to code-server.
@@ -136,8 +136,7 @@ async def auth_cookie(
     Creates an argus_vscode_token cookie scoped to .argus-insight.{domain}
     and redirects the user to their code-server URL.
     """
-    user = await get_current_user_info(session)
-    instance = await service.get_instance_status(session, user.id)
+    instance = await service.get_instance_status(session, int(user.sub))
 
     if not instance or instance.status != "running":
         from fastapi import HTTPException

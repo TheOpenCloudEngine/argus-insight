@@ -66,7 +66,8 @@ COMMENT ON COLUMN argus_agents_heartbeat.last_heartbeat_at IS 'Timestamp of the 
 
 CREATE TABLE IF NOT EXISTS argus_roles (
     id          SERIAL          PRIMARY KEY,
-    name        VARCHAR(50)     NOT NULL UNIQUE,
+    role_id     VARCHAR(50)     NOT NULL UNIQUE,
+    name        VARCHAR(50)     NOT NULL,
     description VARCHAR(255),
     created_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW()
@@ -74,7 +75,8 @@ CREATE TABLE IF NOT EXISTS argus_roles (
 
 COMMENT ON TABLE argus_roles IS 'Role master table defining available user roles';
 COMMENT ON COLUMN argus_roles.id IS 'Auto-incremented role identifier';
-COMMENT ON COLUMN argus_roles.name IS 'Unique role name (e.g. Admin, User)';
+COMMENT ON COLUMN argus_roles.role_id IS 'Unique role identifier matching Keycloak realm role names (e.g. argus-admin)';
+COMMENT ON COLUMN argus_roles.name IS 'Display name (e.g. Admin, User)';
 COMMENT ON COLUMN argus_roles.description IS 'Human-readable role description';
 COMMENT ON COLUMN argus_roles.created_at IS 'Record creation timestamp';
 COMMENT ON COLUMN argus_roles.updated_at IS 'Record last update timestamp';
@@ -255,7 +257,16 @@ INSERT INTO argus_configuration (category, config_key, config_value, description
 ('ldap', 'group_search_filter',   '',                   'Group search filter'),
 ('ldap', 'group_name_attribute',  'cn',                 'Group name attribute'),
 ('ldap', 'group_member_attribute','memberUid',           'Group member attribute'),
-('command', 'openssl_path',      '/usr/bin/openssl',    'Path to OpenSSL binary')
+('command', 'openssl_path',      '/usr/bin/openssl',    'Path to OpenSSL binary'),
+-- Auth (Keycloak OIDC)
+('auth', 'auth_type',                    'local',                'Authentication type (local or keycloak)'),
+('auth', 'auth_keycloak_server_url',     'http://localhost:8180','Keycloak server URL'),
+('auth', 'auth_keycloak_realm',          'argus',                'Keycloak realm'),
+('auth', 'auth_keycloak_client_id',      'argus-client',         'Keycloak client ID'),
+('auth', 'auth_keycloak_client_secret',  'argus-client-secret',  'Keycloak client secret'),
+('auth', 'auth_keycloak_admin_role',     'argus-admin',          'Admin role name'),
+('auth', 'auth_keycloak_superuser_role', 'argus-superuser',      'Superuser role name'),
+('auth', 'auth_keycloak_user_role',      'argus-user',           'User role name')
 ON CONFLICT (config_key) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
@@ -332,8 +343,9 @@ COMMENT ON COLUMN argus_notebook_page_versions.content IS 'Full markdown content
 COMMENT ON COLUMN argus_notebook_page_versions.change_summary IS 'Optional description of what changed';
 
 -- Seed default roles
-INSERT INTO argus_roles (name, description) VALUES ('Admin', 'Administrator with full access') ON CONFLICT (name) DO NOTHING;
-INSERT INTO argus_roles (name, description) VALUES ('User', 'Standard user with limited access') ON CONFLICT (name) DO NOTHING;
+INSERT INTO argus_roles (role_id, name, description) VALUES ('argus-admin', 'Admin', 'Administrator with full access') ON CONFLICT (role_id) DO NOTHING;
+INSERT INTO argus_roles (role_id, name, description) VALUES ('argus-superuser', 'Superuser', 'Super user with elevated access') ON CONFLICT (role_id) DO NOTHING;
+INSERT INTO argus_roles (role_id, name, description) VALUES ('argus-user', 'User', 'Standard user with limited access') ON CONFLICT (role_id) DO NOTHING;
 
 -- Seed default users (password: password123)
 TRUNCATE TABLE argus_users RESTART IDENTITY CASCADE;

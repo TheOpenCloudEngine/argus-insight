@@ -76,17 +76,25 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables verified")
 
-    # Seed default roles
+    # Seed default roles and configuration
     from app.core.database import async_session
-    from app.usermgr.service import seed_roles
+    from app.usermgr.service import seed_admin_user, seed_roles
 
     async with async_session() as session:
         await seed_roles(session)
 
-    from app.settings.service import seed_infra_config
+    from app.settings.service import load_auth_settings, seed_infra_config
 
     async with async_session() as session:
         await seed_infra_config(session)
+
+    # Load auth settings from DB (overrides config file defaults)
+    async with async_session() as session:
+        await load_auth_settings(session)
+
+    # Seed default admin user in local auth mode
+    async with async_session() as session:
+        await seed_admin_user(session)
 
     # Initialize GitLab client for workspace provisioner
     if settings.gitlab_url and settings.gitlab_token:

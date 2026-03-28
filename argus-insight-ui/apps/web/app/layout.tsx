@@ -1,6 +1,7 @@
 import "@workspace/ui/globals.css"
 import localFont from "next/font/local"
 import { ThemeProvider } from "@/components/theme-provider"
+import { AuthProviderWrapper } from "@/components/auth-provider-wrapper"
 
 const robotoCondensed = localFont({
   src: "./fonts/RobotoCondensed-Variable.ttf",
@@ -29,7 +30,11 @@ export default function RootLayout({
       className={`antialiased ${robotoCondensed.variable} ${d2coding.variable}`}
     >
       <body className="font-[family-name:var(--font-roboto-condensed)]">
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <AuthProviderWrapper>
+            {children}
+          </AuthProviderWrapper>
+        </ThemeProvider>
       </body>
     </html>
   )

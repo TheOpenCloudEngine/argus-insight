@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS argus_agents_heartbeat (
 
 CREATE TABLE IF NOT EXISTS argus_roles (
     id          INT             AUTO_INCREMENT PRIMARY KEY COMMENT 'Auto-incremented role identifier',
-    name        VARCHAR(50)     NOT NULL UNIQUE           COMMENT 'Unique role name (e.g. Admin, User)',
+    role_id     VARCHAR(50)     NOT NULL UNIQUE           COMMENT 'Unique role identifier matching Keycloak realm role names (e.g. argus-admin)',
+    name        VARCHAR(50)     NOT NULL                  COMMENT 'Display name (e.g. Admin, User)',
     description VARCHAR(255)                              COMMENT 'Human-readable role description',
     created_at  TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Record creation timestamp',
     updated_at  TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Record last update timestamp'
@@ -196,7 +197,16 @@ INSERT IGNORE INTO argus_configuration (category, config_key, config_value, desc
 ('ldap', 'group_search_filter',   '',                    'Group search filter'),
 ('ldap', 'group_name_attribute',  'cn',                  'Group name attribute'),
 ('ldap', 'group_member_attribute','memberUid',            'Group member attribute'),
-('command', 'openssl_path',      '/usr/bin/openssl',     'Path to OpenSSL binary');
+('command', 'openssl_path',      '/usr/bin/openssl',     'Path to OpenSSL binary'),
+-- Auth (Keycloak OIDC)
+('auth', 'auth_type',                    'local',                'Authentication type (local or keycloak)'),
+('auth', 'auth_keycloak_server_url',     'http://localhost:8180','Keycloak server URL'),
+('auth', 'auth_keycloak_realm',          'argus',                'Keycloak realm'),
+('auth', 'auth_keycloak_client_id',      'argus-client',         'Keycloak client ID'),
+('auth', 'auth_keycloak_client_secret',  'argus-client-secret',  'Keycloak client secret'),
+('auth', 'auth_keycloak_admin_role',     'argus-admin',          'Admin role name'),
+('auth', 'auth_keycloak_superuser_role', 'argus-superuser',      'Superuser role name'),
+('auth', 'auth_keycloak_user_role',      'argus-user',           'User role name');
 
 -- ---------------------------------------------------------------------------
 -- Notes tables
@@ -254,8 +264,9 @@ CREATE TABLE IF NOT EXISTS argus_notebook_page_versions (
   COMMENT='Version history snapshots for notebook pages';
 
 -- Seed default roles
-INSERT IGNORE INTO argus_roles (name, description) VALUES ('Admin', 'Administrator with full access');
-INSERT IGNORE INTO argus_roles (name, description) VALUES ('User', 'Standard user with limited access');
+INSERT IGNORE INTO argus_roles (role_id, name, description) VALUES ('argus-admin', 'Admin', 'Administrator with full access');
+INSERT IGNORE INTO argus_roles (role_id, name, description) VALUES ('argus-superuser', 'Superuser', 'Super user with elevated access');
+INSERT IGNORE INTO argus_roles (role_id, name, description) VALUES ('argus-user', 'User', 'Standard user with limited access');
 
 -- Seed default users (password: password123)
 SET FOREIGN_KEY_CHECKS = 0;

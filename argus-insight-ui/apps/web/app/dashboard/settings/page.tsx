@@ -8,6 +8,7 @@ import { DomainSettings } from "@/features/settings/components/domain-settings"
 import { LdapSettings } from "@/features/settings/components/ldap-settings"
 import { SecuritySettings } from "@/features/settings/components/security-settings"
 import { ArgusSettings } from "@/features/settings/components/argus-settings"
+import { AuthSettings } from "@/features/settings/components/auth-settings"
 
 export default function SettingsPage() {
   return (
@@ -22,6 +23,7 @@ export default function SettingsPage() {
             <TabsTrigger value="file-browser" className="text-base">File Browser</TabsTrigger>
             <TabsTrigger value="security" className="text-base">Security</TabsTrigger>
             <TabsTrigger value="argus" className="text-base">Argus</TabsTrigger>
+            <TabsTrigger value="auth" className="text-base">Authentication</TabsTrigger>
           </TabsList>
           <TabsContent value="domain" className="mt-4">
             <DomainSettings />
@@ -40,6 +42,9 @@ export default function SettingsPage() {
           </TabsContent>
           <TabsContent value="argus" className="mt-4">
             <ArgusSettings />
+          </TabsContent>
+          <TabsContent value="auth" className="mt-4">
+            <AuthSettings />
           </TabsContent>
         </Tabs>
       </div>

@@ -438,7 +438,7 @@ async def list_roles(session: AsyncSession) -> list[RoleResponse]:
 
 
 async def seed_roles(session: AsyncSession) -> None:
-    """Insert default roles (Admin, User) if they do not exist.
+    """Insert default roles if they do not exist.
 
     Called during application startup (lifespan) to ensure the required
     roles are always present in the database. Skips roles that already exist
@@ -447,12 +447,54 @@ async def seed_roles(session: AsyncSession) -> None:
     Args:
         session: Active database session.
     """
-    for name, desc in [
-        (RoleName.ADMIN.value, "Administrator with full access"),
-        (RoleName.USER.value, "Standard user with limited access"),
+    for role_id, name, desc in [
+        ("argus-admin", RoleName.ADMIN.value, "Administrator with full access"),
+        ("argus-superuser", "Superuser", "Super user with elevated access"),
+        ("argus-user", RoleName.USER.value, "Standard user with limited access"),
     ]:
-        existing = await _get_role_by_name(session, name)
-        if not existing:
-            session.add(ArgusRole(name=name, description=desc))
-            logger.info("Seeded role: %s", name)
+        result = await session.execute(
+            select(ArgusRole).where(ArgusRole.role_id == role_id)
+        )
+        if result.scalars().first() is None:
+            session.add(ArgusRole(role_id=role_id, name=name, description=desc))
+            logger.info("Seeded role: %s (%s)", role_id, name)
     await session.commit()
+
+
+async def seed_admin_user(session: AsyncSession) -> None:
+    """Create default admin user if no users exist (local auth mode only).
+
+    Called during application startup. Only creates the admin user when
+    auth_type is "local" and the argus_users table is empty.
+    """
+    from app.core.config import settings
+
+    if settings.auth_type != "local":
+        return
+
+    result = await session.execute(select(func.count()).select_from(ArgusUser))
+    count = result.scalar()
+    if count and count > 0:
+        return
+
+    # Find the admin role
+    result = await session.execute(
+        select(ArgusRole).where(ArgusRole.role_id == "argus-admin")
+    )
+    admin_role = result.scalars().first()
+    if not admin_role:
+        logger.error("Cannot seed admin user: argus-admin role not found")
+        return
+
+    admin = ArgusUser(
+        username="admin",
+        email="admin@argus.local",
+        first_name="Admin",
+        last_name="",
+        password_hash=_hash_password("admin"),
+        status="active",
+        role_id=admin_role.id,
+    )
+    session.add(admin)
+    await session.commit()
+    logger.info("Seeded default admin user (username=admin, password=admin)")

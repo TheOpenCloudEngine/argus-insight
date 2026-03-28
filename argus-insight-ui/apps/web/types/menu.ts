@@ -3,6 +3,7 @@ export interface MenuItem {
   title: string
   url: string
   icon: string
+  adminOnly?: boolean
 }
 
 export interface MenuGroup {

@@ -18,7 +18,38 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.service import create_token, verify_token
+import hashlib
+import hmac as _hmac
+import json
+import time
+from base64 import urlsafe_b64decode, urlsafe_b64encode
+
+_VSCODE_SECRET = "argus-insight-vscode-cookie-secret"
+_VSCODE_TOKEN_EXPIRY = 86400  # 24 hours
+
+
+def _create_cookie_token(username: str, role: str) -> str:
+    """Create a simple HMAC-based token for VS Code auth cookies."""
+    payload = {"sub": username, "role": role, "exp": int(time.time()) + _VSCODE_TOKEN_EXPIRY}
+    data = json.dumps(payload).encode()
+    sig = _hmac.new(_VSCODE_SECRET.encode(), data, hashlib.sha256).hexdigest()
+    return urlsafe_b64encode(json.dumps({"payload": payload, "sig": sig}).encode()).decode()
+
+
+def _verify_cookie_token(token: str) -> dict | None:
+    """Verify and decode a VS Code cookie token."""
+    try:
+        token_data = json.loads(urlsafe_b64decode(token))
+        payload = token_data["payload"]
+        data = json.dumps(payload).encode()
+        expected = _hmac.new(_VSCODE_SECRET.encode(), data, hashlib.sha256).hexdigest()
+        if not _hmac.compare_digest(token_data["sig"], expected):
+            return None
+        if payload.get("exp", 0) < time.time():
+            return None
+        return payload
+    except Exception:
+        return None
 from app.core.database import async_session
 from app.core.s3 import ensure_bucket, get_s3_settings
 from app.settings.models import ArgusConfiguration
@@ -453,7 +484,7 @@ def verify_vscode_auth(token: str, host: str) -> bool:
     The token's 'sub' claim (username) must match the username
     extracted from the hostname.
     """
-    payload = verify_token(token)
+    payload = _verify_cookie_token(token)
     if payload is None:
         return False
 
@@ -468,4 +499,4 @@ def verify_vscode_auth(token: str, host: str) -> bool:
 
 def create_vscode_token(username: str, role: str) -> str:
     """Create a token for VS Code authentication cookie."""
-    return create_token(username, role)
+    return _create_cookie_token(username, role)
