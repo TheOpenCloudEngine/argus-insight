@@ -1,0 +1,18 @@
+name: argus-mindsdb
+display_name: MindsDB
+description: AI-in-Database platform — create, train, and query ML models using SQL
+icon: brain
+category: ai
+depends_on: []
+provides:
+  - mindsdb_endpoint
+requires: []
+tags:
+  - ai
+  - ml
+  - sql
+  - automl
+  - mindsdb
+versions:
+  - "1.0"
+default_version: "1.0"

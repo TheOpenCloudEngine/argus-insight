@@ -1,0 +1,15 @@
+version: "1.0"
+display_name: "v1.0 (Community Edition)"
+description: Neo4j Community Edition with persistent storage and Browser UI
+status: stable
+release_date: "2026-03-30"
+step_class: workspace_provisioner.workflow.steps.neo4j_deploy.Neo4jDeployStep
+config_class: workspace_provisioner.config.Neo4jConfig
+template_dir: neo4j
+changelog: |
+  - Neo4j 5.x Community Edition
+  - Bolt protocol (7687) for driver connections
+  - HTTP Browser UI (7474) exposed via Ingress
+  - Persistent data volume
+  - Auto-generated password
+upgradeable_from: []

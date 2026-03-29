@@ -1,0 +1,15 @@
+version: "1.0"
+display_name: "v1.0 (MindsDB + Web UI)"
+description: MindsDB with HTTP API, MySQL/MongoDB wire protocol, and Web SQL Editor
+status: stable
+release_date: "2026-03-30"
+step_class: workspace_provisioner.workflow.steps.mindsdb_deploy.MindsdbDeployStep
+config_class: workspace_provisioner.config.MindsdbConfig
+template_dir: mindsdb
+changelog: |
+  - MindsDB latest with built-in ML engines (LightWood, OpenAI, HuggingFace)
+  - SQL Editor Web UI (port 47334)
+  - MySQL wire protocol (47335) for BI tools / PySpark / JDBC
+  - MongoDB wire protocol (47336)
+  - Persistent model and metadata storage
+upgradeable_from: []

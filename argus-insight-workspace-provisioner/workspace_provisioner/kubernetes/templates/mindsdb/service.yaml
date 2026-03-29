@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: argus-mindsdb-${WORKSPACE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: mindsdb
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 47334
+      targetPort: http
+      protocol: TCP
+    - name: mysql
+      port: 47335
+      targetPort: mysql
+      protocol: TCP
+    - name: mongodb
+      port: 47336
+      targetPort: mongodb
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: mindsdb
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argus-mindsdb-${WORKSPACE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: mindsdb
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "256m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: ${HOSTNAME}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argus-mindsdb-${WORKSPACE_NAME}
+                port:
+                  name: http

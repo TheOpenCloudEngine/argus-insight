@@ -1,0 +1,17 @@
+name: argus-neo4j
+display_name: Neo4j Graph Database
+description: Neo4j graph database for knowledge graphs, lineage, and relationship analysis
+icon: database
+category: database
+depends_on: []
+provides:
+  - neo4j_endpoint
+requires: []
+tags:
+  - graph
+  - neo4j
+  - database
+  - knowledge-graph
+versions:
+  - "1.0"
+default_version: "1.0"

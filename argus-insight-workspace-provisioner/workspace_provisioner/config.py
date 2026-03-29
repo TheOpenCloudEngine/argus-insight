@@ -227,6 +227,46 @@ class JupyterPySparkConfig(JupyterLabConfig):
     memory_limit: str = Field(default="8Gi", description="Memory limit")
 
 
+class MindsdbConfig(BaseModel):
+    """MindsDB AI-in-Database deployment settings."""
+
+    image: str = Field(
+        default="mindsdb/mindsdb:latest",
+        description="MindsDB container image",
+    )
+    storage_size: str = Field(
+        default="20Gi",
+        description="Persistent data volume size for models and metadata",
+    )
+    resources: ResourceConfig = Field(
+        default_factory=lambda: ResourceConfig(
+            cpu_request="500m", cpu_limit="4",
+            memory_request="2Gi", memory_limit="8Gi",
+        ),
+        description="CPU/Memory for the MindsDB container",
+    )
+
+
+class Neo4jConfig(BaseModel):
+    """Neo4j Graph Database deployment settings."""
+
+    image: str = Field(
+        default="neo4j:5.26-community",
+        description="Neo4j container image (Community Edition)",
+    )
+    storage_size: str = Field(
+        default="20Gi",
+        description="Persistent data volume size",
+    )
+    resources: ResourceConfig = Field(
+        default_factory=lambda: ResourceConfig(
+            cpu_request="500m", cpu_limit="2",
+            memory_request="1Gi", memory_limit="4Gi",
+        ),
+        description="CPU/Memory for the Neo4j container",
+    )
+
+
 class MinioWorkspaceConfig(BaseModel):
     """MinIO Workspace Bucket settings."""
 
