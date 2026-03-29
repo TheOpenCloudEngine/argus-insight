@@ -420,12 +420,6 @@ async def seed_infra_config(session: AsyncSession) -> None:
         ("auth", "auth_keycloak_admin_role", settings.auth_keycloak_admin_role, "Admin role name"),
         ("auth", "auth_keycloak_superuser_role", settings.auth_keycloak_superuser_role, "Superuser role name"),
         ("auth", "auth_keycloak_user_role", settings.auth_keycloak_user_role, "User role name"),
-        # GitLab
-        ("gitlab", "gitlab_url", settings.gitlab_url, "GitLab server URL"),
-        ("gitlab", "gitlab_token", settings.gitlab_token, "GitLab API private token"),
-        ("gitlab", "gitlab_group_path", "workspaces", "Default group path for workspace projects"),
-        ("gitlab", "gitlab_default_branch", "main", "Default branch for new projects"),
-        ("gitlab", "gitlab_project_visibility", "internal", "Project visibility (internal, private, public)"),
     ]
     for category, key, value, description in defaults:
         result = await session.execute(

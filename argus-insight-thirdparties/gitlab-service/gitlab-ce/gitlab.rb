@@ -65,7 +65,7 @@ sidekiq['max_concurrency'] = 10
 # Prometheus metrics endpoint (for Argus monitoring integration)
 gitlab_rails['monitoring_whitelist'] = ['0.0.0.0/0']
 prometheus['enable'] = false
-grafana['enable'] = false
+# grafana['enable'] = false  # Removed in GitLab 17.x (unsupported config)
 
 # ─── Container Registry ──────────────────────────────────────────────────────
 # Disabled by default; enable if you need GitLab Container Registry

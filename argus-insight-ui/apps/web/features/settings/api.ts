@@ -511,6 +511,8 @@ export async function testAuthConnection(
 
 export type GitlabConfig = {
   url: string
+  username: string
+  password: string
   token: string
   group_path: string
   default_branch: string
@@ -528,6 +530,13 @@ export async function fetchGitlabToken(): Promise<string> {
   if (!res.ok) throw new Error("Failed to fetch token")
   const data = await res.json()
   return data.token
+}
+
+export async function fetchGitlabPassword(): Promise<string> {
+  const res = await authFetch(`${BASE}/gitlab/password`)
+  if (!res.ok) throw new Error("Failed to fetch password")
+  const data = await res.json()
+  return data.password
 }
 
 export async function updateGitlabConfig(config: GitlabConfig): Promise<void> {

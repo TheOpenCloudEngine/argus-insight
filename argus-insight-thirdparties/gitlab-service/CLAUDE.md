@@ -370,6 +370,97 @@ kubectl exec -n argus-insight deploy/gitlab -- gitlab-backup restore BACKUP=<tim
 - `versions.env`에서 모든 컴포넌트 버전을 중앙 관리
 - Makefile의 `DOCKER_REGISTRY` 변수로 레지스트리 주소를 주입 (기본값: `argus-insight`)
 
+## Argus Insight 운영 환경 배포 (Docker Compose)
+
+### 배포 환경
+
+| 항목 | 값 |
+|------|-----|
+| 서버 | dev-server (10.0.1.50) |
+| 도메인 | dev.net |
+| External URL | `http://gitlab-global.dev.net` |
+| HTTP 포트 | 8929 (호스트) → 80 (컨테이너) |
+| SSH 포트 | 2224 (호스트) → 22 (컨테이너) |
+| 초기 관리자 | root / Argus!nsight2026 |
+
+### 배포 절차
+
+```bash
+# 1. gitlab.rb에서 external_url 확인/수정
+cd argus-insight-thirdparties/gitlab-service/docker
+# external_url은 'http://gitlab-global.dev.net'으로 설정되어 있음
+
+# 2. GitLab 기동 (초기화 3~5분 소요)
+docker compose --env-file ../versions.env up -d gitlab
+
+# 3. healthy 상태 확인
+docker compose ps
+# STATUS가 "Up (healthy)"로 변경될 때까지 대기
+
+# 4. GitLab Runner 기동 (GitLab이 healthy 상태 후)
+docker compose --env-file ../versions.env up -d gitlab-runner
+
+# 5. PowerDNS에 DNS 레코드 등록 (Argus UI > Settings > Domain에서 설정된 PowerDNS 사용)
+# gitlab-global.dev.net → 10.0.1.50 A 레코드 등록
+
+# 6. 브라우저에서 GitLab 접속
+# http://gitlab-global.dev.net:8929
+# root / Argus!nsight2026 으로 로그인
+
+# 7. Personal Access Token 생성
+# User Settings > Access Tokens
+# - Token name: argus-insight-service
+# - Scopes: api, read_repository, write_repository
+# - Create personal access token → glpat-xxx 복사
+
+# 8. Argus Insight UI에서 GitLab 연동 설정
+# Settings > Argus > GitLab
+# - Server URL: http://gitlab-global.dev.net:8929
+# - Private Token: glpat-xxx (위에서 생성한 토큰)
+# - Group Path: workspaces
+# - Test Connection으로 연결 확인 후 Save
+```
+
+### 컨테이너 관리
+
+```bash
+cd argus-insight-thirdparties/gitlab-service/docker
+
+# 상태 확인
+docker compose ps
+
+# 로그 확인
+docker compose logs -f gitlab
+docker compose logs -f gitlab-runner
+
+# 재시작
+docker compose --env-file ../versions.env restart gitlab
+
+# 중지
+docker compose --env-file ../versions.env stop
+
+# 완전 삭제 (데이터 포함)
+docker compose --env-file ../versions.env down -v
+```
+
+### Argus Insight 연동 구조
+
+```
+Argus UI (Settings > Argus > GitLab)
+  │  Save URL + Token
+  ▼
+Argus Server (app/settings → load_gitlab_settings)
+  │  python-gitlab API 호출
+  ▼
+GitLab CE (docker-gitlab-1:8929)
+  │  프로젝트 생성/삭제/커밋
+  ▼
+Workspace Provisioning
+  ├── GitLabCreateProjectStep: workspaces/{ws-name} 프로젝트 생성
+  ├── 초기 디렉토리 구조 커밋 (airflow/dags, notebooks, vscode, mlflow)
+  └── Airflow git-sync: GitLab repo에서 DAG 자동 동기화
+```
+
 ## 주의사항
 
 - GitLab CE는 리소스를 많이 소비합니다 (최소 CPU 2코어, RAM 4GB 권장)

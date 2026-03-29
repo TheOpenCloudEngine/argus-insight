@@ -274,6 +274,8 @@ INSERT INTO argus_configuration (category, config_key, config_value, description
 ('auth', 'auth_keycloak_user_role',      'argus-user',           'User role name'),
 -- GitLab
 ('gitlab', 'gitlab_url',                '',                     'GitLab server URL'),
+('gitlab', 'gitlab_username',           'root',                 'GitLab admin username'),
+('gitlab', 'gitlab_password',           '',                     'GitLab admin password'),
 ('gitlab', 'gitlab_token',              '',                     'GitLab API private token'),
 ('gitlab', 'gitlab_group_path',         'workspaces',           'Default group path for workspace projects'),
 ('gitlab', 'gitlab_default_branch',     'main',                 'Default branch for new projects'),

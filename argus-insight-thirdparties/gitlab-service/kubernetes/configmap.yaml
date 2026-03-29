@@ -40,7 +40,7 @@ data:
 
     # Disable bundled monitoring (use Argus Prometheus)
     prometheus['enable'] = false
-    grafana['enable'] = false
+    # grafana['enable'] = false  # Removed in GitLab 17.x
     gitlab_rails['monitoring_whitelist'] = ['0.0.0.0/0']
 
     # Disable unused services
