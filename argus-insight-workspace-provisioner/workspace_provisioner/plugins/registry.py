@@ -295,7 +295,13 @@ class PluginRegistry:
                 )
             self._step_cache[cache_key] = cls
 
-        return self._step_cache[cache_key](**kwargs)
+        step_cls = self._step_cache[cache_key]
+        # Pass plugin_name if the step class accepts it
+        import inspect
+        sig = inspect.signature(step_cls.__init__)
+        if "plugin_name" in sig.parameters:
+            kwargs.setdefault("plugin_name", name)
+        return step_cls(**kwargs)
 
     def get_config_schema(self, name: str, version: str | None = None) -> dict | None:
         """Return JSON Schema for the plugin version's config class.

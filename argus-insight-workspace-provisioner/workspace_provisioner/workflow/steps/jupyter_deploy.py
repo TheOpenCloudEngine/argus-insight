@@ -24,8 +24,19 @@ from workspace_provisioner.workflow.steps.app_deploy import ensure_namespace
 logger = logging.getLogger(__name__)
 
 
+JUPYTER_PLUGIN_INFO = {
+    "argus-jupyter": ("JupyterLab", "argus_jupyter_config"),
+    "argus-jupyter-tensorflow": ("JupyterLab TensorFlow", "argus_jupyter_tensorflow_config"),
+    "argus-jupyter-pyspark": ("JupyterLab PySpark", "argus_jupyter_pyspark_config"),
+}
+
+
 class JupyterLabDeployStep(WorkflowStep):
     """Deploy JupyterLab to Kubernetes for a workspace.
+
+    Supports all Jupyter variants (base, TensorFlow, PySpark).
+    The plugin_name is passed at construction to select the correct
+    config key and display name.
 
     Reads from context:
         - workspace_name, workspace_id, domain
@@ -37,9 +48,12 @@ class JupyterLabDeployStep(WorkflowStep):
         - jupyter_endpoint, jupyter_manifests
     """
 
+    def __init__(self, plugin_name: str = "argus-jupyter") -> None:
+        self._plugin_name = plugin_name
+
     @property
     def name(self) -> str:
-        return "argus-jupyter"
+        return self._plugin_name
 
     async def _get_s3_settings(self) -> dict:
         from app.core.database import async_session
@@ -62,7 +76,10 @@ class JupyterLabDeployStep(WorkflowStep):
 
         await ensure_namespace(namespace)
 
-        config: JupyterLabConfig = ctx.get("argus_jupyter_config", JupyterLabConfig())
+        svc_display, config_key = JUPYTER_PLUGIN_INFO.get(
+            self._plugin_name, ("JupyterLab", "argus_jupyter_config")
+        )
+        config: JupyterLabConfig = ctx.get(config_key, JupyterLabConfig())
         s3 = await self._get_s3_settings()
 
         try:
@@ -131,22 +148,10 @@ class JupyterLabDeployStep(WorkflowStep):
         from workspace_provisioner.workflow.steps.app_deploy import register_workspace_dns
         await register_workspace_dns(hostname)
 
-        # Determine plugin identity from config type
-        from workspace_provisioner.config import JupyterTensorFlowConfig, JupyterPySparkConfig
-        if isinstance(config, JupyterTensorFlowConfig):
-            svc_plugin = "argus-jupyter-tensorflow"
-            svc_display = "JupyterLab TensorFlow"
-        elif isinstance(config, JupyterPySparkConfig):
-            svc_plugin = "argus-jupyter-pyspark"
-            svc_display = "JupyterLab PySpark"
-        else:
-            svc_plugin = "argus-jupyter"
-            svc_display = "JupyterLab"
-
         from workspace_provisioner.service import register_workspace_service
         await register_workspace_service(
             workspace_id=ctx.workspace_id,
-            plugin_name=svc_plugin,
+            plugin_name=self._plugin_name,
             display_name=svc_display,
             version="1.0",
             endpoint=external_endpoint,
@@ -168,7 +173,10 @@ class JupyterLabDeployStep(WorkflowStep):
         }
 
     def _render_manifests(self, ctx: WorkflowContext) -> str:
-        config: JupyterLabConfig = ctx.get("argus_jupyter_config", JupyterLabConfig())
+        _, config_key = JUPYTER_PLUGIN_INFO.get(
+            self._plugin_name, ("JupyterLab", "argus_jupyter_config")
+        )
+        config: JupyterLabConfig = ctx.get(config_key, JupyterLabConfig())
         namespace = ctx.get("k8s_namespace", f"argus-ws-{ctx.workspace_name}")
         instance_id = ctx.get("teardown_service_id", ctx.workspace_name)
         hostname = ctx.get(

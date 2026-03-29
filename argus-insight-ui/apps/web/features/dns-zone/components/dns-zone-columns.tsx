@@ -54,7 +54,10 @@ export const dnsZoneColumns: ColumnDef<DnsRecord>[] = [
     ),
     cell: ({ row }) => {
       const name = row.getValue("name") as string
-      return <LongText className="max-w-48">{name}</LongText>
+      return <span className="break-all">{name}</span>
+    },
+    meta: {
+      className: "w-full",
     },
     enableHiding: false,
   },
@@ -63,6 +66,9 @@ export const dnsZoneColumns: ColumnDef<DnsRecord>[] = [
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Type" className="justify-center" />
     ),
+    meta: {
+      className: "w-[80px]",
+    },
     cell: ({ row }) => (
       <div className="flex justify-center">
         <Badge variant="outline">{row.getValue("type")}</Badge>
@@ -79,6 +85,9 @@ export const dnsZoneColumns: ColumnDef<DnsRecord>[] = [
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Status" className="justify-center" />
     ),
+    meta: {
+      className: "w-[90px]",
+    },
     cell: ({ row }) => {
       const status = row.getValue("status") as string
       const badgeColor = statusStyles.get(status)
@@ -100,6 +109,9 @@ export const dnsZoneColumns: ColumnDef<DnsRecord>[] = [
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="TTL" className="justify-center" />
     ),
+    meta: {
+      className: "w-[70px]",
+    },
     cell: ({ row }) => (
       <div className="text-center tabular-nums">{row.getValue("ttl")}</div>
     ),
