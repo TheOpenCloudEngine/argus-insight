@@ -111,12 +111,18 @@ function DomainSettingsSection({
             <Label htmlFor="infra-domain-name">
               Domain Name <span className="text-destructive">*</span>
             </Label>
-            <Input
-              id="infra-domain-name"
-              value={domainName}
-              onChange={(e) => onDomainNameChange(e.target.value)}
-              placeholder="e.g. example.com"
-            />
+            <div className="flex items-center">
+              <span className="inline-flex items-center rounded-l-md border border-r-0 bg-muted px-3 text-sm text-muted-foreground h-9 whitespace-nowrap">
+                argus-insight.
+              </span>
+              <Input
+                id="infra-domain-name"
+                className="rounded-l-none"
+                value={domainName}
+                onChange={(e) => onDomainNameChange(e.target.value)}
+                placeholder="e.g. example.com"
+              />
+            </div>
             <p className="text-xs text-muted-foreground">
               The primary domain name for this infrastructure
             </p>

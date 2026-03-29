@@ -80,7 +80,7 @@ async def get_zone_records(session: AsyncSession) -> DnsZoneTableResponse:
     """Fetch all records for the configured domain zone from PowerDNS."""
     cfg = await _get_pdns_settings(session)
     base_url = _build_base_url(cfg)
-    zone = _zone_id(cfg["domain_name"])
+    zone = _zone_id(f"argus-insight.{cfg['domain_name']}")
     url = f"{base_url}/zones/{zone}"
 
     logger.info("Fetching zone records: GET %s", url)
@@ -136,7 +136,7 @@ async def get_zone_records(session: AsyncSession) -> DnsZoneTableResponse:
         "Flattened %d records from %d rrsets for zone %s",
         len(rows), len(rrsets), cfg["domain_name"],
     )
-    return DnsZoneTableResponse(zone=cfg["domain_name"], records=rows)
+    return DnsZoneTableResponse(zone=f"argus-insight.{cfg['domain_name']}", records=rows)
 
 
 async def update_zone_records(
@@ -146,7 +146,7 @@ async def update_zone_records(
     """Update records in the configured domain zone via PATCH."""
     cfg = await _get_pdns_settings(session)
     base_url = _build_base_url(cfg)
-    zone = _zone_id(cfg["domain_name"])
+    zone = _zone_id(f"argus-insight.{cfg['domain_name']}")
     url = f"{base_url}/zones/{zone}"
 
     body = {"rrsets": [rrset.model_dump() for rrset in rrsets]}
@@ -192,7 +192,7 @@ async def check_health(session: AsyncSession) -> DnsHealthResponse:
 
     api_base = f"http://{cfg['pdns_ip']}:{cfg['pdns_port']}/api/v1"
     headers = {"X-API-Key": cfg["pdns_api_key"]}
-    zone = _zone_id(cfg["domain_name"])
+    zone = _zone_id(f"argus-insight.{cfg['domain_name']}")
 
     # 1) Check basic connectivity via GET /api/v1/servers.
     logger.info("Health check step 1: GET %s/servers", api_base)
@@ -205,7 +205,7 @@ async def check_health(session: AsyncSession) -> DnsHealthResponse:
         return DnsHealthResponse(
             reachable=False,
             zone_exists=False,
-            zone=cfg["domain_name"],
+            zone=f"argus-insight.{cfg['domain_name']}",
             error=f"Cannot connect to PowerDNS at {cfg['pdns_ip']}:{cfg['pdns_port']}",
         )
 
@@ -216,7 +216,7 @@ async def check_health(session: AsyncSession) -> DnsHealthResponse:
         return DnsHealthResponse(
             reachable=False,
             zone_exists=False,
-            zone=cfg["domain_name"],
+            zone=f"argus-insight.{cfg['domain_name']}",
             error="PowerDNS API key is invalid (401 Unauthorized).",
         )
 
@@ -225,7 +225,7 @@ async def check_health(session: AsyncSession) -> DnsHealthResponse:
         return DnsHealthResponse(
             reachable=False,
             zone_exists=False,
-            zone=cfg["domain_name"],
+            zone=f"argus-insight.{cfg['domain_name']}",
             error=f"PowerDNS returned {resp.status_code} on connectivity check.",
         )
 
@@ -240,7 +240,7 @@ async def check_health(session: AsyncSession) -> DnsHealthResponse:
         return DnsHealthResponse(
             reachable=True,
             zone_exists=False,
-            zone=cfg["domain_name"],
+            zone=f"argus-insight.{cfg['domain_name']}",
             error="Failed to list zones from PowerDNS.",
         )
 
@@ -250,7 +250,7 @@ async def check_health(session: AsyncSession) -> DnsHealthResponse:
         return DnsHealthResponse(
             reachable=True,
             zone_exists=False,
-            zone=cfg["domain_name"],
+            zone=f"argus-insight.{cfg['domain_name']}",
             error="PowerDNS zone listing failed (404). "
                   "Please check the PowerDNS configuration.",
         )
@@ -259,7 +259,7 @@ async def check_health(session: AsyncSession) -> DnsHealthResponse:
         return DnsHealthResponse(
             reachable=True,
             zone_exists=False,
-            zone=cfg["domain_name"],
+            zone=f"argus-insight.{cfg['domain_name']}",
             error=f"PowerDNS returned {zones_resp.status_code} listing zones.",
         )
 
@@ -273,7 +273,7 @@ async def check_health(session: AsyncSession) -> DnsHealthResponse:
         return DnsHealthResponse(
             reachable=True,
             zone_exists=False,
-            zone=cfg["domain_name"],
+            zone=f"argus-insight.{cfg['domain_name']}",
         )
 
     zone_exists = zone_resp.status_code == 200
@@ -284,7 +284,7 @@ async def check_health(session: AsyncSession) -> DnsHealthResponse:
     return DnsHealthResponse(
         reachable=True,
         zone_exists=zone_exists,
-        zone=cfg["domain_name"],
+        zone=f"argus-insight.{cfg['domain_name']}",
     )
 
 
@@ -292,7 +292,7 @@ async def create_zone(session: AsyncSession) -> DnsZoneCreateResponse:
     """Create the configured domain zone on the PowerDNS server."""
     cfg = await _get_pdns_settings(session)
     base_url = _build_base_url(cfg)
-    zone = _zone_id(cfg["domain_name"])
+    zone = _zone_id(f"argus-insight.{cfg['domain_name']}")
 
     ns1_name = f"ns1.{zone}"
     pdns_ip = cfg["pdns_ip"]
@@ -359,7 +359,7 @@ async def create_zone(session: AsyncSession) -> DnsZoneCreateResponse:
         logger.info("Failed to add glue record (connection error), zone was created")
 
     logger.info("Zone created successfully: %s", cfg["domain_name"])
-    return DnsZoneCreateResponse(zone=cfg["domain_name"], created=True)
+    return DnsZoneCreateResponse(zone=f"argus-insight.{cfg['domain_name']}", created=True)
 
 
 def _format_bind_record(name: str, ttl: int, rtype: str, content: str) -> str:

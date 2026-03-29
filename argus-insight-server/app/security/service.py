@@ -539,9 +539,11 @@ async def generate_self_signed_ca(
         f"/C={country}/ST={state}/L={locality}"
         f"/O={organization}/OU={org_unit}/CN={common_name}"
     )
+    # SAN: wildcard for the domain and the domain itself
+    san = f"DNS:{common_name},DNS:*.{common_name}"
     logger.info(
-        "Generating self-signed CA certificate: subj=%s, days=%d, path=%s",
-        subj, days, cert_file,
+        "Generating self-signed CA certificate: subj=%s, SAN=%s, days=%d, path=%s",
+        subj, san, days, cert_file,
     )
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -553,6 +555,7 @@ async def generate_self_signed_ca(
             "-subj", subj,
             "-addext", "basicConstraints=critical,CA:TRUE",
             "-addext", "keyUsage=critical,keyCertSign,cRLSign",
+            "-addext", f"subjectAltName={san}",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

@@ -155,6 +155,10 @@ async def ca_generate_self_signed(
         "Self-signed CA generation requested: CN=%s, days=%d, bits=%d",
         body.common_name, body.days, body.key_bits,
     )
+    # Prepend "argus-insight." to the domain for the actual CN
+    cn = body.common_name
+    if not cn.startswith("argus-insight."):
+        cn = f"argus-insight.{cn}"
     try:
         result = await service.generate_self_signed_ca(
             session,
@@ -163,7 +167,7 @@ async def ca_generate_self_signed(
             locality=body.locality,
             organization=body.organization,
             org_unit=body.org_unit,
-            common_name=body.common_name,
+            common_name=cn,
             days=body.days,
             key_bits=body.key_bits,
         )
