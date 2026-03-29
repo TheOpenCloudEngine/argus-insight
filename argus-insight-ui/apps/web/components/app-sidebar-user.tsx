@@ -150,7 +150,7 @@ export function AppSidebarUser() {
 
           <Separator />
 
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm pt-2">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm py-2">
             <dt className="flex items-center gap-1.5 text-muted-foreground">
               <User className="size-3.5" />
               Name
@@ -179,8 +179,7 @@ export function AppSidebarUser() {
           {user.s3_access_key && (
             <>
               <Separator />
-              <div className="pt-1">
-                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm">
+              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm py-2">
                   <dt className="flex items-center gap-1.5 text-muted-foreground">
                     <Package className="size-3.5" />
                     Bucket
@@ -210,7 +209,6 @@ export function AppSidebarUser() {
                     </button>
                   </dd>
                 </dl>
-              </div>
             </>
           )}
         </DialogContent>

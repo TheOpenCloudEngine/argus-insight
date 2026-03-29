@@ -25,13 +25,11 @@ export async function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
               <Link href="/dashboard">
-                {/* TODO: Replace with actual logo image
-                <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
-                  <Shield className="size-4" />
-                </div>
-                */}
                 <div className="grid flex-1 text-left leading-tight">
-                  <span className="truncate text-lg font-bold">Argus Insight</span>
+                  <span className="truncate text-lg font-bold">
+                    <span className="group-data-[collapsible=icon]:hidden">Argus Insight</span>
+                    <span className="hidden group-data-[collapsible=icon]:inline">AI</span>
+                  </span>
                 </div>
               </Link>
             </SidebarMenuButton>
