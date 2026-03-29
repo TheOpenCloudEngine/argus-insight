@@ -5,11 +5,10 @@ icon: gitlab
 category: infrastructure
 depends_on: []
 provides:
+  - gitlab_workspace_url
+  - gitlab_group_id
+  - gitlab_user_id
   - gitlab_project_id
-  - gitlab_project_url
-  - gitlab_http_url
-  - gitlab_ssh_url
-  - gitlab_token
 requires: []
 tags:
   - git

@@ -24,6 +24,7 @@ import {
   updateArgusConfig,
   updateGitlabConfig,
 } from "@/features/settings/api"
+import { authFetch } from "@/features/auth/auth-fetch"
 
 export function ArgusSettings() {
   const [loading, setLoading] = useState(true)
@@ -88,6 +89,13 @@ export function ArgusSettings() {
   const [glTesting, setGlTesting] = useState(false)
   const [glStatusMessage, setGlStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
+  // K8s
+  const [k8sKubeconfig, setK8sKubeconfig] = useState("/etc/rancher/k3s/k3s.yaml")
+  const [k8sPrefix, setK8sPrefix] = useState("argus-ws-")
+  const [k8sContext, setK8sContext] = useState("")
+  const [k8sSaving, setK8sSaving] = useState(false)
+  const [k8sStatusMessage, setK8sStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+
   const loadConfig = useCallback(async () => {
     try {
       setLoading(true)
@@ -121,9 +129,17 @@ export function ArgusSettings() {
         setGlGroupPath(glCfg.group_path)
         setGlDefaultBranch(glCfg.default_branch)
         setGlVisibility(glCfg.project_visibility)
-      } catch {
-        // ignore if gitlab endpoint not available
-      }
+      } catch { /* ignore */ }
+      // K8s
+      try {
+        const k8sRes = await authFetch("/api/v1/settings/k8s")
+        if (k8sRes.ok) {
+          const k8sCfg = await k8sRes.json()
+          setK8sKubeconfig(k8sCfg.kubeconfig_path ?? "/etc/rancher/k3s/k3s.yaml")
+          setK8sPrefix(k8sCfg.namespace_prefix ?? "argus-ws-")
+          setK8sContext(k8sCfg.context ?? "")
+        }
+      } catch { /* ignore */ }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load configuration")
     } finally {
@@ -1046,6 +1062,93 @@ export function ArgusSettings() {
             </div>
           </div>
 
+        </CardContent>
+      </Card>
+
+      {/* ── Kubernetes ─────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Kubernetes</CardTitle>
+              <CardDescription>Configure Kubernetes access for workspace namespace management.</CardDescription>
+            </div>
+            <Button
+              size="sm"
+              onClick={async () => {
+                setK8sSaving(true)
+                setK8sStatusMessage(null)
+                try {
+                  const res = await authFetch("/api/v1/settings/k8s", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      kubeconfig_path: k8sKubeconfig,
+                      namespace_prefix: k8sPrefix,
+                      context: k8sContext,
+                    }),
+                  })
+                  if (!res.ok) throw new Error("Save failed")
+                  setK8sStatusMessage({ type: "success", text: "Kubernetes configuration saved" })
+                  setTimeout(() => setK8sStatusMessage(null), 3000)
+                } catch (e) {
+                  setK8sStatusMessage({ type: "error", text: e instanceof Error ? e.message : "Save failed" })
+                } finally {
+                  setK8sSaving(false)
+                }
+              }}
+              disabled={k8sSaving}
+            >
+              {k8sSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Save className="h-4 w-4 mr-1.5" />}
+              Save
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {k8sStatusMessage && (
+            <div className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
+              k8sStatusMessage.type === "success"
+                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                : "bg-red-50 text-red-700 border border-red-200"
+            }`}>
+              {k8sStatusMessage.text}
+            </div>
+          )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Kubeconfig Path <span className="text-red-500">*</span></Label>
+              <Input
+                value={k8sKubeconfig}
+                onChange={(e) => setK8sKubeconfig(e.target.value)}
+                placeholder="/etc/rancher/k3s/k3s.yaml"
+              />
+              <p className="text-xs text-muted-foreground">
+                Path to the kubeconfig file for cluster access.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Namespace Prefix</Label>
+              <Input
+                value={k8sPrefix}
+                onChange={(e) => setK8sPrefix(e.target.value)}
+                placeholder="argus-ws-"
+              />
+              <p className="text-xs text-muted-foreground">
+                Prefix for workspace namespaces (e.g., argus-ws-myteam).
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Context</Label>
+              <Input
+                value={k8sContext}
+                onChange={(e) => setK8sContext(e.target.value)}
+                placeholder="(default)"
+              />
+              <p className="text-xs text-muted-foreground">
+                Kubeconfig context. Leave empty for default.
+              </p>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

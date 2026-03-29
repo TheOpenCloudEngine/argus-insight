@@ -92,6 +92,10 @@ class WorkspaceCreateRequest(BaseModel):
     admin_user_id: int = Field(
         ..., description="User ID to assign as WorkspaceAdmin",
     )
+    pipeline_ids: list[int] = Field(
+        default_factory=list,
+        description="List of pipeline IDs to deploy in this workspace (in order).",
+    )
     provisioning_config: ProvisioningConfig = Field(
         default_factory=ProvisioningConfig,
         description="(Legacy) Service-level provisioning settings. "
@@ -132,6 +136,18 @@ class WorkspaceMemberAddRequest(BaseModel):
     role: WorkspaceMemberRole = WorkspaceMemberRole.USER
 
 
+class WorkspacePipelineResponse(BaseModel):
+    """Pipeline associated with a workspace."""
+
+    id: int
+    pipeline_id: int
+    pipeline_name: str | None = None
+    pipeline_display_name: str | None = None
+    deploy_order: int
+    status: str
+    created_at: datetime
+
+
 # ---------------------------------------------------------------------------
 # Workspace response schemas
 # ---------------------------------------------------------------------------
@@ -140,7 +156,13 @@ class WorkspaceMemberResponse(BaseModel):
     id: int
     workspace_id: int
     user_id: int
+    username: str | None = None
+    display_name: str | None = None
+    email: str | None = None
     role: str
+    is_owner: bool = False
+    gitlab_access_token: str | None = None
+    gitlab_token_name: str | None = None
     created_at: datetime
 
 
@@ -162,6 +184,8 @@ class WorkspaceResponse(BaseModel):
     kserve_endpoint: str | None = None
     status: WorkspaceStatus
     created_by: int
+    created_by_username: str | None = None
+    pipelines: list[WorkspacePipelineResponse] = []
     created_at: datetime
     updated_at: datetime
 
@@ -188,6 +212,50 @@ class WorkspaceCredentialResponse(BaseModel):
 
 class PaginatedWorkspaceResponse(BaseModel):
     items: list[WorkspaceResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+# ---------------------------------------------------------------------------
+# Workspace service schemas
+# ---------------------------------------------------------------------------
+
+class WorkspaceServiceResponse(BaseModel):
+    id: int
+    workspace_id: int
+    plugin_name: str
+    display_name: str | None = None
+    version: str | None = None
+    endpoint: str | None = None
+    username: str | None = None
+    password: str | None = None
+    access_token: str | None = None
+    status: str = "running"
+    metadata: dict | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# Audit log schemas
+# ---------------------------------------------------------------------------
+
+class AuditLogResponse(BaseModel):
+    id: int
+    workspace_id: int
+    workspace_name: str
+    action: str
+    target_user_id: int | None = None
+    target_username: str | None = None
+    actor_user_id: int | None = None
+    actor_username: str | None = None
+    detail: dict | None = None
+    created_at: datetime
+
+
+class PaginatedAuditLogResponse(BaseModel):
+    items: list[AuditLogResponse]
     total: int
     page: int
     page_size: int

@@ -56,6 +56,8 @@ class UserInfoResponse(BaseModel):
     s3_access_key: str | None = None
     s3_secret_key: str | None = None
     s3_bucket: str | None = None
+    gitlab_username: str | None = None
+    gitlab_password: str | None = None
 
 
 class LogoutRequest(BaseModel):
@@ -387,6 +389,8 @@ async def get_me(user: CurrentUser, session: AsyncSession = Depends(get_session)
         s3_access_key=db_user.s3_access_key if db_user else None,
         s3_secret_key=db_user.s3_secret_key if db_user else None,
         s3_bucket=db_user.s3_bucket if db_user else None,
+        gitlab_username=db_user.gitlab_username if db_user else None,
+        gitlab_password=db_user.gitlab_password if db_user else None,
     )
 
 

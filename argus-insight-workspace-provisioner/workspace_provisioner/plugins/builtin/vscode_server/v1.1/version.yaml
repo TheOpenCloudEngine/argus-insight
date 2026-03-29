@@ -3,7 +3,7 @@ display_name: "v1.1 (code-server + S3 storage)"
 description: code-server with s3fs sidecar for persistent S3-backed workspace storage
 status: stable
 release_date: "2026-03-01"
-step_class: workspace_provisioner.workflow.steps.custom_hook.CustomHookStep
+step_class: workspace_provisioner.workflow.steps.vscode_deploy.VScodeServerDeployStep
 config_class: workspace_provisioner.config.VScodeServerConfig
 template_dir: vscode
 depends_on_override:

@@ -420,6 +420,10 @@ async def seed_infra_config(session: AsyncSession) -> None:
         ("auth", "auth_keycloak_admin_role", settings.auth_keycloak_admin_role, "Admin role name"),
         ("auth", "auth_keycloak_superuser_role", settings.auth_keycloak_superuser_role, "Superuser role name"),
         ("auth", "auth_keycloak_user_role", settings.auth_keycloak_user_role, "User role name"),
+        # Kubernetes
+        ("k8s", "k8s_kubeconfig_path", "/etc/rancher/k3s/k3s.yaml", "Path to kubeconfig file"),
+        ("k8s", "k8s_namespace_prefix", "argus-ws-", "Workspace namespace prefix"),
+        ("k8s", "k8s_context", "", "Kubeconfig context (empty = default)"),
     ]
     for category, key, value, description in defaults:
         result = await session.execute(

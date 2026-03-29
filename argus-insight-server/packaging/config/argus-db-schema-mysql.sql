@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS argus_users (
     s3_access_key   VARCHAR(100)                              COMMENT 'MinIO per-user access key',
     s3_secret_key   VARCHAR(100)                              COMMENT 'MinIO per-user secret key',
     s3_bucket       VARCHAR(255)                              COMMENT 'MinIO bucket name',
+    gitlab_username VARCHAR(100)                              COMMENT 'GitLab username (e.g. argus-admin)',
+    gitlab_password VARCHAR(255)                              COMMENT 'GitLab auto-generated password',
     role_id         INT             NOT NULL                  COMMENT 'Foreign key to argus_roles(id)',
     created_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Account creation timestamp',
     updated_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Account last update timestamp',
@@ -218,7 +220,11 @@ INSERT IGNORE INTO argus_configuration (category, config_key, config_value, desc
 ('gitlab', 'gitlab_token',              '',                     'GitLab API private token'),
 ('gitlab', 'gitlab_group_path',         'workspaces',           'Default group path for workspace projects'),
 ('gitlab', 'gitlab_default_branch',     'main',                 'Default branch for new projects'),
-('gitlab', 'gitlab_project_visibility', 'internal',             'Project visibility (internal, private, public)');
+('gitlab', 'gitlab_project_visibility', 'internal',             'Project visibility (internal, private, public)'),
+-- Kubernetes
+('k8s', 'k8s_kubeconfig_path',   '/etc/rancher/k3s/k3s.yaml', 'Path to kubeconfig file'),
+('k8s', 'k8s_namespace_prefix',  'argus-ws-',                  'Workspace namespace prefix'),
+('k8s', 'k8s_context',           '',                           'Kubeconfig context (empty = default)');
 
 -- ---------------------------------------------------------------------------
 -- Notes tables
@@ -313,6 +319,60 @@ CREATE TABLE IF NOT EXISTS argus_app_instances (
     CONSTRAINT fk_instance_user FOREIGN KEY (user_id) REFERENCES argus_users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   COMMENT='Running instances of apps (one user can have multiple)';
+
+-- Workspace-Pipeline association table
+CREATE TABLE IF NOT EXISTS argus_workspace_pipelines (
+    id              INT             AUTO_INCREMENT PRIMARY KEY,
+    workspace_id    INT             NOT NULL                  COMMENT 'FK to argus_workspaces',
+    pipeline_id     INT             NOT NULL                  COMMENT 'FK to argus_pipelines',
+    deploy_order    INT             NOT NULL DEFAULT 0        COMMENT 'Deployment order (0-based)',
+    status          VARCHAR(20)     NOT NULL DEFAULT 'pending' COMMENT 'pending|running|completed|failed',
+    created_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_ws_pipelines_workspace (workspace_id),
+    KEY idx_ws_pipelines_pipeline (pipeline_id),
+    CONSTRAINT fk_ws_pipeline_workspace FOREIGN KEY (workspace_id) REFERENCES argus_workspaces(id) ON DELETE CASCADE,
+    CONSTRAINT fk_ws_pipeline_pipeline FOREIGN KEY (pipeline_id) REFERENCES argus_pipelines(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Many-to-many: workspaces to pipelines with deployment order and status';
+
+-- Workspace audit log
+-- Workspace services (deployed plugin instances)
+CREATE TABLE IF NOT EXISTS argus_workspace_services (
+    id              INT             AUTO_INCREMENT PRIMARY KEY,
+    workspace_id    INT             NOT NULL,
+    plugin_name     VARCHAR(100)    NOT NULL,
+    display_name    VARCHAR(255),
+    version         VARCHAR(50),
+    endpoint        VARCHAR(500),
+    username        VARCHAR(255),
+    password        VARCHAR(255),
+    access_token    VARCHAR(500),
+    status          VARCHAR(20)     NOT NULL DEFAULT 'running' COMMENT 'running|stopped|failed',
+    metadata        JSON,
+    created_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_ws_service (workspace_id, plugin_name),
+    KEY idx_ws_services_workspace (workspace_id),
+    CONSTRAINT fk_ws_service_workspace FOREIGN KEY (workspace_id) REFERENCES argus_workspaces(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Service instances deployed to a workspace (one per plugin)';
+
+-- Workspace audit log
+CREATE TABLE IF NOT EXISTS argus_workspace_audit_logs (
+    id                INT             AUTO_INCREMENT PRIMARY KEY,
+    workspace_id      INT             NOT NULL,
+    workspace_name    VARCHAR(100)    NOT NULL,
+    action            VARCHAR(50)     NOT NULL                  COMMENT 'workspace_created|workspace_deleted|member_added|member_removed',
+    target_user_id    INT,
+    target_username   VARCHAR(100),
+    actor_user_id     INT,
+    actor_username    VARCHAR(100),
+    detail            JSON,
+    created_at        TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_audit_workspace (workspace_id),
+    KEY idx_audit_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Audit log for workspace member and lifecycle events';
 
 -- Seed default apps
 INSERT IGNORE INTO argus_apps (app_type, display_name, description, icon, template_dir, default_namespace, hostname_pattern) VALUES

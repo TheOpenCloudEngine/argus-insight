@@ -30,6 +30,8 @@ export type UserInfo = {
   s3_access_key: string | null
   s3_secret_key: string | null
   s3_bucket: string | null
+  gitlab_username: string | null
+  gitlab_password: string | null
 }
 
 export async function login(

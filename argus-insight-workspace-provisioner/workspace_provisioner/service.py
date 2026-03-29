@@ -14,8 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from workspace_provisioner.gitlab.client import GitLabClient
 from workspace_provisioner.models import (
     ArgusWorkspace,
+    ArgusWorkspaceAuditLog,
     ArgusWorkspaceCredential,
     ArgusWorkspaceMember,
+    ArgusWorkspaceService,
 )
 from workspace_provisioner.schemas import (
     PaginatedWorkspaceResponse,
@@ -38,17 +40,100 @@ from workspace_provisioner.plugins.registry import PluginRegistry
 from workspace_provisioner.workflow.steps.gitlab_create_project import (
     GitLabCreateProjectStep,
 )
-from workspace_provisioner.workflow.steps.airflow_deploy import AirflowDeployStep
-from workspace_provisioner.workflow.steps.minio_deploy import MinioDeployStep
-from workspace_provisioner.workflow.steps.minio_setup import MinioSetupStep
-from workspace_provisioner.workflow.steps.mlflow_deploy import MlflowDeployStep
-from workspace_provisioner.workflow.steps.kserve_deploy import KServeDeployStep
-from workspace_provisioner.workflow.steps.custom_hook import CustomHookStep
 
 logger = logging.getLogger(__name__)
 
 
-def _build_workspace_response(ws: ArgusWorkspace) -> WorkspaceResponse:
+async def log_audit(
+    session: AsyncSession,
+    workspace_id: int,
+    workspace_name: str,
+    action: str,
+    actor_user_id: int | None = None,
+    actor_username: str | None = None,
+    target_user_id: int | None = None,
+    target_username: str | None = None,
+    detail: dict | None = None,
+) -> None:
+    """Write a workspace audit log entry."""
+    entry = ArgusWorkspaceAuditLog(
+        workspace_id=workspace_id,
+        workspace_name=workspace_name,
+        action=action,
+        target_user_id=target_user_id,
+        target_username=target_username,
+        actor_user_id=actor_user_id,
+        actor_username=actor_username,
+        detail=detail,
+    )
+    session.add(entry)
+    await session.commit()
+    logger.info("Audit: workspace=%s action=%s actor=%s target=%s",
+                workspace_name, action, actor_username, target_username)
+
+
+async def register_workspace_service(
+    workspace_id: int,
+    plugin_name: str,
+    display_name: str | None = None,
+    version: str | None = None,
+    endpoint: str | None = None,
+    username: str | None = None,
+    password: str | None = None,
+    access_token: str | None = None,
+    status: str = "running",
+    metadata: dict | None = None,
+) -> None:
+    """Register or update a service deployed to a workspace (upsert).
+
+    Called by workflow steps after successful deployment.
+    """
+    from app.core.database import async_session as get_async_session
+
+    async with get_async_session() as session:
+        result = await session.execute(
+            select(ArgusWorkspaceService).where(
+                ArgusWorkspaceService.workspace_id == workspace_id,
+                ArgusWorkspaceService.plugin_name == plugin_name,
+            )
+        )
+        svc = result.scalars().first()
+        if svc:
+            if display_name: svc.display_name = display_name
+            if version: svc.version = version
+            if endpoint: svc.endpoint = endpoint
+            if username: svc.username = username
+            if password: svc.password = password
+            if access_token: svc.access_token = access_token
+            svc.status = status
+            if metadata: svc.metadata_json = metadata
+        else:
+            svc = ArgusWorkspaceService(
+                workspace_id=workspace_id,
+                plugin_name=plugin_name,
+                display_name=display_name,
+                version=version,
+                endpoint=endpoint,
+                username=username,
+                password=password,
+                access_token=access_token,
+                status=status,
+                metadata_json=metadata,
+            )
+            session.add(svc)
+        await session.commit()
+        logger.info("Service registered: workspace=%d plugin=%s endpoint=%s",
+                     workspace_id, plugin_name, endpoint)
+
+
+async def _build_workspace_response(ws: ArgusWorkspace, session: AsyncSession | None = None) -> WorkspaceResponse:
+    username = None
+    if session and ws.created_by:
+        from app.usermgr.models import ArgusUser
+        result = await session.execute(
+            select(ArgusUser.username).where(ArgusUser.id == ws.created_by)
+        )
+        username = result.scalar()
     return WorkspaceResponse(
         id=ws.id,
         name=ws.name,
@@ -67,6 +152,7 @@ def _build_workspace_response(ws: ArgusWorkspace) -> WorkspaceResponse:
         kserve_endpoint=ws.kserve_endpoint,
         status=WorkspaceStatus(ws.status),
         created_by=ws.created_by,
+        created_by_username=username,
         created_at=ws.created_at,
         updated_at=ws.updated_at,
     )
@@ -127,46 +213,57 @@ async def create_workspace(
         role="WorkspaceAdmin",
     )
     session.add(member)
+
+    # Associate pipelines
+    from workspace_provisioner.models import ArgusWorkspacePipeline
+    for i, pipeline_id in enumerate(req.pipeline_ids):
+        ws_pipeline = ArgusWorkspacePipeline(
+            workspace_id=workspace.id,
+            pipeline_id=pipeline_id,
+            deploy_order=i,
+            status="pending",
+        )
+        session.add(ws_pipeline)
+
+    # Load creator info for GitLab user provisioning
+    from app.usermgr.models import ArgusUser
+    creator_result = await session.execute(
+        select(ArgusUser).where(ArgusUser.id == req.admin_user_id)
+    )
+    creator = creator_result.scalars().first()
+    creator_info = {}
+    if creator:
+        # Load GitLab default password from settings
+        from app.settings.service import get_config_by_category
+        gitlab_cfg = await get_config_by_category(session, "gitlab")
+        gitlab_password = gitlab_cfg.get("gitlab_password", "")
+
+        creator_info = {
+            "creator_username": creator.username,
+            "creator_email": creator.email,
+            "creator_name": f"{creator.first_name} {creator.last_name}".strip() or creator.username,
+            "creator_password": gitlab_password or "Argus!nsight2026",
+            "admin_user_id": req.admin_user_id,
+        }
+
     await session.commit()
+
+    # Audit log
+    await log_audit(
+        session, workspace.id, workspace.name, "workspace_created",
+        actor_user_id=req.admin_user_id,
+        actor_username=creator_info.get("creator_username"),
+        detail={"pipeline_ids": req.pipeline_ids},
+    )
 
     # Launch provisioning workflow in background
     logger.info("Launching provisioning workflow in background for workspace %d", workspace.id)
     asyncio.create_task(
-        _run_provisioning_workflow(workspace.id, req, gitlab_client)
+        _run_provisioning_workflow(workspace.id, req, gitlab_client, creator_info)
     )
 
-    return _build_workspace_response(workspace)
+    return await _build_workspace_response(workspace, session)
 
-
-def _build_legacy_workflow(
-    executor: WorkflowExecutor,
-    req: "WorkspaceCreateRequest",
-    gitlab_client: GitLabClient,
-) -> WorkflowContext:
-    """Build the legacy hardcoded workflow pipeline.
-
-    Used when req.plugins is None (backward compatibility).
-    """
-    provisioning_config = req.provisioning_config
-    ctx = WorkflowContext(
-        workspace_id=0,  # Set by caller
-        workspace_name=req.name,
-        domain=req.domain,
-        minio_config=provisioning_config.minio,
-        airflow_config=provisioning_config.airflow,
-        mlflow_config=provisioning_config.mlflow,
-        kserve_config=provisioning_config.kserve,
-    )
-
-    executor.add_step(GitLabCreateProjectStep(gitlab_client))
-    executor.add_step(MinioDeployStep())
-    executor.add_step(MinioSetupStep())
-    executor.add_step(AirflowDeployStep())
-    executor.add_step(MlflowDeployStep())
-    executor.add_step(KServeDeployStep())
-    executor.add_step(CustomHookStep())
-
-    return ctx
 
 
 async def _build_plugin_workflow(
@@ -271,21 +368,100 @@ async def _build_plugin_workflow(
     return ctx
 
 
+async def _build_pipeline_workflow(
+    session: "AsyncSession",
+    executor: WorkflowExecutor,
+    req: "WorkspaceCreateRequest",
+    gitlab_client: GitLabClient,
+    creator_info: dict | None = None,
+) -> WorkflowContext:
+    """Build workflow from selected pipeline_ids.
+
+    Loads plugin configs from each selected pipeline (in order),
+    merges them, and instantiates steps accordingly.
+    """
+    from workspace_provisioner.plugins.models import ArgusPluginConfig, ArgusPipeline
+
+    registry = PluginRegistry.get_instance()
+
+    # Collect all plugin configs from selected pipelines in order
+    all_plugin_names = []
+    versions = {}
+    ctx_kwargs = {}
+
+    for pipeline_id in req.pipeline_ids:
+        result = await session.execute(
+            select(ArgusPluginConfig)
+            .where(ArgusPluginConfig.pipeline_id == pipeline_id)
+            .where(ArgusPluginConfig.enabled.is_(True))
+            .order_by(ArgusPluginConfig.display_order)
+        )
+        configs = result.scalars().all()
+
+        for cfg in configs:
+            if cfg.plugin_name not in all_plugin_names:
+                all_plugin_names.append(cfg.plugin_name)
+            if cfg.selected_version:
+                versions[cfg.plugin_name] = cfg.selected_version
+            if cfg.default_config:
+                config_key = cfg.plugin_name.replace("-", "_") + "_config"
+                meta = registry.get(cfg.plugin_name)
+                ver = cfg.selected_version
+                config_cls = registry.get_config_class(cfg.plugin_name, ver) if meta else None
+                if config_cls:
+                    ctx_kwargs[config_key] = config_cls(**(cfg.default_config or {}))
+                else:
+                    ctx_kwargs[config_key] = cfg.default_config
+
+    # Inject creator info into context
+    if creator_info:
+        ctx_kwargs.update(creator_info)
+
+    # Inject server host for ingress auth-url
+    import socket
+    try:
+        ctx_kwargs["argus_server_host"] = socket.gethostbyname(socket.gethostname())
+    except Exception:
+        ctx_kwargs["argus_server_host"] = "127.0.0.1"
+
+    ctx = WorkflowContext(
+        workspace_id=0,
+        workspace_name=req.name,
+        domain=req.domain,
+        **ctx_kwargs,
+    )
+
+    # Instantiate steps
+    for name in all_plugin_names:
+        ver = versions.get(name)
+        try:
+            step = registry.instantiate_step(name, ver)
+            executor.add_step(step)
+        except Exception:
+            if name in ("gitlab-create-project", "argus-gitlab"):
+                executor.add_step(GitLabCreateProjectStep(gitlab_client))
+            else:
+                logger.warning("Skipping plugin '%s': instantiation failed", name)
+
+    logger.info(
+        "Pipeline workflow built: %d steps from %d pipeline(s): %s",
+        len(all_plugin_names), len(req.pipeline_ids), all_plugin_names,
+    )
+    return ctx
+
+
 async def _run_provisioning_workflow(
     workspace_id: int,
     req: WorkspaceCreateRequest,
     gitlab_client: GitLabClient,
+    creator_info: dict | None = None,
 ) -> None:
     """Background task: run the workspace provisioning workflow.
 
-    Creates a new database session for the background task, builds the
-    workflow pipeline, executes it, and updates the workspace status.
-
-    Supports two modes:
-    - Plugin-based (req.plugins is set): Uses PluginRegistry to resolve
-      steps from admin-configured plugin order with version selection.
-    - Legacy (req.plugins is None): Falls back to hardcoded step list
-      with ProvisioningConfig.
+    Supports three modes:
+    - Pipeline-based (req.pipeline_ids): Builds workflow from selected pipelines.
+    - Plugin-based (req.plugins is set): Uses PluginRegistry to resolve steps.
+    - Legacy (both None): Falls back to hardcoded step list.
     """
     from app.core.database import async_session
 
@@ -294,14 +470,26 @@ async def _run_provisioning_workflow(
         try:
             executor = WorkflowExecutor(session)
 
-            if req.plugins is not None:
+            if req.pipeline_ids and len(req.pipeline_ids) > 0:
+                # Pipeline-based provisioning
+                logger.info("Using pipeline-based provisioning: pipeline_ids=%s", req.pipeline_ids)
+                ctx = await _build_pipeline_workflow(
+                    session, executor, req, gitlab_client, creator_info
+                )
+            elif req.plugins is not None:
                 # Plugin-based provisioning
+                logger.info("Using plugin-based provisioning")
                 ctx = await _build_plugin_workflow(
                     session, executor, req, gitlab_client
                 )
             else:
-                # Legacy hardcoded provisioning
-                ctx = _build_legacy_workflow(executor, req, gitlab_client)
+                # No pipelines and no plugins — nothing to deploy
+                logger.info("No pipelines or plugins specified, creating empty workspace")
+                ctx = WorkflowContext(
+                    workspace_id=0,
+                    workspace_name=req.name,
+                    domain=req.domain,
+                )
 
             ctx.workspace_id = workspace_id
 
@@ -329,23 +517,44 @@ async def _run_provisioning_workflow(
                     workspace.mlflow_endpoint = ctx.get("mlflow_endpoint")
                     workspace.kserve_endpoint = ctx.get("kserve_endpoint")
 
-                    # Store service credentials and connection info
-                    credential = ArgusWorkspaceCredential(
-                        workspace_id=workspace_id,
-                        gitlab_http_url=ctx.get("gitlab_http_url"),
-                        gitlab_ssh_url=ctx.get("gitlab_ssh_url"),
-                        minio_endpoint=ctx.get("minio_endpoint"),
-                        minio_root_user=ctx.get("minio_root_user"),
-                        minio_root_password=ctx.get("minio_root_password"),
-                        minio_access_key=ctx.get("minio_ws_admin_access_key"),
-                        minio_secret_key=ctx.get("minio_ws_admin_secret_key"),
-                        airflow_url=ctx.get("airflow_endpoint"),
-                        airflow_admin_username="admin",
-                        airflow_admin_password=ctx.get("airflow_admin_password"),
-                        mlflow_artifact_bucket=ctx.get("mlflow_artifact_bucket"),
-                        kserve_endpoint=ctx.get("kserve_endpoint"),
+                    # Store/update service credentials and connection info
+                    existing_cred = await session.execute(
+                        select(ArgusWorkspaceCredential).where(
+                            ArgusWorkspaceCredential.workspace_id == workspace_id
+                        )
                     )
-                    session.add(credential)
+                    credential = existing_cred.scalars().first()
+                    if credential:
+                        # Update existing
+                        credential.gitlab_http_url = ctx.get("gitlab_http_url") or credential.gitlab_http_url
+                        credential.gitlab_ssh_url = ctx.get("gitlab_ssh_url") or credential.gitlab_ssh_url
+                        credential.minio_endpoint = ctx.get("minio_endpoint") or credential.minio_endpoint
+                        credential.minio_root_user = ctx.get("minio_root_user") or credential.minio_root_user
+                        credential.minio_root_password = ctx.get("minio_root_password") or credential.minio_root_password
+                        credential.minio_access_key = ctx.get("minio_ws_admin_access_key") or credential.minio_access_key
+                        credential.minio_secret_key = ctx.get("minio_ws_admin_secret_key") or credential.minio_secret_key
+                        credential.airflow_url = ctx.get("airflow_endpoint") or credential.airflow_url
+                        credential.airflow_admin_password = ctx.get("airflow_admin_password") or credential.airflow_admin_password
+                        credential.mlflow_artifact_bucket = ctx.get("mlflow_artifact_bucket") or credential.mlflow_artifact_bucket
+                        credential.kserve_endpoint = ctx.get("kserve_endpoint") or credential.kserve_endpoint
+                    else:
+                        # Create new
+                        credential = ArgusWorkspaceCredential(
+                            workspace_id=workspace_id,
+                            gitlab_http_url=ctx.get("gitlab_http_url"),
+                            gitlab_ssh_url=ctx.get("gitlab_ssh_url"),
+                            minio_endpoint=ctx.get("minio_endpoint"),
+                            minio_root_user=ctx.get("minio_root_user"),
+                            minio_root_password=ctx.get("minio_root_password"),
+                            minio_access_key=ctx.get("minio_ws_admin_access_key"),
+                            minio_secret_key=ctx.get("minio_ws_admin_secret_key"),
+                            airflow_url=ctx.get("airflow_endpoint"),
+                            airflow_admin_username="admin",
+                            airflow_admin_password=ctx.get("airflow_admin_password"),
+                            mlflow_artifact_bucket=ctx.get("mlflow_artifact_bucket"),
+                            kserve_endpoint=ctx.get("kserve_endpoint"),
+                        )
+                        session.add(credential)
                     logger.info(
                         "Provisioning completed for workspace %d (%s), "
                         "credentials stored, status → active",
@@ -377,20 +586,25 @@ async def get_workspace(session: AsyncSession, workspace_id: int) -> WorkspaceRe
     if not ws:
         logger.info("Workspace not found: id=%d", workspace_id)
         return None
-    return _build_workspace_response(ws)
+    return await _build_workspace_response(ws, session)
 
 
 async def list_workspaces(
     session: AsyncSession,
     status: str | None = None,
+    search: str | None = None,
     page: int = 1,
     page_size: int = 10,
 ) -> PaginatedWorkspaceResponse:
     """List workspaces with optional filtering and pagination."""
-    logger.info("Listing workspaces: status=%s, page=%d, page_size=%d", status, page, page_size)
+    logger.info("Listing workspaces: status=%s, search=%s, page=%d, page_size=%d", status, search, page, page_size)
     base = select(ArgusWorkspace)
     if status:
         base = base.where(ArgusWorkspace.status == status)
+    if search:
+        base = base.where(
+            ArgusWorkspace.name.ilike(f"%{search}%") | ArgusWorkspace.display_name.ilike(f"%{search}%")
+        )
 
     count_query = select(func.count()).select_from(base.subquery())
     total = (await session.execute(count_query)).scalar() or 0
@@ -400,8 +614,9 @@ async def list_workspaces(
     result = await session.execute(query)
     workspaces = result.scalars().all()
 
+    items = [await _build_workspace_response(ws, session) for ws in workspaces]
     return PaginatedWorkspaceResponse(
-        items=[_build_workspace_response(ws) for ws in workspaces],
+        items=items,
         total=total,
         page=page,
         page_size=page_size,
@@ -470,7 +685,7 @@ async def delete_workspace(
         _run_deletion_workflow(workspace_id, deletion_context, gitlab_client, req)
     )
 
-    return _build_workspace_response(ws)
+    return await _build_workspace_response(ws, session)
 
 
 def _build_deletion_context(
@@ -506,33 +721,49 @@ def _build_deletion_context(
     return ctx_data
 
 
-async def _add_plugin_steps_for_teardown(
+async def _add_pipeline_steps_for_teardown(
     session: "AsyncSession",
     executor: WorkflowExecutor,
+    workspace_id: int,
     gitlab_client: GitLabClient,
 ) -> None:
-    """Add steps from plugin registry for teardown workflow."""
+    """Add steps from workspace's associated pipelines for teardown."""
+    from workspace_provisioner.models import ArgusWorkspacePipeline
     from workspace_provisioner.plugins.models import ArgusPluginConfig
 
     registry = PluginRegistry.get_instance()
-    result = await session.execute(
-        select(ArgusPluginConfig)
-        .where(ArgusPluginConfig.enabled.is_(True))
-        .order_by(ArgusPluginConfig.display_order)
-    )
-    db_configs = result.scalars().all()
 
-    for db_config in db_configs:
-        name = db_config.plugin_name
-        ver = db_config.selected_version
-        try:
-            step = registry.instantiate_step(name, ver)
-            executor.add_step(step)
-        except Exception:
-            if name in ("gitlab-create-project", "argus-gitlab"):
-                executor.add_step(GitLabCreateProjectStep(gitlab_client))
-            else:
-                logger.warning("Skipping plugin '%s' for teardown: instantiation failed", name)
+    # Load pipelines associated with this workspace
+    wp_result = await session.execute(
+        select(ArgusWorkspacePipeline)
+        .where(ArgusWorkspacePipeline.workspace_id == workspace_id)
+        .order_by(ArgusWorkspacePipeline.deploy_order)
+    )
+    ws_pipelines = wp_result.scalars().all()
+
+    added_plugins = set()
+    for wp in ws_pipelines:
+        cfg_result = await session.execute(
+            select(ArgusPluginConfig)
+            .where(ArgusPluginConfig.pipeline_id == wp.pipeline_id)
+            .where(ArgusPluginConfig.enabled.is_(True))
+            .order_by(ArgusPluginConfig.display_order)
+        )
+        for cfg in cfg_result.scalars().all():
+            if cfg.plugin_name in added_plugins:
+                continue
+            added_plugins.add(cfg.plugin_name)
+            try:
+                step = registry.instantiate_step(cfg.plugin_name, cfg.selected_version)
+                executor.add_step(step)
+            except Exception:
+                if cfg.plugin_name in ("gitlab-create-project", "argus-gitlab"):
+                    executor.add_step(GitLabCreateProjectStep(gitlab_client))
+                else:
+                    logger.warning("Skipping plugin '%s' for teardown", cfg.plugin_name)
+
+    if not added_plugins:
+        logger.info("No pipeline plugins found for workspace %d teardown", workspace_id)
 
 
 async def _run_deletion_workflow(
@@ -568,23 +799,12 @@ async def _run_deletion_workflow(
                 **deletion_context,
             )
 
-            # Build executor with steps — plugin-based or legacy
+            # Build executor with steps from workspace's pipelines
             # (run_teardown executes them in reverse order)
             executor = WorkflowExecutor(session)
-            registry = PluginRegistry.get_instance()
-            if registry.get_all():
-                await _add_plugin_steps_for_teardown(
-                    session, executor, gitlab_client
-                )
-            else:
-                # Legacy fallback
-                executor.add_step(GitLabCreateProjectStep(gitlab_client))
-                executor.add_step(MinioDeployStep())
-                executor.add_step(MinioSetupStep())
-                executor.add_step(AirflowDeployStep())
-                executor.add_step(MlflowDeployStep())
-                executor.add_step(KServeDeployStep())
-                executor.add_step(CustomHookStep())
+            await _add_pipeline_steps_for_teardown(
+                session, executor, workspace_id, gitlab_client
+            )
 
             execution = await executor.run_teardown(
                 workspace_id=workspace_id,
@@ -601,6 +821,8 @@ async def _run_deletion_workflow(
             if ws:
                 if execution.status == "completed":
                     ws.status = WorkspaceStatus.DELETED.value
+                    # Free up the workspace name for reuse
+                    ws.name = f"{ws.name}-deleted-{ws.id}"
                     # Clean up credential and member records
                     cred_result = await session.execute(
                         select(ArgusWorkspaceCredential).where(
@@ -617,6 +839,15 @@ async def _run_deletion_workflow(
                     )
                     for m in member_result.scalars().all():
                         await session.delete(m)
+                    # Clean up workspace-pipeline associations
+                    from workspace_provisioner.models import ArgusWorkspacePipeline
+                    wp_result = await session.execute(
+                        select(ArgusWorkspacePipeline).where(
+                            ArgusWorkspacePipeline.workspace_id == workspace_id
+                        )
+                    )
+                    for wp in wp_result.scalars().all():
+                        await session.delete(wp)
                     logger.info(
                         "Deletion completed for workspace %d (%s), status → deleted",
                         workspace_id, ws.name,
@@ -677,6 +908,32 @@ async def get_workspace_credentials(
 # Membership
 # ---------------------------------------------------------------------------
 
+async def _build_member_response(
+    session: AsyncSession,
+    m: ArgusWorkspaceMember,
+    owner_user_id: int | None = None,
+) -> WorkspaceMemberResponse:
+    """Build a member response with user info."""
+    from app.usermgr.models import ArgusUser
+    user_result = await session.execute(
+        select(ArgusUser).where(ArgusUser.id == m.user_id)
+    )
+    user = user_result.scalars().first()
+    return WorkspaceMemberResponse(
+        id=m.id,
+        workspace_id=m.workspace_id,
+        user_id=m.user_id,
+        username=user.username if user else None,
+        display_name=f"{user.first_name} {user.last_name}".strip() if user else None,
+        email=user.email if user else None,
+        role=m.role,
+        is_owner=(m.user_id == owner_user_id) if owner_user_id else False,
+        gitlab_access_token=m.gitlab_access_token,
+        gitlab_token_name=m.gitlab_token_name,
+        created_at=m.created_at,
+    )
+
+
 async def add_member(
     session: AsyncSession,
     workspace_id: int,
@@ -692,13 +949,13 @@ async def add_member(
     await session.commit()
     await session.refresh(member)
     logger.info("Member added: user=%d workspace=%d role=%s", req.user_id, workspace_id, req.role)
-    return WorkspaceMemberResponse(
-        id=member.id,
-        workspace_id=member.workspace_id,
-        user_id=member.user_id,
-        role=member.role,
-        created_at=member.created_at,
+
+    # Get workspace owner
+    ws_result = await session.execute(
+        select(ArgusWorkspace.created_by).where(ArgusWorkspace.id == workspace_id)
     )
+    owner_id = ws_result.scalar()
+    return await _build_member_response(session, member, owner_id)
 
 
 async def list_members(
@@ -706,22 +963,20 @@ async def list_members(
 ) -> list[WorkspaceMemberResponse]:
     """List all members of a workspace."""
     logger.info("Listing members for workspace: id=%d", workspace_id)
+
+    # Get workspace owner
+    ws_result = await session.execute(
+        select(ArgusWorkspace.created_by).where(ArgusWorkspace.id == workspace_id)
+    )
+    owner_id = ws_result.scalar()
+
     result = await session.execute(
         select(ArgusWorkspaceMember).where(
             ArgusWorkspaceMember.workspace_id == workspace_id
         )
     )
     members = result.scalars().all()
-    return [
-        WorkspaceMemberResponse(
-            id=m.id,
-            workspace_id=m.workspace_id,
-            user_id=m.user_id,
-            role=m.role,
-            created_at=m.created_at,
-        )
-        for m in members
-    ]
+    return [await _build_member_response(session, m, owner_id) for m in members]
 
 
 async def remove_member(session: AsyncSession, member_id: int) -> bool:

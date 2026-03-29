@@ -94,6 +94,8 @@ CREATE TABLE IF NOT EXISTS argus_users (
     s3_access_key   VARCHAR(100),
     s3_secret_key   VARCHAR(100),
     s3_bucket       VARCHAR(255),
+    gitlab_username VARCHAR(100),
+    gitlab_password VARCHAR(255),
     role_id         INTEGER         NOT NULL REFERENCES argus_roles(id),
     created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
@@ -109,6 +111,8 @@ COMMENT ON COLUMN argus_users.phone_number IS 'User phone number (optional)';
 COMMENT ON COLUMN argus_users.password_hash IS 'SHA-256 hashed password (empty for keycloak users)';
 COMMENT ON COLUMN argus_users.status IS 'Account status: active | inactive';
 COMMENT ON COLUMN argus_users.auth_type IS 'Authentication type: local | keycloak';
+COMMENT ON COLUMN argus_users.gitlab_username IS 'GitLab username (e.g. argus-admin)';
+COMMENT ON COLUMN argus_users.gitlab_password IS 'GitLab auto-generated password';
 COMMENT ON COLUMN argus_users.role_id IS 'Foreign key to argus_roles(id)';
 COMMENT ON COLUMN argus_users.created_at IS 'Account creation timestamp';
 COMMENT ON COLUMN argus_users.updated_at IS 'Account last update timestamp';
@@ -279,7 +283,11 @@ INSERT INTO argus_configuration (category, config_key, config_value, description
 ('gitlab', 'gitlab_token',              '',                     'GitLab API private token'),
 ('gitlab', 'gitlab_group_path',         'workspaces',           'Default group path for workspace projects'),
 ('gitlab', 'gitlab_default_branch',     'main',                 'Default branch for new projects'),
-('gitlab', 'gitlab_project_visibility', 'internal',             'Project visibility (internal, private, public)')
+('gitlab', 'gitlab_project_visibility', 'internal',             'Project visibility (internal, private, public)'),
+-- Kubernetes
+('k8s', 'k8s_kubeconfig_path',   '/etc/rancher/k3s/k3s.yaml', 'Path to kubeconfig file'),
+('k8s', 'k8s_namespace_prefix',  'argus-ws-',                  'Workspace namespace prefix'),
+('k8s', 'k8s_context',           '',                           'Kubeconfig context (empty = default)')
 ON CONFLICT (config_key) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
@@ -401,6 +409,64 @@ COMMENT ON COLUMN argus_app_instances.app_type IS 'Denormalized app type for que
 COMMENT ON COLUMN argus_app_instances.status IS 'deploying | running | failed | deleting | deleted';
 COMMENT ON COLUMN argus_app_instances.config IS 'App-specific configuration as JSON';
 COMMENT ON COLUMN argus_app_instances.deploy_steps IS 'Deployment step progress as JSON array';
+
+-- Workspace-Pipeline association table
+CREATE TABLE IF NOT EXISTS argus_workspace_pipelines (
+    id              SERIAL          PRIMARY KEY,
+    workspace_id    INTEGER         NOT NULL REFERENCES argus_workspaces(id) ON DELETE CASCADE,
+    pipeline_id     INTEGER         NOT NULL REFERENCES argus_pipelines(id),
+    deploy_order    INTEGER         NOT NULL DEFAULT 0,
+    status          VARCHAR(20)     NOT NULL DEFAULT 'pending',
+    created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE argus_workspace_pipelines IS 'Many-to-many: workspaces ↔ pipelines with deployment order and status';
+COMMENT ON COLUMN argus_workspace_pipelines.deploy_order IS 'Order in which pipelines are deployed (0-based)';
+COMMENT ON COLUMN argus_workspace_pipelines.status IS 'pending | running | completed | failed';
+
+CREATE INDEX IF NOT EXISTS idx_ws_pipelines_workspace ON argus_workspace_pipelines(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_ws_pipelines_pipeline ON argus_workspace_pipelines(pipeline_id);
+
+-- Workspace audit log
+-- Workspace services (deployed plugin instances)
+CREATE TABLE IF NOT EXISTS argus_workspace_services (
+    id              SERIAL          PRIMARY KEY,
+    workspace_id    INTEGER         NOT NULL REFERENCES argus_workspaces(id) ON DELETE CASCADE,
+    plugin_name     VARCHAR(100)    NOT NULL,
+    display_name    VARCHAR(255),
+    version         VARCHAR(50),
+    endpoint        VARCHAR(500),
+    username        VARCHAR(255),
+    password        VARCHAR(255),
+    access_token    VARCHAR(500),
+    status          VARCHAR(20)     NOT NULL DEFAULT 'running',
+    metadata        JSON,
+    created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    UNIQUE(workspace_id, plugin_name)
+);
+
+COMMENT ON TABLE argus_workspace_services IS 'Service instances deployed to a workspace (one per plugin)';
+CREATE INDEX IF NOT EXISTS idx_ws_services_workspace ON argus_workspace_services(workspace_id);
+
+-- Workspace audit log
+CREATE TABLE IF NOT EXISTS argus_workspace_audit_logs (
+    id                SERIAL          PRIMARY KEY,
+    workspace_id      INTEGER         NOT NULL,
+    workspace_name    VARCHAR(100)    NOT NULL,
+    action            VARCHAR(50)     NOT NULL,
+    target_user_id    INTEGER,
+    target_username   VARCHAR(100),
+    actor_user_id     INTEGER,
+    actor_username    VARCHAR(100),
+    detail            JSON,
+    created_at        TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE argus_workspace_audit_logs IS 'Audit log for workspace member and lifecycle events';
+
+CREATE INDEX IF NOT EXISTS idx_audit_workspace ON argus_workspace_audit_logs(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_audit_created ON argus_workspace_audit_logs(created_at DESC);
 
 -- Seed default apps
 INSERT INTO argus_apps (app_type, display_name, description, icon, template_dir, default_namespace, hostname_pattern) VALUES

@@ -59,10 +59,15 @@ class MlflowDeployStep(WorkflowStep):
         return "mlflow-deploy"
 
     async def execute(self, ctx: WorkflowContext) -> dict | None:
+        from workspace_provisioner.workflow.steps.app_deploy import ensure_namespace
+
         workspace_name = ctx.workspace_name
         domain = ctx.domain
         namespace = ctx.get("k8s_namespace", f"argus-ws-{workspace_name}")
         kubeconfig = ctx.get("k8s_kubeconfig")
+
+        # Ensure namespace exists
+        await ensure_namespace(namespace)
 
         # Get config from context (set by service from UI request)
         config: MlflowConfig = ctx.get("mlflow_config", MlflowConfig())
@@ -102,6 +107,7 @@ class MlflowDeployStep(WorkflowStep):
             "MLFLOW_ARTIFACT_BUCKET": artifact_bucket,
             "MINIO_ACCESS_KEY": minio_access_key,
             "MINIO_SECRET_KEY": minio_secret_key,
+            "ARGUS_SERVER_HOST": ctx.get("argus_server_host", "127.0.0.1"),
         }
 
         manifests = render_manifests("mlflow", variables)
@@ -140,8 +146,25 @@ class MlflowDeployStep(WorkflowStep):
         ctx.set("mlflow_artifact_bucket", artifact_bucket)
         ctx.set("mlflow_manifests", manifests)
 
+        # Register service
+        internal_endpoint = f"http://argus-mlflow-{workspace_name}.{namespace}.svc.cluster.local:5000"
+        from workspace_provisioner.service import register_workspace_service
+        await register_workspace_service(
+            workspace_id=ctx.workspace_id,
+            plugin_name="argus-mlflow",
+            display_name="MLflow Tracking Server",
+            version="1.0",
+            endpoint=f"http://{external_endpoint}",
+            metadata={
+                "internal_endpoint": internal_endpoint,
+                "artifact_bucket": artifact_bucket,
+                "namespace": namespace,
+            },
+        )
+
         return {
             "endpoint": external_endpoint,
+            "internal_endpoint": internal_endpoint,
             "artifact_bucket": artifact_bucket,
             "namespace": namespace,
         }

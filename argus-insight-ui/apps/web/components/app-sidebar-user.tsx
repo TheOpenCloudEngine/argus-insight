@@ -6,6 +6,7 @@ import {
   ChevronUp,
   Eye,
   EyeOff,
+  GitBranch,
   Key,
   LogOut,
   Mail,
@@ -44,6 +45,7 @@ export function AppSidebarUser() {
   const [profileOpen, setProfileOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [showSecretKey, setShowSecretKey] = useState(false)
+  const [showGitlabPassword, setShowGitlabPassword] = useState(false)
 
   if (!user) return null
 
@@ -206,6 +208,36 @@ export function AppSidebarUser() {
                       onClick={() => setShowSecretKey(!showSecretKey)}
                     >
                       {showSecretKey ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                    </button>
+                  </dd>
+                </dl>
+            </>
+          )}
+
+          {user.gitlab_username && (
+            <>
+              <Separator />
+              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm py-2">
+                  <dt className="flex items-center gap-1.5 text-muted-foreground">
+                    <GitBranch className="size-3.5" />
+                    GitLab Username
+                  </dt>
+                  <dd className="font-mono text-xs">{user.gitlab_username}</dd>
+
+                  <dt className="flex items-center gap-1.5 text-muted-foreground">
+                    <Key className="size-3.5" />
+                    GitLab Password
+                  </dt>
+                  <dd className="flex items-center gap-1.5">
+                    <span className="font-mono text-xs">
+                      {showGitlabPassword ? user.gitlab_password : "••••••••••••••••"}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowGitlabPassword(!showGitlabPassword)}
+                    >
+                      {showGitlabPassword ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
                     </button>
                   </dd>
                 </dl>

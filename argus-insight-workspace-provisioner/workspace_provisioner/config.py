@@ -186,6 +186,23 @@ class KServeConfig(BaseModel):
     )
 
 
+class MinioWorkspaceConfig(BaseModel):
+    """MinIO Workspace Bucket settings."""
+
+    bucket_prefix: str = Field(
+        default="workspace-",
+        description="Bucket name prefix (e.g., workspace-aaa)",
+    )
+    create_user_per_member: bool = Field(
+        default=True,
+        description="Create a MinIO user per workspace member",
+    )
+    default_policy: str = Field(
+        default="readwrite",
+        description="Default bucket policy for members (readwrite or readonly)",
+    )
+
+
 class VScodeServerConfig(BaseModel):
     """VS Code Server deployment settings."""
 
@@ -211,7 +228,11 @@ class VScodeServerConfig(BaseModel):
     )
     workspace_path: str = Field(
         default="/workspace",
-        description="Workspace mount path inside the container",
+        description="Workspace S3 bucket mount path inside the container",
+    )
+    user_data_path: str = Field(
+        default="/data",
+        description="Personal S3 bucket mount path inside the container",
     )
     color_theme: str = Field(
         default="Default Dark Modern",

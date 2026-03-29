@@ -110,39 +110,3 @@ CREATE TABLE IF NOT EXISTS argus_workflow_step_executions (
     KEY idx_step_exec_order (execution_id, step_order),
     CONSTRAINT fk_step_exec_execution FOREIGN KEY (execution_id) REFERENCES argus_workflow_executions (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ---------------------------------------------------------------------------
--- 6. argus_pipelines
--- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS argus_pipelines (
-    id              INT             NOT NULL AUTO_INCREMENT,
-    name            VARCHAR(100)    NOT NULL,
-    display_name    VARCHAR(255)    NOT NULL,
-    description     TEXT            DEFAULT NULL,
-    version         INT             NOT NULL DEFAULT 1,
-    deleted         BOOLEAN         NOT NULL DEFAULT FALSE,
-    created_by      VARCHAR(100)    DEFAULT NULL,
-    created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_pipelines_name (name)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ---------------------------------------------------------------------------
--- 7. argus_plugin_configs
--- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS argus_plugin_configs (
-    id                INT             NOT NULL AUTO_INCREMENT,
-    pipeline_id       INT             DEFAULT NULL,
-    plugin_name       VARCHAR(100)    NOT NULL,
-    enabled           BOOLEAN         NOT NULL DEFAULT TRUE,
-    display_order     INT             NOT NULL,
-    selected_version  VARCHAR(50)     DEFAULT NULL,
-    default_config    JSON            DEFAULT NULL,
-    created_at        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (id),
-    UNIQUE KEY uq_pipeline_plugin (pipeline_id, plugin_name),
-    KEY idx_plugin_configs_pipeline (pipeline_id),
-    CONSTRAINT fk_plugin_config_pipeline FOREIGN KEY (pipeline_id) REFERENCES argus_pipelines (id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

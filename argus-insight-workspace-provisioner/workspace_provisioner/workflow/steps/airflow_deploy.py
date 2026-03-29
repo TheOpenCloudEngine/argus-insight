@@ -62,10 +62,15 @@ class AirflowDeployStep(WorkflowStep):
         return "airflow-deploy"
 
     async def execute(self, ctx: WorkflowContext) -> dict | None:
+        from workspace_provisioner.workflow.steps.app_deploy import ensure_namespace
+
         workspace_name = ctx.workspace_name
         domain = ctx.domain
         namespace = ctx.get("k8s_namespace", f"argus-ws-{workspace_name}")
         kubeconfig = ctx.get("k8s_kubeconfig")
+
+        # Ensure namespace exists
+        await ensure_namespace(namespace)
 
         # Get config from context (set by service from UI request)
         config: AirflowConfig = ctx.get("airflow_config", AirflowConfig())
@@ -104,6 +109,7 @@ class AirflowDeployStep(WorkflowStep):
             "AIRFLOW_SECRET_KEY": secret_key,
             "GITLAB_REPO_URL": gitlab_repo_url,
             "GITLAB_TOKEN": gitlab_token,
+            "ARGUS_SERVER_HOST": ctx.get("argus_server_host", "127.0.0.1"),
         }
 
         manifests = render_manifests("airflow", variables)
@@ -142,8 +148,26 @@ class AirflowDeployStep(WorkflowStep):
         ctx.set("airflow_admin_password", admin_password)
         ctx.set("airflow_manifests", manifests)
 
+        # Register service
+        internal_endpoint = f"http://argus-airflow-{workspace_name}.{namespace}.svc.cluster.local:8080"
+        from workspace_provisioner.service import register_workspace_service
+        await register_workspace_service(
+            workspace_id=ctx.workspace_id,
+            plugin_name="argus-airflow",
+            display_name="Apache Airflow",
+            version="1.0",
+            endpoint=f"http://{external_endpoint}",
+            username="admin",
+            password=admin_password,
+            metadata={
+                "internal_endpoint": internal_endpoint,
+                "namespace": namespace,
+            },
+        )
+
         return {
             "endpoint": external_endpoint,
+            "internal_endpoint": internal_endpoint,
             "admin_user": "admin",
             "namespace": namespace,
         }

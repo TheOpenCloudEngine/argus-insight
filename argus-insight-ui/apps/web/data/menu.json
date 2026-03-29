@@ -89,6 +89,13 @@
       "label": "Administration",
       "items": [
         {
+          "id": "workspaces",
+          "title": "Workspaces",
+          "url": "/dashboard/workspaces",
+          "icon": "Container",
+          "adminOnly": true
+        },
+        {
           "id": "users",
           "title": "User Management",
           "url": "/dashboard/users",

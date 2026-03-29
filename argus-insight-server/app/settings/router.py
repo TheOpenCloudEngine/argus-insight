@@ -475,3 +475,72 @@ async def test_gitlab_connection(
         )
     except Exception as e:
         return TestResponse(success=False, message=f"Connection failed: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Kubernetes Settings
+# ---------------------------------------------------------------------------
+
+class K8sConfig(BaseModel):
+    kubeconfig_path: str = "/etc/rancher/k3s/k3s.yaml"
+    namespace_prefix: str = "argus-ws-"
+    context: str = ""
+
+
+@router.get("/k8s")
+async def get_k8s_config(session: AsyncSession = Depends(get_session)):
+    """Get Kubernetes configuration."""
+    cfg = await service.get_config_by_category(session, "k8s")
+    return K8sConfig(
+        kubeconfig_path=cfg.get("k8s_kubeconfig_path", "/etc/rancher/k3s/k3s.yaml"),
+        namespace_prefix=cfg.get("k8s_namespace_prefix", "argus-ws-"),
+        context=cfg.get("k8s_context", ""),
+    )
+
+
+@router.put("/k8s")
+async def update_k8s_config(
+    body: K8sConfig,
+    session: AsyncSession = Depends(get_session),
+):
+    """Update Kubernetes configuration."""
+    items = {
+        "k8s_kubeconfig_path": body.kubeconfig_path,
+        "k8s_namespace_prefix": body.namespace_prefix,
+        "k8s_context": body.context,
+    }
+    await service.update_infra_category(session, "k8s", items)
+    logger.info("K8s config saved: kubeconfig=%s, prefix=%s", body.kubeconfig_path, body.namespace_prefix)
+    return {"status": "ok", "message": "Kubernetes configuration saved"}
+
+
+@router.get("/k8s/namespace/{namespace}")
+async def check_k8s_namespace(
+    namespace: str,
+    session: AsyncSession = Depends(get_session),
+):
+    """Check if a Kubernetes namespace exists."""
+    import asyncio
+
+    cfg = await service.get_config_by_category(session, "k8s")
+    kubeconfig = cfg.get("k8s_kubeconfig_path", "/etc/rancher/k3s/k3s.yaml")
+    context = cfg.get("k8s_context", "")
+
+    cmd = ["kubectl", "get", "namespace", namespace, "--no-headers"]
+    if kubeconfig:
+        cmd.extend(["--kubeconfig", kubeconfig])
+    if context:
+        cmd.extend(["--context", context])
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        exists = proc.returncode == 0
+        return {"exists": exists, "namespace": namespace}
+    except Exception as e:
+        logger.warning("K8s namespace check failed: %s", e)
+        return {"exists": False, "namespace": namespace, "error": str(e)}

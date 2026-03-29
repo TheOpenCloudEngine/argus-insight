@@ -64,6 +64,8 @@ class ArgusUser(Base):
     s3_access_key = Column(String(100))   # MinIO per-user access key
     s3_secret_key = Column(String(100))   # MinIO per-user secret key
     s3_bucket = Column(String(255))       # MinIO bucket name (e.g. "user-admin")
+    gitlab_username = Column(String(100))  # GitLab username (e.g. "argus-admin")
+    gitlab_password = Column(String(255))  # GitLab auto-generated password
     role_id = Column(Integer, ForeignKey("argus_roles.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
