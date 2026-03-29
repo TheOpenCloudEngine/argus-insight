@@ -63,12 +63,25 @@ export default function FileBrowserPage() {
         allBuckets.push(...refreshed.buckets)
       }
 
-      // 4. Filter buckets by role
+      // 4. Fetch workspace buckets the user belongs to
+      let workspaceBuckets: string[] = []
+      if (me?.sub) {
+        try {
+          const wbRes = await authFetch(`/api/v1/objectfilemgr/buckets/my-workspace-buckets?user_id=${me.sub}`)
+          if (wbRes.ok) {
+            const wbData = await wbRes.json()
+            workspaceBuckets = wbData.buckets ?? []
+          }
+        } catch { /* ignore */ }
+      }
+
+      // 5. Filter buckets by role
       //    Admin: all buckets visible
-      //    User: only own bucket (user-{username})
+      //    User: own bucket + workspace buckets
+      const allBucketNames = new Set(allBuckets.map((b) => b.name))
       const filtered = isAdmin
         ? allBuckets.map((b) => b.name)
-        : allBuckets.filter((b) => b.name === myUserBucket).map((b) => b.name)
+        : [myUserBucket, ...workspaceBuckets].filter((name) => allBucketNames.has(name))
       setBucketNames(filtered)
 
       // 5. Auto-select user's own bucket if available

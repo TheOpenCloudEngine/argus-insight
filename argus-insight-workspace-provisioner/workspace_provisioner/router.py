@@ -19,12 +19,17 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
+
+from app.core.auth import CurrentUser
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from workspace_provisioner import service
 from workspace_provisioner.gitlab.client import GitLabClient
 from workspace_provisioner.schemas import (
+    AuditLogResponse,
+    PaginatedAuditLogResponse,
+    WorkspaceServiceResponse,
     PaginatedWorkspaceResponse,
     WorkspaceCreateRequest,
     WorkspaceCredentialResponse,
@@ -116,13 +121,14 @@ async def create_workspace(
 @router.get("/workspaces", response_model=PaginatedWorkspaceResponse)
 async def list_workspaces(
     status: str | None = Query(None, description="Filter by status"),
+    search: str | None = Query(None, description="Search by name or display name"),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
 ):
-    """List workspaces with optional status filter and pagination."""
-    logger.info("GET /workspaces - status=%s, page=%d, page_size=%d", status, page, page_size)
-    return await service.list_workspaces(session, status=status, page=page, page_size=page_size)
+    """List workspaces with optional status/search filter and pagination."""
+    logger.info("GET /workspaces - status=%s, search=%s, page=%d, page_size=%d", status, search, page, page_size)
+    return await service.list_workspaces(session, status=status, search=search, page=page, page_size=page_size)
 
 
 @router.get("/workspaces/{workspace_id}", response_model=WorkspaceResponse)
@@ -137,6 +143,85 @@ async def get_workspace(
         logger.info("GET /workspaces/%d - not found", workspace_id)
         raise HTTPException(status_code=404, detail="Workspace not found")
     return ws
+
+
+class DeployPipelineRequest(BaseModel):
+    pipeline_id: int
+
+
+@router.post("/workspaces/{workspace_id}/deploy")
+async def deploy_pipeline_to_workspace(
+    workspace_id: int,
+    req: DeployPipelineRequest,
+    session: AsyncSession = Depends(get_session),
+    gitlab_client: GitLabClient = Depends(_get_gitlab_client),
+):
+    """Deploy a pipeline to an existing workspace."""
+    import asyncio
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspacePipeline
+    from workspace_provisioner.schemas import WorkspaceCreateRequest
+
+    result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    ws = result.scalars().first()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # Check workspace is not already deploying or deleting
+    if ws.status == "provisioning":
+        raise HTTPException(status_code=400, detail="A deployment is already in progress for this workspace.")
+    if ws.status == "deleting":
+        raise HTTPException(status_code=400, detail="This workspace is being deleted.")
+
+    # Add pipeline association
+    ws_pipeline = ArgusWorkspacePipeline(
+        workspace_id=workspace_id,
+        pipeline_id=req.pipeline_id,
+        deploy_order=0,
+        status="pending",
+    )
+    session.add(ws_pipeline)
+    await session.commit()
+
+    # Build a minimal WorkspaceCreateRequest for the provisioning workflow
+    fake_req = WorkspaceCreateRequest(
+        name=ws.name,
+        display_name=ws.display_name,
+        domain=ws.domain,
+        admin_user_id=ws.created_by,
+        pipeline_ids=[req.pipeline_id],
+    )
+
+    # Update workspace status
+    ws.status = "provisioning"
+    await session.commit()
+
+    # Load creator info
+    from app.usermgr.models import ArgusUser
+    from app.settings.service import get_config_by_category
+    creator_result = await session.execute(
+        select(ArgusUser).where(ArgusUser.id == ws.created_by)
+    )
+    creator = creator_result.scalars().first()
+    creator_info = {}
+    if creator:
+        gitlab_cfg = await get_config_by_category(session, "gitlab")
+        creator_info = {
+            "creator_username": creator.username,
+            "creator_email": creator.email,
+            "creator_name": f"{creator.first_name} {creator.last_name}".strip() or creator.username,
+            "creator_password": gitlab_cfg.get("gitlab_password", "") or "Argus!nsight2026",
+            "admin_user_id": ws.created_by,
+        }
+
+    # Launch provisioning in background
+    asyncio.create_task(
+        service._run_provisioning_workflow(workspace_id, fake_req, gitlab_client, creator_info)
+    )
+
+    logger.info("Deploy pipeline %d to workspace %d", req.pipeline_id, workspace_id)
+    return {"status": "ok", "message": f"Pipeline deployment started for workspace '{ws.name}'"}
 
 
 @router.delete("/workspaces/{workspace_id}", response_model=WorkspaceResponse)
@@ -189,6 +274,40 @@ async def get_workspace_credentials(
         logger.info("GET /workspaces/%d/credentials - not found", workspace_id)
         raise HTTPException(status_code=404, detail="Credentials not found")
     return cred
+
+
+# ---------------------------------------------------------------------------
+# Service endpoints
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/workspaces/{workspace_id}/services",
+    response_model=list[WorkspaceServiceResponse],
+)
+async def get_workspace_services(
+    workspace_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Get all services deployed to a workspace."""
+    from workspace_provisioner.models import ArgusWorkspaceService
+
+    result = await session.execute(
+        select(ArgusWorkspaceService)
+        .where(ArgusWorkspaceService.workspace_id == workspace_id)
+        .order_by(ArgusWorkspaceService.created_at)
+    )
+    services = result.scalars().all()
+    return [
+        WorkspaceServiceResponse(
+            id=s.id, workspace_id=s.workspace_id,
+            plugin_name=s.plugin_name, display_name=s.display_name,
+            version=s.version, endpoint=s.endpoint,
+            username=s.username, password=s.password,
+            access_token=s.access_token, status=s.status,
+            metadata=s.metadata_json,
+            created_at=s.created_at, updated_at=s.updated_at,
+        ) for s in services
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +385,7 @@ class BulkAddMembersRequest(BaseModel):
 async def bulk_add_members(
     workspace_id: int,
     req: BulkAddMembersRequest,
+    current_user: CurrentUser,
     session: AsyncSession = Depends(get_session),
     gitlab_client: GitLabClient = Depends(_get_gitlab_client),
 ):
@@ -365,6 +485,14 @@ async def bulk_add_members(
         resp = await service._build_member_response(session, member, ws.created_by)
         results.append(resp)
 
+        # Audit log
+        await service.log_audit(
+            session, workspace_id, ws.name, "member_added",
+            actor_user_id=int(current_user.sub), actor_username=current_user.username,
+            target_user_id=user_id, target_username=user.username,
+            detail={"role": "User", "gitlab_provisioned": gitlab_token is not None},
+        )
+
     logger.info("Bulk added %d members to workspace %d", len(results), workspace_id)
     return results
 
@@ -386,6 +514,7 @@ async def list_members(
 async def remove_member(
     workspace_id: int,
     member_id: int,
+    current_user: CurrentUser,
     session: AsyncSession = Depends(get_session),
     gitlab_client: GitLabClient = Depends(_get_gitlab_client),
 ):
@@ -433,6 +562,14 @@ async def remove_member(
     if not await service.remove_member(session, member_id):
         raise HTTPException(status_code=404, detail="Member not found")
 
+    # Audit log
+    await service.log_audit(
+        session, workspace_id, ws.name, "member_removed",
+        actor_user_id=int(current_user.sub), actor_username=current_user.username,
+        target_user_id=member.user_id, target_username=user.username if user else None,
+        detail={"gitlab_removed": True},
+    )
+
     logger.info("DELETE /workspaces/%d/members/%d - removed (with GitLab)", workspace_id, member_id)
     return {"status": "ok", "message": "Member removed"}
 
@@ -457,3 +594,203 @@ async def get_workflow_status(
     """
     logger.info("GET /workspaces/%d/workflow", workspace_id)
     return await service.get_workflow_status(session, workspace_id)
+
+
+# ---------------------------------------------------------------------------
+# Workspace service auth endpoints
+# ---------------------------------------------------------------------------
+
+import hashlib
+import hmac
+import json as json_module
+import time
+from urllib.parse import urlparse
+
+from fastapi import Cookie, Header, Request, Response
+
+_WS_AUTH_SECRET = "argus-workspace-auth-secret-key"
+_WS_AUTH_EXPIRY = 86400  # 24 hours
+
+
+def _create_ws_token(username: str, workspace_name: str, role: str) -> str:
+    """Create a signed workspace auth token."""
+    payload = {
+        "sub": username,
+        "workspace": workspace_name,
+        "role": role,
+        "exp": int(time.time()) + _WS_AUTH_EXPIRY,
+    }
+    payload_json = json_module.dumps(payload, separators=(",", ":"))
+    import base64
+    payload_b64 = base64.urlsafe_b64encode(payload_json.encode()).decode()
+    sig = hmac.new(_WS_AUTH_SECRET.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
+    return base64.urlsafe_b64encode(json_module.dumps({"payload": payload_b64, "sig": sig}).encode()).decode()
+
+
+def _verify_ws_token(token: str, workspace_name: str) -> dict | None:
+    """Verify a workspace auth token. Returns payload or None."""
+    try:
+        import base64
+        outer = json_module.loads(base64.urlsafe_b64decode(token))
+        payload_b64 = outer["payload"]
+        sig = outer["sig"]
+        expected_sig = hmac.new(_WS_AUTH_SECRET.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected_sig):
+            return None
+        payload = json_module.loads(base64.urlsafe_b64decode(payload_b64))
+        if payload.get("exp", 0) < time.time():
+            return None
+        if payload.get("workspace") != workspace_name:
+            return None
+        return payload
+    except Exception:
+        return None
+
+
+@router.get("/workspaces/{workspace_name}/auth-launch")
+async def workspace_auth_launch(
+    workspace_name: str,
+    current_user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    """Generate an auth token for accessing workspace services.
+
+    The UI calls this, then opens auth-redirect URL in browser.
+    """
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceMember
+
+    # Find workspace
+    result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.name == workspace_name)
+    )
+    ws = result.scalars().first()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # Check membership
+    member_result = await session.execute(
+        select(ArgusWorkspaceMember).where(
+            ArgusWorkspaceMember.workspace_id == ws.id,
+            ArgusWorkspaceMember.user_id == int(current_user.sub),
+        )
+    )
+    if not member_result.scalars().first():
+        raise HTTPException(status_code=403, detail="Not a member of this workspace")
+
+    token = _create_ws_token(current_user.username, workspace_name, current_user.role)
+    return {"token": token, "workspace": workspace_name}
+
+
+@router.get("/workspaces/{workspace_name}/auth-redirect")
+async def workspace_auth_redirect(
+    workspace_name: str,
+    token: str = Query(...),
+    redirect: str = Query(""),
+    session: AsyncSession = Depends(get_session),
+):
+    """Browser navigates here directly. Sets cookie and redirects to service."""
+    payload = _verify_ws_token(token, workspace_name)
+    if not payload:
+        return Response(content="Invalid or expired token", status_code=401)
+
+    # Get domain for cookie
+    from app.settings.service import get_config_by_category
+    domain_cfg = await get_config_by_category(session, "domain")
+    domain = domain_cfg.get("domain_name", "")
+
+    redirect_url = redirect or f"/"
+    response = Response(status_code=302, headers={"Location": redirect_url})
+    response.set_cookie(
+        key="argus_ws_token",
+        value=token,
+        domain=f".{domain}" if domain else None,
+        path="/",
+        max_age=_WS_AUTH_EXPIRY,
+        httponly=False,
+        samesite="lax",
+    )
+    return response
+
+
+@router.get("/workspaces/auth-verify")
+async def workspace_auth_verify(
+    request: Request,
+    workspace: str = Query(""),
+    argus_ws_token: str | None = Cookie(None),
+    x_original_url: str | None = Header(None),
+):
+    """Nginx Ingress auth-url subrequest endpoint for workspace services.
+
+    Verifies the workspace auth cookie and checks membership.
+    """
+    if not argus_ws_token:
+        logger.info("WS auth verify: no cookie, workspace=%s", workspace)
+        return Response(status_code=401)
+
+    # Extract workspace name from query or from X-Original-URL hostname
+    ws_name = workspace
+    if not ws_name and x_original_url:
+        parsed = urlparse(x_original_url)
+        host = parsed.hostname or ""
+        # hostname pattern: argus-{service}-{workspace}.argus-insight.{domain}
+        # extract workspace name from hostname
+        parts = host.split(".")
+        if parts:
+            prefix_parts = parts[0].split("-")
+            # argus-mlflow-mlops6 → mlops6 (last segment after service name)
+            if len(prefix_parts) >= 3:
+                ws_name = "-".join(prefix_parts[2:])
+
+    if not ws_name:
+        logger.info("WS auth verify: cannot determine workspace from request")
+        return Response(status_code=401)
+
+    payload = _verify_ws_token(argus_ws_token, ws_name)
+    if payload:
+        return Response(status_code=200)
+
+    logger.info("WS auth verify: token invalid for workspace=%s", ws_name)
+    return Response(status_code=403)
+
+
+# ---------------------------------------------------------------------------
+# Audit log endpoints
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/workspaces/{workspace_id}/audit-logs",
+    response_model=PaginatedAuditLogResponse,
+)
+async def get_workspace_audit_logs(
+    workspace_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+):
+    """Get audit logs for a specific workspace."""
+    from sqlalchemy import func as sqlfunc
+    from workspace_provisioner.models import ArgusWorkspaceAuditLog
+
+    base = select(ArgusWorkspaceAuditLog).where(
+        ArgusWorkspaceAuditLog.workspace_id == workspace_id
+    )
+    count_q = select(sqlfunc.count()).select_from(base.subquery())
+    total = (await session.execute(count_q)).scalar() or 0
+
+    offset = (page - 1) * page_size
+    query = base.order_by(ArgusWorkspaceAuditLog.created_at.desc()).offset(offset).limit(page_size)
+    result = await session.execute(query)
+    logs = result.scalars().all()
+
+    return PaginatedAuditLogResponse(
+        items=[
+            AuditLogResponse(
+                id=l.id, workspace_id=l.workspace_id, workspace_name=l.workspace_name,
+                action=l.action, target_user_id=l.target_user_id,
+                target_username=l.target_username, actor_user_id=l.actor_user_id,
+                actor_username=l.actor_username, detail=l.detail,
+                created_at=l.created_at,
+            ) for l in logs
+        ],
+        total=total, page=page, page_size=page_size,
+    )

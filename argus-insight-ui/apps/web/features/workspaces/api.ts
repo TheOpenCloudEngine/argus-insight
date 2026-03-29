@@ -1,6 +1,8 @@
 import { authFetch } from "@/features/auth/auth-fetch"
 import type {
+  PaginatedAuditLogResponse,
   PaginatedWorkspaceResponse,
+  WorkspaceService,
   WorkspaceCredentials,
   WorkspaceMember,
   WorkspacePipeline,
@@ -21,11 +23,13 @@ async function extractError(res: Response, fallback: string): Promise<string> {
 
 export async function fetchWorkspaces(
   page = 1,
-  pageSize = 100,
+  pageSize = 10,
   status?: string,
+  search?: string,
 ): Promise<PaginatedWorkspaceResponse> {
   let url = `${BASE}/workspaces?page=${page}&page_size=${pageSize}`
   if (status) url += `&status=${status}`
+  if (search) url += `&search=${encodeURIComponent(search)}`
   const res = await authFetch(url)
   if (!res.ok) throw new Error(await extractError(res, "Failed to fetch workspaces"))
   return res.json()
@@ -90,6 +94,14 @@ export async function removeWorkspaceMember(
   if (!res.ok) throw new Error(await extractError(res, "Failed to remove member"))
 }
 
+export async function fetchWorkspaceServices(
+  workspaceId: number,
+): Promise<WorkspaceService[]> {
+  const res = await authFetch(`${BASE}/workspaces/${workspaceId}/services`)
+  if (!res.ok) return []
+  return res.json()
+}
+
 export async function fetchWorkspacePipelines(
   workspaceId: number,
 ): Promise<WorkspacePipeline[]> {
@@ -104,6 +116,18 @@ export async function fetchWorkspaceCredentials(
   const res = await authFetch(`${BASE}/workspaces/${workspaceId}/credentials`)
   if (res.status === 404) return null
   if (!res.ok) throw new Error(await extractError(res, "Failed to fetch credentials"))
+  return res.json()
+}
+
+export async function fetchWorkspaceAuditLogs(
+  workspaceId: number,
+  page = 1,
+  pageSize = 20,
+): Promise<PaginatedAuditLogResponse> {
+  const res = await authFetch(
+    `${BASE}/workspaces/${workspaceId}/audit-logs?page=${page}&page_size=${pageSize}`,
+  )
+  if (!res.ok) throw new Error(await extractError(res, "Failed to fetch audit logs"))
   return res.json()
 }
 

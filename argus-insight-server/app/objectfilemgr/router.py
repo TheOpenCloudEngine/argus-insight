@@ -154,6 +154,33 @@ async def list_buckets():
         _raise_if_s3_unavailable(e, "list_buckets")
 
 
+@router.get("/buckets/my-workspace-buckets")
+async def list_my_workspace_buckets(
+    user_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """List workspace bucket names that the given user belongs to.
+
+    Returns bucket names like "workspace-{ws_name}" for workspaces
+    where the user is a member.
+    """
+    from sqlalchemy import select as sa_select
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceMember
+
+    result = await session.execute(
+        sa_select(ArgusWorkspace.name).join(
+            ArgusWorkspaceMember,
+            ArgusWorkspaceMember.workspace_id == ArgusWorkspace.id,
+        ).where(
+            ArgusWorkspaceMember.user_id == user_id,
+            ArgusWorkspace.status == "active",
+        )
+    )
+    ws_names = [row[0] for row in result.all()]
+    buckets = [f"workspace-{name}" for name in ws_names]
+    return {"buckets": buckets}
+
+
 @router.post("/buckets/ensure-user-buckets", response_model=EnsureUserBucketsResponse)
 async def ensure_user_buckets(session: AsyncSession = Depends(get_session)):
     """Ensure user-<username> buckets exist for all users."""

@@ -1,0 +1,18 @@
+name: argus-minio-workspace
+display_name: MinIO Workspace Bucket
+description: Create a workspace-dedicated S3 bucket and grant member access permissions
+icon: minio
+category: storage
+depends_on: []
+provides:
+  - minio_workspace_bucket
+  - minio_workspace_endpoint
+requires: []
+tags:
+  - storage
+  - s3
+  - workspace
+  - bucket
+versions:
+  - "1.0"
+default_version: "1.0"

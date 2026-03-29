@@ -48,10 +48,15 @@ class KServeDeployStep(WorkflowStep):
         return "kserve-deploy"
 
     async def execute(self, ctx: WorkflowContext) -> dict | None:
+        from workspace_provisioner.workflow.steps.app_deploy import ensure_namespace
+
         workspace_name = ctx.workspace_name
         domain = ctx.domain
         namespace = ctx.get("k8s_namespace", f"argus-ws-{workspace_name}")
         kubeconfig = ctx.get("k8s_kubeconfig")
+
+        # Ensure namespace exists
+        await ensure_namespace(namespace)
 
         config: KServeConfig = ctx.get("kserve_config", KServeConfig())
 
@@ -79,6 +84,7 @@ class KServeDeployStep(WorkflowStep):
             "MINIO_ACCESS_KEY": minio_access_key,
             "MINIO_SECRET_KEY": minio_secret_key,
             "MODEL_BUCKET": model_bucket,
+            "ARGUS_SERVER_HOST": ctx.get("argus_server_host", "127.0.0.1"),
         }
 
         manifests = render_manifests("kserve", variables)
@@ -111,6 +117,21 @@ class KServeDeployStep(WorkflowStep):
 
         ctx.set("kserve_endpoint", external_endpoint)
         ctx.set("kserve_manifests", manifests)
+
+        # Register service
+        from workspace_provisioner.service import register_workspace_service
+        await register_workspace_service(
+            workspace_id=ctx.workspace_id,
+            plugin_name="argus-kserve",
+            display_name="KServe Model Serving",
+            version="1.0",
+            endpoint=f"http://{external_endpoint}",
+            metadata={
+                "internal_endpoint": f"http://argus-kserve-{workspace_name}.{namespace}.svc.cluster.local:8080",
+                "default_runtime": config.default_runtime,
+                "namespace": namespace,
+            },
+        )
 
         return {
             "endpoint": external_endpoint,

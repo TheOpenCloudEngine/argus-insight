@@ -218,6 +218,50 @@ class PaginatedWorkspaceResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Workspace service schemas
+# ---------------------------------------------------------------------------
+
+class WorkspaceServiceResponse(BaseModel):
+    id: int
+    workspace_id: int
+    plugin_name: str
+    display_name: str | None = None
+    version: str | None = None
+    endpoint: str | None = None
+    username: str | None = None
+    password: str | None = None
+    access_token: str | None = None
+    status: str = "running"
+    metadata: dict | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# Audit log schemas
+# ---------------------------------------------------------------------------
+
+class AuditLogResponse(BaseModel):
+    id: int
+    workspace_id: int
+    workspace_name: str
+    action: str
+    target_user_id: int | None = None
+    target_username: str | None = None
+    actor_user_id: int | None = None
+    actor_username: str | None = None
+    detail: dict | None = None
+    created_at: datetime
+
+
+class PaginatedAuditLogResponse(BaseModel):
+    items: list[AuditLogResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+# ---------------------------------------------------------------------------
 # Workflow status response schemas
 # ---------------------------------------------------------------------------
 

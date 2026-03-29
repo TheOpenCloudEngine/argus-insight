@@ -145,6 +145,7 @@ async def build_variables(
     domain: str,
     s3: dict[str, str],
     server_ip: str,
+    workspace_bucket: str = "",
 ) -> dict[str, str]:
     """Build template variables for K8s manifest rendering."""
     variables = {
@@ -159,6 +160,8 @@ async def build_variables(
         "S3_USE_SSL": s3["S3_USE_SSL"],
         "ARGUS_SERVER_HOST": server_ip,
         "APP_TYPE": app_type,
+        "USER_BUCKET": f"user-{username}",
+        "WORKSPACE_BUCKET": workspace_bucket or f"user-{username}",
     }
     logger.info("[variables] Built template variables: app_type=%s, instance_id=%s, "
                 "hostname=%s, namespace=%s, server_ip=%s",

@@ -151,6 +151,19 @@ class GitLabCreateProjectStep(WorkflowStep):
         ctx.set("gitlab_workspace_url", workspace_url)
         result["gitlab_workspace_url"] = workspace_url
 
+        # Register service
+        from workspace_provisioner.service import register_workspace_service
+        await register_workspace_service(
+            workspace_id=ctx.workspace_id,
+            plugin_name="argus-gitlab",
+            display_name="GitLab Project",
+            version="1.0",
+            endpoint=workspace_url,
+            username=gitlab_username,
+            access_token=token_info["token"] if "token_info" in dir() and token_info else None,
+            metadata={"project_id": project["id"]},
+        )
+
         return result
 
     async def rollback(self, ctx: WorkflowContext) -> None:

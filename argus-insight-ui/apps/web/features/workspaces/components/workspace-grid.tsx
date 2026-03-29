@@ -6,6 +6,8 @@ import {
   Circle,
   Loader2,
   MoreHorizontal,
+  Rocket,
+  Search,
   SkipForward,
   Trash2,
   XCircle,
@@ -20,6 +22,7 @@ import {
 
 import { Button } from "@workspace/ui/components/button"
 import { Badge } from "@workspace/ui/components/badge"
+import { Input } from "@workspace/ui/components/input"
 import {
   Dialog,
   DialogContent,
@@ -31,8 +34,16 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
 
 import type { WorkflowExecution, WorkflowStep, WorkspaceResponse } from "@/features/workspaces/types"
 import {
@@ -40,6 +51,7 @@ import {
   fetchWorkspaces,
   fetchWorkspaceWorkflows,
 } from "@/features/workspaces/api"
+import { authFetch } from "@/features/auth/auth-fetch"
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
@@ -85,11 +97,28 @@ interface WorkspaceGridProps {
   onSelect: (workspace: WorkspaceResponse) => void
   onDeleted: (workspaceId: number) => void
   refreshKey: number
+  onAddWorkspace?: () => void
 }
 
-export function WorkspaceGrid({ onSelect, onDeleted, refreshKey }: WorkspaceGridProps) {
+export function WorkspaceGrid({ onSelect, onDeleted, refreshKey, onAddWorkspace }: WorkspaceGridProps) {
   const [workspaces, setWorkspaces] = useState<WorkspaceResponse[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Search
+  const [searchInput, setSearchInput] = useState("")
+  const [appliedSearch, setAppliedSearch] = useState("")
+
+  // Deploy pipeline dialog state
+  interface PipelineItem { id: number; name: string; display_name: string; version: number; plugins: { plugin_name: string }[] }
+  const [deployOpen, setDeployOpen] = useState(false)
+  const [deployTarget, setDeployTarget] = useState<WorkspaceResponse | null>(null)
+  const [deployPipelines, setDeployPipelines] = useState<PipelineItem[]>([])
+  const [selectedPipelineId, setSelectedPipelineId] = useState<string>("")
+  const [deploying, setDeploying] = useState(false)
+  const [deployPhase, setDeployPhase] = useState<"select" | "progress" | "done" | "error">("select")
+  const [deploySteps, setDeploySteps] = useState<WorkflowStep[]>([])
+  const [deployError, setDeployError] = useState<string | null>(null)
+  const deployPollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Delete dialog state
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -99,11 +128,12 @@ export function WorkspaceGrid({ onSelect, onDeleted, refreshKey }: WorkspaceGrid
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const loadWorkspaces = useCallback(async (showLoading = true) => {
+  const loadWorkspaces = useCallback(async (showLoading = true, search?: string) => {
     try {
       if (showLoading) setLoading(true)
-      const data = await fetchWorkspaces(1, 100)
-      setWorkspaces(data.items.filter((w) => w.status !== "deleted"))
+      const data = await fetchWorkspaces(1, 100, undefined, search || undefined)
+      data.items = data.items.filter((w) => w.status !== "deleted")
+      setWorkspaces(data.items)
     } catch {
       setWorkspaces([])
     } finally {
@@ -112,14 +142,95 @@ export function WorkspaceGrid({ onSelect, onDeleted, refreshKey }: WorkspaceGrid
   }, [])
 
   useEffect(() => {
-    loadWorkspaces()
-  }, [loadWorkspaces, refreshKey])
+    loadWorkspaces(true, appliedSearch)
+  }, [loadWorkspaces, refreshKey, appliedSearch])
 
   // Cleanup polling on unmount
   useEffect(() => {
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current)
+      if (deployPollingRef.current) clearInterval(deployPollingRef.current)
     }
+  }, [])
+
+  // --- Deploy Pipeline ---
+  const openDeployDialog = useCallback(async (ws: WorkspaceResponse) => {
+    setDeployTarget(ws)
+    setDeployPhase("select")
+    setSelectedPipelineId("")
+    setDeploySteps([])
+    setDeployError(null)
+    setDeploying(false)
+    setDeployOpen(true)
+    // Load pipelines
+    try {
+      const res = await authFetch("/api/v1/plugins/pipelines")
+      if (res.ok) {
+        const data = await res.json()
+        setDeployPipelines(data.items ?? [])
+      }
+    } catch { /* ignore */ }
+  }, [])
+
+  const handleDeploy = useCallback(async () => {
+    if (!deployTarget || !selectedPipelineId) return
+    setDeploying(true)
+    setDeployPhase("progress")
+    setDeploySteps([])
+    setDeployError(null)
+
+    try {
+      // Call a deploy API — reuse workspace provisioning with pipeline_ids
+      const res = await authFetch(`/api/v1/workspace/workspaces/${deployTarget.id}/deploy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pipeline_id: parseInt(selectedPipelineId) }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.detail || `Deploy failed: ${res.status}`)
+      }
+    } catch (e) {
+      setDeployError(e instanceof Error ? e.message : "Deploy failed")
+      setDeployPhase("error")
+      setDeploying(false)
+      return
+    }
+
+    // Poll for workflow progress
+    const wsId = deployTarget.id
+    deployPollingRef.current = setInterval(async () => {
+      try {
+        const workflows = await fetchWorkspaceWorkflows(wsId)
+        // Get the latest provision workflow
+        const provWf = workflows.find((w) => w.workflow_name === "workspace-provision")
+        if (provWf) {
+          setDeploySteps(provWf.steps.sort((a, b) => a.step_order - b.step_order))
+          if (provWf.status === "completed") {
+            if (deployPollingRef.current) clearInterval(deployPollingRef.current)
+            deployPollingRef.current = null
+            setDeployPhase("done")
+            setDeploying(false)
+            await loadWorkspaces(false, appliedSearch)
+          } else if (provWf.status === "failed") {
+            if (deployPollingRef.current) clearInterval(deployPollingRef.current)
+            deployPollingRef.current = null
+            setDeployError(provWf.error_message || "Deployment failed")
+            setDeployPhase("error")
+            setDeploying(false)
+          }
+        }
+      } catch { /* ignore */ }
+    }, 2000)
+  }, [deployTarget, selectedPipelineId, loadWorkspaces, appliedSearch])
+
+  const closeDeployDialog = useCallback(() => {
+    if (deployPollingRef.current) {
+      clearInterval(deployPollingRef.current)
+      deployPollingRef.current = null
+    }
+    setDeployOpen(false)
+    setDeployTarget(null)
   }, [])
 
   const openDeleteDialog = useCallback((ws: WorkspaceResponse) => {
@@ -158,13 +269,13 @@ export function WorkspaceGrid({ onSelect, onDeleted, refreshKey }: WorkspaceGrid
             pollingRef.current = null
             setDeletePhase("done")
             onDeleted(wsId)
-            await loadWorkspaces(false)
+            await loadWorkspaces(false, appliedSearch)
           } else if (deleteWf.status === "failed") {
             if (pollingRef.current) clearInterval(pollingRef.current)
             pollingRef.current = null
             setDeleteError(deleteWf.error_message || "Deletion failed")
             setDeletePhase("error")
-            await loadWorkspaces(false)
+            await loadWorkspaces(false, appliedSearch)
           }
         }
       } catch {
@@ -181,9 +292,9 @@ export function WorkspaceGrid({ onSelect, onDeleted, refreshKey }: WorkspaceGrid
     setConfirmOpen(false)
     setConfirmTarget(null)
     if (deletePhase === "done" || deletePhase === "error") {
-      loadWorkspaces(false)
+      loadWorkspaces(false, appliedSearch)
     }
-  }, [deletePhase, loadWorkspaces])
+  }, [deletePhase, loadWorkspaces, appliedSearch])
 
   const columnDefs = useMemo<ColDef<WorkspaceResponse>[]>(
     () => [
@@ -252,26 +363,67 @@ export function WorkspaceGrid({ onSelect, onDeleted, refreshKey }: WorkspaceGrid
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                className="text-destructive"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  openDeleteDialog(params.data)
-                }}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete
-              </DropdownMenuItem>
+              {(() => {
+                const busy = params.data.status === "provisioning" || params.data.status === "deleting"
+                return (
+                  <>
+                    <DropdownMenuItem
+                      disabled={busy}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (!busy) openDeployDialog(params.data)
+                      }}
+                    >
+                      <Rocket className="h-4 w-4 mr-2" />
+                      {params.data.status === "provisioning" ? "Deploying..." : "Deploy Pipeline"}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive"
+                      disabled={busy}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (!busy) openDeleteDialog(params.data)
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      {params.data.status === "deleting" ? "Deleting..." : "Delete"}
+                    </DropdownMenuItem>
+                  </>
+                )
+              })()}
             </DropdownMenuContent>
           </DropdownMenu>
         ),
       },
     ],
-    [openDeleteDialog],
+    [openDeleteDialog, openDeployDialog],
   )
 
   return (
     <>
+      <div className="flex items-center justify-between mb-0">
+        <div className="relative w-72">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search workspaces and press Enter..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                setAppliedSearch(searchInput.trim())
+              }
+            }}
+            className="pl-9 h-9"
+          />
+        </div>
+        {onAddWorkspace && (
+          <Button onClick={onAddWorkspace}>
+            Add Workspace
+          </Button>
+        )}
+      </div>
       <div className="ag-theme-alpine" style={{ width: "100%" }}>
         <style>{`
           .ag-theme-alpine {
@@ -379,6 +531,88 @@ export function WorkspaceGrid({ onSelect, onDeleted, refreshKey }: WorkspaceGrid
               <Button onClick={closeDeleteDialog}>
                 Close
               </Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Deploy Pipeline Dialog */}
+      <Dialog open={deployOpen} onOpenChange={(open) => { if (!open) closeDeployDialog() }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {deployPhase === "select" && "Deploy Pipeline"}
+              {deployPhase === "progress" && "Deploying Pipeline"}
+              {deployPhase === "done" && "Deployment Complete"}
+              {deployPhase === "error" && "Deployment Failed"}
+            </DialogTitle>
+            <DialogDescription>
+              {deployPhase === "select" && `Select a pipeline to deploy to "${deployTarget?.display_name}".`}
+              {deployPhase === "progress" && "Provisioning resources..."}
+              {deployPhase === "done" && "Pipeline deployed successfully."}
+              {deployPhase === "error" && "Deployment encountered an error."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {deployPhase === "select" && (
+            <div className="space-y-3 py-2">
+              <Select value={selectedPipelineId} onValueChange={setSelectedPipelineId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a pipeline..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {deployPipelines.map((p) => (
+                    <SelectItem key={p.id} value={String(p.id)}>
+                      {p.display_name} (v{p.version}) — {p.plugins.length} plugins
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {(deployPhase === "progress" || deployPhase === "done" || deployPhase === "error") && (
+            <div className="space-y-2 py-2">
+              {deploySteps.length === 0 && deployPhase === "progress" && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Initializing...
+                </div>
+              )}
+              {deploySteps.map((step) => (
+                <div key={step.id} className="flex items-center gap-3 text-sm">
+                  {stepIcon(step.status)}
+                  <span className="flex-1 font-medium">{step.step_name}</span>
+                  <span className="text-xs text-muted-foreground">{step.status}</span>
+                </div>
+              ))}
+              {deployPhase === "done" && (
+                <div className="mt-2 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 text-sm">
+                  All resources have been provisioned.
+                </div>
+              )}
+              {deployPhase === "error" && deployError && (
+                <div className="mt-2 rounded-md bg-red-50 text-red-700 border border-red-200 px-3 py-2 text-sm">
+                  {deployError}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2">
+            {deployPhase === "select" && (
+              <Button onClick={handleDeploy} disabled={!selectedPipelineId}>
+                <Rocket className="h-4 w-4 mr-1.5" />
+                Deploy
+              </Button>
+            )}
+            {deployPhase === "progress" && (
+              <Button variant="outline" disabled>
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                Deploying...
+              </Button>
+            )}
+            {(deployPhase === "done" || deployPhase === "error") && (
+              <Button onClick={closeDeployDialog}>Close</Button>
             )}
           </div>
         </DialogContent>

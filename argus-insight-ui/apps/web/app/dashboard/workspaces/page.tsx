@@ -343,17 +343,11 @@ export default function WorkspacesPage() {
     <>
       <DashboardHeader title="Workspaces" />
       <div className="flex flex-1 flex-col gap-4 p-4">
-        <div className="flex justify-end">
-          <Button onClick={openAddDialog}>
-            <Plus className="h-4 w-4 mr-1.5" />
-            Add Workspace
-          </Button>
-        </div>
-
         <WorkspaceGrid
           onSelect={handleSelect}
           onDeleted={handleDeleted}
           refreshKey={gridRefreshKey}
+          onAddWorkspace={openAddDialog}
         />
 
         {selectedWorkspace && (

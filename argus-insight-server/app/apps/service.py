@@ -292,8 +292,30 @@ async def _deploy_instance(
         async with async_session() as session:
             server_ip = await get_server_ip(session)
 
+        # Find workspace bucket for this user
+        workspace_bucket = ""
+        try:
+            from sqlalchemy import select as sa_select
+            from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceMember
+            async with async_session() as ws_session:
+                ws_result = await ws_session.execute(
+                    sa_select(ArgusWorkspace.name).join(
+                        ArgusWorkspaceMember,
+                        ArgusWorkspaceMember.workspace_id == ArgusWorkspace.id,
+                    ).where(
+                        ArgusWorkspaceMember.user_id == user_id,
+                        ArgusWorkspace.status == "active",
+                    ).limit(1)
+                )
+                ws_name = ws_result.scalar()
+                if ws_name:
+                    workspace_bucket = f"workspace-{ws_name}"
+        except Exception:
+            pass
+
         variables = await build_variables(
             username, instance_id, app_type, namespace, hostname, domain, s3, server_ip,
+            workspace_bucket=workspace_bucket,
         )
 
         await _step("Apply K8s manifests", deploy_manifests(template_dir, variables))

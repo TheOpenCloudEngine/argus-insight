@@ -53,10 +53,15 @@ class MinioDeployStep(WorkflowStep):
         return "minio-deploy"
 
     async def execute(self, ctx: WorkflowContext) -> dict | None:
+        from workspace_provisioner.workflow.steps.app_deploy import ensure_namespace
+
         workspace_name = ctx.workspace_name
         domain = ctx.domain
         namespace = ctx.get("k8s_namespace", f"argus-ws-{workspace_name}")
         kubeconfig = ctx.get("k8s_kubeconfig")
+
+        # Ensure namespace exists
+        await ensure_namespace(namespace)
 
         # Get config from context (set by service from UI request)
         config: MinioConfig = ctx.get("minio_config", MinioConfig())
@@ -109,6 +114,23 @@ class MinioDeployStep(WorkflowStep):
         ctx.set("minio_root_password", root_password)
         ctx.set("minio_manifests", manifests)
         ctx.set("k8s_namespace", namespace)
+
+        # Register service
+        from workspace_provisioner.service import register_workspace_service
+        await register_workspace_service(
+            workspace_id=ctx.workspace_id,
+            plugin_name="argus-minio",
+            display_name="MinIO Object Storage",
+            version="1.0",
+            endpoint=f"http://{external_endpoint}",
+            username=root_user,
+            password=root_password,
+            metadata={
+                "internal_endpoint": f"http://{internal_endpoint}",
+                "console": f"http://{console_endpoint}",
+                "namespace": namespace,
+            },
+        )
 
         return {
             "endpoint": internal_endpoint,

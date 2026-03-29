@@ -427,6 +427,47 @@ COMMENT ON COLUMN argus_workspace_pipelines.status IS 'pending | running | compl
 CREATE INDEX IF NOT EXISTS idx_ws_pipelines_workspace ON argus_workspace_pipelines(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_ws_pipelines_pipeline ON argus_workspace_pipelines(pipeline_id);
 
+-- Workspace audit log
+-- Workspace services (deployed plugin instances)
+CREATE TABLE IF NOT EXISTS argus_workspace_services (
+    id              SERIAL          PRIMARY KEY,
+    workspace_id    INTEGER         NOT NULL REFERENCES argus_workspaces(id) ON DELETE CASCADE,
+    plugin_name     VARCHAR(100)    NOT NULL,
+    display_name    VARCHAR(255),
+    version         VARCHAR(50),
+    endpoint        VARCHAR(500),
+    username        VARCHAR(255),
+    password        VARCHAR(255),
+    access_token    VARCHAR(500),
+    status          VARCHAR(20)     NOT NULL DEFAULT 'running',
+    metadata        JSON,
+    created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    UNIQUE(workspace_id, plugin_name)
+);
+
+COMMENT ON TABLE argus_workspace_services IS 'Service instances deployed to a workspace (one per plugin)';
+CREATE INDEX IF NOT EXISTS idx_ws_services_workspace ON argus_workspace_services(workspace_id);
+
+-- Workspace audit log
+CREATE TABLE IF NOT EXISTS argus_workspace_audit_logs (
+    id                SERIAL          PRIMARY KEY,
+    workspace_id      INTEGER         NOT NULL,
+    workspace_name    VARCHAR(100)    NOT NULL,
+    action            VARCHAR(50)     NOT NULL,
+    target_user_id    INTEGER,
+    target_username   VARCHAR(100),
+    actor_user_id     INTEGER,
+    actor_username    VARCHAR(100),
+    detail            JSON,
+    created_at        TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE argus_workspace_audit_logs IS 'Audit log for workspace member and lifecycle events';
+
+CREATE INDEX IF NOT EXISTS idx_audit_workspace ON argus_workspace_audit_logs(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_audit_created ON argus_workspace_audit_logs(created_at DESC);
+
 -- Seed default apps
 INSERT INTO argus_apps (app_type, display_name, description, icon, template_dir, default_namespace, hostname_pattern) VALUES
 ('vscode', 'VS Code Server', 'Browser-based VS Code with S3 workspace storage', 'Code', 'vscode', 'argus-apps', 'argus-{app_type}-{instance_id}.{domain}')

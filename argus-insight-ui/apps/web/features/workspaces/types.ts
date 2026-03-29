@@ -70,6 +70,42 @@ export interface WorkspaceCredentials {
   updated_at: string
 }
 
+export interface WorkspaceService {
+  id: number
+  workspace_id: number
+  plugin_name: string
+  display_name: string | null
+  version: string | null
+  endpoint: string | null
+  username: string | null
+  password: string | null
+  access_token: string | null
+  status: string
+  metadata: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AuditLog {
+  id: number
+  workspace_id: number
+  workspace_name: string
+  action: string
+  target_user_id: number | null
+  target_username: string | null
+  actor_user_id: number | null
+  actor_username: string | null
+  detail: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface PaginatedAuditLogResponse {
+  items: AuditLog[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export interface WorkflowStep {
   id: number
   step_name: string

@@ -30,6 +30,7 @@ metadata:
     app.kubernetes.io/part-of: argus-insight
     argus-insight/workspace: ${WORKSPACE_NAME}
   annotations:
+    nginx.ingress.kubernetes.io/auth-url: "http://${ARGUS_SERVER_HOST}:4500/api/v1/workspace/workspaces/auth-verify?workspace=${WORKSPACE_NAME}"
     nginx.ingress.kubernetes.io/proxy-body-size: "64m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
 spec:

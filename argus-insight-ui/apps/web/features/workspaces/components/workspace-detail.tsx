@@ -1,11 +1,13 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Fragment, useEffect, useState } from "react"
 import {
   CheckCircle2,
   Circle,
   Database,
   ExternalLink,
+  Eye,
+  EyeOff,
   FolderGit2,
   Loader2,
   Network,
@@ -38,8 +40,10 @@ import {
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
 import type {
+  AuditLog,
   WorkspaceResponse,
   WorkspaceMember,
+  WorkspaceService,
   WorkflowExecution,
   WorkflowStep,
 } from "@/features/workspaces/types"
@@ -54,7 +58,9 @@ import { Checkbox } from "@workspace/ui/components/checkbox"
 import { Input } from "@workspace/ui/components/input"
 import {
   bulkAddWorkspaceMembers,
+  fetchWorkspaceAuditLogs,
   fetchWorkspaceMembers,
+  fetchWorkspaceServices,
   fetchWorkspaceWorkflows,
   removeWorkspaceMember,
 } from "@/features/workspaces/api"
@@ -171,24 +177,147 @@ function roleBadge(role: string) {
 // ---------- Resources Tab ----------
 
 function ResourcesTab({ workspace }: { workspace: WorkspaceResponse }) {
+  const [services, setServices] = useState<WorkspaceService[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetchWorkspaceServices(workspace.id)
+      .then((data) => { if (!cancelled) setServices(data) })
+      .catch(() => { if (!cancelled) setServices([]) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [workspace.id])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
+      </div>
+    )
+  }
+
+  if (services.length === 0) {
+    return <div className="text-muted-foreground py-12 text-center text-sm">No services deployed</div>
+  }
+
   const iconClass = "h-5 w-5"
-  const resources: ResourceItem[] = [
-    { label: "GitLab", value: workspace.gitlab_project_url, icon: <FolderGit2 className={iconClass} /> },
-    { label: "MinIO Endpoint", value: workspace.minio_endpoint, icon: <Database className={iconClass} /> },
-    { label: "MinIO Console", value: workspace.minio_console_endpoint, icon: <Database className={iconClass} /> },
-    { label: "Airflow", value: workspace.airflow_endpoint, icon: <Workflow className={iconClass} /> },
-    { label: "MLflow", value: workspace.mlflow_endpoint, icon: <Server className={iconClass} /> },
-    { label: "KServe", value: workspace.kserve_endpoint, icon: <Server className={iconClass} /> },
-    { label: "K8s Cluster", value: workspace.k8s_cluster, icon: <Network className={iconClass} /> },
-    { label: "K8s Namespace", value: workspace.k8s_namespace, icon: <Network className={iconClass} /> },
-  ]
+  const serviceIcon = (name: string) => {
+    if (name.includes("gitlab")) return <FolderGit2 className={iconClass} />
+    if (name.includes("minio")) return <Database className={iconClass} />
+    if (name.includes("airflow")) return <Workflow className={iconClass} />
+    if (name.includes("mlflow")) return <Server className={iconClass} />
+    if (name.includes("kserve")) return <Server className={iconClass} />
+    return <Server className={iconClass} />
+  }
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {resources.map((r) => (
-        <ResourceCard key={r.label} {...r} />
+      {services.map((svc) => (
+        <ServiceCard key={svc.id} svc={svc} icon={serviceIcon(svc.plugin_name)} />
       ))}
     </div>
+  )
+}
+
+function ServiceCard({ svc, icon }: { svc: WorkspaceService; icon: React.ReactNode }) {
+  const [showPassword, setShowPassword] = useState(false)
+  const [showToken, setShowToken] = useState(false)
+
+  return (
+    <Card className="hover:border-primary/30 transition-colors">
+      <CardContent className="pt-4 pb-3 space-y-2.5">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {icon}
+            <div>
+              <p className="font-semibold text-base">{svc.display_name || svc.plugin_name}</p>
+              <p className="text-xs text-muted-foreground">v{svc.version}</p>
+            </div>
+          </div>
+          <Badge
+            className={
+              svc.status === "running"
+                ? "bg-green-100 text-green-800 hover:bg-green-100 text-sm"
+                : svc.status === "failed"
+                  ? "bg-red-100 text-red-800 hover:bg-red-100 text-sm"
+                  : "text-sm"
+            }
+          >
+            {svc.status}
+          </Badge>
+        </div>
+
+        {/* Connection Info + Metadata */}
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 pt-2 border-t text-sm">
+          {svc.endpoint && (
+            <>
+              <dt className="text-muted-foreground">URL</dt>
+              <dd className="min-w-0">
+                {isUrl(svc.endpoint) ? (
+                  <a href={svc.endpoint} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">
+                    {svc.endpoint} <ExternalLink className="inline h-3.5 w-3.5" />
+                  </a>
+                ) : (
+                  <span className="font-mono break-all">{svc.endpoint}</span>
+                )}
+              </dd>
+            </>
+          )}
+
+          {svc.username && (
+            <>
+              <dt className="text-muted-foreground">User</dt>
+              <dd className="font-mono">{svc.username}</dd>
+            </>
+          )}
+
+          {svc.password && (
+            <>
+              <dt className="text-muted-foreground">Password</dt>
+              <dd className="flex items-center gap-1.5">
+                <span className="font-mono">{showPassword ? svc.password : "••••••••"}</span>
+                <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setShowPassword(!showPassword)}>
+                  {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </button>
+              </dd>
+            </>
+          )}
+
+          {svc.access_token && (
+            <>
+              <dt className="text-muted-foreground">Token</dt>
+              <dd className="flex items-center gap-1.5">
+                <span className="font-mono">{showToken ? svc.access_token : "••••••••••••"}</span>
+                <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setShowToken(!showToken)}>
+                  {showToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </button>
+              </dd>
+            </>
+          )}
+
+          {svc.metadata && Object.entries(svc.metadata)
+            .filter(([key]) => key !== "internal_endpoint")
+            .map(([key, val]) => (
+              <Fragment key={key}>
+                <dt className="text-muted-foreground">{key}</dt>
+                <dd className="font-mono break-all">{String(val)}</dd>
+              </Fragment>
+            ))}
+
+          {svc.metadata?.internal_endpoint && (
+            <>
+              <dt className="text-muted-foreground">Internal</dt>
+              <dd className="font-mono break-all text-muted-foreground">
+                {String(svc.metadata.internal_endpoint)}
+              </dd>
+            </>
+          )}
+        </dl>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -320,7 +449,6 @@ function MembersTab({
       <div className="space-y-3">
         <div className="flex justify-end">
           <Button size="sm" onClick={openAddDialog}>
-            <UserPlus className="h-4 w-4 mr-1.5" />
             Add Members
           </Button>
         </div>
@@ -362,9 +490,9 @@ function MembersTab({
                         <Avatar className="h-12 w-12 mb-3">
                           <AvatarFallback className="text-sm font-medium">{initials}</AvatarFallback>
                         </Avatar>
-                        <p className="font-medium text-sm">{m.username ?? `User #${m.user_id}`}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{m.display_name}</p>
-                        <p className="text-xs text-muted-foreground truncate max-w-full">{m.email}</p>
+                        <p className="font-medium" style={{ fontSize: "var(--text-sm)" }}>{m.username ?? `User #${m.user_id}`}</p>
+                        <p className="text-muted-foreground mt-0.5" style={{ fontSize: "var(--text-sm)" }}>{m.display_name}</p>
+                        <p className="text-muted-foreground truncate max-w-full" style={{ fontSize: "var(--text-sm)" }}>{m.email}</p>
                         {m.is_owner && (
                           <Badge className="mt-2 text-xs bg-blue-600 text-white hover:bg-blue-600">
                             <Shield className="h-3 w-3 mr-1" /> Owner
@@ -481,22 +609,9 @@ function MembersTab({
             )}
           </div>
 
-          {selectedUserIds.size > 0 && (
-            <p className="text-sm text-muted-foreground">
-              {selectedUserIds.size} user(s) selected
-            </p>
-          )}
-
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setAddOpen(false)} disabled={adding}>
-              Cancel
-            </Button>
+          <div className="flex justify-end pt-1">
             <Button onClick={handleBulkAdd} disabled={adding || selectedUserIds.size === 0}>
-              {adding ? (
-                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-              ) : (
-                <Plus className="h-4 w-4 mr-1.5" />
-              )}
+              {adding && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
               Add ({selectedUserIds.size})
             </Button>
           </div>
@@ -609,6 +724,115 @@ function WorkflowsTab({ workspace }: { workspace: WorkspaceResponse }) {
 
 // ---------- Main Component ----------
 
+// ---------- Audit Log Tab ----------
+
+const ACTION_LABELS: Record<string, string> = {
+  workspace_created: "Workspace Created",
+  workspace_deleted: "Workspace Deleted",
+  member_added: "Member Added",
+  member_removed: "Member Removed",
+}
+
+function actionBadge(action: string) {
+  const colors: Record<string, string> = {
+    workspace_created: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+    workspace_deleted: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+    member_added: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+    member_removed: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+  }
+  return (
+    <Badge className={`${colors[action] ?? ""} hover:${colors[action] ?? ""}`}>
+      {ACTION_LABELS[action] ?? action}
+    </Badge>
+  )
+}
+
+function AuditLogTab({ workspace }: { workspace: WorkspaceResponse }) {
+  const [logs, setLogs] = useState<AuditLog[]>([])
+  const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const pageSize = 10
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetchWorkspaceAuditLogs(workspace.id, page, pageSize)
+      .then((data) => {
+        if (!cancelled) { setLogs(data.items); setTotal(data.total) }
+      })
+      .catch(() => { if (!cancelled) setLogs([]) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [workspace.id, page])
+
+  const totalPages = Math.ceil(total / pageSize)
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
+      </div>
+    )
+  }
+
+  if (logs.length === 0) {
+    return <div className="text-muted-foreground py-12 text-center text-sm">No audit logs</div>
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[160px]">Time</TableHead>
+              <TableHead>Action</TableHead>
+              <TableHead>Actor</TableHead>
+              <TableHead>Target User</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {logs.map((log) => (
+              <TableRow key={log.id}>
+                <TableCell className="text-sm font-mono">{formatDateTime(log.created_at)}</TableCell>
+                <TableCell>{actionBadge(log.action)}</TableCell>
+                <TableCell className="text-sm">{log.actor_username ?? "—"}</TableCell>
+                <TableCell className="text-sm">{log.target_username ?? "—"}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
+          >
+            Previous
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Page {page} of {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------- Main Export ----------
+
 export function WorkspaceDetail({ workspace, onRefresh }: WorkspaceDetailProps) {
   return (
     <Tabs defaultValue="resources" className="w-full">
@@ -616,6 +840,7 @@ export function WorkspaceDetail({ workspace, onRefresh }: WorkspaceDetailProps) 
         <TabsTrigger value="resources">Resources</TabsTrigger>
         <TabsTrigger value="members">Members</TabsTrigger>
         <TabsTrigger value="workflows">Workflows</TabsTrigger>
+        <TabsTrigger value="audit">Audit Log</TabsTrigger>
       </TabsList>
 
       <TabsContent value="resources" className="mt-4">
@@ -628,6 +853,10 @@ export function WorkspaceDetail({ workspace, onRefresh }: WorkspaceDetailProps) 
 
       <TabsContent value="workflows" className="mt-4">
         <WorkflowsTab workspace={workspace} />
+      </TabsContent>
+
+      <TabsContent value="audit" className="mt-4">
+        <AuditLogTab workspace={workspace} />
       </TabsContent>
     </Tabs>
   )
