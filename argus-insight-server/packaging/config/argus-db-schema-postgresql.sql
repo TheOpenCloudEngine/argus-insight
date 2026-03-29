@@ -88,8 +88,12 @@ CREATE TABLE IF NOT EXISTS argus_users (
     first_name      VARCHAR(100)    NOT NULL,
     last_name       VARCHAR(100)    NOT NULL,
     phone_number    VARCHAR(30),
-    password_hash   VARCHAR(255)    NOT NULL,
+    password_hash   VARCHAR(255)    NOT NULL DEFAULT '',
     status          VARCHAR(20)     NOT NULL DEFAULT 'active',
+    auth_type       VARCHAR(20)     NOT NULL DEFAULT 'local',
+    s3_access_key   VARCHAR(100),
+    s3_secret_key   VARCHAR(100),
+    s3_bucket       VARCHAR(255),
     role_id         INTEGER         NOT NULL REFERENCES argus_roles(id),
     created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
@@ -102,8 +106,9 @@ COMMENT ON COLUMN argus_users.email IS 'Unique email address';
 COMMENT ON COLUMN argus_users.first_name IS 'User first name';
 COMMENT ON COLUMN argus_users.last_name IS 'User last name';
 COMMENT ON COLUMN argus_users.phone_number IS 'User phone number (optional)';
-COMMENT ON COLUMN argus_users.password_hash IS 'Bcrypt-hashed password';
+COMMENT ON COLUMN argus_users.password_hash IS 'SHA-256 hashed password (empty for keycloak users)';
 COMMENT ON COLUMN argus_users.status IS 'Account status: active | inactive';
+COMMENT ON COLUMN argus_users.auth_type IS 'Authentication type: local | keycloak';
 COMMENT ON COLUMN argus_users.role_id IS 'Foreign key to argus_roles(id)';
 COMMENT ON COLUMN argus_users.created_at IS 'Account creation timestamp';
 COMMENT ON COLUMN argus_users.updated_at IS 'Account last update timestamp';
@@ -266,7 +271,15 @@ INSERT INTO argus_configuration (category, config_key, config_value, description
 ('auth', 'auth_keycloak_client_secret',  'argus-client-secret',  'Keycloak client secret'),
 ('auth', 'auth_keycloak_admin_role',     'argus-admin',          'Admin role name'),
 ('auth', 'auth_keycloak_superuser_role', 'argus-superuser',      'Superuser role name'),
-('auth', 'auth_keycloak_user_role',      'argus-user',           'User role name')
+('auth', 'auth_keycloak_user_role',      'argus-user',           'User role name'),
+-- GitLab
+('gitlab', 'gitlab_url',                '',                     'GitLab server URL'),
+('gitlab', 'gitlab_username',           'root',                 'GitLab admin username'),
+('gitlab', 'gitlab_password',           '',                     'GitLab admin password'),
+('gitlab', 'gitlab_token',              '',                     'GitLab API private token'),
+('gitlab', 'gitlab_group_path',         'workspaces',           'Default group path for workspace projects'),
+('gitlab', 'gitlab_default_branch',     'main',                 'Default branch for new projects'),
+('gitlab', 'gitlab_project_visibility', 'internal',             'Project visibility (internal, private, public)')
 ON CONFLICT (config_key) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
@@ -393,6 +406,49 @@ COMMENT ON COLUMN argus_app_instances.deploy_steps IS 'Deployment step progress 
 INSERT INTO argus_apps (app_type, display_name, description, icon, template_dir, default_namespace, hostname_pattern) VALUES
 ('vscode', 'VS Code Server', 'Browser-based VS Code with S3 workspace storage', 'Code', 'vscode', 'argus-apps', 'argus-{app_type}-{instance_id}.{domain}')
 ON CONFLICT (app_type) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- Plugin pipeline tables
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_pipelines (
+    id              SERIAL          PRIMARY KEY,
+    name            VARCHAR(100)    NOT NULL UNIQUE,
+    display_name    VARCHAR(255)    NOT NULL,
+    description     TEXT,
+    version         INTEGER         NOT NULL DEFAULT 1,
+    deleted         BOOLEAN         NOT NULL DEFAULT FALSE,
+    created_by      VARCHAR(100),
+    created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE argus_pipelines IS 'Named deployment pipelines for workspace provisioning';
+COMMENT ON COLUMN argus_pipelines.name IS 'Unique pipeline slug (e.g. pipeline-20260329-143052-7a3f)';
+COMMENT ON COLUMN argus_pipelines.display_name IS 'Human-readable pipeline name';
+COMMENT ON COLUMN argus_pipelines.version IS 'Auto-incremented on each save (starts at 1)';
+COMMENT ON COLUMN argus_pipelines.deleted IS 'Soft delete flag';
+COMMENT ON COLUMN argus_pipelines.created_by IS 'Username of the pipeline creator';
+
+CREATE TABLE IF NOT EXISTS argus_plugin_configs (
+    id                SERIAL          PRIMARY KEY,
+    pipeline_id       INTEGER         REFERENCES argus_pipelines(id) ON DELETE CASCADE,
+    plugin_name       VARCHAR(100)    NOT NULL,
+    enabled           BOOLEAN         NOT NULL DEFAULT TRUE,
+    display_order     INTEGER         NOT NULL,
+    selected_version  VARCHAR(50),
+    default_config    JSON,
+    created_at        TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_pipeline_plugin UNIQUE (pipeline_id, plugin_name)
+);
+
+COMMENT ON TABLE argus_plugin_configs IS 'Plugin configuration within a pipeline (order, version, settings)';
+COMMENT ON COLUMN argus_plugin_configs.pipeline_id IS 'FK to argus_pipelines (NULL for global/legacy config)';
+COMMENT ON COLUMN argus_plugin_configs.plugin_name IS 'Plugin identifier (e.g. airflow-deploy)';
+COMMENT ON COLUMN argus_plugin_configs.display_order IS 'Execution order within the pipeline';
+COMMENT ON COLUMN argus_plugin_configs.selected_version IS 'Plugin version (NULL means default)';
+COMMENT ON COLUMN argus_plugin_configs.default_config IS 'Plugin config overrides as JSON';
 
 -- Seed default roles
 INSERT INTO argus_roles (role_id, name, description) VALUES ('argus-admin', 'Admin', 'Administrator with full access') ON CONFLICT (role_id) DO NOTHING;

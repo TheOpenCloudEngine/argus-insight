@@ -113,6 +113,13 @@
           "icon": "Globe"
         },
         {
+          "id": "software-deployment",
+          "title": "Software Deployment",
+          "url": "/dashboard/software-deployment",
+          "icon": "Blocks",
+          "adminOnly": true
+        },
+        {
           "id": "settings",
           "title": "Settings",
           "url": "/dashboard/settings",

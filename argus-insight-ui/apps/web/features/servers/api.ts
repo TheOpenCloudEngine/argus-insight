@@ -1,3 +1,4 @@
+import { authFetch } from "@/features/auth/auth-fetch"
 import { type Server } from "./data/schema"
 
 const BASE = "/api/v1/servermgr"
@@ -35,7 +36,7 @@ function mapServer(s: Record<string, unknown>): Server {
 }
 
 export async function registerServers(hostnames: string[]): Promise<{ updated: number }> {
-  const res = await fetch(`${BASE}/servers/register`, {
+  const res = await authFetch(`${BASE}/servers/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ hostnames }),
@@ -45,7 +46,7 @@ export async function registerServers(hostnames: string[]): Promise<{ updated: n
 }
 
 export async function unregisterServers(hostnames: string[]): Promise<{ updated: number }> {
-  const res = await fetch(`${BASE}/servers/unregister`, {
+  const res = await authFetch(`${BASE}/servers/unregister`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ hostnames }),
@@ -55,19 +56,19 @@ export async function unregisterServers(hostnames: string[]): Promise<{ updated:
 }
 
 export async function fetchInspect(hostname: string): Promise<Record<string, unknown>> {
-  const res = await fetch(`${BASE}/servers/${encodeURIComponent(hostname)}/inspect`)
+  const res = await authFetch(`${BASE}/servers/${encodeURIComponent(hostname)}/inspect`)
   if (!res.ok) throw new Error(`Failed to inspect server: ${res.status}`)
   return res.json()
 }
 
 export async function fetchTop(hostname: string): Promise<Record<string, unknown>> {
-  const res = await fetch(`${BASE}/servers/${encodeURIComponent(hostname)}/top?limit=80`)
+  const res = await authFetch(`${BASE}/servers/${encodeURIComponent(hostname)}/top?limit=80`)
   if (!res.ok) throw new Error(`Failed to fetch top data: ${res.status}`)
   return res.json()
 }
 
 export async function fetchProcesses(hostname: string): Promise<Record<string, unknown>> {
-  const res = await fetch(
+  const res = await authFetch(
     `${BASE}/servers/${encodeURIComponent(hostname)}/processes?sort_by=pid&limit=0`
   )
   if (!res.ok) throw new Error(`Failed to fetch processes: ${res.status}`)
@@ -79,7 +80,7 @@ export async function killProcess(
   pid: number,
   signal: string = "SIGKILL"
 ): Promise<Record<string, unknown>> {
-  const res = await fetch(
+  const res = await authFetch(
     `${BASE}/servers/${encodeURIComponent(hostname)}/processes/kill`,
     {
       method: "POST",
@@ -99,7 +100,7 @@ export async function fetchServers(params?: ServerListParams): Promise<Paginated
   query.set("page_size", String(params?.pageSize ?? 10))
 
   const url = `${BASE}/servers?${query.toString()}`
-  const res = await fetch(url)
+  const res = await authFetch(url)
   if (!res.ok) throw new Error(`Failed to fetch servers: ${res.status}`)
   const data = await res.json()
   return {

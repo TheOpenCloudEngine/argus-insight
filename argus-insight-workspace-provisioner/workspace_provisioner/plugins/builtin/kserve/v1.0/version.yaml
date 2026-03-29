@@ -1,0 +1,12 @@
+version: "1.0"
+display_name: "v1.0 (KServe 0.14)"
+description: KServe 0.14 controller for model serving
+status: stable
+step_class: workspace_provisioner.workflow.steps.kserve_deploy.KServeDeployStep
+config_class: workspace_provisioner.config.KServeConfig
+template_dir: kserve
+changelog: |
+  - Initial version
+  - KServe 0.14.1 controller
+  - Default runtime: kserve-mlserver
+upgradeable_from: []

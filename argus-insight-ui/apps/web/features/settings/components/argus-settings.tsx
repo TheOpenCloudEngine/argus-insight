@@ -11,13 +11,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 import {
   fetchArgusConfig,
+  fetchGitlabConfig,
+  fetchGitlabPassword,
+  fetchGitlabToken,
   initializeObjectStorage,
   initializeUnityCatalog,
   testDockerRegistry,
+  testGitlabConnection,
   testObjectStorage,
   testPrometheus,
   testUnityCatalog,
   updateArgusConfig,
+  updateGitlabConfig,
 } from "@/features/settings/api"
 
 export function ArgusSettings() {
@@ -68,6 +73,21 @@ export function ArgusSettings() {
   const [ucStatusMessage, setUcStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const [ucTestResult, setUcTestResult] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
+  // GitLab
+  const [glUrl, setGlUrl] = useState("")
+  const [glUsername, setGlUsername] = useState("root")
+  const [glPassword, setGlPassword] = useState("")
+  const [glShowPassword, setGlShowPassword] = useState(false)
+  const [glToken, setGlToken] = useState("")
+  const [glGroupPath, setGlGroupPath] = useState("workspaces")
+  const [glDefaultBranch, setGlDefaultBranch] = useState("main")
+  const [glVisibility, setGlVisibility] = useState("internal")
+  const [glShowToken, setGlShowToken] = useState(false)
+  const [glRealToken, setGlRealToken] = useState<string | null>(null)
+  const [glSaving, setGlSaving] = useState(false)
+  const [glTesting, setGlTesting] = useState(false)
+  const [glStatusMessage, setGlStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+
   const loadConfig = useCallback(async () => {
     try {
       setLoading(true)
@@ -91,6 +111,19 @@ export function ArgusSettings() {
       setPassword(config.docker_registry_password ?? "Argus!insight2026")
       setUcUrl(config.unity_catalog_url ?? "")
       setUcAccessToken(config.unity_catalog_access_token ?? "")
+      // GitLab
+      try {
+        const glCfg = await fetchGitlabConfig()
+        setGlUrl(glCfg.url)
+        setGlUsername(glCfg.username ?? "root")
+        setGlPassword(glCfg.password ?? "")
+        setGlToken(glCfg.token)
+        setGlGroupPath(glCfg.group_path)
+        setGlDefaultBranch(glCfg.default_branch)
+        setGlVisibility(glCfg.project_visibility)
+      } catch {
+        // ignore if gitlab endpoint not available
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load configuration")
     } finally {
@@ -838,6 +871,181 @@ export function ArgusSettings() {
               </div>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* ── GitLab ─────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>GitLab</CardTitle>
+              <CardDescription>Configure GitLab integration for workspace project management.</CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={async () => {
+                  setGlSaving(true)
+                  setGlStatusMessage(null)
+                  try {
+                    await updateGitlabConfig({
+                      url: glUrl, username: glUsername, password: glPassword, token: glToken, group_path: glGroupPath,
+                      default_branch: glDefaultBranch, project_visibility: glVisibility,
+                    })
+                    setGlStatusMessage({ type: "success", text: "GitLab configuration saved" })
+                    setTimeout(() => setGlStatusMessage(null), 3000)
+                  } catch (e) {
+                    setGlStatusMessage({ type: "error", text: e instanceof Error ? e.message : "Save failed" })
+                  } finally {
+                    setGlSaving(false)
+                  }
+                }}
+                disabled={glSaving || !glUrl.trim()}
+              >
+                {glSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Save className="h-4 w-4 mr-1.5" />}
+                Save
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  setGlTesting(true)
+                  setGlStatusMessage(null)
+                  try {
+                    let testToken = glToken
+                    if (testToken === "••••••••") {
+                      testToken = glRealToken ?? await fetchGitlabToken()
+                    }
+                    const result = await testGitlabConnection(glUrl.trim(), testToken.trim())
+                    setGlStatusMessage({ type: result.success ? "success" : "error", text: result.message })
+                  } catch (e) {
+                    setGlStatusMessage({ type: "error", text: e instanceof Error ? e.message : "Test failed" })
+                  } finally {
+                    setGlTesting(false)
+                  }
+                }}
+                disabled={glTesting || !glUrl.trim()}
+              >
+                {glTesting ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Play className="h-4 w-4 mr-1.5" />}
+                Test
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {glStatusMessage && (
+            <div className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
+              glStatusMessage.type === "success"
+                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                : "bg-red-50 text-red-700 border border-red-200"
+            }`}>
+              {glStatusMessage.text}
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label>Server URL <span className="text-red-500">*</span></Label>
+            <Input
+              value={glUrl}
+              onChange={(e) => setGlUrl(e.target.value)}
+              placeholder="http://gitlab-global.dev.net:8929"
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Username</Label>
+              <Input
+                value={glUsername}
+                onChange={(e) => setGlUsername(e.target.value)}
+                placeholder="root"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Password</Label>
+              <div className="relative">
+                <Input
+                  type={glShowPassword ? "text" : "password"}
+                  value={glPassword}
+                  onChange={(e) => setGlPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+                  onClick={async () => {
+                    if (!glShowPassword && glPassword === "••••••••") {
+                      try {
+                        const real = await fetchGitlabPassword()
+                        setGlPassword(real)
+                      } catch { /* ignore */ }
+                    }
+                    setGlShowPassword(!glShowPassword)
+                  }}
+                >
+                  {glShowPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Private Token <span className="text-red-500">*</span></Label>
+            <div className="relative">
+              <Input
+                type={glShowToken ? "text" : "password"}
+                value={glToken}
+                onChange={(e) => setGlToken(e.target.value)}
+                placeholder="glpat-xxxxxxxxxxxxxxxxxxxx"
+                className="pr-10"
+              />
+              <button
+                type="button"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+                onClick={async () => {
+                  if (!glShowToken && glRealToken === null) {
+                    try {
+                      const secret = await fetchGitlabToken()
+                      setGlRealToken(secret)
+                      setGlToken(secret)
+                    } catch { /* ignore */ }
+                  }
+                  setGlShowToken(!glShowToken)
+                }}
+              >
+                {glShowToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">Admin or service account token with API scope.</p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label>Group Path</Label>
+              <Input value={glGroupPath} onChange={(e) => setGlGroupPath(e.target.value)} placeholder="workspaces" />
+              <p className="text-xs text-muted-foreground">Top-level group for workspace projects.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Default Branch</Label>
+              <Input value={glDefaultBranch} onChange={(e) => setGlDefaultBranch(e.target.value)} placeholder="main" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Project Visibility</Label>
+              <Select value={glVisibility} onValueChange={setGlVisibility}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="internal">Internal</SelectItem>
+                  <SelectItem value="private">Private</SelectItem>
+                  <SelectItem value="public">Public</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
         </CardContent>
       </Card>
     </div>

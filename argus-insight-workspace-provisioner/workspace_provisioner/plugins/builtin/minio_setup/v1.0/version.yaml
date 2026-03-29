@@ -1,0 +1,12 @@
+version: "1.0"
+display_name: "v1.0"
+description: MinIO admin user and bucket setup via MinIO Admin API
+status: stable
+step_class: workspace_provisioner.workflow.steps.minio_setup.MinioSetupStep
+config_class: null
+template_dir: null
+changelog: |
+  - Initial version
+  - Creates workspace admin user with readwrite policy
+  - Creates default bucket named after workspace
+upgradeable_from: []

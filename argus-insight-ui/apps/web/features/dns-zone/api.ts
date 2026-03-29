@@ -5,6 +5,8 @@
  * update DNS zone records from the configured PowerDNS server.
  */
 
+import { authFetch } from "@/features/auth/auth-fetch"
+
 const BASE = "/api/v1/dns"
 
 // --------------------------------------------------------------------------- //
@@ -68,7 +70,7 @@ export type BindConfigResponse = {
  * Check PowerDNS connectivity and zone existence.
  */
 export async function checkDnsHealth(): Promise<DnsHealthResponse> {
-  const res = await fetch(`${BASE}/health`)
+  const res = await authFetch(`${BASE}/health`)
   if (!res.ok) {
     const body = await res.json().catch(() => null)
     const detail = body?.detail ?? `Failed to check DNS health: ${res.status}`
@@ -81,7 +83,7 @@ export async function checkDnsHealth(): Promise<DnsHealthResponse> {
  * Create the configured domain zone on the PowerDNS server.
  */
 export async function createZone(): Promise<DnsZoneCreateResponse> {
-  const res = await fetch(`${BASE}/zone`, { method: "POST" })
+  const res = await authFetch(`${BASE}/zone`, { method: "POST" })
   if (!res.ok) {
     const body = await res.json().catch(() => null)
     const detail = body?.detail ?? `Failed to create zone: ${res.status}`
@@ -94,7 +96,7 @@ export async function createZone(): Promise<DnsZoneCreateResponse> {
  * Fetch all DNS records for the configured domain zone.
  */
 export async function fetchZoneRecords(): Promise<DnsZoneTableResponse> {
-  const res = await fetch(`${BASE}/zone/records`)
+  const res = await authFetch(`${BASE}/zone/records`)
   if (!res.ok) {
     const body = await res.json().catch(() => null)
     const detail = body?.detail ?? `Failed to fetch zone records: ${res.status}`
@@ -107,7 +109,7 @@ export async function fetchZoneRecords(): Promise<DnsZoneTableResponse> {
  * Fetch BIND configuration files for the configured domain zone.
  */
 export async function fetchBindConfig(): Promise<BindConfigResponse> {
-  const res = await fetch(`${BASE}/zone/bind-config`)
+  const res = await authFetch(`${BASE}/zone/bind-config`)
   if (!res.ok) {
     const body = await res.json().catch(() => null)
     const detail = body?.detail ?? `Failed to fetch bind config: ${res.status}`
@@ -120,7 +122,7 @@ export async function fetchBindConfig(): Promise<BindConfigResponse> {
  * Update DNS records in the configured domain zone.
  */
 export async function updateZoneRecords(rrsets: DnsRRsetPatch[]): Promise<void> {
-  const res = await fetch(`${BASE}/zone/records`, {
+  const res = await authFetch(`${BASE}/zone/records`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ rrsets }),

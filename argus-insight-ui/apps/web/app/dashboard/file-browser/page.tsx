@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { ObjectStorageBrowser } from "@/components/object-storage-browser"
 import type { BrowserDataSource } from "@/components/object-storage-browser"
+import { authFetch } from "@/features/auth/auth-fetch"
 import {
   listObjects,
   deleteObjects,
@@ -44,22 +45,30 @@ export default function FileBrowserPage() {
       setError(null)
 
       // 1. Fetch current user info
-      const meRes = await fetch("/api/v1/auth/me")
+      const meRes = await authFetch("/api/v1/auth/me")
       const me = meRes.ok ? await meRes.json() : null
       const username: string = me?.username ?? "unknown"
+      const isAdmin: boolean = me?.is_admin ?? false
 
-      // 2. Ensure user-<USERNAME> buckets exist for all users
-      await ensureUserBuckets()
-
-      // 3. Fetch bucket list
+      // 2. Fetch bucket list
       const bucketData = await listBuckets()
       const allBuckets = bucketData.buckets
 
-      // 4. Filter: show user-<my USERNAME> and non-user-* buckets
+      // 3. Ensure user bucket exists only if missing
       const myUserBucket = `user-${username}`
-      const filtered = allBuckets
-        .filter((b) => b.name === myUserBucket || !b.name.startsWith("user-"))
-        .map((b) => b.name)
+      if (!allBuckets.some((b) => b.name === myUserBucket)) {
+        await ensureUserBuckets()
+        const refreshed = await listBuckets()
+        allBuckets.length = 0
+        allBuckets.push(...refreshed.buckets)
+      }
+
+      // 4. Filter buckets by role
+      //    Admin: all buckets visible
+      //    User: only own bucket (user-{username})
+      const filtered = isAdmin
+        ? allBuckets.map((b) => b.name)
+        : allBuckets.filter((b) => b.name === myUserBucket).map((b) => b.name)
       setBucketNames(filtered)
 
       // 5. Auto-select user's own bucket if available

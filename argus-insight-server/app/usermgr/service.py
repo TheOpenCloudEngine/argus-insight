@@ -81,6 +81,7 @@ async def _build_user_response(session: AsyncSession, user: ArgusUser) -> UserRe
         last_name=user.last_name,
         phone_number=user.phone_number,
         status=UserStatus(user.status),
+        auth_type=user.auth_type or "local",
         role=role.name if role else "Unknown",
         created_at=user.created_at,
         updated_at=user.updated_at,

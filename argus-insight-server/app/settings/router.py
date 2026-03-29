@@ -360,3 +360,118 @@ async def initialize_keycloak(body: KeycloakInitRequest):
 
     logger.info("Keycloak initialize: %d steps completed", len(steps))
     return {"steps": steps}
+
+
+# ---------------------------------------------------------------------------
+# GitLab Settings
+# ---------------------------------------------------------------------------
+
+_GITLAB_TOKEN_MASK = "••••••••"
+
+
+class GitlabConfig(BaseModel):
+    url: str = ""
+    username: str = "root"
+    password: str = ""
+    token: str = ""
+    group_path: str = "workspaces"
+    default_branch: str = "main"
+    project_visibility: str = "internal"
+
+
+class GitlabTestRequest(BaseModel):
+    url: str
+    token: str
+
+
+class TestResponse(BaseModel):
+    success: bool
+    message: str
+
+
+@router.get("/gitlab")
+async def get_gitlab_config(session: AsyncSession = Depends(get_session)):
+    """Get GitLab configuration (token masked)."""
+    cfg = await service.get_config_by_category(session, "gitlab")
+    token = cfg.get("gitlab_token", "")
+    password = cfg.get("gitlab_password", "")
+    return GitlabConfig(
+        url=cfg.get("gitlab_url", ""),
+        username=cfg.get("gitlab_username", "root"),
+        password=_GITLAB_TOKEN_MASK if password else "",
+        token=_GITLAB_TOKEN_MASK if token else "",
+        group_path=cfg.get("gitlab_group_path", "workspaces"),
+        default_branch=cfg.get("gitlab_default_branch", "main"),
+        project_visibility=cfg.get("gitlab_project_visibility", "internal"),
+    )
+
+
+@router.get("/gitlab/token")
+async def get_gitlab_token(session: AsyncSession = Depends(get_session)):
+    """Get the real GitLab token (for reveal toggle)."""
+    cfg = await service.get_config_by_category(session, "gitlab")
+    return {"token": cfg.get("gitlab_token", "")}
+
+
+@router.get("/gitlab/password")
+async def get_gitlab_password(session: AsyncSession = Depends(get_session)):
+    """Get the real GitLab password (for reveal toggle)."""
+    cfg = await service.get_config_by_category(session, "gitlab")
+    return {"password": cfg.get("gitlab_password", "")}
+
+
+@router.put("/gitlab")
+async def update_gitlab_config(
+    body: GitlabConfig,
+    session: AsyncSession = Depends(get_session),
+):
+    """Update GitLab configuration and reinitialize the client."""
+    items = {
+        "gitlab_url": body.url,
+        "gitlab_username": body.username,
+        "gitlab_group_path": body.group_path,
+        "gitlab_default_branch": body.default_branch,
+        "gitlab_project_visibility": body.project_visibility,
+    }
+    if body.token and body.token != _GITLAB_TOKEN_MASK:
+        items["gitlab_token"] = body.token
+    if body.password and body.password != _GITLAB_TOKEN_MASK:
+        items["gitlab_password"] = body.password
+
+    await service.update_infra_category(session, "gitlab", items)
+    await service.load_gitlab_settings(session)
+
+    logger.info("GitLab config saved: url=%s", body.url)
+    return {"status": "ok", "message": "GitLab configuration saved"}
+
+
+@router.post("/gitlab/test")
+async def test_gitlab_connection(
+    body: GitlabTestRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Test GitLab connection by authenticating and fetching version."""
+    import gitlab as gitlab_lib
+
+    url = body.url.strip()
+    token = body.token.strip()
+
+    # Resolve masked token
+    if token == _GITLAB_TOKEN_MASK:
+        cfg = await service.get_config_by_category(session, "gitlab")
+        token = cfg.get("gitlab_token", "")
+
+    if not url or not token:
+        return TestResponse(success=False, message="URL and token are required")
+
+    try:
+        gl = gitlab_lib.Gitlab(url=url, private_token=token)
+        gl.auth()
+        version = gl.version()
+        user = gl.user.username if gl.user else "unknown"
+        return TestResponse(
+            success=True,
+            message=f"GitLab connection successful ({version[0]}, user: {user})",
+        )
+    except Exception as e:
+        return TestResponse(success=False, message=f"Connection failed: {e}")

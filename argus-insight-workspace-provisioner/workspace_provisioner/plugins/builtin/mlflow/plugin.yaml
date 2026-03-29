@@ -1,0 +1,21 @@
+name: argus-mlflow
+display_name: MLflow Tracking Server
+description: Deploy MLflow for experiment tracking and model registry
+icon: mlflow
+category: mlops
+depends_on: []
+provides:
+  - mlflow_endpoint
+  - mlflow_artifact_bucket
+  - mlflow_manifests
+requires:
+  - minio_endpoint
+  - minio_root_user
+  - minio_root_password
+tags:
+  - mlops
+  - experiment-tracking
+  - model-registry
+versions:
+  - "1.0"
+default_version: "1.0"

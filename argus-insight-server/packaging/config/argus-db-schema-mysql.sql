@@ -67,8 +67,12 @@ CREATE TABLE IF NOT EXISTS argus_users (
     first_name      VARCHAR(100)    NOT NULL                  COMMENT 'User first name',
     last_name       VARCHAR(100)    NOT NULL                  COMMENT 'User last name',
     phone_number    VARCHAR(30)                               COMMENT 'User phone number (optional)',
-    password_hash   VARCHAR(255)    NOT NULL                  COMMENT 'Bcrypt-hashed password',
+    password_hash   VARCHAR(255)    NOT NULL DEFAULT ''        COMMENT 'SHA-256 hashed password (empty for keycloak users)',
     status          VARCHAR(20)     NOT NULL DEFAULT 'active' COMMENT 'Account status: active | inactive',
+    auth_type       VARCHAR(20)     NOT NULL DEFAULT 'local'  COMMENT 'Authentication type: local | keycloak',
+    s3_access_key   VARCHAR(100)                              COMMENT 'MinIO per-user access key',
+    s3_secret_key   VARCHAR(100)                              COMMENT 'MinIO per-user secret key',
+    s3_bucket       VARCHAR(255)                              COMMENT 'MinIO bucket name',
     role_id         INT             NOT NULL                  COMMENT 'Foreign key to argus_roles(id)',
     created_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Account creation timestamp',
     updated_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Account last update timestamp',
@@ -206,7 +210,15 @@ INSERT IGNORE INTO argus_configuration (category, config_key, config_value, desc
 ('auth', 'auth_keycloak_client_secret',  'argus-client-secret',  'Keycloak client secret'),
 ('auth', 'auth_keycloak_admin_role',     'argus-admin',          'Admin role name'),
 ('auth', 'auth_keycloak_superuser_role', 'argus-superuser',      'Superuser role name'),
-('auth', 'auth_keycloak_user_role',      'argus-user',           'User role name');
+('auth', 'auth_keycloak_user_role',      'argus-user',           'User role name'),
+-- GitLab
+('gitlab', 'gitlab_url',                '',                     'GitLab server URL'),
+('gitlab', 'gitlab_username',           'root',                 'GitLab admin username'),
+('gitlab', 'gitlab_password',           '',                     'GitLab admin password'),
+('gitlab', 'gitlab_token',              '',                     'GitLab API private token'),
+('gitlab', 'gitlab_group_path',         'workspaces',           'Default group path for workspace projects'),
+('gitlab', 'gitlab_default_branch',     'main',                 'Default branch for new projects'),
+('gitlab', 'gitlab_project_visibility', 'internal',             'Project visibility (internal, private, public)');
 
 -- ---------------------------------------------------------------------------
 -- Notes tables
@@ -305,6 +317,38 @@ CREATE TABLE IF NOT EXISTS argus_app_instances (
 -- Seed default apps
 INSERT IGNORE INTO argus_apps (app_type, display_name, description, icon, template_dir, default_namespace, hostname_pattern) VALUES
 ('vscode', 'VS Code Server', 'Browser-based VS Code with S3 workspace storage', 'Code', 'vscode', 'argus-apps', 'argus-{app_type}-{instance_id}.{domain}');
+
+-- ---------------------------------------------------------------------------
+-- Plugin pipeline tables
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_pipelines (
+    id              INT             AUTO_INCREMENT PRIMARY KEY,
+    name            VARCHAR(100)    NOT NULL UNIQUE              COMMENT 'Unique pipeline slug (e.g. ml-team-pipeline)',
+    display_name    VARCHAR(255)    NOT NULL                     COMMENT 'Human-readable pipeline name',
+    description     TEXT                                         COMMENT 'Optional pipeline description',
+    version         INT             NOT NULL DEFAULT 1             COMMENT 'Auto-incremented on each save',
+    deleted         BOOLEAN         NOT NULL DEFAULT FALSE         COMMENT 'Soft delete flag',
+    created_by      VARCHAR(100)                                   COMMENT 'Username of the pipeline creator',
+    created_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Named deployment pipelines for workspace provisioning';
+
+CREATE TABLE IF NOT EXISTS argus_plugin_configs (
+    id                INT             AUTO_INCREMENT PRIMARY KEY,
+    pipeline_id       INT                                        COMMENT 'FK to argus_pipelines (NULL for global/legacy config)',
+    plugin_name       VARCHAR(100)    NOT NULL                   COMMENT 'Plugin identifier (e.g. airflow-deploy)',
+    enabled           BOOLEAN         NOT NULL DEFAULT TRUE      COMMENT 'Whether the plugin is enabled',
+    display_order     INT             NOT NULL                   COMMENT 'Execution order within the pipeline',
+    selected_version  VARCHAR(50)                                COMMENT 'Plugin version (NULL means default)',
+    default_config    JSON                                       COMMENT 'Plugin config overrides as JSON',
+    created_at        TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at        TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_pipeline_plugin (pipeline_id, plugin_name),
+    CONSTRAINT fk_plugin_config_pipeline FOREIGN KEY (pipeline_id) REFERENCES argus_pipelines(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Plugin configuration within a pipeline (order, version, settings)';
 
 -- Seed default roles
 INSERT IGNORE INTO argus_roles (role_id, name, description) VALUES ('argus-admin', 'Admin', 'Administrator with full access');

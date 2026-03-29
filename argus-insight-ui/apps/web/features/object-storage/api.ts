@@ -1,3 +1,4 @@
+import { authFetch } from "@/features/auth/auth-fetch"
 import type { ListObjectsResponse } from "@/components/object-storage-browser"
 
 const BASE = "/api/v1/objectfilemgr"
@@ -51,7 +52,7 @@ export type FilebrowserConfig = {
  * Called once when the File Browser first mounts.
  */
 export async function fetchFilebrowserConfig(): Promise<FilebrowserConfig> {
-  const res = await fetch(`${BASE}/configuration`)
+  const res = await authFetch(`${BASE}/configuration`)
   if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to fetch filebrowser config"))
   return res.json()
 }
@@ -62,7 +63,7 @@ export async function fetchFilebrowserConfig(): Promise<FilebrowserConfig> {
 export async function updateBrowserSettings(
   browser: Record<string, number>,
 ): Promise<void> {
-  const res = await fetch(`${BASE}/configuration/browser`, {
+  const res = await authFetch(`${BASE}/configuration/browser`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ browser }),
@@ -78,7 +79,7 @@ export async function updatePreviewCategory(
   max_file_size: number,
   max_preview_rows: number | null,
 ): Promise<void> {
-  const res = await fetch(`${BASE}/configuration/preview`, {
+  const res = await authFetch(`${BASE}/configuration/preview`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ category, max_file_size, max_preview_rows }),
@@ -108,7 +109,7 @@ export type EnsureUserBucketsResponse = {
  * List all S3 buckets.
  */
 export async function listBuckets(): Promise<BucketListResponse> {
-  const res = await fetch(`${BASE}/buckets`)
+  const res = await authFetch(`${BASE}/buckets`)
   if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to list buckets"))
   return res.json()
 }
@@ -117,7 +118,7 @@ export async function listBuckets(): Promise<BucketListResponse> {
  * Ensure user-<username> buckets exist for all users.
  */
 export async function ensureUserBuckets(): Promise<EnsureUserBucketsResponse> {
-  const res = await fetch(`${BASE}/buckets/ensure-user-buckets`, {
+  const res = await authFetch(`${BASE}/buckets/ensure-user-buckets`, {
     method: "POST",
   })
   if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to ensure user buckets"))
@@ -146,7 +147,7 @@ export async function listObjects(
     params.set("continuation_token", continuationToken)
   }
 
-  const res = await fetch(`${BASE}/objects?${params.toString()}`)
+  const res = await authFetch(`${BASE}/objects?${params.toString()}`)
   if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to list objects"))
   const data = await res.json()
 
@@ -188,7 +189,7 @@ export async function deleteObjects(
   const params = new URLSearchParams()
   params.set("bucket", bucket)
 
-  const res = await fetch(`${BASE}/objects/delete?${params.toString()}`, {
+  const res = await authFetch(`${BASE}/objects/delete?${params.toString()}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ keys }),
@@ -206,7 +207,7 @@ export async function createFolder(
   const params = new URLSearchParams()
   params.set("bucket", bucket)
 
-  const res = await fetch(`${BASE}/folders?${params.toString()}`, {
+  const res = await authFetch(`${BASE}/folders?${params.toString()}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ key }),
@@ -231,7 +232,7 @@ export async function uploadFiles(
     const formData = new FormData()
     formData.append("file", file)
 
-    const res = await fetch(
+    const res = await authFetch(
       `${BASE}/objects/upload?${params.toString()}`,
       {
         method: "POST",
@@ -253,7 +254,7 @@ export async function copyObject(
   const params = new URLSearchParams()
   params.set("bucket", bucket)
 
-  const res = await fetch(`${BASE}/objects/copy?${params.toString()}`, {
+  const res = await authFetch(`${BASE}/objects/copy?${params.toString()}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -339,7 +340,7 @@ export async function previewFile(
   if (options?.sheet) params.set("sheet", options.sheet)
   if (options?.maxRows) params.set("max_rows", String(options.maxRows))
 
-  const res = await fetch(`${BASE}/objects/preview?${params.toString()}`)
+  const res = await authFetch(`${BASE}/objects/preview?${params.toString()}`)
   if (!res.ok) {
     const detail = await res.text().catch(() => "")
     throw new Error(`Preview failed (${res.status}): ${detail}`)
@@ -358,7 +359,7 @@ export async function getDownloadUrl(
   params.set("bucket", bucket)
   params.set("key", key)
 
-  const res = await fetch(`${BASE}/objects/download-url?${params.toString()}`)
+  const res = await authFetch(`${BASE}/objects/download-url?${params.toString()}`)
   if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to get download URL"))
   const data = await res.json()
   return data.url

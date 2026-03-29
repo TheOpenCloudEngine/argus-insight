@@ -1,0 +1,11 @@
+version: "1.0"
+display_name: "v1.0"
+description: GitLab project creation with group-based namespace
+status: stable
+step_class: workspace_provisioner.workflow.steps.gitlab_create_project.GitLabCreateProjectStep
+config_class: null
+template_dir: null
+changelog: |
+  - Initial version
+  - Creates project under /workspaces/{workspace_name} group
+upgradeable_from: []

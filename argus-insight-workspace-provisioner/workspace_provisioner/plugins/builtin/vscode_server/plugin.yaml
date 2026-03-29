@@ -1,0 +1,21 @@
+name: argus-vscode-server
+display_name: VS Code Server
+description: Browser-based VS Code development environment deployed per-user on Kubernetes
+icon: code
+category: development
+depends_on: []
+provides:
+  - vscode_endpoint
+requires:
+  - minio_endpoint
+  - minio_root_user
+  - minio_root_password
+tags:
+  - ide
+  - development
+  - editor
+  - vscode
+versions:
+  - "1.0"
+  - "1.1"
+default_version: "1.1"

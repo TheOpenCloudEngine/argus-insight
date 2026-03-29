@@ -52,6 +52,10 @@ class UserInfoResponse(BaseModel):
     role: str
     is_admin: bool
     is_superuser: bool
+    auth_type: str = "local"
+    s3_access_key: str | None = None
+    s3_secret_key: str | None = None
+    s3_bucket: str | None = None
 
 
 class LogoutRequest(BaseModel):
@@ -97,7 +101,7 @@ async def login(req: LoginRequest, session: AsyncSession = Depends(get_session))
     """Authenticate a user. Routes to Keycloak or local DB based on auth_type."""
     if settings.auth_type == "local":
         return await _login_local(req, session)
-    return await _login_keycloak(req)
+    return await _login_keycloak(req, session)
 
 
 async def _login_local(req: LoginRequest, session: AsyncSession) -> TokenResponse:
@@ -151,7 +155,7 @@ async def _login_local(req: LoginRequest, session: AsyncSession) -> TokenRespons
     )
 
 
-async def _login_keycloak(req: LoginRequest) -> TokenResponse:
+async def _login_keycloak(req: LoginRequest, session: AsyncSession) -> TokenResponse:
     """Authenticate via Keycloak token endpoint."""
     async with httpx.AsyncClient() as client:
         resp = await client.post(
@@ -195,6 +199,10 @@ async def _login_keycloak(req: LoginRequest) -> TokenResponse:
             detail="No Argus role assigned. Contact your administrator to request access.",
         )
 
+    # Sync Keycloak user to local DB
+    await _sync_keycloak_user(session, token_user)
+
+    logger.info("Keycloak login: %s (role=%s)", token_user.username, token_user.role)
     return TokenResponse(
         access_token=data["access_token"],
         refresh_token=data["refresh_token"],
@@ -202,6 +210,64 @@ async def _login_keycloak(req: LoginRequest) -> TokenResponse:
         expires_in=data["expires_in"],
         refresh_expires_in=data["refresh_expires_in"],
     )
+
+
+async def _sync_keycloak_user(session: AsyncSession, token_user: TokenUser) -> None:
+    """Create or update a user record in argus_users for a Keycloak user.
+
+    On first login, inserts a new row with auth_type='keycloak'.
+    On subsequent logins, updates name/email/role if changed in Keycloak.
+    """
+    from app.usermgr.models import ArgusRole, ArgusUser
+
+    # Find existing user by username
+    result = await session.execute(
+        select(ArgusUser).where(ArgusUser.username == token_user.username)
+    )
+    user = result.scalars().first()
+
+    # Resolve role_id from the highest Keycloak role
+    role_code = "argus-user"  # default
+    if token_user.is_admin:
+        role_code = settings.auth_keycloak_admin_role
+    elif token_user.is_superuser:
+        role_code = settings.auth_keycloak_superuser_role
+    elif token_user.is_user:
+        role_code = settings.auth_keycloak_user_role
+
+    role_result = await session.execute(
+        select(ArgusRole).where(ArgusRole.role_id == role_code)
+    )
+    role = role_result.scalars().first()
+    if not role:
+        logger.warning("Keycloak user sync: role '%s' not found in DB, skipping", role_code)
+        return
+
+    if user:
+        # Update existing user
+        user.email = token_user.email or user.email
+        user.first_name = token_user.first_name or user.first_name
+        user.last_name = token_user.last_name or user.last_name
+        user.auth_type = "keycloak"
+        user.role_id = role.id
+        user.status = "active"
+        await session.commit()
+        logger.info("Keycloak user synced (updated): %s (role=%s)", token_user.username, role_code)
+    else:
+        # Create new user
+        new_user = ArgusUser(
+            username=token_user.username,
+            email=token_user.email or f"{token_user.username}@keycloak",
+            first_name=token_user.first_name or token_user.username,
+            last_name=token_user.last_name or "",
+            password_hash="",
+            status="active",
+            auth_type="keycloak",
+            role_id=role.id,
+        )
+        session.add(new_user)
+        await session.commit()
+        logger.info("Keycloak user synced (created): %s (role=%s)", token_user.username, role_code)
 
 
 # ---------------------------------------------------------------------------
@@ -292,8 +358,20 @@ async def _refresh_keycloak(req: RefreshRequest) -> TokenResponse:
 # ---------------------------------------------------------------------------
 
 @router.get("/me", response_model=UserInfoResponse)
-async def get_me(user: CurrentUser):
-    """Get the current authenticated user's information."""
+async def get_me(user: CurrentUser, session: AsyncSession = Depends(get_session)):
+    """Get the current authenticated user's information including S3 credentials."""
+    from app.usermgr.models import ArgusUser
+
+    # Fetch DB record for S3 credentials and auth_type
+    db_user = None
+    try:
+        result = await session.execute(
+            select(ArgusUser).where(ArgusUser.username == user.username)
+        )
+        db_user = result.scalars().first()
+    except Exception:
+        pass
+
     return UserInfoResponse(
         sub=user.sub,
         username=user.username,
@@ -305,6 +383,10 @@ async def get_me(user: CurrentUser):
         role=user.role,
         is_admin=user.is_admin,
         is_superuser=user.is_superuser,
+        auth_type=db_user.auth_type if db_user else "local",
+        s3_access_key=db_user.s3_access_key if db_user else None,
+        s3_secret_key=db_user.s3_secret_key if db_user else None,
+        s3_bucket=db_user.s3_bucket if db_user else None,
     )
 
 

@@ -4,9 +4,12 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   ChevronUp,
+  Eye,
+  EyeOff,
+  Key,
   LogOut,
   Mail,
-  Phone,
+  Package,
   Settings,
   Shield,
   ShieldAlert,
@@ -40,6 +43,7 @@ export function AppSidebarUser() {
   const router = useRouter()
   const [profileOpen, setProfileOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [showSecretKey, setShowSecretKey] = useState(false)
 
   if (!user) return null
 
@@ -146,7 +150,7 @@ export function AppSidebarUser() {
 
           <Separator />
 
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm pt-2">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm py-2">
             <dt className="flex items-center gap-1.5 text-muted-foreground">
               <User className="size-3.5" />
               Name
@@ -166,17 +170,47 @@ export function AppSidebarUser() {
             <dd className="font-medium">{user.email}</dd>
 
             <dt className="flex items-center gap-1.5 text-muted-foreground">
-              <Phone className="size-3.5" />
-              Phone
-            </dt>
-            <dd className="font-medium">{user.email}</dd>
-
-            <dt className="flex items-center gap-1.5 text-muted-foreground">
               <Shield className="size-3.5" />
               Role
             </dt>
             <dd className="font-medium">{roleName}</dd>
           </dl>
+
+          {user.s3_access_key && (
+            <>
+              <Separator />
+              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm py-2">
+                  <dt className="flex items-center gap-1.5 text-muted-foreground">
+                    <Package className="size-3.5" />
+                    Bucket
+                  </dt>
+                  <dd className="font-mono text-xs">{user.s3_bucket}</dd>
+
+                  <dt className="flex items-center gap-1.5 text-muted-foreground">
+                    <Key className="size-3.5" />
+                    Access Key
+                  </dt>
+                  <dd className="font-mono text-xs">{user.s3_access_key}</dd>
+
+                  <dt className="flex items-center gap-1.5 text-muted-foreground">
+                    <Key className="size-3.5" />
+                    Secret Key
+                  </dt>
+                  <dd className="flex items-center gap-1.5">
+                    <span className="font-mono text-xs">
+                      {showSecretKey ? user.s3_secret_key : "••••••••••••••••"}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowSecretKey(!showSecretKey)}
+                    >
+                      {showSecretKey ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                    </button>
+                  </dd>
+                </dl>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

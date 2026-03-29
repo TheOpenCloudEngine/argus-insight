@@ -1,0 +1,17 @@
+name: argus-kserve
+display_name: KServe Model Serving
+description: Deploy KServe for ML model serving with InferenceService
+icon: kserve
+category: serving
+depends_on: []
+provides:
+  - kserve_endpoint
+  - kserve_manifests
+requires: []
+tags:
+  - serving
+  - inference
+  - mlops
+versions:
+  - "1.0"
+default_version: "1.0"

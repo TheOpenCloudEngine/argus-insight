@@ -155,6 +155,7 @@ class UserResponse(BaseModel):
     last_name: str
     phone_number: str | None = None
     status: UserStatus
+    auth_type: str = "local"
     role: str
     created_at: datetime
     updated_at: datetime

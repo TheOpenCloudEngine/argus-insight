@@ -11,6 +11,7 @@
  * argus-insight-server proxy at /api/v1/unity-catalog/*.
  */
 
+import { authFetch } from "@/features/auth/auth-fetch"
 import type {
   Catalog,
   Schema,
@@ -136,7 +137,7 @@ export class UnityCatalogClient {
   // ---- generic helpers --------------------------------------------------- //
 
   private async fetch<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, init)
+    const res = await authFetch(`${this.baseUrl}${path}`, init)
     if (!res.ok) {
       const body = await res.json().catch(() => null)
       const detail = body?.detail ?? `Unity Catalog API error: ${res.status}`

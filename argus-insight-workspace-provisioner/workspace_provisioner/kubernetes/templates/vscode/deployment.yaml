@@ -25,12 +25,37 @@ spec:
       containers:
         - name: code-server
           image: codercom/code-server:4.96.4
+          command: ["/bin/sh", "-c"]
           args:
-            - --auth
-            - none
-            - --bind-addr
-            - 0.0.0.0:8080
-            - /workspace
+            - |
+              # Install Python if not present
+              if ! command -v python3 > /dev/null 2>&1; then
+                sudo apt-get update -qq && sudo apt-get install -y -qq python3 python3-pip python3-venv > /dev/null 2>&1
+              fi
+
+              # pip config
+              mkdir -p /home/coder/.config/pip
+              cat > /home/coder/.config/pip/pip.conf << 'PIPCONF'
+              [global]
+              index-url = https://pypi.org/simple
+              trusted-host = pypi.org
+              PIPCONF
+
+              # Default VS Code settings (only if not already customized)
+              SETTINGS_DIR=/home/coder/.local/share/code-server/User
+              if [ ! -f "$SETTINGS_DIR/settings.json" ]; then
+                mkdir -p "$SETTINGS_DIR"
+                cat > "$SETTINGS_DIR/settings.json" << 'SETTINGS'
+              {
+                "workbench.colorTheme": "Default Dark Modern",
+                "editor.fontSize": 14,
+                "editor.minimap.enabled": false,
+                "terminal.integrated.fontSize": 13
+              }
+              SETTINGS
+              fi
+
+              exec /usr/bin/entrypoint.sh --auth none --bind-addr 0.0.0.0:8080 /workspace
           ports:
             - name: http
               containerPort: 8080

@@ -1,0 +1,13 @@
+version: "1.0"
+display_name: "v1.0 (MLflow 2.19)"
+description: MLflow 2.19 with PostgreSQL backend store and MinIO artifact storage
+status: stable
+step_class: workspace_provisioner.workflow.steps.mlflow_deploy.MlflowDeployStep
+config_class: workspace_provisioner.config.MlflowConfig
+template_dir: mlflow
+changelog: |
+  - Initial version
+  - MLflow 2.19.0 tracking server
+  - PostgreSQL 16 backend store
+  - MinIO S3 artifact storage
+upgradeable_from: []

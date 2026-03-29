@@ -1,0 +1,22 @@
+name: argus-airflow
+display_name: Apache Airflow
+description: Deploy Airflow workflow orchestration engine with PostgreSQL and git-sync
+icon: airflow
+category: orchestration
+depends_on: []
+provides:
+  - airflow_endpoint
+  - airflow_admin_password
+  - airflow_manifests
+requires:
+  - gitlab_http_url
+  - gitlab_token
+  - minio_endpoint
+tags:
+  - workflow
+  - scheduler
+  - dag
+  - orchestration
+versions:
+  - "1.0"
+default_version: "1.0"

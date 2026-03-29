@@ -34,6 +34,7 @@ from workspace_provisioner.workflow.models import (
     ArgusWorkflowExecution,
     ArgusWorkflowStepExecution,
 )
+from workspace_provisioner.plugins.registry import PluginRegistry
 from workspace_provisioner.workflow.steps.gitlab_create_project import (
     GitLabCreateProjectStep,
 )
@@ -137,6 +138,139 @@ async def create_workspace(
     return _build_workspace_response(workspace)
 
 
+def _build_legacy_workflow(
+    executor: WorkflowExecutor,
+    req: "WorkspaceCreateRequest",
+    gitlab_client: GitLabClient,
+) -> WorkflowContext:
+    """Build the legacy hardcoded workflow pipeline.
+
+    Used when req.plugins is None (backward compatibility).
+    """
+    provisioning_config = req.provisioning_config
+    ctx = WorkflowContext(
+        workspace_id=0,  # Set by caller
+        workspace_name=req.name,
+        domain=req.domain,
+        minio_config=provisioning_config.minio,
+        airflow_config=provisioning_config.airflow,
+        mlflow_config=provisioning_config.mlflow,
+        kserve_config=provisioning_config.kserve,
+    )
+
+    executor.add_step(GitLabCreateProjectStep(gitlab_client))
+    executor.add_step(MinioDeployStep())
+    executor.add_step(MinioSetupStep())
+    executor.add_step(AirflowDeployStep())
+    executor.add_step(MlflowDeployStep())
+    executor.add_step(KServeDeployStep())
+    executor.add_step(CustomHookStep())
+
+    return ctx
+
+
+async def _build_plugin_workflow(
+    session: "AsyncSession",
+    executor: WorkflowExecutor,
+    req: "WorkspaceCreateRequest",
+    gitlab_client: GitLabClient,
+) -> WorkflowContext:
+    """Build the workflow pipeline from plugin registry and admin configuration.
+
+    Resolves plugin order from DB (admin-configured), validates dependencies,
+    instantiates step classes, and builds the workflow context with plugin configs.
+    """
+    from workspace_provisioner.plugins.models import ArgusPluginConfig
+
+    registry = PluginRegistry.get_instance()
+
+    # Load admin-configured plugin order from DB
+    result = await session.execute(
+        select(ArgusPluginConfig)
+        .where(ArgusPluginConfig.enabled.is_(True))
+        .order_by(ArgusPluginConfig.display_order)
+    )
+    db_configs = {c.plugin_name: c for c in result.scalars().all()}
+
+    # Determine which plugins to run and their versions
+    if req.plugins:
+        # Use request-specified plugins (subset of admin-configured)
+        plugin_names = [
+            name for name in db_configs
+            if name in req.plugins or not req.plugins
+        ]
+        # Add any request-specified plugins not in DB config
+        for name in req.plugins:
+            if name not in plugin_names:
+                plugin_names.append(name)
+    else:
+        plugin_names = list(db_configs.keys())
+
+    # Resolve versions: request > DB config > plugin default
+    versions = {}
+    for name in plugin_names:
+        if req.plugins and name in req.plugins and req.plugins[name].version:
+            versions[name] = req.plugins[name].version
+        elif name in db_configs and db_configs[name].selected_version:
+            versions[name] = db_configs[name].selected_version
+        # else: uses plugin default_version
+
+    # Validate dependency order
+    ordered = registry.resolve_order(plugin_names, versions or None)
+
+    # Build context with plugin-specific configs
+    ctx_kwargs = {}
+    for name in ordered:
+        plugin_config = None
+        # Merge: plugin default < DB default_config < request config
+        if name in db_configs and db_configs[name].default_config:
+            plugin_config = db_configs[name].default_config
+        if req.plugins and name in req.plugins and req.plugins[name].config:
+            if plugin_config:
+                plugin_config.update(req.plugins[name].config)
+            else:
+                plugin_config = req.plugins[name].config
+
+        if plugin_config:
+            # Store config in context under plugin's config key
+            config_key = name.replace("-", "_") + "_config"
+            meta = registry.get(name)
+            ver = versions.get(name)
+            config_cls = registry.get_config_class(name, ver)
+            if config_cls:
+                ctx_kwargs[config_key] = config_cls(**plugin_config)
+            else:
+                ctx_kwargs[config_key] = plugin_config
+
+    ctx = WorkflowContext(
+        workspace_id=0,  # Set by caller
+        workspace_name=req.name,
+        domain=req.domain,
+        **ctx_kwargs,
+    )
+
+    # Instantiate steps in resolved order
+    for name in ordered:
+        ver = versions.get(name)
+        try:
+            step = registry.instantiate_step(name, ver)
+            executor.add_step(step)
+        except Exception as e:
+            # Special handling for gitlab step which needs the client
+            if name in ("gitlab-create-project", "argus-gitlab"):
+                executor.add_step(GitLabCreateProjectStep(gitlab_client))
+            else:
+                raise RuntimeError(
+                    f"Failed to instantiate plugin '{name}' (version={ver}): {e}"
+                ) from e
+
+    logger.info(
+        "Plugin workflow built: %d steps in order %s",
+        len(ordered), ordered,
+    )
+    return ctx
+
+
 async def _run_provisioning_workflow(
     workspace_id: int,
     req: WorkspaceCreateRequest,
@@ -146,31 +280,30 @@ async def _run_provisioning_workflow(
 
     Creates a new database session for the background task, builds the
     workflow pipeline, executes it, and updates the workspace status.
+
+    Supports two modes:
+    - Plugin-based (req.plugins is set): Uses PluginRegistry to resolve
+      steps from admin-configured plugin order with version selection.
+    - Legacy (req.plugins is None): Falls back to hardcoded step list
+      with ProvisioningConfig.
     """
     from app.core.database import async_session
 
     logger.info("Starting provisioning workflow for workspace %d (%s)", workspace_id, req.name)
     async with async_session() as session:
         try:
-            provisioning_config = req.provisioning_config
-            ctx = WorkflowContext(
-                workspace_id=workspace_id,
-                workspace_name=req.name,
-                domain=req.domain,
-                minio_config=provisioning_config.minio,
-                airflow_config=provisioning_config.airflow,
-                mlflow_config=provisioning_config.mlflow,
-                kserve_config=provisioning_config.kserve,
-            )
-
             executor = WorkflowExecutor(session)
-            executor.add_step(GitLabCreateProjectStep(gitlab_client))
-            executor.add_step(MinioDeployStep())
-            executor.add_step(MinioSetupStep())
-            executor.add_step(AirflowDeployStep())
-            executor.add_step(MlflowDeployStep())
-            executor.add_step(KServeDeployStep())
-            executor.add_step(CustomHookStep())
+
+            if req.plugins is not None:
+                # Plugin-based provisioning
+                ctx = await _build_plugin_workflow(
+                    session, executor, req, gitlab_client
+                )
+            else:
+                # Legacy hardcoded provisioning
+                ctx = _build_legacy_workflow(executor, req, gitlab_client)
+
+            ctx.workspace_id = workspace_id
 
             execution = await executor.run(
                 workspace_id=workspace_id,
@@ -373,6 +506,35 @@ def _build_deletion_context(
     return ctx_data
 
 
+async def _add_plugin_steps_for_teardown(
+    session: "AsyncSession",
+    executor: WorkflowExecutor,
+    gitlab_client: GitLabClient,
+) -> None:
+    """Add steps from plugin registry for teardown workflow."""
+    from workspace_provisioner.plugins.models import ArgusPluginConfig
+
+    registry = PluginRegistry.get_instance()
+    result = await session.execute(
+        select(ArgusPluginConfig)
+        .where(ArgusPluginConfig.enabled.is_(True))
+        .order_by(ArgusPluginConfig.display_order)
+    )
+    db_configs = result.scalars().all()
+
+    for db_config in db_configs:
+        name = db_config.plugin_name
+        ver = db_config.selected_version
+        try:
+            step = registry.instantiate_step(name, ver)
+            executor.add_step(step)
+        except Exception:
+            if name in ("gitlab-create-project", "argus-gitlab"):
+                executor.add_step(GitLabCreateProjectStep(gitlab_client))
+            else:
+                logger.warning("Skipping plugin '%s' for teardown: instantiation failed", name)
+
+
 async def _run_deletion_workflow(
     workspace_id: int,
     deletion_context: dict,
@@ -406,16 +568,23 @@ async def _run_deletion_workflow(
                 **deletion_context,
             )
 
-            # Build executor with same steps as provisioning
+            # Build executor with steps — plugin-based or legacy
             # (run_teardown executes them in reverse order)
             executor = WorkflowExecutor(session)
-            executor.add_step(GitLabCreateProjectStep(gitlab_client))
-            executor.add_step(MinioDeployStep())
-            executor.add_step(MinioSetupStep())
-            executor.add_step(AirflowDeployStep())
-            executor.add_step(MlflowDeployStep())
-            executor.add_step(KServeDeployStep())
-            executor.add_step(CustomHookStep())
+            registry = PluginRegistry.get_instance()
+            if registry.get_all():
+                await _add_plugin_steps_for_teardown(
+                    session, executor, gitlab_client
+                )
+            else:
+                # Legacy fallback
+                executor.add_step(GitLabCreateProjectStep(gitlab_client))
+                executor.add_step(MinioDeployStep())
+                executor.add_step(MinioSetupStep())
+                executor.add_step(AirflowDeployStep())
+                executor.add_step(MlflowDeployStep())
+                executor.add_step(KServeDeployStep())
+                executor.add_step(CustomHookStep())
 
             execution = await executor.run_teardown(
                 workspace_id=workspace_id,

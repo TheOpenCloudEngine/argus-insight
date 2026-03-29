@@ -1,0 +1,22 @@
+name: argus-minio-setup
+display_name: MinIO Workspace Setup
+description: Create workspace admin user, access keys, and default bucket in MinIO
+icon: minio
+category: storage
+depends_on:
+  - argus-minio
+provides:
+  - minio_ws_admin_access_key
+  - minio_ws_admin_secret_key
+  - minio_default_bucket
+requires:
+  - minio_endpoint
+  - minio_root_user
+  - minio_root_password
+tags:
+  - storage
+  - s3
+  - configuration
+versions:
+  - "1.0"
+default_version: "1.0"
