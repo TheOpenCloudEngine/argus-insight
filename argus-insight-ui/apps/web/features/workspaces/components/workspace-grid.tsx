@@ -194,22 +194,25 @@ export function WorkspaceGrid({ onSelect, onDeleted, refreshKey, onAddWorkspace 
       return
     }
 
-    // Poll audit logs for workflow progress
+    // Poll audit logs for workflow progress (only events after polling start)
     const wsId = deployTarget.id
+    const pollStartedAt = new Date().toISOString()
     deployPollingRef.current = setInterval(async () => {
       try {
         const data = await fetchWorkspaceAuditLogs(wsId, 1, 50)
-        const stepLogs = data.items.filter((l) =>
+        // Only consider events after we started polling
+        const recent = data.items.filter((l) => l.created_at >= pollStartedAt)
+        const stepLogs = recent.filter((l) =>
           ["step_started", "step_completed", "step_failed"].includes(l.action) &&
           (l.detail as Record<string, unknown>)?.workflow_name === "workspace-provision"
         )
         setDeploySteps(stepLogs.reverse())
 
-        const completed = data.items.find((l) =>
+        const completed = recent.find((l) =>
           l.action === "workflow_completed" &&
           (l.detail as Record<string, unknown>)?.workflow_name === "workspace-provision"
         )
-        const failed = data.items.find((l) =>
+        const failed = recent.find((l) =>
           l.action === "workflow_failed" &&
           (l.detail as Record<string, unknown>)?.workflow_name === "workspace-provision"
         )
@@ -261,22 +264,24 @@ export function WorkspaceGrid({ onSelect, onDeleted, refreshKey, onAddWorkspace 
       return
     }
 
-    // Poll audit logs for delete workflow progress
+    // Poll audit logs for delete workflow progress (only events after polling start)
     const wsId = confirmTarget.id
+    const pollStartedAt = new Date().toISOString()
     pollingRef.current = setInterval(async () => {
       try {
         const data = await fetchWorkspaceAuditLogs(wsId, 1, 50)
-        const stepLogs = data.items.filter((l) =>
+        const recent = data.items.filter((l) => l.created_at >= pollStartedAt)
+        const stepLogs = recent.filter((l) =>
           ["step_started", "step_completed", "step_failed"].includes(l.action) &&
           (l.detail as Record<string, unknown>)?.workflow_name === "workspace-delete"
         )
         setDeleteSteps(stepLogs.reverse())
 
-        const completed = data.items.find((l) =>
+        const completed = recent.find((l) =>
           l.action === "workflow_completed" &&
           (l.detail as Record<string, unknown>)?.workflow_name === "workspace-delete"
         )
-        const failed = data.items.find((l) =>
+        const failed = recent.find((l) =>
           l.action === "workflow_failed" &&
           (l.detail as Record<string, unknown>)?.workflow_name === "workspace-delete"
         )

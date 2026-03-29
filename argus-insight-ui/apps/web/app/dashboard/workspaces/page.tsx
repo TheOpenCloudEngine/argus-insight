@@ -296,22 +296,24 @@ export default function WorkspacesPage() {
       return
     }
 
-    // Poll audit logs for provisioning progress
+    // Poll audit logs for provisioning progress (only events after polling start)
+    const pollStartedAt = new Date().toISOString()
     createPollingRef.current = setInterval(async () => {
       if (!wsId) return
       try {
         const data = await fetchWorkspaceAuditLogs(wsId, 1, 50)
-        const stepLogs = data.items.filter((l) =>
+        const recent = data.items.filter((l) => l.created_at >= pollStartedAt)
+        const stepLogs = recent.filter((l) =>
           ["step_started", "step_completed", "step_failed"].includes(l.action) &&
           (l.detail as Record<string, unknown>)?.workflow_name === "workspace-provision"
         )
         setCreateSteps(stepLogs.reverse())
 
-        const completed = data.items.find((l) =>
+        const completed = recent.find((l) =>
           l.action === "workflow_completed" &&
           (l.detail as Record<string, unknown>)?.workflow_name === "workspace-provision"
         )
-        const failed = data.items.find((l) =>
+        const failed = recent.find((l) =>
           l.action === "workflow_failed" &&
           (l.detail as Record<string, unknown>)?.workflow_name === "workspace-provision"
         )
