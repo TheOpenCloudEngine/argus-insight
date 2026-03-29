@@ -1,0 +1,17 @@
+version: "1.1"
+display_name: "v1.1 (code-server + S3 storage)"
+description: code-server with s3fs sidecar for persistent S3-backed workspace storage
+status: stable
+release_date: "2026-03-01"
+step_class: workspace_provisioner.workflow.steps.custom_hook.CustomHookStep
+config_class: null
+template_dir: vscode
+depends_on_override:
+  add: []
+changelog: |
+  - Added s3fs FUSE sidecar for persistent workspace storage
+  - Per-user S3 bucket (user-{username}) auto-created
+  - Bidirectional sync via emptyDir shared volume
+  - s3fs 1.94 (efrecon/s3fs)
+upgradeable_from:
+  - "1.0"

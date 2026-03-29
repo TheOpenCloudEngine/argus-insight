@@ -1,0 +1,13 @@
+version: "1.0"
+display_name: "v1.0 (Airflow 2.10)"
+description: Airflow 2.10 with PostgreSQL metadata DB, git-sync DAG sidecar
+status: stable
+step_class: workspace_provisioner.workflow.steps.airflow_deploy.AirflowDeployStep
+config_class: workspace_provisioner.config.AirflowConfig
+template_dir: airflow
+changelog: |
+  - Initial version
+  - Airflow 2.10.4 with Python 3.11
+  - PostgreSQL 16 for metadata store
+  - Git-sync sidecar for automatic DAG loading from GitLab
+upgradeable_from: []

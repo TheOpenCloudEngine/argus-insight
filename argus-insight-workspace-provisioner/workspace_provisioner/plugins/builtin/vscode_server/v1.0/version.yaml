@@ -1,0 +1,14 @@
+version: "1.0"
+display_name: "v1.0 (code-server basic)"
+description: Basic code-server deployment without persistent storage
+status: stable
+release_date: "2026-01-15"
+step_class: workspace_provisioner.workflow.steps.custom_hook.CustomHookStep
+config_class: null
+template_dir: vscode
+changelog: |
+  - Initial version
+  - code-server 4.96.4 (codercom/code-server)
+  - No persistent storage (ephemeral workspace)
+  - Nginx Ingress with auth-url authentication
+upgradeable_from: []

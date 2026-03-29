@@ -32,6 +32,7 @@ from app.apps.registry_router import router as app_registry_router
 from app.apps.instance_router import router as app_instance_router
 from workspace_provisioner.router import router as workspace_router
 from workspace_provisioner.router import init_gitlab_client
+from workspace_provisioner.plugins.router import router as plugins_router
 
 logger = logging.getLogger(__name__)
 _start_time: float = 0.0
@@ -72,10 +73,23 @@ async def lifespan(app: FastAPI):
     import app.apps.models  # noqa: F401
     import workspace_provisioner.models  # noqa: F401
     import workspace_provisioner.workflow.models  # noqa: F401
+    import workspace_provisioner.plugins.models  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables verified")
+
+    # Initialize plugin registry
+    from pathlib import Path
+    from workspace_provisioner.plugins.registry import PluginRegistry
+    plugin_registry = PluginRegistry.get_instance()
+    builtin_dir = Path(__file__).resolve().parent.parent / "workspace_provisioner" / "plugins" / "builtin"
+    external_dir = Path("/etc/argus-insight-server/plugins")
+    discover_dirs = [builtin_dir]
+    if external_dir.is_dir():
+        discover_dirs.append(external_dir)
+    count = plugin_registry.discover(discover_dirs)
+    logger.info("Plugin registry initialized: %d plugins discovered", count)
 
     # Seed default roles and configuration
     from app.core.database import async_session
@@ -148,6 +162,7 @@ app.include_router(unity_catalog_router, prefix="/api/v1")
 app.include_router(app_registry_router, prefix="/api/v1")
 app.include_router(app_instance_router, prefix="/api/v1")
 app.include_router(workspace_router, prefix="/api/v1")
+app.include_router(plugins_router, prefix="/api/v1")
 
 
 @app.get("/health")

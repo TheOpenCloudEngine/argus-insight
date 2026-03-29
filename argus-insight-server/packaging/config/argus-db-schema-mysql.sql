@@ -310,6 +310,39 @@ CREATE TABLE IF NOT EXISTS argus_app_instances (
 INSERT IGNORE INTO argus_apps (app_type, display_name, description, icon, template_dir, default_namespace, hostname_pattern) VALUES
 ('vscode', 'VS Code Server', 'Browser-based VS Code with S3 workspace storage', 'Code', 'vscode', 'argus-apps', 'argus-{app_type}-{instance_id}.{domain}');
 
+-- ---------------------------------------------------------------------------
+-- Plugin pipeline tables
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_pipelines (
+    id              INT             AUTO_INCREMENT PRIMARY KEY,
+    name            VARCHAR(100)    NOT NULL UNIQUE              COMMENT 'Unique pipeline slug (e.g. ml-team-pipeline)',
+    display_name    VARCHAR(255)    NOT NULL                     COMMENT 'Human-readable pipeline name',
+    description     TEXT                                         COMMENT 'Optional pipeline description',
+    is_default      BOOLEAN         NOT NULL DEFAULT FALSE       COMMENT 'Whether this is the default pipeline',
+    version         INT             NOT NULL DEFAULT 1             COMMENT 'Auto-incremented on each save',
+    deleted         BOOLEAN         NOT NULL DEFAULT FALSE         COMMENT 'Soft delete flag',
+    created_by      VARCHAR(100)                                   COMMENT 'Username of the pipeline creator',
+    created_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Named deployment pipelines for workspace provisioning';
+
+CREATE TABLE IF NOT EXISTS argus_plugin_configs (
+    id                INT             AUTO_INCREMENT PRIMARY KEY,
+    pipeline_id       INT                                        COMMENT 'FK to argus_pipelines (NULL for global/legacy config)',
+    plugin_name       VARCHAR(100)    NOT NULL                   COMMENT 'Plugin identifier (e.g. airflow-deploy)',
+    enabled           BOOLEAN         NOT NULL DEFAULT TRUE      COMMENT 'Whether the plugin is enabled',
+    display_order     INT             NOT NULL                   COMMENT 'Execution order within the pipeline',
+    selected_version  VARCHAR(50)                                COMMENT 'Plugin version (NULL means default)',
+    default_config    JSON                                       COMMENT 'Plugin config overrides as JSON',
+    created_at        TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at        TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_pipeline_plugin (pipeline_id, plugin_name),
+    CONSTRAINT fk_plugin_config_pipeline FOREIGN KEY (pipeline_id) REFERENCES argus_pipelines(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Plugin configuration within a pipeline (order, version, settings)';
+
 -- Seed default roles
 INSERT IGNORE INTO argus_roles (role_id, name, description) VALUES ('argus-admin', 'Admin', 'Administrator with full access');
 INSERT IGNORE INTO argus_roles (role_id, name, description) VALUES ('argus-superuser', 'Superuser', 'Super user with elevated access');

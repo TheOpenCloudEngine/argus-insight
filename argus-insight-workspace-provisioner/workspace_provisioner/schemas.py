@@ -13,6 +13,24 @@ from workspace_provisioner.config import ProvisioningConfig
 
 
 # ---------------------------------------------------------------------------
+# Plugin-based provisioning schemas
+# ---------------------------------------------------------------------------
+
+class PluginConfigItem(BaseModel):
+    """Per-plugin configuration in a workspace creation request."""
+
+    version: str | None = Field(
+        default=None,
+        description="Plugin version to deploy. Uses admin-selected or plugin default if omitted.",
+    )
+    config: dict | None = Field(
+        default=None,
+        description="Plugin-specific configuration overrides. "
+        "Schema depends on the plugin version's config_class.",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
 
@@ -76,15 +94,20 @@ class WorkspaceCreateRequest(BaseModel):
     )
     provisioning_config: ProvisioningConfig = Field(
         default_factory=ProvisioningConfig,
-        description="Service-level provisioning settings (images, storage sizes, resources). "
-        "Fields not provided will use platform defaults.",
+        description="(Legacy) Service-level provisioning settings. "
+        "Prefer 'plugins' field for new workspaces.",
+    )
+    plugins: dict[str, PluginConfigItem] | None = Field(
+        default=None,
+        description="Plugin-based provisioning configuration. Keys are plugin names "
+        "(e.g., 'airflow-deploy'), values contain optional version and config overrides. "
+        "If omitted, uses the admin-configured plugin set from the global plugin order.",
     )
     steps: list[str] | None = Field(
         default=None,
         description="If provided, only these steps will be executed during provisioning. "
         "Steps not in this list are skipped. Pass null or omit to run all steps. "
-        "Available step names: gitlab-create-project, minio-deploy, minio-setup, "
-        "airflow-deploy, mlflow-deploy, kserve-deploy, custom-hook.",
+        "Works with both legacy and plugin-based provisioning.",
     )
 
 

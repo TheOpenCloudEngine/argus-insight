@@ -1,0 +1,12 @@
+version: "1.0"
+display_name: "v1.0"
+description: Single-node MinIO deployment with StatefulSet
+status: stable
+step_class: workspace_provisioner.workflow.steps.minio_deploy.MinioDeployStep
+config_class: workspace_provisioner.config.MinioConfig
+template_dir: minio
+changelog: |
+  - Initial version
+  - StatefulSet-based single node deployment
+  - Ingress for API and Console endpoints
+upgradeable_from: []

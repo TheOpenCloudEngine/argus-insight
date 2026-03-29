@@ -1,6 +1,7 @@
 import {
   BarChart3,
   Bell,
+  Blocks,
   BookOpen,
   Code,
   FolderOpen,
@@ -23,6 +24,7 @@ import type { LucideIcon } from "lucide-react"
 const iconMap: Record<string, LucideIcon> = {
   BarChart3,
   Bell,
+  Blocks,
   BookOpen,
   Code,
   FolderOpen,

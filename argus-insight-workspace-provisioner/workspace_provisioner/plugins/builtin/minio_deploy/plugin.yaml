@@ -1,0 +1,21 @@
+name: argus-minio
+display_name: MinIO Object Storage
+description: Deploy a dedicated MinIO instance for S3-compatible object storage
+icon: minio
+category: storage
+depends_on: []
+provides:
+  - minio_endpoint
+  - minio_external_endpoint
+  - minio_console_endpoint
+  - minio_root_user
+  - minio_root_password
+  - minio_manifests
+requires: []
+tags:
+  - storage
+  - s3
+  - object-storage
+versions:
+  - "1.0"
+default_version: "1.0"

@@ -1,0 +1,20 @@
+name: argus-gitlab
+display_name: GitLab Project
+description: Create a GitLab project for workspace code and DAG repository
+icon: gitlab
+category: infrastructure
+depends_on: []
+provides:
+  - gitlab_project_id
+  - gitlab_project_url
+  - gitlab_http_url
+  - gitlab_ssh_url
+  - gitlab_token
+requires: []
+tags:
+  - git
+  - scm
+  - infrastructure
+versions:
+  - "1.0"
+default_version: "1.0"
