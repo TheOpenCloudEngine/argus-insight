@@ -6,7 +6,6 @@ import type {
   WorkspaceCredentials,
   WorkspaceMember,
   WorkspacePipeline,
-  WorkflowExecution,
   WorkspaceResponse,
 } from "./types"
 
@@ -102,6 +101,16 @@ export async function fetchWorkspaceServices(
   return res.json()
 }
 
+export async function deleteWorkspaceService(
+  workspaceId: number,
+  serviceId: number,
+): Promise<void> {
+  const res = await authFetch(`${BASE}/workspaces/${workspaceId}/services/${serviceId}`, {
+    method: "DELETE",
+  })
+  if (!res.ok) throw new Error(await extractError(res, "Failed to delete service"))
+}
+
 export async function fetchWorkspacePipelines(
   workspaceId: number,
 ): Promise<WorkspacePipeline[]> {
@@ -131,10 +140,3 @@ export async function fetchWorkspaceAuditLogs(
   return res.json()
 }
 
-export async function fetchWorkspaceWorkflows(
-  workspaceId: number,
-): Promise<WorkflowExecution[]> {
-  const res = await authFetch(`${BASE}/workspaces/${workspaceId}/workflow`)
-  if (!res.ok) return []
-  return res.json()
-}

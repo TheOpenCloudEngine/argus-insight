@@ -2,15 +2,12 @@
 
 import { Fragment, useEffect, useState } from "react"
 import {
-  CheckCircle2,
-  Circle,
   Database,
   ExternalLink,
   Eye,
   EyeOff,
   FolderGit2,
   Loader2,
-  Network,
   Plus,
   Search,
   Server,
@@ -19,7 +16,6 @@ import {
   UserMinus,
   UserPlus,
   Workflow,
-  XCircle,
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@workspace/ui/components/tabs"
 import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar"
@@ -44,8 +40,6 @@ import type {
   WorkspaceResponse,
   WorkspaceMember,
   WorkspaceService,
-  WorkflowExecution,
-  WorkflowStep,
 } from "@/features/workspaces/types"
 import {
   Dialog,
@@ -58,10 +52,10 @@ import { Checkbox } from "@workspace/ui/components/checkbox"
 import { Input } from "@workspace/ui/components/input"
 import {
   bulkAddWorkspaceMembers,
+  deleteWorkspaceService,
   fetchWorkspaceAuditLogs,
   fetchWorkspaceMembers,
   fetchWorkspaceServices,
-  fetchWorkspaceWorkflows,
   removeWorkspaceMember,
 } from "@/features/workspaces/api"
 import { authFetch } from "@/features/auth/auth-fetch"
@@ -117,48 +111,6 @@ function ResourceCard({ label, value, icon }: ResourceItem) {
   )
 }
 
-function workflowStatusBadge(status: string) {
-  switch (status) {
-    case "completed":
-      return (
-        <Badge className="bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-900 dark:text-green-200">
-          completed
-        </Badge>
-      )
-    case "failed":
-      return (
-        <Badge className="bg-red-100 text-red-800 hover:bg-red-100 dark:bg-red-900 dark:text-red-200">
-          failed
-        </Badge>
-      )
-    case "running":
-      return (
-        <Badge className="animate-pulse bg-blue-100 text-blue-800 hover:bg-blue-100 dark:bg-blue-900 dark:text-blue-200">
-          running
-        </Badge>
-      )
-    default:
-      return (
-        <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200">
-          {status}
-        </Badge>
-      )
-  }
-}
-
-function stepIcon(status: string) {
-  switch (status) {
-    case "completed":
-      return <CheckCircle2 className="h-4 w-4 text-green-600" />
-    case "failed":
-      return <XCircle className="h-4 w-4 text-red-600" />
-    case "running":
-      return <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-    default:
-      return <Circle className="h-4 w-4 text-gray-400" />
-  }
-}
-
 function roleBadge(role: string) {
   if (role === "WorkspaceAdmin") {
     return (
@@ -179,6 +131,14 @@ function roleBadge(role: string) {
 function ResourcesTab({ workspace }: { workspace: WorkspaceResponse }) {
   const [services, setServices] = useState<WorkspaceService[]>([])
   const [loading, setLoading] = useState(true)
+
+  const loadServices = () => {
+    setLoading(true)
+    fetchWorkspaceServices(workspace.id)
+      .then(setServices)
+      .catch(() => setServices([]))
+      .finally(() => setLoading(false))
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -215,17 +175,48 @@ function ResourcesTab({ workspace }: { workspace: WorkspaceResponse }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {services.map((svc) => (
-        <ServiceCard key={svc.id} svc={svc} icon={serviceIcon(svc.plugin_name)} workspaceName={workspace.name} />
+        <ServiceCard
+          key={svc.id}
+          svc={svc}
+          icon={serviceIcon(svc.plugin_name)}
+          workspaceName={workspace.name}
+          workspaceId={workspace.id}
+          onDeleted={loadServices}
+        />
       ))}
     </div>
   )
 }
 
-function ServiceCard({ svc, icon, workspaceName }: { svc: WorkspaceService; icon: React.ReactNode; workspaceName: string }) {
+function ServiceCard({
+  svc, icon, workspaceName, workspaceId, onDeleted,
+}: {
+  svc: WorkspaceService
+  icon: React.ReactNode
+  workspaceName: string
+  workspaceId: number
+  onDeleted: () => void
+}) {
+  const NON_DELETABLE = ["argus-gitlab", "argus-minio-workspace"]
+  const canDelete = !NON_DELETABLE.includes(svc.plugin_name)
+
   const [showPassword, setShowPassword] = useState(false)
   const [showToken, setShowToken] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const handleDelete = async () => {
+    setDeleting(true)
+    try {
+      await deleteWorkspaceService(workspaceId, svc.id)
+      setDeleteOpen(false)
+      onDeleted()
+    } catch { /* ignore */ }
+    finally { setDeleting(false) }
+  }
 
   return (
+    <>
     <Card className="hover:border-primary/30 transition-colors">
       <CardContent className="pt-4 pb-3 space-y-2.5">
         {/* Header */}
@@ -237,17 +228,29 @@ function ServiceCard({ svc, icon, workspaceName }: { svc: WorkspaceService; icon
               <p className="text-xs text-muted-foreground">v{svc.version}</p>
             </div>
           </div>
-          <Badge
-            className={
-              svc.status === "running"
-                ? "bg-green-100 text-green-800 hover:bg-green-100 text-sm"
-                : svc.status === "failed"
-                  ? "bg-red-100 text-red-800 hover:bg-red-100 text-sm"
-                  : "text-sm"
-            }
-          >
-            {svc.status}
-          </Badge>
+          <div className="flex items-center gap-1.5">
+            <Badge
+              className={
+                svc.status === "running"
+                  ? "bg-green-100 text-green-800 hover:bg-green-100 text-sm"
+                  : svc.status === "failed"
+                    ? "bg-red-100 text-red-800 hover:bg-red-100 text-sm"
+                    : "text-sm"
+              }
+            >
+              {svc.status}
+            </Badge>
+            {canDelete && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                onClick={() => setDeleteOpen(true)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Connection Info + Metadata */}
@@ -339,6 +342,41 @@ function ServiceCard({ svc, icon, workspaceName }: { svc: WorkspaceService; icon
         </dl>
       </CardContent>
     </Card>
+
+    {/* Delete Service Confirm Dialog */}
+    <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Delete Resource</DialogTitle>
+          <DialogDescription>
+            이 리소스를 삭제하시겠습니까?
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex items-center gap-3 py-2">
+          {icon}
+          <div>
+            <p className="font-medium text-sm">{svc.display_name || svc.plugin_name}</p>
+            {svc.endpoint && (
+              <p className="text-xs text-muted-foreground break-all">{svc.endpoint}</p>
+            )}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+            {deleting ? (
+              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4 mr-1.5" />
+            )}
+            Delete
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }
 
@@ -642,109 +680,6 @@ function MembersTab({
   )
 }
 
-// ---------- Workflows Tab ----------
-
-function WorkflowsTab({ workspace }: { workspace: WorkspaceResponse }) {
-  const [workflows, setWorkflows] = useState<WorkflowExecution[]>([])
-  const [loading, setLoading] = useState(true)
-  const [expandedId, setExpandedId] = useState<number | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    fetchWorkspaceWorkflows(workspace.id)
-      .then((data) => {
-        if (!cancelled) setWorkflows(data)
-      })
-      .catch(() => {
-        if (!cancelled) setWorkflows([])
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [workspace.id])
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
-        <span className="text-muted-foreground ml-2 text-sm">Loading workflows...</span>
-      </div>
-    )
-  }
-
-  if (workflows.length === 0) {
-    return (
-      <div className="text-muted-foreground py-12 text-center text-sm">
-        No workflow executions
-      </div>
-    )
-  }
-
-  return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Workflow</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Created At</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {workflows.map((wf) => (
-            <tbody key={wf.id}>
-              <TableRow
-                className={`cursor-pointer ${expandedId === wf.id ? "bg-muted/50" : ""}`}
-                onClick={() => setExpandedId(expandedId === wf.id ? null : wf.id)}
-              >
-                <TableCell className="font-medium">{wf.workflow_name}</TableCell>
-                <TableCell>{workflowStatusBadge(wf.status)}</TableCell>
-                <TableCell className="text-sm">{formatDateTime(wf.created_at)}</TableCell>
-              </TableRow>
-
-              {expandedId === wf.id && (
-                <TableRow>
-                  <TableCell colSpan={3} className="bg-muted/30 p-4">
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-semibold">Step Details</h4>
-                      <ol className="space-y-1.5">
-                        {wf.steps
-                          .sort((a, b) => a.step_order - b.step_order)
-                          .map((step) => (
-                            <li
-                              key={step.id}
-                              className="flex items-center gap-3 text-sm"
-                            >
-                              {stepIcon(step.status)}
-                              <span className="min-w-[200px] font-medium">
-                                {step.step_name}
-                              </span>
-                              {step.status === "failed" && step.error_message && (
-                                <span className="text-xs text-red-600">
-                                  {step.error_message}
-                                </span>
-                              )}
-                            </li>
-                          ))}
-                      </ol>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
-            </tbody>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  )
-}
-
-// ---------- Main Component ----------
-
 // ---------- Audit Log Tab ----------
 
 const ACTION_LABELS: Record<string, string> = {
@@ -752,6 +687,14 @@ const ACTION_LABELS: Record<string, string> = {
   workspace_deleted: "Workspace Deleted",
   member_added: "Member Added",
   member_removed: "Member Removed",
+  service_added: "Service Added",
+  service_deleted: "Service Deleted",
+  workflow_started: "Workflow Started",
+  workflow_completed: "Workflow Completed",
+  workflow_failed: "Workflow Failed",
+  step_started: "Step Started",
+  step_completed: "Step Completed",
+  step_failed: "Step Failed",
 }
 
 function actionBadge(action: string) {
@@ -760,12 +703,42 @@ function actionBadge(action: string) {
     workspace_deleted: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
     member_added: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
     member_removed: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+    service_added: "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200",
+    service_deleted: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
+    workflow_started: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200",
+    workflow_completed: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+    workflow_failed: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+    step_started: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+    step_completed: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+    step_failed: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
   }
   return (
     <Badge className={`${colors[action] ?? ""} hover:${colors[action] ?? ""}`}>
       {ACTION_LABELS[action] ?? action}
     </Badge>
   )
+}
+
+function auditDetailSummary(action: string, detail: Record<string, unknown> | null): string | null {
+  if (!detail) return null
+  switch (action) {
+    case "workflow_started":
+      return `${detail.workflow_name} (${(detail.steps as string[])?.length ?? 0} steps)`
+    case "workflow_completed":
+      return `${detail.workflow_name} (${detail.steps_completed} steps, ${detail.duration_sec}s)`
+    case "workflow_failed":
+      return `${detail.workflow_name} — ${detail.failed_step ?? detail.failed_steps} failed`
+    case "step_started":
+    case "step_completed":
+      return `${detail.step_name}`
+    case "step_failed":
+      return `${detail.step_name}: ${detail.error}`
+    case "service_added":
+    case "service_deleted":
+      return `${detail.display_name ?? detail.plugin_name}${detail.endpoint ? ` → ${detail.endpoint}` : ""}`
+    default:
+      return null
+  }
 }
 
 function AuditLogTab({ workspace }: { workspace: WorkspaceResponse }) {
@@ -811,17 +784,24 @@ function AuditLogTab({ workspace }: { workspace: WorkspaceResponse }) {
               <TableHead>Action</TableHead>
               <TableHead>Actor</TableHead>
               <TableHead>Target User</TableHead>
+              <TableHead>Detail</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {logs.map((log) => (
-              <TableRow key={log.id}>
-                <TableCell className="text-sm font-mono">{formatDateTime(log.created_at)}</TableCell>
-                <TableCell>{actionBadge(log.action)}</TableCell>
-                <TableCell className="text-sm">{log.actor_username ?? "—"}</TableCell>
-                <TableCell className="text-sm">{log.target_username ?? "—"}</TableCell>
-              </TableRow>
-            ))}
+            {logs.map((log) => {
+              const detail = auditDetailSummary(log.action, log.detail)
+              return (
+                <TableRow key={log.id}>
+                  <TableCell className="text-sm font-mono">{formatDateTime(log.created_at)}</TableCell>
+                  <TableCell>{actionBadge(log.action)}</TableCell>
+                  <TableCell className="text-sm">{log.actor_username ?? "—"}</TableCell>
+                  <TableCell className="text-sm">{log.target_username ?? "—"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground max-w-[300px] truncate" title={detail ?? undefined}>
+                    {detail ?? "—"}
+                  </TableCell>
+                </TableRow>
+              )
+            })}
           </TableBody>
         </Table>
       </div>
@@ -860,7 +840,6 @@ export function WorkspaceDetail({ workspace, onRefresh }: WorkspaceDetailProps) 
       <TabsList>
         <TabsTrigger value="resources">Resources</TabsTrigger>
         <TabsTrigger value="members">Members</TabsTrigger>
-        <TabsTrigger value="workflows">Workflows</TabsTrigger>
         <TabsTrigger value="audit">Audit Log</TabsTrigger>
       </TabsList>
 
@@ -870,10 +849,6 @@ export function WorkspaceDetail({ workspace, onRefresh }: WorkspaceDetailProps) 
 
       <TabsContent value="members" className="mt-4">
         <MembersTab workspace={workspace} onRefresh={onRefresh} />
-      </TabsContent>
-
-      <TabsContent value="workflows" className="mt-4">
-        <WorkflowsTab workspace={workspace} />
       </TabsContent>
 
       <TabsContent value="audit" className="mt-4">

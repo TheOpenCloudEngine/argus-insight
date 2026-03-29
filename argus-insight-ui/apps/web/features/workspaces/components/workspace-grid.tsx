@@ -8,7 +8,6 @@ import {
   MoreHorizontal,
   Rocket,
   Search,
-  SkipForward,
   Trash2,
   XCircle,
 } from "lucide-react"
@@ -45,11 +44,11 @@ import {
   SelectValue,
 } from "@workspace/ui/components/select"
 
-import type { WorkflowExecution, WorkflowStep, WorkspaceResponse } from "@/features/workspaces/types"
+import type { AuditLog, WorkspaceResponse } from "@/features/workspaces/types"
 import {
   deleteWorkspace,
   fetchWorkspaces,
-  fetchWorkspaceWorkflows,
+  fetchWorkspaceAuditLogs,
 } from "@/features/workspaces/api"
 import { authFetch } from "@/features/auth/auth-fetch"
 
@@ -78,16 +77,14 @@ function statusColor(status: string) {
   }
 }
 
-function stepIcon(status: string) {
-  switch (status) {
-    case "completed":
+function auditStepIcon(action: string) {
+  switch (action) {
+    case "step_completed":
       return <CheckCircle2 className="h-4 w-4 text-green-600" />
-    case "failed":
+    case "step_failed":
       return <XCircle className="h-4 w-4 text-red-600" />
-    case "running":
+    case "step_started":
       return <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-    case "skipped":
-      return <SkipForward className="h-4 w-4 text-gray-400" />
     default:
       return <Circle className="h-4 w-4 text-gray-400" />
   }
@@ -116,7 +113,7 @@ export function WorkspaceGrid({ onSelect, onDeleted, refreshKey, onAddWorkspace 
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("")
   const [deploying, setDeploying] = useState(false)
   const [deployPhase, setDeployPhase] = useState<"select" | "progress" | "done" | "error">("select")
-  const [deploySteps, setDeploySteps] = useState<WorkflowStep[]>([])
+  const [deploySteps, setDeploySteps] = useState<AuditLog[]>([])
   const [deployError, setDeployError] = useState<string | null>(null)
   const deployPollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -124,7 +121,7 @@ export function WorkspaceGrid({ onSelect, onDeleted, refreshKey, onAddWorkspace 
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmTarget, setConfirmTarget] = useState<WorkspaceResponse | null>(null)
   const [deletePhase, setDeletePhase] = useState<"confirm" | "progress" | "done" | "error">("confirm")
-  const [deleteSteps, setDeleteSteps] = useState<WorkflowStep[]>([])
+  const [deleteSteps, setDeleteSteps] = useState<AuditLog[]>([])
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -197,28 +194,37 @@ export function WorkspaceGrid({ onSelect, onDeleted, refreshKey, onAddWorkspace 
       return
     }
 
-    // Poll for workflow progress
+    // Poll audit logs for workflow progress
     const wsId = deployTarget.id
     deployPollingRef.current = setInterval(async () => {
       try {
-        const workflows = await fetchWorkspaceWorkflows(wsId)
-        // Get the latest provision workflow
-        const provWf = workflows.find((w) => w.workflow_name === "workspace-provision")
-        if (provWf) {
-          setDeploySteps(provWf.steps.sort((a, b) => a.step_order - b.step_order))
-          if (provWf.status === "completed") {
-            if (deployPollingRef.current) clearInterval(deployPollingRef.current)
-            deployPollingRef.current = null
-            setDeployPhase("done")
-            setDeploying(false)
-            await loadWorkspaces(false, appliedSearch)
-          } else if (provWf.status === "failed") {
-            if (deployPollingRef.current) clearInterval(deployPollingRef.current)
-            deployPollingRef.current = null
-            setDeployError(provWf.error_message || "Deployment failed")
-            setDeployPhase("error")
-            setDeploying(false)
-          }
+        const data = await fetchWorkspaceAuditLogs(wsId, 1, 50)
+        const stepLogs = data.items.filter((l) =>
+          ["step_started", "step_completed", "step_failed"].includes(l.action) &&
+          (l.detail as Record<string, unknown>)?.workflow_name === "workspace-provision"
+        )
+        setDeploySteps(stepLogs.reverse())
+
+        const completed = data.items.find((l) =>
+          l.action === "workflow_completed" &&
+          (l.detail as Record<string, unknown>)?.workflow_name === "workspace-provision"
+        )
+        const failed = data.items.find((l) =>
+          l.action === "workflow_failed" &&
+          (l.detail as Record<string, unknown>)?.workflow_name === "workspace-provision"
+        )
+        if (completed) {
+          if (deployPollingRef.current) clearInterval(deployPollingRef.current)
+          deployPollingRef.current = null
+          setDeployPhase("done")
+          setDeploying(false)
+          await loadWorkspaces(false, appliedSearch)
+        } else if (failed) {
+          if (deployPollingRef.current) clearInterval(deployPollingRef.current)
+          deployPollingRef.current = null
+          setDeployError(String((failed.detail as Record<string, unknown>)?.error || "Deployment failed"))
+          setDeployPhase("error")
+          setDeploying(false)
         }
       } catch { /* ignore */ }
     }, 2000)
@@ -255,32 +261,39 @@ export function WorkspaceGrid({ onSelect, onDeleted, refreshKey, onAddWorkspace 
       return
     }
 
-    // Start polling for workflow progress
+    // Poll audit logs for delete workflow progress
     const wsId = confirmTarget.id
     pollingRef.current = setInterval(async () => {
       try {
-        const workflows = await fetchWorkspaceWorkflows(wsId)
-        const deleteWf = workflows.find((w) => w.workflow_name === "workspace-delete")
-        if (deleteWf) {
-          setDeleteSteps(deleteWf.steps.sort((a, b) => a.step_order - b.step_order))
+        const data = await fetchWorkspaceAuditLogs(wsId, 1, 50)
+        const stepLogs = data.items.filter((l) =>
+          ["step_started", "step_completed", "step_failed"].includes(l.action) &&
+          (l.detail as Record<string, unknown>)?.workflow_name === "workspace-delete"
+        )
+        setDeleteSteps(stepLogs.reverse())
 
-          if (deleteWf.status === "completed") {
-            if (pollingRef.current) clearInterval(pollingRef.current)
-            pollingRef.current = null
-            setDeletePhase("done")
-            onDeleted(wsId)
-            await loadWorkspaces(false, appliedSearch)
-          } else if (deleteWf.status === "failed") {
-            if (pollingRef.current) clearInterval(pollingRef.current)
-            pollingRef.current = null
-            setDeleteError(deleteWf.error_message || "Deletion failed")
-            setDeletePhase("error")
-            await loadWorkspaces(false, appliedSearch)
-          }
+        const completed = data.items.find((l) =>
+          l.action === "workflow_completed" &&
+          (l.detail as Record<string, unknown>)?.workflow_name === "workspace-delete"
+        )
+        const failed = data.items.find((l) =>
+          l.action === "workflow_failed" &&
+          (l.detail as Record<string, unknown>)?.workflow_name === "workspace-delete"
+        )
+        if (completed) {
+          if (pollingRef.current) clearInterval(pollingRef.current)
+          pollingRef.current = null
+          setDeletePhase("done")
+          onDeleted(wsId)
+          await loadWorkspaces(false, appliedSearch)
+        } else if (failed) {
+          if (pollingRef.current) clearInterval(pollingRef.current)
+          pollingRef.current = null
+          setDeleteError(String((failed.detail as Record<string, unknown>)?.error || "Deletion failed"))
+          setDeletePhase("error")
+          await loadWorkspaces(false, appliedSearch)
         }
-      } catch {
-        // ignore polling errors
-      }
+      } catch { /* ignore */ }
     }, 2000)
   }, [confirmTarget, onDeleted, loadWorkspaces])
 
@@ -478,18 +491,21 @@ export function WorkspaceGrid({ onSelect, onDeleted, refreshKey, onAddWorkspace 
                   Initializing deletion...
                 </div>
               )}
-              {deleteSteps.map((step) => (
-                <div key={step.id} className="flex items-center gap-3 text-sm">
-                  {stepIcon(step.status)}
-                  <span className="flex-1 font-medium">{step.step_name}</span>
-                  <span className="text-xs text-muted-foreground">{step.status}</span>
-                  {step.status === "failed" && step.error_message && (
-                    <span className="text-xs text-red-600 truncate max-w-[150px]" title={step.error_message}>
-                      {step.error_message}
-                    </span>
-                  )}
-                </div>
-              ))}
+              {deleteSteps.map((log) => {
+                const d = log.detail as Record<string, unknown> | null
+                return (
+                  <div key={log.id} className="flex items-center gap-3 text-sm">
+                    {auditStepIcon(log.action)}
+                    <span className="flex-1 font-medium">{String(d?.step_name ?? log.action)}</span>
+                    <span className="text-xs text-muted-foreground">{log.action.replace("step_", "")}</span>
+                    {log.action === "step_failed" && d?.error && (
+                      <span className="text-xs text-red-600 truncate max-w-[150px]" title={String(d.error)}>
+                        {String(d.error)}
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
 
               {deletePhase === "done" && (
                 <div className="mt-2 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 text-sm">
@@ -574,13 +590,16 @@ export function WorkspaceGrid({ onSelect, onDeleted, refreshKey, onAddWorkspace 
                   <Loader2 className="h-4 w-4 animate-spin" /> Initializing...
                 </div>
               )}
-              {deploySteps.map((step) => (
-                <div key={step.id} className="flex items-center gap-3 text-sm">
-                  {stepIcon(step.status)}
-                  <span className="flex-1 font-medium">{step.step_name}</span>
-                  <span className="text-xs text-muted-foreground">{step.status}</span>
-                </div>
-              ))}
+              {deploySteps.map((log) => {
+                const d = log.detail as Record<string, unknown> | null
+                return (
+                  <div key={log.id} className="flex items-center gap-3 text-sm">
+                    {auditStepIcon(log.action)}
+                    <span className="flex-1 font-medium">{String(d?.step_name ?? log.action)}</span>
+                    <span className="text-xs text-muted-foreground">{log.action.replace("step_", "")}</span>
+                  </div>
+                )
+              })}
               {deployPhase === "done" && (
                 <div className="mt-2 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 text-sm">
                   All resources have been provisioned.

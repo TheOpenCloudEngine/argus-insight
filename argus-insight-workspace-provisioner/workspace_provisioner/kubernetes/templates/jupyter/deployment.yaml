@@ -1,11 +1,11 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: argus-jupyter-${WORKSPACE_NAME}
+  name: argus-jupyter-${INSTANCE_ID}
   namespace: ${K8S_NAMESPACE}
   labels:
     app.kubernetes.io/name: jupyterlab
-    app.kubernetes.io/instance: "${WORKSPACE_NAME}"
+    app.kubernetes.io/instance: "${INSTANCE_ID}"
     app.kubernetes.io/part-of: argus-insight
     argus-insight/workspace: ${WORKSPACE_NAME}
 spec:
@@ -13,12 +13,12 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: jupyterlab
-      app.kubernetes.io/instance: "${WORKSPACE_NAME}"
+      app.kubernetes.io/instance: "${INSTANCE_ID}"
   template:
     metadata:
       labels:
         app.kubernetes.io/name: jupyterlab
-        app.kubernetes.io/instance: "${WORKSPACE_NAME}"
+        app.kubernetes.io/instance: "${INSTANCE_ID}"
         app.kubernetes.io/part-of: argus-insight
         argus-insight/workspace: ${WORKSPACE_NAME}
     spec:
@@ -82,12 +82,12 @@ spec:
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: argus-jupyter-${WORKSPACE_NAME}
+                  name: argus-jupyter-${INSTANCE_ID}
                   key: aws-access-key
             - name: AWS_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: argus-jupyter-${WORKSPACE_NAME}
+                  name: argus-jupyter-${INSTANCE_ID}
                   key: aws-secret-key
             - name: S3_BUCKET
               value: "${WORKSPACE_BUCKET}"
@@ -127,12 +127,12 @@ spec:
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: argus-jupyter-${WORKSPACE_NAME}
+                  name: argus-jupyter-${INSTANCE_ID}
                   key: aws-access-key
             - name: AWS_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: argus-jupyter-${WORKSPACE_NAME}
+                  name: argus-jupyter-${INSTANCE_ID}
                   key: aws-secret-key
             - name: S3_BUCKET
               value: "${USER_BUCKET}"

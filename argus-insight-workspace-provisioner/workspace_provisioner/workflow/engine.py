@@ -3,7 +3,7 @@
 Provides the core abstractions for defining and executing multi-step workflows:
 - WorkflowStep: Abstract base class for individual steps.
 - WorkflowContext: Shared state passed between steps.
-- WorkflowExecutor: Runs a sequence of steps, tracking state in the database.
+- WorkflowExecutor: Runs a sequence of steps, writing progress to audit logs.
 
 Steps are executed sequentially. Each step can read/write to the shared context,
 allowing later steps to use outputs from earlier steps (e.g., GitLab project ID).
@@ -15,18 +15,14 @@ Usage:
     await executor.run(workspace_id=1, workflow_name="workspace-provision")
 """
 
-import json
 import logging
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from workspace_provisioner.workflow.models import (
-    ArgusWorkflowExecution,
-    ArgusWorkflowStepExecution,
-)
+from workspace_provisioner.models import ArgusWorkspaceAuditLog
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +33,6 @@ class WorkflowContext:
     Steps read inputs and write outputs through this context object.
     The context is initialized with workspace metadata and accumulates
     results as each step completes.
-
-    Attributes:
-        workspace_id: The workspace being provisioned.
-        workspace_name: Workspace slug name.
-        domain: Domain suffix (e.g., "dev.net").
-        data: Free-form dictionary for step inputs/outputs.
     """
 
     def __init__(
@@ -83,51 +73,39 @@ class WorkflowStep(ABC):
 
     @abstractmethod
     async def execute(self, ctx: WorkflowContext) -> dict | None:
-        """Execute the step.
-
-        Args:
-            ctx: Shared workflow context for reading inputs and writing outputs.
-
-        Returns:
-            Optional dict of result data to persist in the step execution record.
-
-        Raises:
-            Exception: Any exception will mark the step (and workflow) as failed.
-        """
+        """Execute the step."""
 
     async def rollback(self, ctx: WorkflowContext) -> None:
-        """Rollback this step's changes. Called on workflow failure.
-
-        Default implementation is a no-op. Override in subclasses that
-        create resources which should be cleaned up on failure.
-        """
+        """Rollback this step's changes. Called on workflow failure."""
 
     async def teardown(self, ctx: WorkflowContext) -> dict | None:
-        """Tear down resources created by this step during workspace deletion.
-
-        Unlike rollback() which handles immediate provisioning failures,
-        teardown() handles graceful deletion of long-running resources
-        (e.g., draining a bucket with production data before deleting).
-
-        Default implementation delegates to rollback() for backward
-        compatibility.
-
-        Args:
-            ctx: Shared workflow context populated from DB credentials.
-
-        Returns:
-            Optional dict of result data to persist.
-        """
+        """Tear down resources created by this step during workspace deletion."""
         await self.rollback(ctx)
         return None
 
 
+@dataclass
+class StepResult:
+    """Result of a single step execution."""
+    step_name: str
+    step_order: int
+    status: str  # "completed", "failed", "skipped"
+    error_message: str | None = None
+
+
+@dataclass
+class WorkflowResult:
+    """Result of a workflow execution."""
+    status: str  # "completed", "failed"
+    error_message: str | None = None
+    steps: list[StepResult] = field(default_factory=list)
+
+
 class WorkflowExecutor:
-    """Executes a sequence of WorkflowSteps and tracks state in the database.
+    """Executes a sequence of WorkflowSteps, tracking progress via audit logs.
 
     Steps are added via add_step() and executed in order by run().
-    Each step's status is persisted to argus_workflow_step_executions,
-    and the overall workflow status is tracked in argus_workflow_executions.
+    Progress is recorded to argus_workspace_audit_logs for monitoring.
     """
 
     def __init__(self, session: AsyncSession) -> None:
@@ -139,155 +117,137 @@ class WorkflowExecutor:
         self._steps.append(step)
         return self
 
+    async def _audit(
+        self, ctx: WorkflowContext, action: str, detail: dict | None = None,
+    ) -> None:
+        """Write an audit log entry for a workflow event."""
+        entry = ArgusWorkspaceAuditLog(
+            workspace_id=ctx.workspace_id,
+            workspace_name=ctx.workspace_name,
+            action=action,
+            detail=detail,
+        )
+        self._session.add(entry)
+        await self._session.commit()
+
     async def run(
         self,
         workspace_id: int,
         workflow_name: str,
         ctx: WorkflowContext,
         include_steps: list[str] | None = None,
-    ) -> ArgusWorkflowExecution:
+    ) -> WorkflowResult:
         """Execute all steps sequentially.
 
-        Creates workflow and step execution records, runs each step,
-        and updates statuses in real-time. If a step fails, subsequent
-        steps are skipped and rollback is attempted for completed steps.
-
-        Args:
-            workspace_id: The workspace to provision.
-            workflow_name: Identifier for this workflow type.
-            ctx: Pre-built workflow context with workspace metadata.
-            include_steps: If provided, only steps whose name is in this
-                list will be executed. Steps not in the list are recorded
-                with status "skipped". Pass ``None`` (default) to run all
-                steps.
-
-        Returns:
-            The ArgusWorkflowExecution record with final status.
+        If a step fails, subsequent steps are skipped and rollback is
+        attempted for completed steps. Progress is recorded via audit logs.
         """
         include_set: set[str] | None = set(include_steps) if include_steps else None
-        now = datetime.now(timezone.utc)
+        started_at = datetime.now(timezone.utc)
 
-        # Create workflow execution record
-        execution = ArgusWorkflowExecution(
-            workspace_id=workspace_id,
-            workflow_name=workflow_name,
-            status="running",
-            started_at=now,
-        )
-        self._session.add(execution)
-        await self._session.commit()
-        await self._session.refresh(execution)
+        step_names = [s.name for s in self._steps]
+        await self._audit(ctx, "workflow_started", {
+            "workflow_name": workflow_name,
+            "steps": step_names,
+        })
 
-        # Create step execution records
-        step_records: list[ArgusWorkflowStepExecution] = []
-        for i, step in enumerate(self._steps):
-            step_record = ArgusWorkflowStepExecution(
-                execution_id=execution.id,
-                step_name=step.name,
-                step_order=i,
-                status="pending",
-            )
-            self._session.add(step_record)
-            step_records.append(step_record)
-        await self._session.commit()
-        for sr in step_records:
-            await self._session.refresh(sr)
-
-        # Execute steps sequentially
-        completed_steps: list[tuple[WorkflowStep, ArgusWorkflowStepExecution]] = []
+        completed_steps: list[WorkflowStep] = []
+        result = WorkflowResult(status="completed")
         failed = False
 
-        for i, (step, step_record) in enumerate(zip(self._steps, step_records)):
+        for i, step in enumerate(self._steps):
             if failed:
-                step_record.status = "skipped"
-                await self._session.commit()
+                result.steps.append(StepResult(
+                    step_name=step.name, step_order=i, status="skipped",
+                ))
                 continue
 
-            # Skip steps not in include_steps filter
             if include_set is not None and step.name not in include_set:
-                step_record.status = "skipped"
-                await self._session.commit()
+                result.steps.append(StepResult(
+                    step_name=step.name, step_order=i, status="skipped",
+                ))
                 logger.info(
                     "Workflow %s step [%d/%d] %s: skipped (not in include_steps)",
-                    workflow_name,
-                    i + 1,
-                    len(self._steps),
-                    step.name,
+                    workflow_name, i + 1, len(self._steps), step.name,
                 )
                 continue
-
-            step_record.status = "running"
-            step_record.started_at = datetime.now(timezone.utc)
-            await self._session.commit()
 
             logger.info(
                 "Workflow %s step [%d/%d] %s: starting",
-                workflow_name,
-                i + 1,
-                len(self._steps),
-                step.name,
+                workflow_name, i + 1, len(self._steps), step.name,
             )
 
+            await self._audit(ctx, "step_started", {
+                "workflow_name": workflow_name,
+                "step_name": step.name,
+                "step_order": i,
+            })
+
             try:
-                result = await step.execute(ctx)
-                step_record.status = "completed"
-                step_record.finished_at = datetime.now(timezone.utc)
-                if result:
-                    step_record.result_data = json.dumps(result, ensure_ascii=False)
-                await self._session.commit()
-                completed_steps.append((step, step_record))
+                step_result = await step.execute(ctx)
+                completed_steps.append(step)
+                result.steps.append(StepResult(
+                    step_name=step.name, step_order=i, status="completed",
+                ))
                 logger.info(
                     "Workflow %s step [%d/%d] %s: completed",
-                    workflow_name,
-                    i + 1,
-                    len(self._steps),
-                    step.name,
+                    workflow_name, i + 1, len(self._steps), step.name,
                 )
+                await self._audit(ctx, "step_completed", {
+                    "workflow_name": workflow_name,
+                    "step_name": step.name,
+                    "step_order": i,
+                })
             except Exception as e:
-                step_record.status = "failed"
-                step_record.finished_at = datetime.now(timezone.utc)
-                step_record.error_message = str(e)
-                await self._session.commit()
                 failed = True
+                result.steps.append(StepResult(
+                    step_name=step.name, step_order=i, status="failed",
+                    error_message=str(e),
+                ))
                 logger.error(
                     "Workflow %s step [%d/%d] %s: failed - %s",
-                    workflow_name,
-                    i + 1,
-                    len(self._steps),
-                    step.name,
-                    e,
+                    workflow_name, i + 1, len(self._steps), step.name, e,
                 )
 
+                await self._audit(ctx, "step_failed", {
+                    "workflow_name": workflow_name,
+                    "step_name": step.name,
+                    "step_order": i,
+                    "error": str(e),
+                })
+
                 # Attempt rollback of completed steps in reverse order
-                for rollback_step, _ in reversed(completed_steps):
+                for rollback_step in reversed(completed_steps):
                     try:
                         await rollback_step.rollback(ctx)
-                        logger.info(
-                            "Workflow %s step %s: rollback completed",
-                            workflow_name,
-                            rollback_step.name,
-                        )
+                        logger.info("Workflow %s step %s: rollback completed",
+                                    workflow_name, rollback_step.name)
                     except Exception as re:
-                        logger.error(
-                            "Workflow %s step %s: rollback failed - %s",
-                            workflow_name,
-                            rollback_step.name,
-                            re,
-                        )
+                        logger.error("Workflow %s step %s: rollback failed - %s",
+                                     workflow_name, rollback_step.name, re)
 
-                execution.status = "failed"
-                execution.finished_at = datetime.now(timezone.utc)
-                execution.error_message = f"Step '{step.name}' failed: {e}"
-                await self._session.commit()
+                duration = (datetime.now(timezone.utc) - started_at).total_seconds()
+                result.status = "failed"
+                result.error_message = f"Step '{step.name}' failed: {e}"
+                await self._audit(ctx, "workflow_failed", {
+                    "workflow_name": workflow_name,
+                    "failed_step": step.name,
+                    "error": str(e),
+                    "steps_completed": len(completed_steps),
+                    "steps_total": len(self._steps),
+                    "duration_sec": int(duration),
+                })
 
         if not failed:
-            execution.status = "completed"
-            execution.finished_at = datetime.now(timezone.utc)
-            await self._session.commit()
+            duration = (datetime.now(timezone.utc) - started_at).total_seconds()
             logger.info("Workflow %s: completed successfully", workflow_name)
+            await self._audit(ctx, "workflow_completed", {
+                "workflow_name": workflow_name,
+                "steps_completed": len(completed_steps),
+                "duration_sec": int(duration),
+            })
 
-        await self._session.refresh(execution)
-        return execution
+        return result
 
     async def run_teardown(
         self,
@@ -295,133 +255,96 @@ class WorkflowExecutor:
         workflow_name: str,
         ctx: WorkflowContext,
         include_steps: list[str] | None = None,
-    ) -> ArgusWorkflowExecution:
+    ) -> WorkflowResult:
         """Execute teardown for all steps in reverse order (best-effort).
 
         Unlike run(), teardown continues executing remaining steps even if
-        one fails. This ensures maximum cleanup — e.g., if KServe deletion
-        fails, MinIO and GitLab are still cleaned up.
-
-        Args:
-            workspace_id: The workspace being deleted.
-            workflow_name: Identifier (e.g., "workspace-delete").
-            ctx: Workflow context populated from DB credentials.
-            include_steps: If provided, only teardown steps in this list.
-
-        Returns:
-            The ArgusWorkflowExecution record with final status.
+        one fails. This ensures maximum cleanup.
         """
         include_set: set[str] | None = set(include_steps) if include_steps else None
-        now = datetime.now(timezone.utc)
-
-        # Steps run in reverse order for teardown
+        started_at = datetime.now(timezone.utc)
         steps_reversed = list(reversed(self._steps))
 
-        execution = ArgusWorkflowExecution(
-            workspace_id=workspace_id,
-            workflow_name=workflow_name,
-            status="running",
-            started_at=now,
-        )
-        self._session.add(execution)
-        await self._session.commit()
-        await self._session.refresh(execution)
+        step_names = [s.name for s in steps_reversed]
+        await self._audit(ctx, "workflow_started", {
+            "workflow_name": workflow_name,
+            "steps": step_names,
+        })
 
-        step_records: list[ArgusWorkflowStepExecution] = []
-        for i, step in enumerate(steps_reversed):
-            step_record = ArgusWorkflowStepExecution(
-                execution_id=execution.id,
-                step_name=step.name,
-                step_order=i,
-                status="pending",
-            )
-            self._session.add(step_record)
-            step_records.append(step_record)
-        await self._session.commit()
-        for sr in step_records:
-            await self._session.refresh(sr)
-
+        result = WorkflowResult(status="completed")
         failed_steps: list[str] = []
 
-        for i, (step, step_record) in enumerate(zip(steps_reversed, step_records)):
-            # Skip steps not in include_steps filter
+        for i, step in enumerate(steps_reversed):
             if include_set is not None and step.name not in include_set:
-                step_record.status = "skipped"
-                await self._session.commit()
+                result.steps.append(StepResult(
+                    step_name=step.name, step_order=i, status="skipped",
+                ))
                 logger.info(
                     "Workflow %s step [%d/%d] %s: skipped (not in include_steps)",
                     workflow_name, i + 1, len(steps_reversed), step.name,
                 )
                 continue
 
-            step_record.status = "running"
-            step_record.started_at = datetime.now(timezone.utc)
-            await self._session.commit()
-
             logger.info(
                 "Workflow %s step [%d/%d] %s: tearing down",
                 workflow_name, i + 1, len(steps_reversed), step.name,
             )
 
+            await self._audit(ctx, "step_started", {
+                "workflow_name": workflow_name,
+                "step_name": step.name,
+                "step_order": i,
+            })
+
             try:
-                result = await step.teardown(ctx)
-                step_record.status = "completed"
-                step_record.finished_at = datetime.now(timezone.utc)
-                if result:
-                    step_record.result_data = json.dumps(result, ensure_ascii=False)
-                await self._session.commit()
+                await step.teardown(ctx)
+                result.steps.append(StepResult(
+                    step_name=step.name, step_order=i, status="completed",
+                ))
                 logger.info(
                     "Workflow %s step [%d/%d] %s: teardown completed",
                     workflow_name, i + 1, len(steps_reversed), step.name,
                 )
+                await self._audit(ctx, "step_completed", {
+                    "workflow_name": workflow_name,
+                    "step_name": step.name,
+                    "step_order": i,
+                })
             except Exception as e:
-                step_record.status = "failed"
-                step_record.finished_at = datetime.now(timezone.utc)
-                step_record.error_message = str(e)
-                await self._session.commit()
                 failed_steps.append(step.name)
+                result.steps.append(StepResult(
+                    step_name=step.name, step_order=i, status="failed",
+                    error_message=str(e),
+                ))
                 logger.error(
                     "Workflow %s step [%d/%d] %s: teardown failed - %s "
                     "(continuing with remaining steps)",
                     workflow_name, i + 1, len(steps_reversed), step.name, e,
                 )
-                # Best-effort: do NOT break, continue with remaining steps
+                await self._audit(ctx, "step_failed", {
+                    "workflow_name": workflow_name,
+                    "step_name": step.name,
+                    "step_order": i,
+                    "error": str(e),
+                })
 
+        duration = (datetime.now(timezone.utc) - started_at).total_seconds()
         if failed_steps:
-            execution.status = "failed"
-            execution.error_message = f"Teardown failed for steps: {', '.join(failed_steps)}"
+            result.status = "failed"
+            result.error_message = f"Teardown failed for steps: {', '.join(failed_steps)}"
+            await self._audit(ctx, "workflow_failed", {
+                "workflow_name": workflow_name,
+                "failed_steps": failed_steps,
+                "steps_completed": len(steps_reversed) - len(failed_steps),
+                "steps_total": len(steps_reversed),
+                "duration_sec": int(duration),
+            })
         else:
-            execution.status = "completed"
-        execution.finished_at = datetime.now(timezone.utc)
-        await self._session.commit()
-
-        if not failed_steps:
             logger.info("Workflow %s: teardown completed successfully", workflow_name)
-        else:
-            logger.error(
-                "Workflow %s: teardown completed with errors: %s",
-                workflow_name, ", ".join(failed_steps),
-            )
+            await self._audit(ctx, "workflow_completed", {
+                "workflow_name": workflow_name,
+                "steps_completed": len(steps_reversed),
+                "duration_sec": int(duration),
+            })
 
-        await self._session.refresh(execution)
-        return execution
-
-    async def get_execution(self, execution_id: int) -> ArgusWorkflowExecution | None:
-        """Look up a workflow execution by ID."""
-        result = await self._session.execute(
-            select(ArgusWorkflowExecution).where(
-                ArgusWorkflowExecution.id == execution_id
-            )
-        )
-        return result.scalars().first()
-
-    async def get_step_executions(
-        self, execution_id: int
-    ) -> list[ArgusWorkflowStepExecution]:
-        """Get all step executions for a workflow execution, ordered by step_order."""
-        result = await self._session.execute(
-            select(ArgusWorkflowStepExecution)
-            .where(ArgusWorkflowStepExecution.execution_id == execution_id)
-            .order_by(ArgusWorkflowStepExecution.step_order)
-        )
-        return list(result.scalars().all())
+        return result

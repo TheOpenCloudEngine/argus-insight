@@ -72,7 +72,6 @@ async def lifespan(app: FastAPI):
     import app.usermgr.models  # noqa: F401
     import app.apps.models  # noqa: F401
     import workspace_provisioner.models  # noqa: F401
-    import workspace_provisioner.workflow.models  # noqa: F401
     import workspace_provisioner.plugins.models  # noqa: F401
 
     async with engine.begin() as conn:

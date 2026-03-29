@@ -443,11 +443,10 @@ CREATE TABLE IF NOT EXISTS argus_workspace_services (
     status          VARCHAR(20)     NOT NULL DEFAULT 'running',
     metadata        JSON,
     created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
-    UNIQUE(workspace_id, plugin_name)
+    updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
 
-COMMENT ON TABLE argus_workspace_services IS 'Service instances deployed to a workspace (one per plugin)';
+COMMENT ON TABLE argus_workspace_services IS 'Service instances deployed to a workspace (multi-instance for vscode/jupyter)';
 CREATE INDEX IF NOT EXISTS idx_ws_services_workspace ON argus_workspace_services(workspace_id);
 
 -- Workspace audit log

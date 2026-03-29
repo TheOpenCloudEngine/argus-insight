@@ -38,7 +38,6 @@ from workspace_provisioner.schemas import (
     WorkspaceMemberResponse,
     WorkspacePipelineResponse,
     WorkspaceResponse,
-    WorkflowExecutionResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -476,6 +475,29 @@ async def get_workspace_services(
     ]
 
 
+@router.delete("/workspaces/{workspace_id}/services/{service_id}")
+async def delete_workspace_service(
+    workspace_id: int,
+    service_id: int,
+    current_user: CurrentUser,
+    session: AsyncSession = Depends(get_session),
+):
+    """Delete a workspace service: teardown K8s resources, DNS, DB record, audit log."""
+    try:
+        await service.delete_workspace_service_with_teardown(
+            session=session,
+            workspace_id=workspace_id,
+            service_db_id=service_id,
+            actor_user_id=int(current_user.sub),
+            actor_username=current_user.username,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------------------
 # Pipeline association endpoints
 # ---------------------------------------------------------------------------
@@ -738,28 +760,6 @@ async def remove_member(
 
     logger.info("DELETE /workspaces/%d/members/%d - removed (with GitLab)", workspace_id, member_id)
     return {"status": "ok", "message": "Member removed"}
-
-
-# ---------------------------------------------------------------------------
-# Workflow status endpoints
-# ---------------------------------------------------------------------------
-
-@router.get(
-    "/workspaces/{workspace_id}/workflow",
-    response_model=list[WorkflowExecutionResponse],
-)
-async def get_workflow_status(
-    workspace_id: int,
-    session: AsyncSession = Depends(get_session),
-):
-    """Get provisioning workflow execution status for a workspace.
-
-    Returns all workflow executions (most recent first) with detailed
-    step-by-step status. Use this to monitor provisioning progress
-    after creating a workspace.
-    """
-    logger.info("GET /workspaces/%d/workflow", workspace_id)
-    return await service.get_workflow_status(session, workspace_id)
 
 
 # ---------------------------------------------------------------------------

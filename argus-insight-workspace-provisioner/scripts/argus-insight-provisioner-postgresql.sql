@@ -92,40 +92,5 @@ CREATE TABLE IF NOT EXISTS argus_workspace_members (
 
 CREATE INDEX IF NOT EXISTS idx_workspace_members_user ON argus_workspace_members (user_id);
 
--- ---------------------------------------------------------------------------
--- 4. argus_workflow_executions
--- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS argus_workflow_executions (
-    id              SERIAL          PRIMARY KEY,
-    workspace_id    INTEGER         NOT NULL,
-    workflow_name   VARCHAR(100)    NOT NULL,
-    status          VARCHAR(20)     NOT NULL DEFAULT 'pending',
-    started_at      TIMESTAMPTZ     DEFAULT NULL,
-    finished_at     TIMESTAMPTZ     DEFAULT NULL,
-    error_message   TEXT            DEFAULT NULL,
-    created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
-    CONSTRAINT fk_workflow_exec_workspace FOREIGN KEY (workspace_id) REFERENCES argus_workspaces (id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_workflow_exec_workspace ON argus_workflow_executions (workspace_id);
-CREATE INDEX IF NOT EXISTS idx_workflow_exec_status ON argus_workflow_executions (status);
-
--- ---------------------------------------------------------------------------
--- 5. argus_workflow_step_executions
--- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS argus_workflow_step_executions (
-    id              SERIAL          PRIMARY KEY,
-    execution_id    INTEGER         NOT NULL,
-    step_name       VARCHAR(100)    NOT NULL,
-    step_order      INTEGER         NOT NULL DEFAULT 0,
-    status          VARCHAR(20)     NOT NULL DEFAULT 'pending',
-    started_at      TIMESTAMPTZ     DEFAULT NULL,
-    finished_at     TIMESTAMPTZ     DEFAULT NULL,
-    error_message   TEXT            DEFAULT NULL,
-    result_data     TEXT            DEFAULT NULL,
-    CONSTRAINT fk_step_exec_execution FOREIGN KEY (execution_id) REFERENCES argus_workflow_executions (id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_step_exec_execution ON argus_workflow_step_executions (execution_id);
-CREATE INDEX IF NOT EXISTS idx_step_exec_order ON argus_workflow_step_executions (execution_id, step_order);
+-- (workflow_executions and workflow_step_executions removed — progress is tracked via audit logs)
 

@@ -88,10 +88,11 @@ class JupyterLabDeployStep(WorkflowStep):
             "JUPYTER_MEMORY_REQUEST": config.memory_request,
             "JUPYTER_MEMORY_LIMIT": config.memory_limit,
             "S3FS_IMAGE": config.s3fs_image,
+            "INSTANCE_ID": svc_id,
             "WORKSPACE_NAME": workspace_name,
             "K8S_NAMESPACE": namespace,
             "DOMAIN": domain,
-            "HOSTNAME": hostname,  # service_id-based hostname
+            "HOSTNAME": hostname,
             "S3_ENDPOINT": s3["endpoint"],
             "S3_ACCESS_KEY": s3["access_key"],
             "S3_SECRET_KEY": s3["secret_key"],
@@ -110,7 +111,7 @@ class JupyterLabDeployStep(WorkflowStep):
         )
         await kubectl_apply(manifests, kubeconfig=kubeconfig)
 
-        resource = f"deployment/argus-jupyter-{workspace_name}"
+        resource = f"deployment/argus-jupyter-{svc_id}"
         logger.info("Waiting for %s rollout in %s...", resource, namespace)
         ready = await kubectl_rollout_status(
             resource, namespace=namespace, timeout=180, kubeconfig=kubeconfig,
@@ -121,7 +122,7 @@ class JupyterLabDeployStep(WorkflowStep):
             )
 
         external_endpoint = f"http://{hostname}"
-        internal_endpoint = f"http://argus-jupyter-{workspace_name}.{namespace}.svc.cluster.local:8888"
+        internal_endpoint = f"http://argus-jupyter-{svc_id}.{namespace}.svc.cluster.local:8888"
 
         ctx.set("jupyter_endpoint", external_endpoint)
         ctx.set("jupyter_manifests", manifests)
@@ -169,6 +170,7 @@ class JupyterLabDeployStep(WorkflowStep):
     def _render_manifests(self, ctx: WorkflowContext) -> str:
         config: JupyterLabConfig = ctx.get("argus_jupyter_config", JupyterLabConfig())
         namespace = ctx.get("k8s_namespace", f"argus-ws-{ctx.workspace_name}")
+        instance_id = ctx.get("teardown_service_id", ctx.workspace_name)
         hostname = ctx.get(
             "jupyter_endpoint",
             f"argus-jupyter-teardown.argus-insight.{ctx.domain}",
@@ -180,6 +182,7 @@ class JupyterLabDeployStep(WorkflowStep):
             "JUPYTER_MEMORY_REQUEST": config.memory_request,
             "JUPYTER_MEMORY_LIMIT": config.memory_limit,
             "S3FS_IMAGE": config.s3fs_image,
+            "INSTANCE_ID": instance_id,
             "WORKSPACE_NAME": ctx.workspace_name,
             "K8S_NAMESPACE": namespace,
             "DOMAIN": ctx.domain,

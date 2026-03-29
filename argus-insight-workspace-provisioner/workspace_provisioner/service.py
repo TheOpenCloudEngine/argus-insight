@@ -23,8 +23,6 @@ from workspace_provisioner.models import (
 )
 from workspace_provisioner.schemas import (
     PaginatedWorkspaceResponse,
-    StepExecutionResponse,
-    WorkflowExecutionResponse,
     WorkspaceCredentialResponse,
     WorkspaceDeleteRequest,
     WorkspaceMemberAddRequest,
@@ -34,10 +32,6 @@ from workspace_provisioner.schemas import (
     WorkspaceStatus,
 )
 from workspace_provisioner.workflow.engine import WorkflowContext, WorkflowExecutor
-from workspace_provisioner.workflow.models import (
-    ArgusWorkflowExecution,
-    ArgusWorkflowStepExecution,
-)
 from workspace_provisioner.plugins.registry import PluginRegistry
 from workspace_provisioner.workflow.steps.gitlab_create_project import (
     GitLabCreateProjectStep,
@@ -85,6 +79,13 @@ async def log_audit(
                 workspace_name, action, actor_username, target_username)
 
 
+# Plugins that support multiple instances per workspace.
+MULTI_INSTANCE_PLUGINS = {
+    "argus-vscode-server",
+    "argus-jupyter", "argus-jupyter-tensorflow", "argus-jupyter-pyspark",
+}
+
+
 async def register_workspace_service(
     workspace_id: int,
     plugin_name: str,
@@ -98,48 +99,202 @@ async def register_workspace_service(
     metadata: dict | None = None,
     service_id: str | None = None,
 ) -> None:
-    """Register or update a service deployed to a workspace (upsert).
+    """Register or update a service deployed to a workspace.
 
-    Called by workflow steps after successful deployment.
+    Multi-instance plugins (vscode, jupyter*) always INSERT a new record.
+    Single-instance plugins upsert by (workspace_id, plugin_name).
     """
     from app.core.database import async_session as get_async_session
 
     async with get_async_session() as session:
-        result = await session.execute(
-            select(ArgusWorkspaceService).where(
-                ArgusWorkspaceService.workspace_id == workspace_id,
-                ArgusWorkspaceService.plugin_name == plugin_name,
+        is_multi = plugin_name in MULTI_INSTANCE_PLUGINS
+
+        if not is_multi:
+            # Single-instance: upsert by (workspace_id, plugin_name)
+            result = await session.execute(
+                select(ArgusWorkspaceService).where(
+                    ArgusWorkspaceService.workspace_id == workspace_id,
+                    ArgusWorkspaceService.plugin_name == plugin_name,
+                )
             )
+            svc = result.scalars().first()
+            if svc:
+                if display_name: svc.display_name = display_name
+                if version: svc.version = version
+                if endpoint: svc.endpoint = endpoint
+                if username: svc.username = username
+                if password: svc.password = password
+                if access_token: svc.access_token = access_token
+                if service_id: svc.service_id = service_id
+                svc.status = status
+                if metadata: svc.metadata_json = metadata
+                await session.commit()
+                logger.info("Service updated: workspace=%d plugin=%s service_id=%s",
+                             workspace_id, plugin_name, service_id)
+                return
+
+        # Multi-instance or new single-instance: always INSERT
+        svc = ArgusWorkspaceService(
+            workspace_id=workspace_id,
+            plugin_name=plugin_name,
+            service_id=service_id,
+            display_name=display_name,
+            version=version,
+            endpoint=endpoint,
+            username=username,
+            password=password,
+            access_token=access_token,
+            status=status,
+            metadata_json=metadata,
         )
-        svc = result.scalars().first()
-        if svc:
-            if display_name: svc.display_name = display_name
-            if version: svc.version = version
-            if endpoint: svc.endpoint = endpoint
-            if username: svc.username = username
-            if password: svc.password = password
-            if access_token: svc.access_token = access_token
-            if service_id: svc.service_id = service_id
-            svc.status = status
-            if metadata: svc.metadata_json = metadata
-        else:
-            svc = ArgusWorkspaceService(
-                workspace_id=workspace_id,
-                plugin_name=plugin_name,
-                service_id=service_id,
-                display_name=display_name,
-                version=version,
-                endpoint=endpoint,
-                username=username,
-                password=password,
-                access_token=access_token,
-                status=status,
-                metadata_json=metadata,
-            )
-            session.add(svc)
+        session.add(svc)
         await session.commit()
         logger.info("Service registered: workspace=%d plugin=%s service_id=%s endpoint=%s",
                      workspace_id, plugin_name, service_id, endpoint)
+
+        # Audit log
+        ws_result = await session.execute(
+            select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+        )
+        ws = ws_result.scalars().first()
+        if ws:
+            entry = ArgusWorkspaceAuditLog(
+                workspace_id=workspace_id,
+                workspace_name=ws.name,
+                action="service_added",
+                detail={
+                    "plugin_name": plugin_name,
+                    "display_name": display_name,
+                    "endpoint": endpoint,
+                    "service_id": service_id,
+                    "version": version,
+                },
+            )
+            session.add(entry)
+            await session.commit()
+
+
+# Plugins that should not be deleted individually from the Resources tab.
+NON_DELETABLE_PLUGINS = {"argus-gitlab", "argus-minio-workspace"}
+
+
+async def delete_workspace_service_with_teardown(
+    session: AsyncSession,
+    workspace_id: int,
+    service_db_id: int,
+    actor_user_id: int | None = None,
+    actor_username: str | None = None,
+) -> None:
+    """Delete a workspace service: teardown K8s resources, remove DNS, delete DB record, audit log.
+
+    Steps:
+        1. Load service and workspace from DB.
+        2. Instantiate the plugin's WorkflowStep via PluginRegistry.
+        3. Build a WorkflowContext for teardown.
+        4. Call step.teardown(ctx) to delete K8s resources.
+        5. Delete DNS record (best-effort).
+        6. Delete DB record.
+        7. Write audit log.
+    """
+    from urllib.parse import urlparse
+
+    from workspace_provisioner.models import ArgusWorkspace
+    from workspace_provisioner.plugins.registry import PluginRegistry
+    from workspace_provisioner.workflow.engine import WorkflowContext
+    from workspace_provisioner.workflow.steps.app_deploy import delete_app_dns
+
+    # 1. Load service record
+    result = await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.id == service_db_id,
+            ArgusWorkspaceService.workspace_id == workspace_id,
+        )
+    )
+    svc = result.scalars().first()
+    if not svc:
+        raise ValueError("Service not found")
+
+    if svc.plugin_name in NON_DELETABLE_PLUGINS:
+        raise ValueError(f"Plugin '{svc.plugin_name}' cannot be deleted individually")
+
+    # Load workspace
+    ws_result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    ws = ws_result.scalars().first()
+    if not ws:
+        raise ValueError("Workspace not found")
+
+    # 2. Instantiate the workflow step
+    registry = PluginRegistry.get_instance()
+    step = None
+    try:
+        step = registry.instantiate_step(svc.plugin_name)
+    except Exception:
+        # For gitlab step which needs a client, or unknown plugins
+        logger.warning(
+            "Could not instantiate step for plugin '%s', will skip K8s teardown",
+            svc.plugin_name,
+        )
+
+    # 3. Build WorkflowContext with service_id for teardown
+    ctx = WorkflowContext(
+        workspace_id=ws.id,
+        workspace_name=ws.name,
+        domain=ws.domain,
+    )
+    ctx.set("k8s_namespace", ws.k8s_namespace or f"argus-ws-{ws.name}")
+    if svc.service_id:
+        ctx.set("teardown_service_id", svc.service_id)
+
+    # 4. Teardown K8s resources
+    if step:
+        try:
+            await step.teardown(ctx)
+            logger.info(
+                "K8s teardown completed for service '%s' (plugin=%s) in workspace '%s'",
+                svc.display_name, svc.plugin_name, ws.name,
+            )
+        except Exception as e:
+            logger.error(
+                "K8s teardown failed for service '%s' (plugin=%s): %s",
+                svc.display_name, svc.plugin_name, e,
+            )
+            raise RuntimeError(
+                f"Failed to teardown K8s resources for {svc.display_name}: {e}"
+            ) from e
+
+    # 5. Delete DNS record (best-effort)
+    if svc.endpoint:
+        try:
+            parsed = urlparse(svc.endpoint)
+            hostname = parsed.hostname or svc.endpoint
+            await delete_app_dns(session, hostname)
+            logger.info("DNS deleted for hostname '%s'", hostname)
+        except Exception as e:
+            logger.warning("DNS deletion failed for '%s': %s (continuing)", svc.endpoint, e)
+
+    # Save details before deleting
+    detail = {
+        "plugin_name": svc.plugin_name,
+        "display_name": svc.display_name,
+        "endpoint": svc.endpoint,
+        "service_id": svc.service_id,
+        "version": svc.version,
+    }
+
+    # 6. Delete DB record
+    await session.delete(svc)
+    await session.flush()
+
+    # 7. Audit log
+    await log_audit(
+        session, workspace_id, ws.name,
+        action="service_deleted",
+        actor_user_id=actor_user_id,
+        actor_username=actor_username,
+        detail=detail,
+    )
 
 
 async def _build_workspace_response(ws: ArgusWorkspace, session: AsyncSession | None = None) -> WorkspaceResponse:
@@ -1011,55 +1166,3 @@ async def remove_member(session: AsyncSession, member_id: int) -> bool:
     return True
 
 
-# ---------------------------------------------------------------------------
-# Workflow status
-# ---------------------------------------------------------------------------
-
-async def get_workflow_status(
-    session: AsyncSession, workspace_id: int
-) -> list[WorkflowExecutionResponse]:
-    """Get all workflow executions for a workspace, with step details."""
-    logger.info("Fetching workflow status for workspace: id=%d", workspace_id)
-    result = await session.execute(
-        select(ArgusWorkflowExecution)
-        .where(ArgusWorkflowExecution.workspace_id == workspace_id)
-        .order_by(ArgusWorkflowExecution.created_at.desc())
-    )
-    executions = result.scalars().all()
-
-    responses = []
-    for ex in executions:
-        step_result = await session.execute(
-            select(ArgusWorkflowStepExecution)
-            .where(ArgusWorkflowStepExecution.execution_id == ex.id)
-            .order_by(ArgusWorkflowStepExecution.step_order)
-        )
-        steps = step_result.scalars().all()
-
-        responses.append(
-            WorkflowExecutionResponse(
-                id=ex.id,
-                workspace_id=ex.workspace_id,
-                workflow_name=ex.workflow_name,
-                status=ex.status,
-                started_at=ex.started_at,
-                finished_at=ex.finished_at,
-                error_message=ex.error_message,
-                created_at=ex.created_at,
-                steps=[
-                    StepExecutionResponse(
-                        id=s.id,
-                        step_name=s.step_name,
-                        step_order=s.step_order,
-                        status=s.status,
-                        started_at=s.started_at,
-                        finished_at=s.finished_at,
-                        error_message=s.error_message,
-                        result_data=s.result_data,
-                    )
-                    for s in steps
-                ],
-            )
-        )
-
-    return responses

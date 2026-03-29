@@ -79,14 +79,14 @@ class VScodeServerDeployStep(WorkflowStep):
         except Exception:
             server_ip = ctx.get("argus_server_host", "127.0.0.1")
 
-        # Generate unique service ID for hostname security
+        # Generate unique service ID for multi-instance and hostname security
         from workspace_provisioner.service import generate_service_id
         svc_id = generate_service_id()
 
-        # Instance ID = workspace name (for K8s resource naming)
-        instance_id = workspace_name
+        # Instance ID = service_id (unique per instance for multi-instance support)
+        instance_id = svc_id
 
-        # Build hostname using service ID (not workspace name)
+        # Build hostname using service ID
         hostname = f"argus-vscode-{svc_id}.argus-insight.{domain}"
 
         # Workspace bucket and user bucket
@@ -169,7 +169,7 @@ class VScodeServerDeployStep(WorkflowStep):
         vscode_ep = ctx.get("vscode_endpoint", "")
         hostname = vscode_ep.replace("http://", "") if vscode_ep else f"argus-vscode-teardown.argus-insight.{ctx.domain}"
         return render_manifests("vscode", {
-            "INSTANCE_ID": ctx.workspace_name,
+            "INSTANCE_ID": ctx.get("teardown_service_id", ctx.workspace_name),
             "USERNAME": ctx.get("creator_username", "default"),
             "K8S_NAMESPACE": namespace,
             "HOSTNAME": hostname,
