@@ -123,6 +123,87 @@ class KServeConfig(BaseModel):
     )
 
 
+class VScodeServerConfig(BaseModel):
+    """VS Code Server deployment settings."""
+
+    image: str = Field(
+        default="codercom/code-server:4.96.4",
+        description="code-server container image",
+    )
+    cpu_request: str = Field(
+        default="500m",
+        description="CPU request for the code-server container",
+    )
+    cpu_limit: str = Field(
+        default="1",
+        description="CPU limit for the code-server container",
+    )
+    memory_request: str = Field(
+        default="512Mi",
+        description="Memory request for the code-server container",
+    )
+    memory_limit: str = Field(
+        default="2Gi",
+        description="Memory limit for the code-server container",
+    )
+    workspace_path: str = Field(
+        default="/workspace",
+        description="Workspace mount path inside the container",
+    )
+    color_theme: str = Field(
+        default="Default Dark Modern",
+        description="Default VS Code color theme",
+    )
+    editor_font_size: int = Field(
+        default=14,
+        description="Editor font size in pixels",
+    )
+    terminal_font_size: int = Field(
+        default=13,
+        description="Terminal font size in pixels",
+    )
+    minimap_enabled: bool = Field(
+        default=False,
+        description="Enable editor minimap",
+    )
+    pip_index_url: str = Field(
+        default="https://pypi.org/simple",
+        description="Python pip index URL (e.g., internal Nexus mirror)",
+    )
+    install_python: bool = Field(
+        default=True,
+        description="Automatically install Python on startup",
+    )
+    s3fs_image: str = Field(
+        default="efrecon/s3fs:1.94",
+        description="s3fs FUSE mount sidecar image",
+    )
+    s3_bucket_pattern: str = Field(
+        default="user-{username}",
+        description="S3 bucket naming pattern ({username} is replaced)",
+    )
+    s3fs_enabled: bool = Field(
+        default=True,
+        description="Enable s3fs sidecar for persistent S3-backed storage",
+    )
+    proxy_read_timeout: int = Field(
+        default=3600,
+        description="Nginx Ingress proxy read timeout in seconds",
+    )
+    proxy_send_timeout: int = Field(
+        default=3600,
+        description="Nginx Ingress proxy send timeout in seconds",
+    )
+    ingress_class: str = Field(
+        default="nginx",
+        description="Kubernetes Ingress class name",
+    )
+    default_extensions: list[str] = Field(
+        default_factory=list,
+        description="VS Code extensions to install on first launch (e.g., ms-python.python)",
+    )
+
+
 class ProvisioningConfig(BaseModel):
     """Top-level provisioning configuration.
 

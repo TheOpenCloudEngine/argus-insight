@@ -4,7 +4,7 @@ description: code-server with s3fs sidecar for persistent S3-backed workspace st
 status: stable
 release_date: "2026-03-01"
 step_class: workspace_provisioner.workflow.steps.custom_hook.CustomHookStep
-config_class: null
+config_class: workspace_provisioner.config.VScodeServerConfig
 template_dir: vscode
 depends_on_override:
   add: []

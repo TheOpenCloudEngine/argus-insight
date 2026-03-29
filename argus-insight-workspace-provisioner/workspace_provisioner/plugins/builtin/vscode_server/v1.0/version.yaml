@@ -4,7 +4,7 @@ description: Basic code-server deployment without persistent storage
 status: stable
 release_date: "2026-01-15"
 step_class: workspace_provisioner.workflow.steps.custom_hook.CustomHookStep
-config_class: null
+config_class: workspace_provisioner.config.VScodeServerConfig
 template_dir: vscode
 changelog: |
   - Initial version
