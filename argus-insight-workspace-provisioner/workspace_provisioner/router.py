@@ -658,10 +658,25 @@ async def bulk_add_members(
                 user.gitlab_username = gitlab_username
                 user.gitlab_password = safe_password
 
+            # Resolve GitLab project ID from workspace record or service metadata
+            gl_project_id = ws.gitlab_project_id
+            if not gl_project_id:
+                from workspace_provisioner.models import ArgusWorkspaceService
+                svc_result = await session.execute(
+                    select(ArgusWorkspaceService).where(
+                        ArgusWorkspaceService.workspace_id == workspace_id,
+                        ArgusWorkspaceService.plugin_name == "argus-gitlab",
+                    )
+                )
+                gl_svc = svc_result.scalars().first()
+                if gl_svc and gl_svc.metadata_json:
+                    internal = gl_svc.metadata_json.get("internal", gl_svc.metadata_json)
+                    gl_project_id = internal.get("project_id")
+
             # Step 2: Add to project as Maintainer (all permissions except delete repo)
-            if ws.gitlab_project_id:
+            if gl_project_id:
                 await gitlab_client.add_project_member(
-                    project_id=ws.gitlab_project_id,
+                    project_id=gl_project_id,
                     user_id=gl_user["id"],
                     access_level=40,  # Maintainer
                 )
@@ -670,7 +685,7 @@ async def bulk_add_members(
                 token_name = f"{gitlab_username}-{ws.name}"
                 try:
                     token_info = await gitlab_client.create_project_access_token(
-                        project_id=ws.gitlab_project_id,
+                        project_id=gl_project_id,
                         name=token_name,
                     )
                     gitlab_token = token_info["token"]
