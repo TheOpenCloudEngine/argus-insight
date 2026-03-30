@@ -446,9 +446,9 @@ function ServiceDataListItem({
               />
             ))}
           </div>
-          {((openUrl && !hideUrl) || onDelete) && (
+          {(openUrl || onDelete) && (
             <div className="mt-3 pt-3 border-t flex items-center justify-between">
-              {openUrl && !hideUrl ? (
+              {openUrl ? (
                 <a
                   href={openUrl}
                   target="_blank"
