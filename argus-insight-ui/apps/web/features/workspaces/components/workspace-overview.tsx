@@ -423,9 +423,22 @@ function ServiceDataListItem({
           )}
         </div>
 
-        {/* Status badge */}
-        <div className="shrink-0">
+        {/* Status badge + Open Service */}
+        <div className="flex items-center gap-2 shrink-0">
           {statusBadge(service.status)}
+          {openUrl && (
+            <a
+              href={openUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Button variant="outline" size="sm" className="text-xs h-6 px-2">
+                Open
+                <ExternalLink className="ml-1 h-3 w-3" />
+              </Button>
+            </a>
+          )}
         </div>
       </div>
 
@@ -446,31 +459,16 @@ function ServiceDataListItem({
               />
             ))}
           </div>
-          {(openUrl || onDelete) && (
-            <div className="mt-3 flex items-center justify-between">
-              {openUrl ? (
-                <a
-                  href={openUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <Button variant="outline" size="sm" className="text-xs">
-                    Open Service
-                    <ExternalLink className="ml-1.5 h-3 w-3" />
-                  </Button>
-                </a>
-              ) : <div />}
-              {onDelete && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="text-xs"
-                  onClick={(e) => { e.stopPropagation(); setConfirmOpen(true) }}
-                >
-                  Delete Service
-                </Button>
-              )}
+          {onDelete && (
+            <div className="mt-3 flex items-center justify-end">
+              <Button
+                variant="destructive"
+                size="sm"
+                className="text-xs"
+                onClick={(e) => { e.stopPropagation(); setConfirmOpen(true) }}
+              >
+                Delete Service
+              </Button>
             </div>
           )}
         </div>
