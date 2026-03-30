@@ -155,8 +155,6 @@ spec:
           image: ${AIRFLOW_GIT_SYNC_IMAGE}
           command: ["/bin/sh", "/scripts/git-sync.sh"]
           env:
-            - name: GITLAB_REPO_URL
-              value: "${GITLAB_REPO_URL}"
             - name: GIT_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -165,6 +163,8 @@ spec:
           volumeMounts:
             - name: dags
               mountPath: /opt/airflow/dags
+            - name: git-repo
+              mountPath: /opt/airflow/git-repo
             - name: git-sync-script
               mountPath: /scripts
       volumes:
@@ -184,3 +184,5 @@ spec:
         - name: logs
           persistentVolumeClaim:
             claimName: argus-airflow-${WORKSPACE_NAME}-logs
+        - name: git-repo
+          emptyDir: {}

@@ -63,6 +63,10 @@ class AirflowConfig(BaseModel):
         default=60,
         description="Git-sync interval in seconds",
     )
+    dags_sub_path: str = Field(
+        default="airflow-dags",
+        description="Subdirectory in the Git repo containing DAG files",
+    )
     dags_storage_size: str = Field(
         default="10Gi",
         description="PVC size for DAGs volume",

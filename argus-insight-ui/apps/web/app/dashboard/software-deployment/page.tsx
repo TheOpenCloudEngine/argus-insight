@@ -11,7 +11,7 @@ import type { PluginResponse } from "@/features/software-deployment/types"
 import { fetchPlugins } from "@/features/software-deployment/api"
 import { PipelineTab } from "@/features/software-deployment/components/pipeline-tab"
 import { CatalogTab } from "@/features/software-deployment/components/catalog-tab"
-import { HistoryTab } from "@/features/software-deployment/components/history-tab"
+import { CatalogCardTab } from "@/features/software-deployment/components/catalog-card-tab"
 
 export default function SoftwareDeploymentPage() {
   const [plugins, setPlugins] = useState<PluginResponse[]>([])
@@ -71,8 +71,8 @@ export default function SoftwareDeploymentPage() {
             <TabsTrigger value="catalog" className="text-base">
               Plugin Catalog
             </TabsTrigger>
-            <TabsTrigger value="history" className="text-base">
-              Execution History
+            <TabsTrigger value="catalog-card" className="text-base">
+              Plugin Catalog (Card)
             </TabsTrigger>
           </TabsList>
 
@@ -84,8 +84,8 @@ export default function SoftwareDeploymentPage() {
             <CatalogTab plugins={plugins} onPluginsChanged={() => loadPlugins(false)} />
           </TabsContent>
 
-          <TabsContent value="history" className="mt-4">
-            <HistoryTab />
+          <TabsContent value="catalog-card" className="mt-4">
+            <CatalogCardTab plugins={plugins} onPluginsChanged={() => loadPlugins(false)} />
           </TabsContent>
         </Tabs>
       </div>

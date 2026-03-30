@@ -1,3 +1,3 @@
 #!/bin/sh
 
-python -m app.main --config-yaml packaging/config/config.yml --config-properties packaging/config/config.properties 
+uvicorn app.main:app --host 0.0.0.0 --port 4500 --reload --reload-dir app

@@ -37,13 +37,33 @@ data:
     #!/bin/bash
     set -e
     REPO_URL="${GITLAB_REPO_URL}"
+    TOKEN="${GIT_TOKEN}"
     BRANCH="main"
-    SYNC_DIR="/opt/airflow/dags"
+    REPO_DIR="/opt/airflow/git-repo"
+    DAGS_DIR="/opt/airflow/dags"
+    SUB_PATH="${AIRFLOW_DAGS_SUB_PATH}"
+
+    # Insert token into URL (https://oauth2:TOKEN@gitlab.../repo.git)
+    AUTH_URL=$(echo "$REPO_URL" | sed "s|https://|https://oauth2:${TOKEN}@|")
+
     while true; do
-      if [ -d "$SYNC_DIR/.git" ]; then
-        cd "$SYNC_DIR" && git fetch origin "$BRANCH" && git reset --hard "origin/$BRANCH"
+      if [ -d "$REPO_DIR/.git" ]; then
+        cd "$REPO_DIR"
+        git fetch origin "$BRANCH" --depth=1 2>/dev/null
+        git reset --hard "origin/$BRANCH" 2>/dev/null
       else
-        git clone --branch "$BRANCH" --single-branch "$REPO_URL" "$SYNC_DIR"
+        git clone --branch "$BRANCH" --depth 1 --filter=blob:none \
+          --no-checkout "$AUTH_URL" "$REPO_DIR" 2>/dev/null
+        cd "$REPO_DIR"
+        git sparse-checkout init --cone
+        git sparse-checkout set "$SUB_PATH"
+        git checkout "$BRANCH" 2>/dev/null
       fi
+
+      # Sync subdirectory contents to Airflow dags folder
+      if [ -d "$REPO_DIR/$SUB_PATH" ]; then
+        rsync -a --delete --exclude='.git*' "$REPO_DIR/$SUB_PATH/" "$DAGS_DIR/"
+      fi
+
       sleep ${AIRFLOW_GIT_SYNC_INTERVAL}
     done
