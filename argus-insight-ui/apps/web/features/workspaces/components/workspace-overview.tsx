@@ -315,7 +315,14 @@ function ServiceDataListItem({
   const [expanded, setExpanded] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const iconName = service.plugin_name.replace(/^argus-/, "").replace(/-deploy$/, "")
+  // Map plugin_name to icon filename
+  const PLUGIN_ICON_MAP: Record<string, string> = {
+    "argus-vscode-server": "code",
+    "argus-minio": "minio",
+    "argus-minio-deploy": "minio",
+  }
+  const iconName = PLUGIN_ICON_MAP[service.plugin_name]
+    ?? service.plugin_name.replace(/^argus-/, "").replace(/-deploy$/, "")
   const meta = service.metadata ?? {}
 
   // Extract display metadata (new format: metadata.display)
