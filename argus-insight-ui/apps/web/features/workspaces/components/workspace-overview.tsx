@@ -28,14 +28,6 @@ import {
   CardTitle,
 } from "@workspace/ui/components/card"
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@workspace/ui/components/table"
-import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -225,187 +217,168 @@ function WorkspaceListView({ onSelect }: { onSelect: (ws: MyWorkspace) => void }
 /*  Expandable Service Row                                             */
 /* ------------------------------------------------------------------ */
 
-function ServiceExpandedDetail({ service }: { service: WorkspaceService }) {
+/* ------------------------------------------------------------------ */
+/*  OpenShift-style Data List                                          */
+/* ------------------------------------------------------------------ */
+
+function DetailRow({
+  label,
+  value,
+  secret,
+  link,
+}: {
+  label: string
+  value: string
+  secret?: boolean
+  link?: boolean
+}) {
+  return (
+    <div className="flex items-center gap-2 py-1">
+      <span className="w-28 shrink-0 text-xs font-medium text-muted-foreground">
+        {label}
+      </span>
+      {secret ? (
+        <SecretValue value={value} label={label} />
+      ) : link ? (
+        <div className="flex items-center gap-1.5 min-w-0">
+          <a
+            href={value}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 truncate text-xs text-blue-600 hover:underline dark:text-blue-400"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {value}
+            <ExternalLink className="h-3 w-3 shrink-0" />
+          </a>
+          <CopyButton value={value} />
+        </div>
+      ) : (
+        <div className="flex items-center gap-1.5 min-w-0">
+          <code className="truncate rounded bg-muted px-1.5 py-0.5 text-xs font-mono">
+            {value}
+          </code>
+          <CopyButton value={value} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ServiceDataListItem({ service }: { service: WorkspaceService }) {
+  const [expanded, setExpanded] = useState(false)
+  const iconName = service.plugin_name.replace(/^argus-/, "").replace(/-deploy$/, "")
   const meta = service.metadata ?? {}
 
-  // Collect all detail rows
+  // Collect detail rows for expanded view
   const details: { label: string; value: string; secret?: boolean; link?: boolean }[] = []
-
-  if (service.endpoint) {
-    details.push({ label: "Endpoint", value: service.endpoint, link: true })
-  }
-  if (service.username) {
-    details.push({ label: "Username", value: service.username })
-  }
-  if (service.password) {
-    details.push({ label: "Password", value: service.password, secret: true })
-  }
-  if (service.access_token) {
-    details.push({ label: "Access Token", value: service.access_token, secret: true })
-  }
-
-  // Extract metadata fields
+  if (service.username) details.push({ label: "Username", value: service.username })
+  if (service.password) details.push({ label: "Password", value: service.password, secret: true })
+  if (service.access_token) details.push({ label: "Access Token", value: service.access_token, secret: true })
   for (const [key, val] of Object.entries(meta)) {
     if (val == null || val === "") continue
     const strVal = String(val)
-    const label = key
-      .replace(/_/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase())
+    const label = key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
     const isLink = /^https?:\/\//.test(strVal) || /^bolt:\/\//.test(strVal)
     details.push({ label, value: strVal, link: isLink })
   }
-
   details.push({ label: "Created", value: formatDateTime(service.created_at) })
   if (service.updated_at !== service.created_at) {
     details.push({ label: "Updated", value: formatDateTime(service.updated_at) })
   }
 
   return (
-    <TableRow>
-      <TableCell colSpan={5} className="bg-muted/30 p-0">
-        <div className="grid gap-x-8 gap-y-2 px-6 py-4 sm:grid-cols-2">
-          {details.map((d) => (
-            <div key={d.label} className="flex items-center gap-2 text-sm">
-              <span className="w-28 shrink-0 text-xs font-medium text-muted-foreground">
-                {d.label}
-              </span>
-              {d.secret ? (
-                <SecretValue value={d.value} label={d.label} />
-              ) : d.link ? (
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <a
-                    href={d.value}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 truncate text-xs text-blue-600 hover:underline dark:text-blue-400"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {d.value}
-                    <ExternalLink className="h-3 w-3 shrink-0" />
-                  </a>
-                  <CopyButton value={d.value} />
-                </div>
-              ) : (
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <code className="truncate rounded bg-muted px-1.5 py-0.5 text-xs font-mono">
-                    {d.value}
-                  </code>
-                  <CopyButton value={d.value} />
-                </div>
-              )}
-            </div>
-          ))}
+    <div className="border-b last:border-b-0">
+      {/* Collapsed row */}
+      <div
+        className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40 ${expanded ? "bg-muted/30" : ""}`}
+        onClick={() => setExpanded(!expanded)}
+      >
+        {/* Chevron */}
+        <div className="shrink-0">
+          {expanded ? (
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          )}
         </div>
-        {/* Open Service button */}
-        {service.endpoint && (
-          <div className="border-t px-6 py-2">
+
+        {/* Icon + Name */}
+        <PluginIcon icon={iconName} size={28} className="shrink-0 rounded" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-semibold">
+              {service.display_name || service.plugin_name}
+            </span>
+            <code className="hidden shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground sm:inline">
+              {service.version ? `v${service.version}` : service.plugin_name}
+            </code>
+          </div>
+          {/* Endpoint inline */}
+          {service.endpoint && (
             <a
               href={service.endpoint}
               target="_blank"
               rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 truncate text-xs text-blue-600 hover:underline dark:text-blue-400"
               onClick={(e) => e.stopPropagation()}
             >
-              <Button variant="outline" size="sm" className="text-xs">
-                Open Service
-                <ExternalLink className="ml-1.5 h-3 w-3" />
-              </Button>
+              {service.endpoint}
+              <ExternalLink className="h-3 w-3 shrink-0" />
             </a>
+          )}
+        </div>
+
+        {/* Status badge */}
+        <div className="shrink-0">
+          {statusBadge(service.status)}
+        </div>
+      </div>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div className="border-t bg-muted/20 px-4 py-4 pl-14">
+          <div className="grid gap-x-10 gap-y-0.5 sm:grid-cols-2">
+            {service.endpoint && (
+              <DetailRow label="Endpoint" value={service.endpoint} link />
+            )}
+            {details.map((d) => (
+              <DetailRow
+                key={d.label}
+                label={d.label}
+                value={d.value}
+                secret={d.secret}
+                link={d.link}
+              />
+            ))}
           </div>
-        )}
-      </TableCell>
-    </TableRow>
+          {service.endpoint && (
+            <div className="mt-3 pt-3 border-t">
+              <a
+                href={service.endpoint}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Button variant="outline" size="sm" className="text-xs">
+                  Open Service
+                  <ExternalLink className="ml-1.5 h-3 w-3" />
+                </Button>
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
-function ServiceTable({ services }: { services: WorkspaceService[] }) {
-  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
-
-  const toggle = (id: number) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
-      return next
-    })
-  }
-
+function ServiceDataList({ services }: { services: WorkspaceService[] }) {
   return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-10" />
-            <TableHead>Service</TableHead>
-            <TableHead className="hidden sm:table-cell">Version</TableHead>
-            <TableHead className="hidden md:table-cell">Endpoint</TableHead>
-            <TableHead className="w-24 text-center">Status</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {services.map((svc) => {
-            const iconName = svc.plugin_name.replace(/^argus-/, "").replace(/-deploy$/, "")
-            const isExpanded = expandedIds.has(svc.id)
-
-            return (
-              <tbody key={svc.id}>
-                <TableRow
-                  className={`cursor-pointer ${isExpanded ? "bg-muted/50" : ""}`}
-                  onClick={() => toggle(svc.id)}
-                >
-                  <TableCell className="w-10 px-3">
-                    {isExpanded ? (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <PluginIcon icon={iconName} size={24} className="shrink-0 rounded" />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">
-                          {svc.display_name || svc.plugin_name}
-                        </p>
-                        <p className="truncate text-xs text-muted-foreground font-mono">
-                          {svc.plugin_name}
-                        </p>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-                      {svc.version ? `v${svc.version}` : "-"}
-                    </code>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    {svc.endpoint ? (
-                      <a
-                        href={svc.endpoint}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 truncate text-xs text-blue-600 hover:underline dark:text-blue-400 max-w-[300px]"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {svc.endpoint}
-                        <ExternalLink className="h-3 w-3 shrink-0" />
-                      </a>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {statusBadge(svc.status)}
-                  </TableCell>
-                </TableRow>
-                {isExpanded && <ServiceExpandedDetail service={svc} />}
-              </tbody>
-            )
-          })}
-        </TableBody>
-      </Table>
+    <div className="rounded-lg border">
+      {services.map((svc) => (
+        <ServiceDataListItem key={svc.id} service={svc} />
+      ))}
     </div>
   )
 }
@@ -538,7 +511,7 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
           <h3 className="mb-3 text-sm font-semibold">
             Deployed Services ({services.length})
           </h3>
-          <ServiceTable services={services} />
+          <ServiceDataList services={services} />
         </div>
       )}
     </div>
