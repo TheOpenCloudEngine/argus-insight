@@ -189,6 +189,26 @@ class GitLabClient:
             "message": commit.message,
         }
 
+    async def path_exists(self, project_id: int, path: str, ref: str = "main") -> bool:
+        """Check if a file or directory exists in a GitLab repo.
+
+        Args:
+            project_id: Target project ID.
+            path: Path to check (e.g., "airflow-dags").
+            ref: Branch or commit ref.
+
+        Returns:
+            True if the path exists, False otherwise.
+        """
+        try:
+            project = await self._run_sync(self._gl.projects.get, project_id)
+            await self._run_sync(
+                project.repository_tree, path=path, ref=ref, per_page=1,
+            )
+            return True
+        except gitlab.exceptions.GitlabGetError:
+            return False
+
     async def find_user(self, username: str) -> dict | None:
         """Find a GitLab user by username.
 
