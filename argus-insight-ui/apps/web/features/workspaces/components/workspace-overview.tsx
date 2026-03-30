@@ -92,9 +92,21 @@ function formatDateTime(dateStr: string): string {
 function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false)
 
-  const handleCopy = (e: React.MouseEvent) => {
+  const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    navigator.clipboard.writeText(value)
+    try {
+      await navigator.clipboard.writeText(value)
+    } catch {
+      // Fallback for non-HTTPS environments (e.g., http://10.0.1.50)
+      const textarea = document.createElement("textarea")
+      textarea.value = value
+      textarea.style.position = "fixed"
+      textarea.style.opacity = "0"
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand("copy")
+      document.body.removeChild(textarea)
+    }
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
