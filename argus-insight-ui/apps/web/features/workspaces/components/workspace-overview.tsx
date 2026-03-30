@@ -397,22 +397,19 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
     let cancelled = false
     async function load() {
       try {
-        const [ws, svc] = await Promise.all([
+        const [ws, svc, gitlabRes] = await Promise.all([
           fetchWorkspace(workspaceId),
           fetchWorkspaceServices(workspaceId),
+          authFetch("/api/v1/settings/gitlab").catch(() => null),
         ])
         if (!cancelled) {
           setWorkspace(ws)
           setServices(svc)
-        }
-        // Fetch GitLab server URL from Settings
-        try {
-          const res = await authFetch("/api/v1/settings/gitlab")
-          if (res.ok) {
-            const data = await res.json()
-            if (!cancelled && data.url) setGitlabServerUrl(data.url.replace(/\/+$/, ""))
+          if (gitlabRes?.ok) {
+            const data = await gitlabRes.json()
+            if (data.url) setGitlabServerUrl(data.url.replace(/\/+$/, ""))
           }
-        } catch { /* ignore */ }
+        }
       } catch {
         // ignore
       } finally {
