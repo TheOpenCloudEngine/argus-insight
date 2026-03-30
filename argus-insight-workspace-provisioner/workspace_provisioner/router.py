@@ -817,23 +817,39 @@ async def remove_member(
     if ws and ws.created_by == member.user_id:
         raise HTTPException(status_code=400, detail="Cannot remove workspace owner")
 
-    # Remove from GitLab project
-    if ws and ws.gitlab_project_id:
-        user_result = await session.execute(
-            select(ArgusUser).where(ArgusUser.id == member.user_id)
+    # Load user info
+    user_result = await session.execute(
+        select(ArgusUser).where(ArgusUser.id == member.user_id)
+    )
+    user = user_result.scalars().first()
+
+    # Resolve GitLab project ID (workspace record or service metadata)
+    gl_project_id = ws.gitlab_project_id if ws else None
+    if not gl_project_id and ws:
+        from workspace_provisioner.models import ArgusWorkspaceService
+        svc_result = await session.execute(
+            select(ArgusWorkspaceService).where(
+                ArgusWorkspaceService.workspace_id == workspace_id,
+                ArgusWorkspaceService.plugin_name == "argus-gitlab",
+            )
         )
-        user = user_result.scalars().first()
-        if user:
-            gitlab_username = f"argus-{user.username}"
-            try:
-                gl_user = await gitlab_client.find_user(gitlab_username)
-                if gl_user:
-                    await gitlab_client.remove_project_member(
-                        project_id=ws.gitlab_project_id,
-                        user_id=gl_user["id"],
-                    )
-            except Exception as e:
-                logger.warning("Failed to remove GitLab member: %s", e)
+        gl_svc = svc_result.scalars().first()
+        if gl_svc and gl_svc.metadata_json:
+            internal = gl_svc.metadata_json.get("internal", gl_svc.metadata_json)
+            gl_project_id = internal.get("project_id")
+
+    # Remove from GitLab project
+    if gl_project_id and user:
+        gitlab_username = f"argus-{user.username}"
+        try:
+            gl_user = await gitlab_client.find_user(gitlab_username)
+            if gl_user:
+                await gitlab_client.remove_project_member(
+                    project_id=gl_project_id,
+                    user_id=gl_user["id"],
+                )
+        except Exception as e:
+            logger.warning("Failed to remove GitLab member: %s", e)
 
     # Remove from workspace
     if not await service.remove_member(session, member_id):
@@ -844,7 +860,7 @@ async def remove_member(
         session, workspace_id, ws.name, "member_removed",
         actor_user_id=int(current_user.sub), actor_username=current_user.username,
         target_user_id=member.user_id, target_username=user.username if user else None,
-        detail={"gitlab_removed": True},
+        detail={"gitlab_removed": gl_project_id is not None},
     )
 
     logger.info("DELETE /workspaces/%d/members/%d - removed (with GitLab)", workspace_id, member_id)
