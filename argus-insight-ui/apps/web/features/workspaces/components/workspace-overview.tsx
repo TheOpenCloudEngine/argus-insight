@@ -48,8 +48,19 @@ import {
 } from "@workspace/ui/components/tooltip"
 import { authFetch } from "@/features/auth/auth-fetch"
 import { useAuth } from "@/features/auth"
-import { deleteWorkspaceService, fetchWorkspace, fetchWorkspaceServices, fetchWorkspaceAuditLogs } from "@/features/workspaces/api"
-import type { AuditLog, WorkspaceResponse, WorkspaceService } from "@/features/workspaces/types"
+import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar"
+import { Checkbox } from "@workspace/ui/components/checkbox"
+import { Input } from "@workspace/ui/components/input"
+import {
+  bulkAddWorkspaceMembers,
+  deleteWorkspaceService,
+  fetchWorkspace,
+  fetchWorkspaceMembers,
+  fetchWorkspaceServices,
+  fetchWorkspaceAuditLogs,
+  removeWorkspaceMember,
+} from "@/features/workspaces/api"
+import type { AuditLog, WorkspaceMember, WorkspaceResponse, WorkspaceService } from "@/features/workspaces/types"
 import { PluginIcon } from "@/features/software-deployment/components/plugin-icon"
 
 /* ------------------------------------------------------------------ */
@@ -521,6 +532,220 @@ function ServiceDataList({
 /*  Add Service Button + Deploy Dialog                                 */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/*  Workspace Members                                                  */
+/* ------------------------------------------------------------------ */
+
+function memberInitials(m: WorkspaceMember): string {
+  if (m.display_name) {
+    const parts = m.display_name.split(" ")
+    return parts.length >= 2
+      ? (parts[0]![0]! + parts[1]![0]!).toUpperCase()
+      : m.display_name.slice(0, 2).toUpperCase()
+  }
+  return (m.username ?? "?").slice(0, 2).toUpperCase()
+}
+
+function WorkspaceMembersBar({
+  workspaceId,
+  refreshKey,
+  onRefresh,
+}: {
+  workspaceId: number
+  refreshKey: number
+  onRefresh: () => void
+}) {
+  const [members, setMembers] = useState<WorkspaceMember[]>([])
+  const [loading, setLoading] = useState(true)
+
+  // Add dialog
+  const [addOpen, setAddOpen] = useState(false)
+  const [allUsers, setAllUsers] = useState<{ id: number; username: string; display_name?: string }[]>([])
+  const [searchQuery, setSearchQuery] = useState("")
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<number>>(new Set())
+  const [adding, setAdding] = useState(false)
+
+  // Remove confirm
+  const [removeTarget, setRemoveTarget] = useState<WorkspaceMember | null>(null)
+  const [removing, setRemoving] = useState(false)
+
+  useEffect(() => {
+    fetchWorkspaceMembers(workspaceId)
+      .then(setMembers)
+      .catch(() => setMembers([]))
+      .finally(() => setLoading(false))
+  }, [workspaceId, refreshKey])
+
+  const openAddDialog = async () => {
+    setAddOpen(true)
+    setSearchQuery("")
+    setSelectedUserIds(new Set())
+    setAdding(false)
+    try {
+      const res = await authFetch("/api/v1/usermgr/users?page_size=200")
+      if (res.ok) {
+        const data = await res.json()
+        setAllUsers(
+          (data.items ?? []).map((u: { id: number; username: string; first_name?: string; last_name?: string }) => ({
+            id: u.id,
+            username: u.username,
+            display_name: [u.first_name, u.last_name].filter(Boolean).join(" ") || u.username,
+          })),
+        )
+      }
+    } catch { /* ignore */ }
+  }
+
+  const toggleUser = (userId: number) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(userId)) next.delete(userId)
+      else next.add(userId)
+      return next
+    })
+  }
+
+  const handleAdd = async () => {
+    if (selectedUserIds.size === 0) return
+    setAdding(true)
+    try {
+      await bulkAddWorkspaceMembers(workspaceId, Array.from(selectedUserIds))
+      setAddOpen(false)
+      const updated = await fetchWorkspaceMembers(workspaceId)
+      setMembers(updated)
+      onRefresh()
+    } catch { /* ignore */ }
+    setAdding(false)
+  }
+
+  const handleRemove = async () => {
+    if (!removeTarget) return
+    setRemoving(true)
+    try {
+      await removeWorkspaceMember(workspaceId, removeTarget.id)
+      setMembers((prev) => prev.filter((m) => m.id !== removeTarget.id))
+      onRefresh()
+    } catch { /* ignore */ }
+    setRemoving(false)
+    setRemoveTarget(null)
+  }
+
+  const memberIds = new Set(members.map((m) => m.user_id))
+  const filteredUsers = allUsers.filter(
+    (u) =>
+      !memberIds.has(u.id) &&
+      (u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (u.display_name ?? "").toLowerCase().includes(searchQuery.toLowerCase())),
+  )
+
+  return (
+    <>
+      <div className="rounded-lg border p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold">Members ({members.length})</h3>
+          <Button variant="outline" size="sm" className="text-xs" onClick={openAddDialog}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Add User
+          </Button>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-4">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : members.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">No members.</p>
+        ) : (
+          <div className="flex flex-wrap gap-3">
+            {members.map((m) => (
+              <div key={m.id} className="group relative flex flex-col items-center gap-1 w-16">
+                {/* X button (hover only, not for owner) */}
+                {!m.is_owner && (
+                  <button
+                    className="absolute -top-1 -right-1 hidden group-hover:flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white text-[10px] leading-none hover:bg-red-600 z-10"
+                    onClick={() => setRemoveTarget(m)}
+                  >
+                    ✕
+                  </button>
+                )}
+                <Avatar className="h-9 w-9">
+                  <AvatarFallback className="text-xs">{memberInitials(m)}</AvatarFallback>
+                </Avatar>
+                <span className="truncate text-[11px] text-center w-full">
+                  {m.display_name || m.username}
+                </span>
+                {m.is_owner && (
+                  <Badge variant="secondary" className="text-[9px] px-1 py-0">Owner</Badge>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Add User Dialog */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add Members</DialogTitle>
+            <DialogDescription>Select users to add to this workspace.</DialogDescription>
+          </DialogHeader>
+          <Input
+            placeholder="Search users..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <div className="max-h-48 overflow-y-auto space-y-1 rounded-md border p-2">
+            {filteredUsers.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-2">No users found.</p>
+            ) : (
+              filteredUsers.map((u) => (
+                <label
+                  key={u.id}
+                  className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-muted/50 cursor-pointer"
+                >
+                  <Checkbox
+                    checked={selectedUserIds.has(u.id)}
+                    onCheckedChange={() => toggleUser(u.id)}
+                  />
+                  <span className="text-sm">{u.display_name || u.username}</span>
+                  <span className="text-xs text-muted-foreground ml-auto">{u.username}</span>
+                </label>
+              ))
+            )}
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button size="sm" onClick={handleAdd} disabled={adding || selectedUserIds.size === 0}>
+              {adding && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+              Add ({selectedUserIds.size})
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove Confirm Dialog */}
+      <Dialog open={!!removeTarget} onOpenChange={(open) => { if (!open) setRemoveTarget(null) }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Remove Member</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove {removeTarget?.display_name || removeTarget?.username} from this workspace?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={() => setRemoveTarget(null)} disabled={removing}>Cancel</Button>
+            <Button variant="destructive" size="sm" onClick={handleRemove} disabled={removing}>
+              {removing && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+              Remove
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
 interface DeployMappingEntry {
   service_key: string
   service_label: string
@@ -891,51 +1116,12 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
 
         return (
           <>
-            {/* Summary Stats */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Card>
-                <CardContent className="flex items-center gap-3 p-4">
-                  <Server className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <p className="text-2xl font-bold">{deployed.length}</p>
-                    <p className="text-xs text-muted-foreground">Deployed Services</p>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="flex items-center gap-3 p-4">
-                  <CheckCircle2 className="h-5 w-5 text-green-600" />
-                  <div>
-                    <p className="text-2xl font-bold">
-                      {deployed.filter((s) => s.status === "running").length}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Running</p>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="flex items-center gap-3 p-4">
-                  <XCircle className="h-5 w-5 text-red-500" />
-                  <div>
-                    <p className="text-2xl font-bold">
-                      {deployed.filter((s) => s.status !== "running").length}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Not Running</p>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="flex items-center gap-3 p-4">
-                  <Clock className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium">
-                      {new Date(workspace.created_at).toLocaleDateString()}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Created</p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            {/* Members */}
+            <WorkspaceMembersBar
+              workspaceId={workspace.id}
+              refreshKey={refreshKey}
+              onRefresh={handleDeployComplete}
+            />
 
             {/* Default Services */}
             {defaultServices.length > 0 && (
