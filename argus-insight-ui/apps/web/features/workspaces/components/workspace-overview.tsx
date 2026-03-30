@@ -456,12 +456,16 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
       </div>
 
       {/* Summary Stats */}
+      {(() => {
+        const hiddenPlugins = new Set(["argus-minio-workspace", "argus-minio-setup"])
+        const visibleServices = services.filter((s) => !hiddenPlugins.has(s.plugin_name))
+        return (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardContent className="flex items-center gap-3 p-4">
             <Server className="h-5 w-5 text-muted-foreground" />
             <div>
-              <p className="text-2xl font-bold">{services.length}</p>
+              <p className="text-2xl font-bold">{visibleServices.length}</p>
               <p className="text-xs text-muted-foreground">Deployed Services</p>
             </div>
           </CardContent>
@@ -471,7 +475,7 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
             <CheckCircle2 className="h-5 w-5 text-green-600" />
             <div>
               <p className="text-2xl font-bold">
-                {services.filter((s) => s.status === "running").length}
+                {visibleServices.filter((s) => s.status === "running").length}
               </p>
               <p className="text-xs text-muted-foreground">Running</p>
             </div>
@@ -482,7 +486,7 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
             <XCircle className="h-5 w-5 text-red-500" />
             <div>
               <p className="text-2xl font-bold">
-                {services.filter((s) => s.status !== "running").length}
+                {visibleServices.filter((s) => s.status !== "running").length}
               </p>
               <p className="text-xs text-muted-foreground">Not Running</p>
             </div>
@@ -500,20 +504,36 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
           </CardContent>
         </Card>
       </div>
+        )
+      })()}
 
-      {/* Service Table */}
-      {services.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">
-          No services deployed yet.
-        </div>
-      ) : (
-        <div>
-          <h3 className="mb-3 text-sm font-semibold">
-            Deployed Services ({services.length})
-          </h3>
-          <ServiceDataList services={services} />
-        </div>
-      )}
+      {/* Service List */}
+      {(() => {
+        // Hide internal-only plugins
+        const hiddenPlugins = new Set(["argus-minio-workspace", "argus-minio-setup"])
+        const visible = services.filter((s) => !hiddenPlugins.has(s.plugin_name))
+
+        // For GitLab, prefer workspace's external project URL over internal endpoint
+        const adjusted = visible.map((svc) => {
+          if (svc.plugin_name === "argus-gitlab" && workspace.gitlab_project_url) {
+            return { ...svc, endpoint: workspace.gitlab_project_url }
+          }
+          return svc
+        })
+
+        return adjusted.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground text-sm">
+            No services deployed yet.
+          </div>
+        ) : (
+          <div>
+            <h3 className="mb-3 text-sm font-semibold">
+              Deployed Services ({adjusted.length})
+            </h3>
+            <ServiceDataList services={adjusted} />
+          </div>
+        )
+      })()}
     </div>
   )
 }
