@@ -1015,6 +1015,7 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null)
   const [services, setServices] = useState<WorkspaceService[]>([])
   const [gitlabServerUrl, setGitlabServerUrl] = useState<string>("")
+  const [perUserPlugins, setPerUserPlugins] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -1031,11 +1032,12 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
     let cancelled = false
     async function load() {
       try {
-        const [ws, svc, gitlabRes, cfgRes] = await Promise.all([
+        const [ws, svc, gitlabRes, cfgRes, mappingRes] = await Promise.all([
           fetchWorkspace(workspaceId),
           fetchWorkspaceServices(workspaceId),
           authFetch("/api/v1/settings/gitlab").catch(() => null),
           authFetch("/api/v1/settings/configuration").catch(() => null),
+          authFetch("/api/v1/settings/deploy-mapping").catch(() => null),
         ])
         if (!cancelled) {
           setWorkspace(ws)
@@ -1054,6 +1056,19 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
             glUrl = gitlabCat?.items?.gitlab_url || ""
           }
           if (glUrl) setGitlabServerUrl(glUrl.replace(/\/+$/, ""))
+
+          // Build set of per_user plugin names
+          if (mappingRes?.ok) {
+            const mData = await mappingRes.json()
+            const perUser = new Set<string>()
+            for (const m of mData.mappings ?? []) {
+              if (m.constraint === "per_user") {
+                const pluginName = SERVICE_KEY_TO_PLUGIN[m.service_key as string]
+                if (pluginName) perUser.add(pluginName)
+              }
+            }
+            setPerUserPlugins(perUser)
+          }
         }
       } catch {
         // ignore
@@ -1127,7 +1142,14 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
           })
 
         // Deployed services (everything except hidden + default)
-        const deployed = all.filter((s) => !defaultPlugins.has(s.plugin_name))
+        // For per_user services, only show current user's instances
+        const deployed = all.filter((s) => {
+          if (defaultPlugins.has(s.plugin_name)) return false
+          if (perUserPlugins.has(s.plugin_name) && user) {
+            return s.username === user.username
+          }
+          return true
+        })
 
         return (
           <>
