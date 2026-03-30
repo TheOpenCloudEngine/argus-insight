@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { ChevronsUpDown, Check, Container } from "lucide-react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams, usePathname } from "next/navigation"
 
 import { cn } from "@workspace/ui/lib/utils"
 import {
@@ -41,7 +41,10 @@ export function WorkspaceSwitcher() {
   const [selected, setSelected] = useState<MyWorkspace | null>(null)
   const { isMobile } = useSidebar()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const pathname = usePathname()
 
+  // Fetch workspaces
   useEffect(() => {
     authFetch("/api/v1/workspace/workspaces/my")
       .then((res) => (res.ok ? res.json() : []))
@@ -49,10 +52,19 @@ export function WorkspaceSwitcher() {
       .catch(() => setWorkspaces([]))
   }, [])
 
+  // Sync selected state from URL ?ws= param
+  useEffect(() => {
+    const wsId = searchParams.get("ws")
+    if (wsId && workspaces.length > 0) {
+      const ws = workspaces.find((w) => w.id === Number(wsId))
+      if (ws) setSelected(ws)
+    }
+  }, [searchParams, workspaces])
+
   const handleSelect = (ws: MyWorkspace) => {
     setSelected(ws)
     setOpen(false)
-    router.push(`/dashboard/workspaces?ws=${ws.id}`)
+    router.push(`/dashboard/workspace?ws=${ws.id}`)
   }
 
   return (

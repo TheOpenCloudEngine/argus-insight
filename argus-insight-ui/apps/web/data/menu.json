@@ -5,6 +5,12 @@
       "label": "Main",
       "items": [
         {
+          "id": "workspace",
+          "title": "Workspace",
+          "url": "/dashboard/workspace",
+          "icon": "Briefcase"
+        },
+        {
           "id": "dashboard",
           "title": "Dashboard",
           "url": "/dashboard",
