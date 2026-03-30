@@ -680,7 +680,55 @@ async def bulk_add_members(
         except Exception as e:
             logger.warning("GitLab provisioning failed for user %d: %s", user_id, e)
 
-        # Step 4: Add workspace member
+        # Step 4: MinIO user creation + workspace bucket access
+        minio_provisioned = False
+        try:
+            from app.settings.service import get_config_by_category
+            cfg = await get_config_by_category(session, "argus")
+            minio_endpoint = cfg.get("object_storage_endpoint", "")
+            minio_access = cfg.get("object_storage_access_key", "")
+            minio_secret = cfg.get("object_storage_secret_key", "")
+            minio_ssl = cfg.get("object_storage_use_ssl", "false").lower() == "true"
+
+            if minio_endpoint and minio_access and minio_secret:
+                from workspace_provisioner.minio.client import MinioAdminClient
+                from workspace_provisioner.config import MinioWorkspaceConfig
+
+                ws_config_cfg = await get_config_by_category(session, "deploy_mapping")
+                bucket_prefix = "workspace-"  # default
+                minio_ep = minio_endpoint.replace("http://", "").replace("https://", "")
+                minio_client = MinioAdminClient(
+                    endpoint=minio_ep,
+                    root_user=minio_access,
+                    root_password=minio_secret,
+                    secure=minio_ssl,
+                )
+
+                bucket_name = f"{bucket_prefix}{ws.name}"
+                minio_username = f"user-{user.username}"
+
+                # Create MinIO user (idempotent - returns created=False if exists)
+                user_secret = secrets.token_urlsafe(16)
+                user_info = await minio_client.create_user(minio_username, user_secret)
+
+                # Set bucket policy for workspace bucket
+                await minio_client.set_user_bucket_policy(minio_username, bucket_name)
+
+                # Save S3 credentials if this is a new user
+                if user_info.get("created") and not user.s3_access_key:
+                    user.s3_access_key = minio_username
+                    user.s3_secret_key = user_secret
+                    user.s3_bucket = bucket_name
+
+                minio_provisioned = True
+                logger.info(
+                    "MinIO access granted for member %s: user=%s bucket=%s",
+                    user.username, minio_username, bucket_name,
+                )
+        except Exception as e:
+            logger.warning("MinIO provisioning failed for user %d: %s", user_id, e)
+
+        # Step 5: Add workspace member
         member = ArgusWorkspaceMember(
             workspace_id=workspace_id,
             user_id=user_id,
@@ -700,7 +748,11 @@ async def bulk_add_members(
             session, workspace_id, ws.name, "member_added",
             actor_user_id=int(current_user.sub), actor_username=current_user.username,
             target_user_id=user_id, target_username=user.username,
-            detail={"role": "User", "gitlab_provisioned": gitlab_token is not None},
+            detail={
+                "role": "User",
+                "gitlab_provisioned": gitlab_token is not None,
+                "minio_provisioned": minio_provisioned,
+            },
         )
 
     logger.info("Bulk added %d members to workspace %d", len(results), workspace_id)
