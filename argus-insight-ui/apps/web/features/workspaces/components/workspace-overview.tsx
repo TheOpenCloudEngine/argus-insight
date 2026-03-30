@@ -849,18 +849,8 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
           <h2 className="text-lg font-semibold">{workspace.display_name}</h2>
           <p className="text-sm text-muted-foreground">
             <span className="font-mono">{workspace.name}</span>
-            {workspace.k8s_namespace && (
-              <>
-                <span className="mx-2 text-muted-foreground/50">|</span>
-                <span className="font-mono">{workspace.k8s_namespace}</span>
-              </>
-            )}
-            {workspace.domain && (
-              <>
-                <span className="mx-2 text-muted-foreground/50">|</span>
-                {workspace.domain}
-              </>
-            )}
+            <span className="mx-2 text-muted-foreground/50">|</span>
+            <span>{formatDateTime(workspace.created_at)}</span>
           </p>
         </div>
         <div className="ml-auto">{statusBadge(workspace.status)}</div>
