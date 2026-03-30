@@ -439,9 +439,9 @@ function ServiceDataListItem({
               ) : <div />}
               {onDelete && (
                 <Button
-                  variant="ghost"
+                  variant="destructive"
                   size="sm"
-                  className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-950"
+                  className="text-xs"
                   onClick={(e) => { e.stopPropagation(); setConfirmOpen(true) }}
                 >
                   Delete Service
