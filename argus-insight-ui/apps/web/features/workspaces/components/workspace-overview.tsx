@@ -318,10 +318,18 @@ function ServiceExpandedDetail({ service }: { service: WorkspaceService }) {
 }
 
 function ServiceTable({ services }: { services: WorkspaceService[] }) {
-  const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
 
   const toggle = (id: number) => {
-    setExpandedId(expandedId === id ? null : id)
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
   }
 
   return (
@@ -339,7 +347,7 @@ function ServiceTable({ services }: { services: WorkspaceService[] }) {
         <TableBody>
           {services.map((svc) => {
             const iconName = svc.plugin_name.replace(/^argus-/, "").replace(/-deploy$/, "")
-            const isExpanded = expandedId === svc.id
+            const isExpanded = expandedIds.has(svc.id)
 
             return (
               <tbody key={svc.id}>
