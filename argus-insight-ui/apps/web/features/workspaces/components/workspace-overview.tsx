@@ -669,13 +669,13 @@ function WorkspaceMembersBar({
                   </button>
                 )}
                 <Avatar className="h-9 w-9">
-                  <AvatarFallback className="text-xs">{memberInitials(m)}</AvatarFallback>
+                  <AvatarFallback className="text-sm">{memberInitials(m)}</AvatarFallback>
                 </Avatar>
-                <span className="truncate text-[11px] text-center w-full">
+                <span className="truncate text-sm text-center w-full">
                   {m.display_name || m.username}
                 </span>
                 {m.is_owner && (
-                  <Badge variant="secondary" className="text-[9px] px-1 py-0">Owner</Badge>
+                  <Badge variant="secondary" className="text-xs px-1.5 py-0">Owner</Badge>
                 )}
               </div>
             ))}
