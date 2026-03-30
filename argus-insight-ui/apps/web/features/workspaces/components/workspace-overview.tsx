@@ -658,7 +658,7 @@ function WorkspaceMembersBar({
         ) : (
           <div className="flex flex-wrap gap-3">
             {members.map((m) => (
-              <div key={m.id} className="group relative flex flex-col items-center gap-1 w-16">
+              <div key={m.id} className="group relative flex flex-col items-center gap-1 w-20">
                 {/* X button (hover only, not for owner) */}
                 {!m.is_owner && (
                   <button
