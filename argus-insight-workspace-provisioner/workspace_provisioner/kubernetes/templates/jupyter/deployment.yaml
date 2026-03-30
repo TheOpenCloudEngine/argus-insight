@@ -73,7 +73,7 @@ spec:
               port: http
             initialDelaySeconds: 10
             periodSeconds: 10
-        # Sidecar 1: Mount workspace bucket to /workspace
+        # Sidecar 1: Mount user bucket to /workspace (per-user working directory)
         - name: s3fs-workspace
           image: ${S3FS_IMAGE}
           securityContext:
@@ -90,7 +90,7 @@ spec:
                   name: argus-jupyter-${INSTANCE_ID}
                   key: aws-secret-key
             - name: S3_BUCKET
-              value: "${WORKSPACE_BUCKET}"
+              value: "${USER_BUCKET}"
             - name: S3_ENDPOINT
               value: "${S3_ENDPOINT}"
             - name: S3_USE_SSL
@@ -118,7 +118,7 @@ spec:
             - name: workspace-vol
               mountPath: /workspace
               mountPropagation: Bidirectional
-        # Sidecar 2: Mount personal bucket to /data
+        # Sidecar 2: Mount shared workspace bucket to /data (read-write shared storage)
         - name: s3fs-data
           image: ${S3FS_IMAGE}
           securityContext:
@@ -135,7 +135,7 @@ spec:
                   name: argus-jupyter-${INSTANCE_ID}
                   key: aws-secret-key
             - name: S3_BUCKET
-              value: "${USER_BUCKET}"
+              value: "${WORKSPACE_BUCKET}"
             - name: S3_ENDPOINT
               value: "${S3_ENDPOINT}"
             - name: S3_USE_SSL

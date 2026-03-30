@@ -1215,6 +1215,21 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
                 _hideTimestamps: true,
               } as WorkspaceService & { _hideUrl?: boolean; _hideTimestamps?: boolean }
             }
+            if (svc.plugin_name.startsWith("argus-jupyter")) {
+              return {
+                ...svc,
+                username: null,
+                metadata: {
+                  ...svc.metadata,
+                  display: {
+                    "Workspace": "/workspace (personal)",
+                    "Shared Data": "/data (workspace)",
+                  },
+                },
+                _hideUrl: true,
+                _hideTimestamps: true,
+              } as WorkspaceService & { _hideUrl?: boolean; _hideTimestamps?: boolean }
+            }
             return svc
           })
 
