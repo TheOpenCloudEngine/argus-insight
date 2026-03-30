@@ -3,8 +3,7 @@ display_name: GitLab Airflow DAGs Init
 description: Create airflow-dags directory in workspace GitLab repo and provide git-sync credentials
 icon: airflow
 category: infrastructure
-depends_on:
-  - argus-gitlab
+depends_on: []
 provides:
   - gitlab_http_url
   - gitlab_token
