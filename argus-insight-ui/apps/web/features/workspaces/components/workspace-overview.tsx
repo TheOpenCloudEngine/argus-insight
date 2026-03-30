@@ -33,6 +33,7 @@ import {
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
 import { authFetch } from "@/features/auth/auth-fetch"
+import { useAuth } from "@/features/auth"
 import { fetchWorkspace, fetchWorkspaceServices } from "@/features/workspaces/api"
 import type { WorkspaceResponse, WorkspaceService } from "@/features/workspaces/types"
 import { PluginIcon } from "@/features/software-deployment/components/plugin-icon"
@@ -265,7 +266,13 @@ function DetailRow({
   )
 }
 
-function ServiceDataListItem({ service }: { service: WorkspaceService }) {
+function ServiceDataListItem({
+  service,
+  hideTimestamps,
+}: {
+  service: WorkspaceService
+  hideTimestamps?: boolean
+}) {
   const [expanded, setExpanded] = useState(false)
   const iconName = service.plugin_name.replace(/^argus-/, "").replace(/-deploy$/, "")
   const meta = service.metadata ?? {}
@@ -282,9 +289,11 @@ function ServiceDataListItem({ service }: { service: WorkspaceService }) {
     const isLink = /^https?:\/\//.test(strVal) || /^bolt:\/\//.test(strVal)
     details.push({ label, value: strVal, link: isLink })
   }
-  details.push({ label: "Created", value: formatDateTime(service.created_at) })
-  if (service.updated_at !== service.created_at) {
-    details.push({ label: "Updated", value: formatDateTime(service.updated_at) })
+  if (!hideTimestamps) {
+    details.push({ label: "Created", value: formatDateTime(service.created_at) })
+    if (service.updated_at !== service.created_at) {
+      details.push({ label: "Updated", value: formatDateTime(service.updated_at) })
+    }
   }
 
   return (
@@ -373,11 +382,17 @@ function ServiceDataListItem({ service }: { service: WorkspaceService }) {
   )
 }
 
-function ServiceDataList({ services }: { services: WorkspaceService[] }) {
+function ServiceDataList({
+  services,
+  hideTimestamps,
+}: {
+  services: WorkspaceService[]
+  hideTimestamps?: boolean
+}) {
   return (
     <div className="rounded-lg border">
       {services.map((svc) => (
-        <ServiceDataListItem key={svc.id} service={svc} />
+        <ServiceDataListItem key={svc.id} service={svc} hideTimestamps={hideTimestamps} />
       ))}
     </div>
   )
@@ -388,6 +403,7 @@ function ServiceDataList({ services }: { services: WorkspaceService[] }) {
 /* ------------------------------------------------------------------ */
 
 function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
+  const { user } = useAuth()
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null)
   const [services, setServices] = useState<WorkspaceService[]>([])
   const [gitlabServerUrl, setGitlabServerUrl] = useState<string>("")
@@ -483,19 +499,25 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
           .filter((s) => defaultPlugins.has(s.plugin_name))
           .map((svc) => {
             if (svc.plugin_name !== "argus-gitlab") return svc
-            // Reconstruct GitLab URL using Settings gitlab_url + project path
-            // Try workspace.gitlab_project_url first, fall back to svc.endpoint
+
+            // Reconstruct GitLab URL from Settings server URL + project path
             const rawUrl = workspace.gitlab_project_url || svc.endpoint
-            if (!rawUrl) return svc
-            if (gitlabServerUrl) {
+            let endpoint = rawUrl || ""
+            if (gitlabServerUrl && rawUrl) {
               try {
                 const parsed = new URL(rawUrl)
-                return { ...svc, endpoint: `${gitlabServerUrl}${parsed.pathname}` }
-              } catch {
-                return { ...svc, endpoint: rawUrl }
-              }
+                endpoint = `${gitlabServerUrl}${parsed.pathname}`
+              } catch { /* use rawUrl */ }
             }
-            return { ...svc, endpoint: rawUrl }
+
+            // Inject GitLab password from user profile, strip project_id from metadata
+            const { project_id: _, ...cleanMeta } = (svc.metadata ?? {}) as Record<string, unknown>
+            return {
+              ...svc,
+              endpoint,
+              password: user?.gitlab_password || null,
+              metadata: Object.keys(cleanMeta).length > 0 ? cleanMeta : null,
+            }
           })
 
         // Deployed services (everything except hidden + default)
@@ -555,7 +577,7 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
                 <h3 className="mb-3 text-sm font-semibold">
                   Default Services ({defaultServices.length})
                 </h3>
-                <ServiceDataList services={defaultServices} />
+                <ServiceDataList services={defaultServices} hideTimestamps />
               </div>
             )}
 
