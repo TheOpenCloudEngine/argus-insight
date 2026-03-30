@@ -4,7 +4,10 @@ import { useCallback, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Clock,
+  Copy,
   Container,
   ExternalLink,
   Eye,
@@ -24,13 +27,26 @@ import {
   CardHeader,
   CardTitle,
 } from "@workspace/ui/components/card"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@workspace/ui/components/table"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@workspace/ui/components/tooltip"
 import { authFetch } from "@/features/auth/auth-fetch"
 import { fetchWorkspace, fetchWorkspaceServices } from "@/features/workspaces/api"
 import type { WorkspaceResponse, WorkspaceService } from "@/features/workspaces/types"
 import { PluginIcon } from "@/features/software-deployment/components/plugin-icon"
 
 /* ------------------------------------------------------------------ */
-/*  My Workspace list (shown when no workspace is selected)            */
+/*  Shared helpers                                                     */
 /* ------------------------------------------------------------------ */
 
 interface MyWorkspace {
@@ -43,10 +59,11 @@ interface MyWorkspace {
 function statusBadge(status: string) {
   switch (status) {
     case "active":
+    case "running":
       return (
         <Badge className="bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-900 dark:text-green-200">
           <CheckCircle2 className="mr-1 h-3 w-3" />
-          Active
+          {status === "active" ? "Active" : "Running"}
         </Badge>
       )
     case "provisioning":
@@ -72,6 +89,66 @@ function statusBadge(status: string) {
       )
   }
 }
+
+function formatDateTime(dateStr: string): string {
+  const d = new Date(dateStr)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    navigator.clipboard.writeText(value)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          onClick={handleCopy}
+          className="text-muted-foreground hover:text-foreground"
+        >
+          {copied ? (
+            <CheckCircle2 className="h-3 w-3 text-green-600" />
+          ) : (
+            <Copy className="h-3 w-3" />
+          )}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="text-xs">
+        {copied ? "Copied!" : "Copy"}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+function SecretValue({ value, label }: { value: string; label: string }) {
+  const [show, setShow] = useState(false)
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <code className="max-w-[220px] truncate rounded bg-muted px-1.5 py-0.5 text-xs font-mono">
+        {show ? value : "••••••••••••"}
+      </code>
+      <button
+        onClick={(e) => { e.stopPropagation(); setShow(!show) }}
+        className="text-muted-foreground hover:text-foreground"
+      >
+        {show ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+      </button>
+      {show && <CopyButton value={value} />}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  My Workspace list (shown when no workspace is selected)            */
+/* ------------------------------------------------------------------ */
 
 function WorkspaceListView({ onSelect }: { onSelect: (ws: MyWorkspace) => void }) {
   const [workspaces, setWorkspaces] = useState<MyWorkspace[]>([])
@@ -145,100 +222,189 @@ function WorkspaceListView({ onSelect }: { onSelect: (ws: MyWorkspace) => void }
 }
 
 /* ------------------------------------------------------------------ */
-/*  Workspace Resource Dashboard (shown when workspace is selected)    */
+/*  Expandable Service Row                                             */
 /* ------------------------------------------------------------------ */
 
-function ServiceCard({ service }: { service: WorkspaceService }) {
-  const [showPw, setShowPw] = useState(false)
-  const [showToken, setShowToken] = useState(false)
+function ServiceExpandedDetail({ service }: { service: WorkspaceService }) {
+  const meta = service.metadata ?? {}
 
-  // Derive icon name from plugin_name (e.g., "argus-airflow" → "airflow")
-  const iconName = service.plugin_name.replace(/^argus-/, "").replace(/-deploy$/, "")
+  // Collect all detail rows
+  const details: { label: string; value: string; secret?: boolean; link?: boolean }[] = []
+
+  if (service.endpoint) {
+    details.push({ label: "Endpoint", value: service.endpoint, link: true })
+  }
+  if (service.username) {
+    details.push({ label: "Username", value: service.username })
+  }
+  if (service.password) {
+    details.push({ label: "Password", value: service.password, secret: true })
+  }
+  if (service.access_token) {
+    details.push({ label: "Access Token", value: service.access_token, secret: true })
+  }
+
+  // Extract metadata fields
+  for (const [key, val] of Object.entries(meta)) {
+    if (val == null || val === "") continue
+    const strVal = String(val)
+    const label = key
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+    const isLink = /^https?:\/\//.test(strVal) || /^bolt:\/\//.test(strVal)
+    details.push({ label, value: strVal, link: isLink })
+  }
+
+  details.push({ label: "Created", value: formatDateTime(service.created_at) })
+  if (service.updated_at !== service.created_at) {
+    details.push({ label: "Updated", value: formatDateTime(service.updated_at) })
+  }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center gap-3 pb-2">
-        <PluginIcon icon={iconName} size={28} className="shrink-0 rounded" />
-        <div className="min-w-0 flex-1">
-          <CardTitle className="truncate text-sm">
-            {service.display_name || service.plugin_name}
-          </CardTitle>
-          <CardDescription className="text-xs">
-            {service.version ? `v${service.version}` : service.plugin_name}
-          </CardDescription>
+    <TableRow>
+      <TableCell colSpan={5} className="bg-muted/30 p-0">
+        <div className="grid gap-x-8 gap-y-2 px-6 py-4 sm:grid-cols-2">
+          {details.map((d) => (
+            <div key={d.label} className="flex items-center gap-2 text-sm">
+              <span className="w-28 shrink-0 text-xs font-medium text-muted-foreground">
+                {d.label}
+              </span>
+              {d.secret ? (
+                <SecretValue value={d.value} label={d.label} />
+              ) : d.link ? (
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <a
+                    href={d.value}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 truncate text-xs text-blue-600 hover:underline dark:text-blue-400"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {d.value}
+                    <ExternalLink className="h-3 w-3 shrink-0" />
+                  </a>
+                  <CopyButton value={d.value} />
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <code className="truncate rounded bg-muted px-1.5 py-0.5 text-xs font-mono">
+                    {d.value}
+                  </code>
+                  <CopyButton value={d.value} />
+                </div>
+              )}
+            </div>
+          ))}
         </div>
-        <Badge
-          variant="secondary"
-          className={
-            service.status === "running"
-              ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-              : ""
-          }
-        >
-          {service.status}
-        </Badge>
-      </CardHeader>
-
-      <CardContent className="space-y-2 pt-0 text-sm">
-        {/* Endpoint */}
+        {/* Open Service button */}
         {service.endpoint && (
-          <div className="flex items-start gap-2">
-            <span className="text-muted-foreground w-16 shrink-0 text-xs">Endpoint</span>
+          <div className="border-t px-6 py-2">
             <a
               href={service.endpoint}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 truncate text-xs text-blue-600 hover:underline dark:text-blue-400"
+              onClick={(e) => e.stopPropagation()}
             >
-              {service.endpoint}
-              <ExternalLink className="h-3 w-3 shrink-0" />
+              <Button variant="outline" size="sm" className="text-xs">
+                Open Service
+                <ExternalLink className="ml-1.5 h-3 w-3" />
+              </Button>
             </a>
           </div>
         )}
-
-        {/* Username */}
-        {service.username && (
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground w-16 shrink-0 text-xs">User</span>
-            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{service.username}</code>
-          </div>
-        )}
-
-        {/* Password */}
-        {service.password && (
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground w-16 shrink-0 text-xs">Password</span>
-            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-              {showPw ? service.password : "••••••••"}
-            </code>
-            <button
-              onClick={() => setShowPw(!showPw)}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              {showPw ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-            </button>
-          </div>
-        )}
-
-        {/* Access Token */}
-        {service.access_token && (
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground w-16 shrink-0 text-xs">Token</span>
-            <code className="max-w-[180px] truncate rounded bg-muted px-1.5 py-0.5 text-xs">
-              {showToken ? service.access_token : "••••••••"}
-            </code>
-            <button
-              onClick={() => setShowToken(!showToken)}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              {showToken ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-            </button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      </TableCell>
+    </TableRow>
   )
 }
+
+function ServiceTable({ services }: { services: WorkspaceService[] }) {
+  const [expandedId, setExpandedId] = useState<number | null>(null)
+
+  const toggle = (id: number) => {
+    setExpandedId(expandedId === id ? null : id)
+  }
+
+  return (
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-10" />
+            <TableHead>Service</TableHead>
+            <TableHead className="hidden sm:table-cell">Version</TableHead>
+            <TableHead className="hidden md:table-cell">Endpoint</TableHead>
+            <TableHead className="w-24 text-center">Status</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {services.map((svc) => {
+            const iconName = svc.plugin_name.replace(/^argus-/, "").replace(/-deploy$/, "")
+            const isExpanded = expandedId === svc.id
+
+            return (
+              <tbody key={svc.id}>
+                <TableRow
+                  className={`cursor-pointer ${isExpanded ? "bg-muted/50" : ""}`}
+                  onClick={() => toggle(svc.id)}
+                >
+                  <TableCell className="w-10 px-3">
+                    {isExpanded ? (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <PluginIcon icon={iconName} size={24} className="shrink-0 rounded" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">
+                          {svc.display_name || svc.plugin_name}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground font-mono">
+                          {svc.plugin_name}
+                        </p>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell">
+                    <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                      {svc.version ? `v${svc.version}` : "-"}
+                    </code>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    {svc.endpoint ? (
+                      <a
+                        href={svc.endpoint}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 truncate text-xs text-blue-600 hover:underline dark:text-blue-400 max-w-[300px]"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {svc.endpoint}
+                        <ExternalLink className="h-3 w-3 shrink-0" />
+                      </a>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {statusBadge(svc.status)}
+                  </TableCell>
+                </TableRow>
+                {isExpanded && <ServiceExpandedDetail service={svc} />}
+              </tbody>
+            )
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Workspace Resource Dashboard                                       */
+/* ------------------------------------------------------------------ */
 
 function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null)
@@ -354,19 +520,17 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
         </Card>
       </div>
 
-      {/* Service Cards */}
+      {/* Service Table */}
       {services.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground text-sm">
           No services deployed yet.
         </div>
       ) : (
         <div>
-          <h3 className="mb-3 text-sm font-semibold">Deployed Services</h3>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {services.map((svc) => (
-              <ServiceCard key={svc.id} service={svc} />
-            ))}
-          </div>
+          <h3 className="mb-3 text-sm font-semibold">
+            Deployed Services ({services.length})
+          </h3>
+          <ServiceTable services={services} />
         </div>
       )}
     </div>
