@@ -49,7 +49,7 @@ import {
 } from "@workspace/ui/components/tooltip"
 import { authFetch } from "@/features/auth/auth-fetch"
 import { useAuth } from "@/features/auth"
-import { fetchWorkspace, fetchWorkspaceServices, fetchWorkspaceAuditLogs } from "@/features/workspaces/api"
+import { deleteWorkspaceService, fetchWorkspace, fetchWorkspaceServices, fetchWorkspaceAuditLogs } from "@/features/workspaces/api"
 import type { AuditLog, WorkspaceResponse, WorkspaceService } from "@/features/workspaces/types"
 import { PluginIcon } from "@/features/software-deployment/components/plugin-icon"
 
@@ -296,11 +296,15 @@ function DetailRow({
 function ServiceDataListItem({
   service,
   hideTimestamps,
+  onDelete,
 }: {
   service: WorkspaceService
   hideTimestamps?: boolean
+  onDelete?: (service: WorkspaceService) => void
 }) {
   const [expanded, setExpanded] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const iconName = service.plugin_name.replace(/^argus-/, "").replace(/-deploy$/, "")
   const meta = service.metadata ?? {}
 
@@ -418,23 +422,76 @@ function ServiceDataListItem({
               />
             ))}
           </div>
-          {openUrl && (
-            <div className="mt-3 pt-3 border-t">
-              <a
-                href={openUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Button variant="outline" size="sm" className="text-xs">
-                  Open Service
-                  <ExternalLink className="ml-1.5 h-3 w-3" />
+          {(openUrl || onDelete) && (
+            <div className="mt-3 pt-3 border-t flex items-center justify-between">
+              {openUrl ? (
+                <a
+                  href={openUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Button variant="outline" size="sm" className="text-xs">
+                    Open Service
+                    <ExternalLink className="ml-1.5 h-3 w-3" />
+                  </Button>
+                </a>
+              ) : <div />}
+              {onDelete && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-950"
+                  onClick={(e) => { e.stopPropagation(); setConfirmOpen(true) }}
+                >
+                  Delete Service
                 </Button>
-              </a>
+              )}
             </div>
           )}
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={confirmOpen} onOpenChange={(open) => { if (!open && !deleting) setConfirmOpen(false) }}>
+        <DialogContent className="sm:max-w-sm" onClick={(e) => e.stopPropagation()}>
+          <DialogHeader>
+            <DialogTitle>Delete Service</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this service? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirmOpen(false)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={deleting}
+              onClick={async () => {
+                setDeleting(true)
+                try {
+                  await onDelete?.(service)
+                } finally {
+                  setDeleting(false)
+                  setConfirmOpen(false)
+                }
+              }}
+            >
+              {deleting ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : null}
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -442,14 +499,16 @@ function ServiceDataListItem({
 function ServiceDataList({
   services,
   hideTimestamps,
+  onDelete,
 }: {
   services: WorkspaceService[]
   hideTimestamps?: boolean
+  onDelete?: (service: WorkspaceService) => void
 }) {
   return (
     <div className="rounded-lg border">
       {services.map((svc) => (
-        <ServiceDataListItem key={svc.id} service={svc} hideTimestamps={hideTimestamps} />
+        <ServiceDataListItem key={svc.id} service={svc} hideTimestamps={hideTimestamps} onDelete={onDelete} />
       ))}
     </div>
   )
@@ -693,6 +752,11 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
     setRefreshKey((k) => k + 1)
   }, [])
 
+  const handleDeleteService = useCallback(async (svc: WorkspaceService) => {
+    await deleteWorkspaceService(workspaceId, svc.id)
+    setRefreshKey((k) => k + 1)
+  }, [workspaceId])
+
   useEffect(() => {
     let cancelled = false
     async function load() {
@@ -879,7 +943,7 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
                   No services deployed yet. Click "Add Service" to deploy one.
                 </div>
               ) : (
-                <ServiceDataList services={deployed} />
+                <ServiceDataList services={deployed} onDelete={handleDeleteService} />
               )}
             </div>
           </>
