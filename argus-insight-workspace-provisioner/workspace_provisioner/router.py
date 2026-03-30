@@ -339,6 +339,7 @@ class DeployPipelineRequest(BaseModel):
 async def deploy_pipeline_to_workspace(
     workspace_id: int,
     req: DeployPipelineRequest,
+    current_user: CurrentUser,
     session: AsyncSession = Depends(get_session),
     gitlab_client: GitLabClient = Depends(_get_gitlab_client),
 ):
@@ -383,20 +384,20 @@ async def deploy_pipeline_to_workspace(
     ws.status = "provisioning"
     await session.commit()
 
-    # Load creator info
+    # Load requesting user info (for per_user services like VS Code, Jupyter)
     from app.usermgr.models import ArgusUser
     from app.settings.service import get_config_by_category
-    creator_result = await session.execute(
-        select(ArgusUser).where(ArgusUser.id == ws.created_by)
+    req_user_result = await session.execute(
+        select(ArgusUser).where(ArgusUser.id == int(current_user.sub))
     )
-    creator = creator_result.scalars().first()
+    req_user = req_user_result.scalars().first()
     creator_info = {}
-    if creator:
+    if req_user:
         gitlab_cfg = await get_config_by_category(session, "gitlab")
         creator_info = {
-            "creator_username": creator.username,
-            "creator_email": creator.email,
-            "creator_name": f"{creator.first_name} {creator.last_name}".strip() or creator.username,
+            "creator_username": req_user.username,
+            "creator_email": req_user.email,
+            "creator_name": f"{req_user.first_name} {req_user.last_name}".strip() or req_user.username,
             "creator_password": gitlab_cfg.get("gitlab_password", "") or "Argus!nsight2026",
             "admin_user_id": ws.created_by,
         }
