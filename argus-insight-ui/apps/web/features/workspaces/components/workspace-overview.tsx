@@ -726,8 +726,8 @@ function AddServiceButton({
       </Dialog>
 
       {/* Deploy Progress Dialog */}
-      <Dialog open={deployOpen} onOpenChange={(open) => { if (!open) closeDeployDialog() }}>
-        <DialogContent className="sm:max-w-sm">
+      <Dialog open={deployOpen} onOpenChange={() => {}}>
+        <DialogContent className="sm:max-w-sm [&>button]:hidden" onPointerDownOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>
               {deployPhase === "progress" && `Deploying ${deployLabel}`}
@@ -755,16 +755,11 @@ function AddServiceButton({
             )}
           </div>
 
-          <div className="flex justify-end">
-            {deployPhase === "progress" ? (
-              <Button variant="outline" size="sm" disabled>
-                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                Deploying...
-              </Button>
-            ) : (
+          {deployPhase !== "progress" && (
+            <div className="flex justify-center">
               <Button size="sm" onClick={closeDeployDialog}>Close</Button>
-            )}
-          </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </>
