@@ -461,92 +461,106 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
         <div className="ml-auto">{statusBadge(workspace.status)}</div>
       </div>
 
-      {/* Summary Stats */}
       {(() => {
+        // Categorize services
         const hiddenPlugins = new Set(["argus-minio-workspace", "argus-minio-setup"])
-        const visibleServices = services.filter((s) => !hiddenPlugins.has(s.plugin_name))
-        return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardContent className="flex items-center gap-3 p-4">
-            <Server className="h-5 w-5 text-muted-foreground" />
-            <div>
-              <p className="text-2xl font-bold">{visibleServices.length}</p>
-              <p className="text-xs text-muted-foreground">Deployed Services</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-3 p-4">
-            <CheckCircle2 className="h-5 w-5 text-green-600" />
-            <div>
-              <p className="text-2xl font-bold">
-                {visibleServices.filter((s) => s.status === "running").length}
-              </p>
-              <p className="text-xs text-muted-foreground">Running</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-3 p-4">
-            <XCircle className="h-5 w-5 text-red-500" />
-            <div>
-              <p className="text-2xl font-bold">
-                {visibleServices.filter((s) => s.status !== "running").length}
-              </p>
-              <p className="text-xs text-muted-foreground">Not Running</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-3 p-4">
-            <Clock className="h-5 w-5 text-muted-foreground" />
-            <div>
-              <p className="text-sm font-medium">
-                {new Date(workspace.created_at).toLocaleDateString()}
-              </p>
-              <p className="text-xs text-muted-foreground">Created</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-        )
-      })()}
+        const defaultPlugins = new Set(["argus-gitlab"])
+        const all = services.filter((s) => !hiddenPlugins.has(s.plugin_name))
 
-      {/* Service List */}
-      {(() => {
-        // Hide internal-only plugins
-        const hiddenPlugins = new Set(["argus-minio-workspace", "argus-minio-setup"])
-        const visible = services.filter((s) => !hiddenPlugins.has(s.plugin_name))
-
-        // For GitLab, reconstruct URL using Settings gitlab_url + project path
-        const adjusted = visible.map((svc) => {
-          if (svc.plugin_name === "argus-gitlab" && workspace.gitlab_project_url) {
-            if (gitlabServerUrl) {
-              // Extract path from internal URL (e.g., "https://internal/foo/bar" → "/foo/bar")
-              try {
-                const parsed = new URL(workspace.gitlab_project_url)
-                return { ...svc, endpoint: `${gitlabServerUrl}${parsed.pathname}` }
-              } catch {
-                return { ...svc, endpoint: workspace.gitlab_project_url }
+        // Default services (GitLab etc.) — always present for every workspace
+        const defaultServices = all
+          .filter((s) => defaultPlugins.has(s.plugin_name))
+          .map((svc) => {
+            // Reconstruct GitLab URL using Settings gitlab_url + project path
+            if (svc.plugin_name === "argus-gitlab" && workspace.gitlab_project_url) {
+              if (gitlabServerUrl) {
+                try {
+                  const parsed = new URL(workspace.gitlab_project_url)
+                  return { ...svc, endpoint: `${gitlabServerUrl}${parsed.pathname}` }
+                } catch {
+                  return { ...svc, endpoint: workspace.gitlab_project_url }
+                }
               }
+              return { ...svc, endpoint: workspace.gitlab_project_url }
             }
-            return { ...svc, endpoint: workspace.gitlab_project_url }
-          }
-          return svc
-        })
+            return svc
+          })
 
-        return adjusted.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground text-sm">
-            No services deployed yet.
-          </div>
-        ) : (
-          <div>
-            <h3 className="mb-3 text-sm font-semibold">
-              Deployed Services ({adjusted.length})
-            </h3>
-            <ServiceDataList services={adjusted} />
-          </div>
+        // Deployed services (everything except hidden + default)
+        const deployed = all.filter((s) => !defaultPlugins.has(s.plugin_name))
+
+        return (
+          <>
+            {/* Summary Stats */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Card>
+                <CardContent className="flex items-center gap-3 p-4">
+                  <Server className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <p className="text-2xl font-bold">{deployed.length}</p>
+                    <p className="text-xs text-muted-foreground">Deployed Services</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="flex items-center gap-3 p-4">
+                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+                  <div>
+                    <p className="text-2xl font-bold">
+                      {deployed.filter((s) => s.status === "running").length}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Running</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="flex items-center gap-3 p-4">
+                  <XCircle className="h-5 w-5 text-red-500" />
+                  <div>
+                    <p className="text-2xl font-bold">
+                      {deployed.filter((s) => s.status !== "running").length}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Not Running</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="flex items-center gap-3 p-4">
+                  <Clock className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm font-medium">
+                      {new Date(workspace.created_at).toLocaleDateString()}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Created</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Default Services */}
+            {defaultServices.length > 0 && (
+              <div>
+                <h3 className="mb-3 text-sm font-semibold">
+                  Default Services ({defaultServices.length})
+                </h3>
+                <ServiceDataList services={defaultServices} />
+              </div>
+            )}
+
+            {/* Deployed Services */}
+            {deployed.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground text-sm">
+                No services deployed yet.
+              </div>
+            ) : (
+              <div>
+                <h3 className="mb-3 text-sm font-semibold">
+                  Deployed Services ({deployed.length})
+                </h3>
+                <ServiceDataList services={deployed} />
+              </div>
+            )}
+          </>
         )
       })()}
     </div>
