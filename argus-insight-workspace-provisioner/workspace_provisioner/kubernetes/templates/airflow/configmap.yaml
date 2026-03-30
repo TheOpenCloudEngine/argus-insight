@@ -23,7 +23,7 @@ data:
     base_url = https://${HOSTNAME}
     web_server_port = 8080
     rbac = True
-    expose_config = False
+    expose_config = True
 
     [scheduler]
     dag_dir_list_interval = 30
