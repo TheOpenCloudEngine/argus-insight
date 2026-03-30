@@ -514,6 +514,80 @@ async def update_k8s_config(
     return {"status": "ok", "message": "Kubernetes configuration saved"}
 
 
+# ---------------------------------------------------------------------------
+# Deploy Mapping (Service → Pipeline)
+# ---------------------------------------------------------------------------
+
+DEPLOY_MAPPING_SERVICES = [
+    {"service_key": "mlflow", "service_label": "MLflow", "icon": "mlflow"},
+    {"service_key": "vscode", "service_label": "VS Code Server", "icon": "code"},
+    {"service_key": "airflow", "service_label": "Airflow", "icon": "airflow"},
+    {"service_key": "jupyter", "service_label": "Jupyter Lab", "icon": "jupyter"},
+    {"service_key": "kserve", "service_label": "KServe", "icon": "kserve"},
+    {"service_key": "neo4j", "service_label": "Neo4j", "icon": "neo4j"},
+    {"service_key": "milvus", "service_label": "Milvus", "icon": "milvus"},
+    {"service_key": "mindsdb", "service_label": "MindsDB", "icon": "brain"},
+]
+
+
+class DeployMappingItem(BaseModel):
+    pipeline_id: int | None = None
+
+
+@router.get("/deploy-mapping")
+async def get_deploy_mapping(session: AsyncSession = Depends(get_session)):
+    """Get all service-to-pipeline deploy mappings."""
+    cfg = await service.get_config_by_category(session, "deploy_mapping")
+
+    # Also fetch pipeline names for display
+    pipeline_names: dict[int, str] = {}
+    try:
+        from sqlalchemy import select
+        from workspace_provisioner.plugins.models import ArgusPipeline
+        result = await session.execute(
+            select(ArgusPipeline.id, ArgusPipeline.display_name).where(
+                ArgusPipeline.deleted.is_(False),
+            )
+        )
+        for row in result:
+            pipeline_names[row.id] = row.display_name
+    except Exception:
+        pass
+
+    mappings = []
+    for svc in DEPLOY_MAPPING_SERVICES:
+        key = f"service_{svc['service_key']}"
+        raw_id = cfg.get(key, "")
+        pipeline_id = int(raw_id) if raw_id else None
+        mappings.append({
+            **svc,
+            "pipeline_id": pipeline_id,
+            "pipeline_name": pipeline_names.get(pipeline_id) if pipeline_id else None,
+        })
+
+    return {"mappings": mappings}
+
+
+@router.put("/deploy-mapping/{service_key}")
+async def update_deploy_mapping(
+    service_key: str,
+    body: DeployMappingItem,
+    session: AsyncSession = Depends(get_session),
+):
+    """Set or clear the pipeline mapping for a service."""
+    valid_keys = {s["service_key"] for s in DEPLOY_MAPPING_SERVICES}
+    if service_key not in valid_keys:
+        raise HTTPException(status_code=400, detail=f"Unknown service key: {service_key}")
+
+    config_key = f"service_{service_key}"
+    value = str(body.pipeline_id) if body.pipeline_id is not None else ""
+    await service.update_infra_category(
+        session, "deploy_mapping", {config_key: value},
+    )
+    logger.info("Deploy mapping updated: %s → pipeline_id=%s", service_key, body.pipeline_id)
+    return {"status": "ok", "service_key": service_key, "pipeline_id": body.pipeline_id}
+
+
 @router.get("/k8s/namespace/{namespace}")
 async def check_k8s_namespace(
     namespace: str,

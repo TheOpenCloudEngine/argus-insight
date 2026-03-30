@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Circle,
   Clock,
   Copy,
   Container,
@@ -522,25 +521,12 @@ function ServiceDataList({
 /*  Add Service Button + Deploy Dialog                                 */
 /* ------------------------------------------------------------------ */
 
-interface ServiceMenuItem {
-  label: string
+interface DeployMappingEntry {
+  service_key: string
+  service_label: string
   icon: string
-  pipelineKeyword: string
-}
-
-const ADD_SERVICE_ITEMS: ServiceMenuItem[] = [
-  { label: "MLflow", icon: "mlflow", pipelineKeyword: "mlflow" },
-  { label: "VS Code", icon: "code", pipelineKeyword: "vscode" },
-  { label: "Airflow", icon: "airflow", pipelineKeyword: "airflow" },
-]
-
-function stepIcon(action: string) {
-  switch (action) {
-    case "step_completed": return <CheckCircle2 className="h-4 w-4 text-green-600" />
-    case "step_failed": return <XCircle className="h-4 w-4 text-red-600" />
-    case "step_started": return <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-    default: return <Circle className="h-4 w-4 text-gray-400" />
-  }
+  pipeline_id: number | null
+  pipeline_name: string | null
 }
 
 function AddServiceButton({
@@ -550,9 +536,11 @@ function AddServiceButton({
   workspace: WorkspaceResponse
   onDeployComplete: () => void
 }) {
+  const [menuItems, setMenuItems] = useState<DeployMappingEntry[]>([])
+
   // Confirm dialog state
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [pendingItem, setPendingItem] = useState<ServiceMenuItem | null>(null)
+  const [pendingItem, setPendingItem] = useState<DeployMappingEntry | null>(null)
 
   // Deploy progress dialog state
   const [deployOpen, setDeployOpen] = useState(false)
@@ -561,13 +549,21 @@ function AddServiceButton({
   const [deployError, setDeployError] = useState<string | null>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Load deploy mappings
   useEffect(() => {
+    authFetch("/api/v1/settings/deploy-mapping")
+      .then((res) => (res.ok ? res.json() : { mappings: [] }))
+      .then((data) => {
+        // Only show services that have a pipeline mapped
+        setMenuItems((data.mappings ?? []).filter((m: DeployMappingEntry) => m.pipeline_id))
+      })
+      .catch(() => setMenuItems([]))
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current)
     }
   }, [])
 
-  const handleMenuClick = (item: ServiceMenuItem) => {
+  const handleMenuClick = (item: DeployMappingEntry) => {
     setPendingItem(item)
     setConfirmOpen(true)
   }
@@ -578,29 +574,14 @@ function AddServiceButton({
     setConfirmOpen(false)
     setPendingItem(null)
 
-    setDeployLabel(item.label)
+    setDeployLabel(item.service_label)
     setDeployPhase("progress")
     setDeployError(null)
     setDeployOpen(true)
 
-    // Find pipeline matching keyword
-    let pipelineId: number | null = null
-    try {
-      const res = await authFetch("/api/v1/plugins/pipelines")
-      if (res.ok) {
-        const data = await res.json()
-        const pipelines = data.items ?? []
-        const match = pipelines.find(
-          (p: { name: string; display_name: string }) =>
-            p.name.toLowerCase().includes(item.pipelineKeyword) ||
-            p.display_name.toLowerCase().includes(item.pipelineKeyword),
-        )
-        if (match) pipelineId = match.id
-      }
-    } catch { /* ignore */ }
-
+    const pipelineId = item.pipeline_id
     if (!pipelineId) {
-      setDeployError(`No pipeline found matching "${item.pipelineKeyword}". Create one in Software Deployment first.`)
+      setDeployError(`No pipeline mapped for "${item.service_label}". Configure it in Software Deployment > Pipeline To Deployment.`)
       setDeployPhase("error")
       return
     }
@@ -671,16 +652,22 @@ function AddServiceButton({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          {ADD_SERVICE_ITEMS.map((item) => (
-            <DropdownMenuItem
-              key={item.pipelineKeyword}
-              onClick={() => handleMenuClick(item)}
-              disabled={workspace.status === "provisioning"}
-            >
-              <PluginIcon icon={item.icon} size={16} className="mr-2 rounded" />
-              {item.label}
+          {menuItems.length === 0 ? (
+            <DropdownMenuItem disabled>
+              <span className="text-muted-foreground text-xs">No services configured</span>
             </DropdownMenuItem>
-          ))}
+          ) : (
+            menuItems.map((item) => (
+              <DropdownMenuItem
+                key={item.service_key}
+                onClick={() => handleMenuClick(item)}
+                disabled={workspace.status === "provisioning"}
+              >
+                <PluginIcon icon={item.icon} size={16} className="mr-2 rounded" />
+                {item.service_label}
+              </DropdownMenuItem>
+            ))
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -690,7 +677,7 @@ function AddServiceButton({
           <DialogHeader>
             <DialogTitle>Deploy Service</DialogTitle>
             <DialogDescription>
-              Would you like to deploy {pendingItem?.label} to this workspace?
+              Would you like to deploy {pendingItem?.service_label} to this workspace?
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-2">
