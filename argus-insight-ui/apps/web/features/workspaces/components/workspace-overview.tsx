@@ -560,8 +560,10 @@ function WorkspaceMembersBar({
 
   // Add dialog
   const [addOpen, setAddOpen] = useState(false)
-  const [allUsers, setAllUsers] = useState<{ id: number; username: string; display_name?: string }[]>([])
+  const [searchResults, setSearchResults] = useState<{ id: number; username: string; display_name?: string }[]>([])
   const [searchQuery, setSearchQuery] = useState("")
+  const [searching, setSearching] = useState(false)
+  const [searched, setSearched] = useState(false)
   const [selectedUserIds, setSelectedUserIds] = useState<Set<number>>(new Set())
   const [adding, setAdding] = useState(false)
 
@@ -576,16 +578,25 @@ function WorkspaceMembersBar({
       .finally(() => setLoading(false))
   }, [workspaceId, refreshKey])
 
-  const openAddDialog = async () => {
+  const openAddDialog = () => {
     setAddOpen(true)
     setSearchQuery("")
+    setSearchResults([])
+    setSearched(false)
     setSelectedUserIds(new Set())
     setAdding(false)
+  }
+
+  const handleSearch = async () => {
+    const q = searchQuery.trim()
+    if (!q) return
+    setSearching(true)
+    setSearched(true)
     try {
-      const res = await authFetch("/api/v1/usermgr/users?page_size=200")
+      const res = await authFetch(`/api/v1/usermgr/users?page_size=50&search=${encodeURIComponent(q)}`)
       if (res.ok) {
         const data = await res.json()
-        setAllUsers(
+        setSearchResults(
           (data.items ?? []).map((u: { id: number; username: string; first_name?: string; last_name?: string }) => ({
             id: u.id,
             username: u.username,
@@ -594,6 +605,7 @@ function WorkspaceMembersBar({
         )
       }
     } catch { /* ignore */ }
+    setSearching(false)
   }
 
   const toggleUser = (userId: number) => {
@@ -631,12 +643,7 @@ function WorkspaceMembersBar({
   }
 
   const memberIds = new Set(members.map((m) => m.user_id))
-  const filteredUsers = allUsers.filter(
-    (u) =>
-      !memberIds.has(u.id) &&
-      (u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (u.display_name ?? "").toLowerCase().includes(searchQuery.toLowerCase())),
-  )
+  const filteredUsers = searchResults.filter((u) => !memberIds.has(u.id))
 
   return (
     <>
@@ -645,7 +652,7 @@ function WorkspaceMembersBar({
           <h3 className="text-sm font-semibold">Members ({members.length})</h3>
           <Button variant="outline" size="sm" className="text-xs" onClick={openAddDialog}>
             <Plus className="mr-1.5 h-3.5 w-3.5" />
-            Add User
+            Add Member
           </Button>
         </div>
 
@@ -683,20 +690,28 @@ function WorkspaceMembersBar({
         )}
       </div>
 
-      {/* Add User Dialog */}
+      {/* Add Member Dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Add Members</DialogTitle>
-            <DialogDescription>Select users to add to this workspace.</DialogDescription>
+            <DialogTitle>Add Member</DialogTitle>
+            <DialogDescription>Search for users by username or name and press Enter.</DialogDescription>
           </DialogHeader>
           <Input
-            placeholder="Search users..."
+            placeholder="Enter username and press Enter..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleSearch() }}
           />
           <div className="max-h-48 overflow-y-auto space-y-1 rounded-md border p-2">
-            {filteredUsers.length === 0 ? (
+            {searching ? (
+              <div className="flex items-center justify-center gap-2 py-4">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Searching...</span>
+              </div>
+            ) : !searched ? (
+              <p className="text-xs text-muted-foreground text-center py-4">Type a username and press Enter to search.</p>
+            ) : filteredUsers.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-2">No users found.</p>
             ) : (
               filteredUsers.map((u) => (
