@@ -1,11 +1,12 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Circle,
   Clock,
   Copy,
   Container,
@@ -13,6 +14,7 @@ import {
   Eye,
   EyeOff,
   Loader2,
+  Plus,
   Server,
   XCircle,
 } from "lucide-react"
@@ -28,14 +30,27 @@ import {
   CardTitle,
 } from "@workspace/ui/components/card"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@workspace/ui/components/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@workspace/ui/components/dropdown-menu"
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
 import { authFetch } from "@/features/auth/auth-fetch"
 import { useAuth } from "@/features/auth"
-import { fetchWorkspace, fetchWorkspaceServices } from "@/features/workspaces/api"
-import type { WorkspaceResponse, WorkspaceService } from "@/features/workspaces/types"
+import { fetchWorkspace, fetchWorkspaceServices, fetchWorkspaceAuditLogs } from "@/features/workspaces/api"
+import type { AuditLog, WorkspaceResponse, WorkspaceService } from "@/features/workspaces/types"
 import { PluginIcon } from "@/features/software-deployment/components/plugin-icon"
 
 /* ------------------------------------------------------------------ */
@@ -444,12 +459,239 @@ function ServiceDataList({
 /*  Workspace Resource Dashboard                                       */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/*  Add Service Button + Deploy Dialog                                 */
+/* ------------------------------------------------------------------ */
+
+interface ServiceMenuItem {
+  label: string
+  icon: string
+  pipelineKeyword: string
+}
+
+const ADD_SERVICE_ITEMS: ServiceMenuItem[] = [
+  { label: "MLflow", icon: "mlflow", pipelineKeyword: "mlflow" },
+  { label: "VS Code", icon: "code", pipelineKeyword: "vscode" },
+  { label: "Airflow", icon: "airflow", pipelineKeyword: "airflow" },
+]
+
+function stepIcon(action: string) {
+  switch (action) {
+    case "step_completed": return <CheckCircle2 className="h-4 w-4 text-green-600" />
+    case "step_failed": return <XCircle className="h-4 w-4 text-red-600" />
+    case "step_started": return <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+    default: return <Circle className="h-4 w-4 text-gray-400" />
+  }
+}
+
+function AddServiceButton({
+  workspace,
+  onDeployComplete,
+}: {
+  workspace: WorkspaceResponse
+  onDeployComplete: () => void
+}) {
+  const [deployOpen, setDeployOpen] = useState(false)
+  const [deployLabel, setDeployLabel] = useState("")
+  const [deployPhase, setDeployPhase] = useState<"progress" | "done" | "error">("progress")
+  const [deploySteps, setDeploySteps] = useState<AuditLog[]>([])
+  const [deployError, setDeployError] = useState<string | null>(null)
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current)
+    }
+  }, [])
+
+  const handleDeploy = async (item: ServiceMenuItem) => {
+    setDeployLabel(item.label)
+    setDeployPhase("progress")
+    setDeploySteps([])
+    setDeployError(null)
+    setDeployOpen(true)
+
+    // Find pipeline matching keyword
+    let pipelineId: number | null = null
+    try {
+      const res = await authFetch("/api/v1/plugins/pipelines")
+      if (res.ok) {
+        const data = await res.json()
+        const pipelines = data.items ?? []
+        const match = pipelines.find(
+          (p: { name: string; display_name: string }) =>
+            p.name.toLowerCase().includes(item.pipelineKeyword) ||
+            p.display_name.toLowerCase().includes(item.pipelineKeyword),
+        )
+        if (match) pipelineId = match.id
+      }
+    } catch { /* ignore */ }
+
+    if (!pipelineId) {
+      setDeployError(`No pipeline found matching "${item.pipelineKeyword}". Create one in Software Deployment first.`)
+      setDeployPhase("error")
+      return
+    }
+
+    // Deploy
+    try {
+      const res = await authFetch(`/api/v1/workspace/workspaces/${workspace.id}/deploy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pipeline_id: pipelineId }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.detail || `Deploy failed: ${res.status}`)
+      }
+    } catch (e) {
+      setDeployError(e instanceof Error ? e.message : "Deploy failed")
+      setDeployPhase("error")
+      return
+    }
+
+    // Poll audit logs
+    const pollStartedAt = new Date().toISOString()
+    pollingRef.current = setInterval(async () => {
+      try {
+        const data = await fetchWorkspaceAuditLogs(workspace.id, 1, 50)
+        const recent = data.items.filter((l) => l.created_at >= pollStartedAt)
+        const steps = recent.filter((l) =>
+          ["step_started", "step_completed", "step_failed"].includes(l.action) &&
+          (l.detail as Record<string, unknown>)?.workflow_name === "workspace-provision"
+        )
+        setDeploySteps(steps.reverse())
+
+        const completed = recent.find((l) =>
+          l.action === "workflow_completed" &&
+          (l.detail as Record<string, unknown>)?.workflow_name === "workspace-provision"
+        )
+        const failed = recent.find((l) =>
+          l.action === "workflow_failed" &&
+          (l.detail as Record<string, unknown>)?.workflow_name === "workspace-provision"
+        )
+        if (completed) {
+          if (pollingRef.current) clearInterval(pollingRef.current)
+          pollingRef.current = null
+          setDeployPhase("done")
+          onDeployComplete()
+        } else if (failed) {
+          if (pollingRef.current) clearInterval(pollingRef.current)
+          pollingRef.current = null
+          setDeployError(String((failed.detail as Record<string, unknown>)?.error || "Deployment failed"))
+          setDeployPhase("error")
+          onDeployComplete()
+        }
+      } catch { /* ignore */ }
+    }, 2000)
+  }
+
+  const closeDialog = () => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current)
+      pollingRef.current = null
+    }
+    setDeployOpen(false)
+  }
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="text-xs">
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Add Service
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {ADD_SERVICE_ITEMS.map((item) => (
+            <DropdownMenuItem
+              key={item.pipelineKeyword}
+              onClick={() => handleDeploy(item)}
+              disabled={workspace.status === "provisioning"}
+            >
+              <PluginIcon icon={item.icon} size={16} className="mr-2 rounded" />
+              {item.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Dialog open={deployOpen} onOpenChange={(open) => { if (!open) closeDialog() }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {deployPhase === "progress" && `Deploying ${deployLabel}`}
+              {deployPhase === "done" && `${deployLabel} Deployed`}
+              {deployPhase === "error" && `${deployLabel} Deployment`}
+            </DialogTitle>
+            <DialogDescription>
+              {deployPhase === "progress" && `Deploying ${deployLabel} to ${workspace.display_name}...`}
+              {deployPhase === "done" && "Service has been deployed successfully."}
+              {deployPhase === "error" && "Deployment encountered an error."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            {deploySteps.length === 0 && deployPhase === "progress" && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Initializing deployment...
+              </div>
+            )}
+            {deploySteps.map((log) => {
+              const d = log.detail as Record<string, unknown> | null
+              return (
+                <div key={log.id} className="flex items-center gap-3 text-sm">
+                  {stepIcon(log.action)}
+                  <span className="flex-1 font-medium">{String(d?.step_name ?? log.action)}</span>
+                  <span className="text-xs text-muted-foreground">{log.action.replace("step_", "")}</span>
+                </div>
+              )
+            })}
+            {deployPhase === "done" && (
+              <div className="mt-2 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 text-sm dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800">
+                All steps completed successfully.
+              </div>
+            )}
+            {deployPhase === "error" && deployError && (
+              <div className="mt-2 rounded-md bg-red-50 text-red-700 border border-red-200 px-3 py-2 text-sm dark:bg-red-950 dark:text-red-200 dark:border-red-800">
+                {deployError}
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end pt-2">
+            {deployPhase === "progress" ? (
+              <Button variant="outline" size="sm" disabled>
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                Deploying...
+              </Button>
+            ) : (
+              <Button size="sm" onClick={closeDialog}>Close</Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Workspace Resource Dashboard                                       */
+/* ------------------------------------------------------------------ */
+
 function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
   const { user } = useAuth()
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null)
   const [services, setServices] = useState<WorkspaceService[]>([])
   const [gitlabServerUrl, setGitlabServerUrl] = useState<string>("")
   const [loading, setLoading] = useState(true)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  const handleDeployComplete = useCallback(() => {
+    setRefreshKey((k) => k + 1)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -487,7 +729,7 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
     }
     load()
     return () => { cancelled = true }
-  }, [workspaceId])
+  }, [workspaceId, refreshKey])
 
   if (loading) {
     return (
@@ -622,18 +864,24 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
             )}
 
             {/* Deployed Services */}
-            {deployed.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground text-sm">
-                No services deployed yet.
-              </div>
-            ) : (
-              <div>
-                <h3 className="mb-3 text-sm font-semibold">
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-sm font-semibold">
                   Deployed Services ({deployed.length})
                 </h3>
-                <ServiceDataList services={deployed} />
+                <AddServiceButton
+                  workspace={workspace}
+                  onDeployComplete={handleDeployComplete}
+                />
               </div>
-            )}
+              {deployed.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground text-sm rounded-lg border">
+                  No services deployed yet. Click "Add Service" to deploy one.
+                </div>
+              ) : (
+                <ServiceDataList services={deployed} />
+              )}
+            </div>
           </>
         )
       })()}
