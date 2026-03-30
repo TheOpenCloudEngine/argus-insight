@@ -157,11 +157,15 @@ class JupyterLabDeployStep(WorkflowStep):
             endpoint=external_endpoint,
             service_id=svc_id,
             metadata={
-                "image": config.image,
-                "internal_endpoint": internal_endpoint,
-                "workspace_bucket": workspace_bucket,
-                "user_bucket": user_bucket,
-                "namespace": namespace,
+                "display": {
+                    "Image": config.image,
+                    "Workspace Bucket": workspace_bucket,
+                    "User Bucket": user_bucket,
+                },
+                "internal": {
+                    "endpoint": internal_endpoint,
+                    "namespace": namespace,
+                },
             },
         )
 

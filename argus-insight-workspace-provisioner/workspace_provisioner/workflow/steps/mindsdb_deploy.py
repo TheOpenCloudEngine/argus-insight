@@ -113,13 +113,19 @@ class MindsdbDeployStep(WorkflowStep):
             endpoint=f"http://{hostname}",
             service_id=svc_id,
             metadata={
-                "internal_http": internal_http,
-                "internal_mysql": internal_mysql,
-                "internal_mongodb": internal_mongodb,
-                "http_port": 47334,
-                "mysql_port": 47335,
-                "mongodb_port": 47336,
-                "namespace": namespace,
+                "display": {
+                    "MySQL Port": "47335",
+                    "MongoDB Port": "47336",
+                },
+                "internal": {
+                    "http": internal_http,
+                    "mysql": internal_mysql,
+                    "mongodb": internal_mongodb,
+                    "http_port": 47334,
+                    "mysql_port": 47335,
+                    "mongodb_port": 47336,
+                    "namespace": namespace,
+                },
             },
         )
 

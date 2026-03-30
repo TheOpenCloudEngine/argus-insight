@@ -194,7 +194,13 @@ class MinioWorkspaceStep(WorkflowStep):
             display_name="MinIO Workspace Bucket",
             version="1.0",
             endpoint=endpoint,
-            metadata={"bucket": bucket_name, "members": len(result.get("members_provisioned", []))},
+            metadata={
+                "display": {},
+                "internal": {
+                    "bucket": bucket_name,
+                    "members": len(result.get("members_provisioned", [])),
+                },
+            },
         )
 
         return result

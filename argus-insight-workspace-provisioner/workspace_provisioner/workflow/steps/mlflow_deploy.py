@@ -165,9 +165,13 @@ class MlflowDeployStep(WorkflowStep):
             endpoint=f"http://{hostname}",
             service_id=svc_id,
             metadata={
-                "internal_endpoint": internal_endpoint,
-                "artifact_bucket": artifact_bucket,
-                "namespace": namespace,
+                "display": {
+                    "Artifact Bucket": artifact_bucket,
+                },
+                "internal": {
+                    "endpoint": internal_endpoint,
+                    "namespace": namespace,
+                },
             },
         )
 

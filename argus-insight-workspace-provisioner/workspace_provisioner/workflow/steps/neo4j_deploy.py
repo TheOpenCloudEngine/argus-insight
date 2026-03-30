@@ -124,12 +124,17 @@ class Neo4jDeployStep(WorkflowStep):
             username="neo4j",
             password=password,
             metadata={
-                "browser_url": f"http://{hostname}",
-                "internal_bolt": internal_bolt,
-                "internal_http": internal_http,
-                "bolt_port": 7687,
-                "http_port": 7474,
-                "namespace": namespace,
+                "display": {
+                    "Browser URL": f"http://{hostname}",
+                    "Bolt Endpoint": f"bolt://{bolt_hostname}:80",
+                },
+                "internal": {
+                    "bolt": internal_bolt,
+                    "http": internal_http,
+                    "bolt_port": 7687,
+                    "http_port": 7474,
+                    "namespace": namespace,
+                },
             },
         )
 

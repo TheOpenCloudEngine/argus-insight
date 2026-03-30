@@ -112,11 +112,16 @@ class MilvusDeployStep(WorkflowStep):
             endpoint=f"http://{hostname}",
             service_id=svc_id,
             metadata={
-                "internal_grpc": internal_grpc,
-                "internal_attu": internal_attu,
-                "grpc_port": 19530,
-                "attu_port": 3000,
-                "namespace": namespace,
+                "display": {
+                    "gRPC Port": "19530",
+                },
+                "internal": {
+                    "grpc": internal_grpc,
+                    "attu": internal_attu,
+                    "grpc_port": 19530,
+                    "attu_port": 3000,
+                    "namespace": namespace,
+                },
             },
         )
 

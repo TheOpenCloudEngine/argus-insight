@@ -170,8 +170,11 @@ class AirflowDeployStep(WorkflowStep):
             username="admin",
             password=admin_password,
             metadata={
-                "internal_endpoint": internal_endpoint,
-                "namespace": namespace,
+                "display": {},
+                "internal": {
+                    "endpoint": internal_endpoint,
+                    "namespace": namespace,
+                },
             },
         )
 

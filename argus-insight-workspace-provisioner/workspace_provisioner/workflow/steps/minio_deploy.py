@@ -126,9 +126,13 @@ class MinioDeployStep(WorkflowStep):
             username=root_user,
             password=root_password,
             metadata={
-                "internal_endpoint": f"http://{internal_endpoint}",
-                "console": f"http://{console_endpoint}",
-                "namespace": namespace,
+                "display": {
+                    "Console URL": f"http://{console_endpoint}",
+                },
+                "internal": {
+                    "endpoint": f"http://{internal_endpoint}",
+                    "namespace": namespace,
+                },
             },
         )
 

@@ -161,7 +161,12 @@ class GitLabCreateProjectStep(WorkflowStep):
             endpoint=workspace_url,
             username=gitlab_username,
             access_token=token_info["token"] if "token_info" in dir() and token_info else None,
-            metadata={"project_id": project["id"]},
+            metadata={
+                "display": {},
+                "internal": {
+                    "project_id": project["id"],
+                },
+            },
         )
 
         return result

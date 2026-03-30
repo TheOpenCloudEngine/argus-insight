@@ -148,10 +148,14 @@ class VScodeServerDeployStep(WorkflowStep):
             service_id=svc_id,
             username=username,
             metadata={
-                "internal_endpoint": internal_endpoint,
-                "workspace_bucket": workspace_bucket,
-                "user_bucket": user_bucket,
-                "namespace": namespace,
+                "display": {
+                    "Workspace Bucket": workspace_bucket,
+                    "User Bucket": user_bucket,
+                },
+                "internal": {
+                    "endpoint": internal_endpoint,
+                    "namespace": namespace,
+                },
             },
         )
 

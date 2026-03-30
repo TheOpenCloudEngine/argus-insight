@@ -289,28 +289,47 @@ function ServiceDataListItem({
   const iconName = service.plugin_name.replace(/^argus-/, "").replace(/-deploy$/, "")
   const meta = service.metadata ?? {}
 
-  // Determine display URL: prefer metadata.browser_url for web access
-  const browserUrl = typeof meta.browser_url === "string" ? meta.browser_url : null
-  const displayUrl = browserUrl || service.endpoint
-  const openUrl = browserUrl || (service.endpoint && /^https?:\/\//.test(service.endpoint) ? service.endpoint : null)
+  // Extract display metadata (new format: metadata.display)
+  // Falls back to flat metadata for backward compatibility
+  const displayMeta: Record<string, unknown> =
+    meta.display && typeof meta.display === "object" && !Array.isArray(meta.display)
+      ? (meta.display as Record<string, unknown>)
+      : (() => {
+          // Legacy flat format: exclude known internal keys
+          const internalKeys = new Set([
+            "internal", "display", "namespace",
+            "internal_endpoint", "internal_bolt", "internal_http",
+            "internal_grpc", "internal_attu", "internal_mysql", "internal_mongodb",
+            "bolt_port", "http_port", "grpc_port", "attu_port",
+            "mysql_port", "mongodb_port", "project_id",
+          ])
+          const result: Record<string, unknown> = {}
+          for (const [k, v] of Object.entries(meta)) {
+            if (!internalKeys.has(k) && v != null && v !== "") result[k] = v
+          }
+          return result
+        })()
+
+  // Determine display URL: prefer display metadata URLs, then endpoint
+  const firstHttpUrl = Object.values(displayMeta).find(
+    (v) => typeof v === "string" && /^https?:\/\//.test(v),
+  ) as string | undefined
+  const displayUrl = firstHttpUrl || service.endpoint
+  const openUrl =
+    firstHttpUrl ||
+    (service.endpoint && /^https?:\/\//.test(service.endpoint) ? service.endpoint : null)
 
   // Collect detail rows for expanded view
   const details: { label: string; value: string; secret?: boolean; link?: boolean }[] = []
-  // Show the main endpoint (e.g. bolt:// for Neo4j) if different from displayUrl
-  if (service.endpoint && service.endpoint !== displayUrl) {
-    details.push({ label: "Endpoint", value: service.endpoint, link: true })
-  }
   if (service.username) details.push({ label: "Username", value: service.username })
   if (service.password) details.push({ label: "Password", value: service.password, secret: true })
   if (service.access_token) details.push({ label: "Access Token", value: service.access_token, secret: true })
-  for (const [key, val] of Object.entries(meta)) {
+  // Display metadata entries
+  for (const [key, val] of Object.entries(displayMeta)) {
     if (val == null || val === "") continue
-    // Skip browser_url since it's already used as displayUrl
-    if (key === "browser_url") continue
     const strVal = String(val)
-    const label = key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
     const isLink = /^https?:\/\//.test(strVal) || /^bolt:\/\//.test(strVal)
-    details.push({ label, value: strVal, link: isLink })
+    details.push({ label: key, value: strVal, link: isLink })
   }
   if (!hideTimestamps) {
     details.push({ label: "Created", value: formatDateTime(service.created_at) })
@@ -533,13 +552,11 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
               } catch { /* use rawUrl */ }
             }
 
-            // Inject GitLab password from user profile, strip project_id from metadata
-            const { project_id: _, ...cleanMeta } = (svc.metadata ?? {}) as Record<string, unknown>
+            // Inject GitLab password from user profile
             return {
               ...svc,
               endpoint,
               password: user?.gitlab_password || null,
-              metadata: Object.keys(cleanMeta).length > 0 ? cleanMeta : null,
             }
           })
 

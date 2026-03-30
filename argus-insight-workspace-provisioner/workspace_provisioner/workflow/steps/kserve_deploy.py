@@ -136,9 +136,13 @@ class KServeDeployStep(WorkflowStep):
             endpoint=f"http://{hostname}",
             service_id=svc_id,
             metadata={
-                "internal_endpoint": f"http://argus-kserve-{workspace_name}.{namespace}.svc.cluster.local:8080",
-                "default_runtime": config.default_runtime,
-                "namespace": namespace,
+                "display": {
+                    "Default Runtime": config.default_runtime,
+                },
+                "internal": {
+                    "endpoint": f"http://argus-kserve-{workspace_name}.{namespace}.svc.cluster.local:8080",
+                    "namespace": namespace,
+                },
             },
         )
 
