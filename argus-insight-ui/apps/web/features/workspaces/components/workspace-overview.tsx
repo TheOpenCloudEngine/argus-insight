@@ -355,10 +355,16 @@ function ServiceDataListItem({
     firstHttpUrl ||
     (service.endpoint && /^https?:\/\//.test(service.endpoint) ? service.endpoint : null)
 
+  // Custom labels (injected by GitLab default service mapping)
+  const svcAny = service as WorkspaceService & { _usernameLabel?: string; _passwordLabel?: string; _hideUrl?: boolean }
+  const usernameLabel = svcAny._usernameLabel || "Username"
+  const passwordLabel = svcAny._passwordLabel || "Password"
+  const hideUrl = svcAny._hideUrl || false
+
   // Collect detail rows for expanded view
   const details: { label: string; value: string; secret?: boolean; link?: boolean }[] = []
-  if (service.username) details.push({ label: "Username", value: service.username })
-  if (service.password) details.push({ label: "Password", value: service.password, secret: true })
+  if (service.username) details.push({ label: usernameLabel, value: service.username })
+  if (service.password) details.push({ label: passwordLabel, value: service.password, secret: true })
   if (service.access_token) details.push({ label: "Access Token", value: service.access_token, secret: true })
   // Display metadata entries
   for (const [key, val] of Object.entries(displayMeta)) {
@@ -402,7 +408,7 @@ function ServiceDataListItem({
             </code>
           </div>
           {/* Primary URL inline */}
-          {displayUrl && (
+          {displayUrl && !hideUrl && (
             <a
               href={openUrl || displayUrl}
               target="_blank"
@@ -426,7 +432,7 @@ function ServiceDataListItem({
       {expanded && (
         <div className="border-t bg-muted/20 px-4 py-4 pl-14">
           <div className="grid gap-x-10 gap-y-0.5 sm:grid-cols-2">
-            {displayUrl && (
+            {displayUrl && !hideUrl && (
               <DetailRow label="URL" value={displayUrl} link />
             )}
             {details.map((d) => (
@@ -439,9 +445,9 @@ function ServiceDataListItem({
               />
             ))}
           </div>
-          {(openUrl || onDelete) && (
+          {((openUrl && !hideUrl) || onDelete) && (
             <div className="mt-3 pt-3 border-t flex items-center justify-between">
-              {openUrl ? (
+              {openUrl && !hideUrl ? (
                 <a
                   href={openUrl}
                   target="_blank"
@@ -1160,12 +1166,17 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
               } catch { /* use rawUrl */ }
             }
 
-            // Inject GitLab password from user profile
+            // Use user's GitLab credentials instead of service-level ones
             return {
               ...svc,
               endpoint,
+              username: user?.gitlab_username || svc.username,
               password: user?.gitlab_password || null,
-            }
+              // Custom display labels for expanded detail
+              _usernameLabel: "Gitlab Username",
+              _passwordLabel: "Gitlab Password",
+              _hideUrl: true,
+            } as WorkspaceService & { _usernameLabel?: string; _passwordLabel?: string; _hideUrl?: boolean }
           })
 
         // Deployed services (everything except hidden + default)
