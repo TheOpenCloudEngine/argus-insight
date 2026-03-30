@@ -1194,7 +1194,23 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
             if (svc.plugin_name === "argus-mlflow") {
               return {
                 ...svc,
+                username: null,
                 metadata: { ...svc.metadata, display: {} },
+                _hideUrl: true,
+                _hideTimestamps: true,
+              } as WorkspaceService & { _hideUrl?: boolean; _hideTimestamps?: boolean }
+            }
+            if (svc.plugin_name === "argus-vscode-server") {
+              return {
+                ...svc,
+                username: null,
+                metadata: {
+                  ...svc.metadata,
+                  display: {
+                    "Workspace Bucket": "/workspace",
+                    "User Bucket": "/data",
+                  },
+                },
                 _hideUrl: true,
                 _hideTimestamps: true,
               } as WorkspaceService & { _hideUrl?: boolean; _hideTimestamps?: boolean }
