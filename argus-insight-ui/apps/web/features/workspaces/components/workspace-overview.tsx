@@ -550,10 +550,14 @@ function AddServiceButton({
   workspace: WorkspaceResponse
   onDeployComplete: () => void
 }) {
+  // Confirm dialog state
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [pendingItem, setPendingItem] = useState<ServiceMenuItem | null>(null)
+
+  // Deploy progress dialog state
   const [deployOpen, setDeployOpen] = useState(false)
   const [deployLabel, setDeployLabel] = useState("")
   const [deployPhase, setDeployPhase] = useState<"progress" | "done" | "error">("progress")
-  const [deploySteps, setDeploySteps] = useState<AuditLog[]>([])
   const [deployError, setDeployError] = useState<string | null>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -563,10 +567,19 @@ function AddServiceButton({
     }
   }, [])
 
-  const handleDeploy = async (item: ServiceMenuItem) => {
+  const handleMenuClick = (item: ServiceMenuItem) => {
+    setPendingItem(item)
+    setConfirmOpen(true)
+  }
+
+  const handleConfirmDeploy = async () => {
+    if (!pendingItem) return
+    const item = pendingItem
+    setConfirmOpen(false)
+    setPendingItem(null)
+
     setDeployLabel(item.label)
     setDeployPhase("progress")
-    setDeploySteps([])
     setDeployError(null)
     setDeployOpen(true)
 
@@ -609,17 +622,12 @@ function AddServiceButton({
       return
     }
 
-    // Poll audit logs
+    // Poll audit logs for completion
     const pollStartedAt = new Date().toISOString()
     pollingRef.current = setInterval(async () => {
       try {
         const data = await fetchWorkspaceAuditLogs(workspace.id, 1, 50)
         const recent = data.items.filter((l) => l.created_at >= pollStartedAt)
-        const steps = recent.filter((l) =>
-          ["step_started", "step_completed", "step_failed"].includes(l.action) &&
-          (l.detail as Record<string, unknown>)?.workflow_name === "workspace-provision"
-        )
-        setDeploySteps(steps.reverse())
 
         const completed = recent.find((l) =>
           l.action === "workflow_completed" &&
@@ -645,7 +653,7 @@ function AddServiceButton({
     }, 2000)
   }
 
-  const closeDialog = () => {
+  const closeDeployDialog = () => {
     if (pollingRef.current) {
       clearInterval(pollingRef.current)
       pollingRef.current = null
@@ -666,7 +674,7 @@ function AddServiceButton({
           {ADD_SERVICE_ITEMS.map((item) => (
             <DropdownMenuItem
               key={item.pipelineKeyword}
-              onClick={() => handleDeploy(item)}
+              onClick={() => handleMenuClick(item)}
               disabled={workspace.status === "provisioning"}
             >
               <PluginIcon icon={item.icon} size={16} className="mr-2 rounded" />
@@ -676,58 +684,64 @@ function AddServiceButton({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Dialog open={deployOpen} onOpenChange={(open) => { if (!open) closeDialog() }}>
-        <DialogContent className="sm:max-w-md">
+      {/* Confirm Deploy Dialog */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Deploy Service</DialogTitle>
+            <DialogDescription>
+              Would you like to deploy {pendingItem?.label} to this workspace?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={() => setConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleConfirmDeploy}>
+              OK
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Deploy Progress Dialog */}
+      <Dialog open={deployOpen} onOpenChange={(open) => { if (!open) closeDeployDialog() }}>
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>
               {deployPhase === "progress" && `Deploying ${deployLabel}`}
               {deployPhase === "done" && `${deployLabel} Deployed`}
               {deployPhase === "error" && `${deployLabel} Deployment`}
             </DialogTitle>
-            <DialogDescription>
-              {deployPhase === "progress" && `Deploying ${deployLabel} to ${workspace.display_name}...`}
-              {deployPhase === "done" && "Service has been deployed successfully."}
-              {deployPhase === "error" && "Deployment encountered an error."}
-            </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 py-2">
-            {deploySteps.length === 0 && deployPhase === "progress" && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Initializing deployment...
+          <div className="py-4">
+            {deployPhase === "progress" && (
+              <div className="flex flex-col items-center gap-3 py-4">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Please wait a moment...</p>
               </div>
             )}
-            {deploySteps.map((log) => {
-              const d = log.detail as Record<string, unknown> | null
-              return (
-                <div key={log.id} className="flex items-center gap-3 text-sm">
-                  {stepIcon(log.action)}
-                  <span className="flex-1 font-medium">{String(d?.step_name ?? log.action)}</span>
-                  <span className="text-xs text-muted-foreground">{log.action.replace("step_", "")}</span>
-                </div>
-              )
-            })}
             {deployPhase === "done" && (
-              <div className="mt-2 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 text-sm dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800">
-                All steps completed successfully.
+              <div className="rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 text-sm dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800">
+                Service has been deployed successfully.
               </div>
             )}
             {deployPhase === "error" && deployError && (
-              <div className="mt-2 rounded-md bg-red-50 text-red-700 border border-red-200 px-3 py-2 text-sm dark:bg-red-950 dark:text-red-200 dark:border-red-800">
+              <div className="rounded-md bg-red-50 text-red-700 border border-red-200 px-3 py-2 text-sm dark:bg-red-950 dark:text-red-200 dark:border-red-800">
                 {deployError}
               </div>
             )}
           </div>
 
-          <div className="flex justify-end pt-2">
+          <div className="flex justify-end">
             {deployPhase === "progress" ? (
               <Button variant="outline" size="sm" disabled>
                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
                 Deploying...
               </Button>
             ) : (
-              <Button size="sm" onClick={closeDialog}>Close</Button>
+              <Button size="sm" onClick={closeDeployDialog}>Close</Button>
             )}
           </div>
         </DialogContent>
