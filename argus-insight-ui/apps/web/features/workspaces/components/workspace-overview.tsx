@@ -668,7 +668,7 @@ function AddServiceButton({
             Add Service
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent align="end" className="w-56">
           {menuItems.length === 0 ? (
             <DropdownMenuItem disabled>
               <span className="text-muted-foreground text-xs">No services configured</span>
@@ -697,10 +697,7 @@ function AddServiceButton({
                   disabled={isProvisioning || alreadyDeployed}
                 >
                   <PluginIcon icon={item.icon} size={16} className="mr-2 rounded" />
-                  <span className="flex-1">{item.service_label}</span>
-                  {alreadyDeployed && (
-                    <span className="ml-2 text-[10px] text-muted-foreground">(deployed)</span>
-                  )}
+                  {item.service_label}
                 </DropdownMenuItem>
               )
             })
