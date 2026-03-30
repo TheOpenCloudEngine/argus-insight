@@ -356,10 +356,11 @@ function ServiceDataListItem({
     (service.endpoint && /^https?:\/\//.test(service.endpoint) ? service.endpoint : null)
 
   // Custom labels (injected by GitLab default service mapping)
-  const svcAny = service as WorkspaceService & { _usernameLabel?: string; _passwordLabel?: string; _hideUrl?: boolean }
+  const svcAny = service as WorkspaceService & { _usernameLabel?: string; _passwordLabel?: string; _hideUrl?: boolean; _hideTimestamps?: boolean }
   const usernameLabel = svcAny._usernameLabel || "Username"
   const passwordLabel = svcAny._passwordLabel || "Password"
   const hideUrl = svcAny._hideUrl || false
+  const effectiveHideTimestamps = hideTimestamps || svcAny._hideTimestamps || false
 
   // Collect detail rows for expanded view
   const details: { label: string; value: string; secret?: boolean; link?: boolean }[] = []
@@ -373,7 +374,7 @@ function ServiceDataListItem({
     const isLink = /^https?:\/\//.test(strVal) || /^bolt:\/\//.test(strVal)
     details.push({ label: key, value: strVal, link: isLink })
   }
-  if (!hideTimestamps) {
+  if (!effectiveHideTimestamps) {
     details.push({ label: "Created", value: formatDateTime(service.created_at) })
     if (service.updated_at !== service.created_at) {
       details.push({ label: "Updated", value: formatDateTime(service.updated_at) })
@@ -1181,13 +1182,25 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
 
         // Deployed services (everything except hidden + default)
         // For per_user services, only show current user's instances
-        const deployed = all.filter((s) => {
-          if (defaultPlugins.has(s.plugin_name)) return false
-          if (perUserPlugins.has(s.plugin_name) && user) {
-            return s.username === user.username
-          }
-          return true
-        })
+        const deployed = all
+          .filter((s) => {
+            if (defaultPlugins.has(s.plugin_name)) return false
+            if (perUserPlugins.has(s.plugin_name) && user) {
+              return s.username === user.username
+            }
+            return true
+          })
+          .map((svc) => {
+            if (svc.plugin_name === "argus-mlflow") {
+              return {
+                ...svc,
+                metadata: { ...svc.metadata, display: {} },
+                _hideUrl: true,
+                _hideTimestamps: true,
+              } as WorkspaceService & { _hideUrl?: boolean; _hideTimestamps?: boolean }
+            }
+            return svc
+          })
 
         return (
           <>
