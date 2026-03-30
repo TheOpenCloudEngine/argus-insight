@@ -156,6 +156,7 @@ class JupyterLabDeployStep(WorkflowStep):
             version="1.0",
             endpoint=external_endpoint,
             service_id=svc_id,
+            username=username,
             metadata={
                 "display": {
                     "Image": config.image,
