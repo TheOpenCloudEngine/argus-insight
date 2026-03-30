@@ -517,16 +517,32 @@ function ServiceDataList({
   services,
   hideTimestamps,
   onDelete,
+  isOwner,
+  perUserPlugins,
 }: {
   services: WorkspaceService[]
   hideTimestamps?: boolean
   onDelete?: (service: WorkspaceService) => void
+  isOwner?: boolean
+  perUserPlugins?: Set<string>
 }) {
   return (
     <div className="rounded-lg border">
-      {services.map((svc) => (
-        <ServiceDataListItem key={svc.id} service={svc} hideTimestamps={hideTimestamps} onDelete={onDelete} />
-      ))}
+      {services.map((svc) => {
+        // per_user services: user can delete their own
+        // per_workspace services: only owner can delete
+        const canDelete = onDelete
+          ? isOwner || (perUserPlugins?.has(svc.plugin_name) ?? false)
+          : false
+        return (
+          <ServiceDataListItem
+            key={svc.id}
+            service={svc}
+            hideTimestamps={hideTimestamps}
+            onDelete={canDelete ? onDelete : undefined}
+          />
+        )
+      })}
     </div>
   )
 }
@@ -1199,7 +1215,12 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
                   No services deployed yet. Click "Add Service" to deploy one.
                 </div>
               ) : (
-                <ServiceDataList services={deployed} onDelete={handleDeleteService} />
+                <ServiceDataList
+                  services={deployed}
+                  onDelete={handleDeleteService}
+                  isOwner={!!user && String(workspace.created_by) === user.sub}
+                  perUserPlugins={perUserPlugins}
+                />
               )}
             </div>
           </>
