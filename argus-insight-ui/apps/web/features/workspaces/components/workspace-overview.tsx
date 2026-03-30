@@ -1222,8 +1222,8 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
                 metadata: {
                   ...svc.metadata,
                   display: {
-                    "Workspace": "/workspace (personal)",
-                    "Shared Data": "/data (workspace)",
+                    "Workspace": "/workspace (Personal Bucket)",
+                    "Shared Data": "/data (Workspace Bucket)",
                   },
                 },
                 _hideUrl: true,
