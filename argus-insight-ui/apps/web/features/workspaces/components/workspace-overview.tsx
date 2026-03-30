@@ -397,18 +397,29 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
     let cancelled = false
     async function load() {
       try {
-        const [ws, svc, gitlabRes] = await Promise.all([
+        const [ws, svc, gitlabRes, cfgRes] = await Promise.all([
           fetchWorkspace(workspaceId),
           fetchWorkspaceServices(workspaceId),
           authFetch("/api/v1/settings/gitlab").catch(() => null),
+          authFetch("/api/v1/settings/configuration").catch(() => null),
         ])
         if (!cancelled) {
           setWorkspace(ws)
           setServices(svc)
+          // Try /settings/gitlab first, fall back to /settings/configuration
+          let glUrl = ""
           if (gitlabRes?.ok) {
             const data = await gitlabRes.json()
-            if (data.url) setGitlabServerUrl(data.url.replace(/\/+$/, ""))
+            glUrl = data.url || ""
           }
+          if (!glUrl && cfgRes?.ok) {
+            const data = await cfgRes.json()
+            const gitlabCat = data.categories?.find(
+              (c: { category: string }) => c.category === "gitlab",
+            )
+            glUrl = gitlabCat?.items?.gitlab_url || ""
+          }
+          if (glUrl) setGitlabServerUrl(glUrl.replace(/\/+$/, ""))
         }
       } catch {
         // ignore
@@ -471,19 +482,20 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
         const defaultServices = all
           .filter((s) => defaultPlugins.has(s.plugin_name))
           .map((svc) => {
+            if (svc.plugin_name !== "argus-gitlab") return svc
             // Reconstruct GitLab URL using Settings gitlab_url + project path
-            if (svc.plugin_name === "argus-gitlab" && workspace.gitlab_project_url) {
-              if (gitlabServerUrl) {
-                try {
-                  const parsed = new URL(workspace.gitlab_project_url)
-                  return { ...svc, endpoint: `${gitlabServerUrl}${parsed.pathname}` }
-                } catch {
-                  return { ...svc, endpoint: workspace.gitlab_project_url }
-                }
+            // Try workspace.gitlab_project_url first, fall back to svc.endpoint
+            const rawUrl = workspace.gitlab_project_url || svc.endpoint
+            if (!rawUrl) return svc
+            if (gitlabServerUrl) {
+              try {
+                const parsed = new URL(rawUrl)
+                return { ...svc, endpoint: `${gitlabServerUrl}${parsed.pathname}` }
+              } catch {
+                return { ...svc, endpoint: rawUrl }
               }
-              return { ...svc, endpoint: workspace.gitlab_project_url }
             }
-            return svc
+            return { ...svc, endpoint: rawUrl }
           })
 
         // Deployed services (everything except hidden + default)
