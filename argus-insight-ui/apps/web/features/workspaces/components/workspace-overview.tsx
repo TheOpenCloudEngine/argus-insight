@@ -390,6 +390,7 @@ function ServiceDataList({ services }: { services: WorkspaceService[] }) {
 function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null)
   const [services, setServices] = useState<WorkspaceService[]>([])
+  const [gitlabServerUrl, setGitlabServerUrl] = useState<string>("")
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -404,6 +405,14 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
           setWorkspace(ws)
           setServices(svc)
         }
+        // Fetch GitLab server URL from Settings
+        try {
+          const res = await authFetch("/api/v1/settings/gitlab")
+          if (res.ok) {
+            const data = await res.json()
+            if (!cancelled && data.url) setGitlabServerUrl(data.url.replace(/\/+$/, ""))
+          }
+        } catch { /* ignore */ }
       } catch {
         // ignore
       } finally {
@@ -513,9 +522,18 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
         const hiddenPlugins = new Set(["argus-minio-workspace", "argus-minio-setup"])
         const visible = services.filter((s) => !hiddenPlugins.has(s.plugin_name))
 
-        // For GitLab, prefer workspace's external project URL over internal endpoint
+        // For GitLab, reconstruct URL using Settings gitlab_url + project path
         const adjusted = visible.map((svc) => {
           if (svc.plugin_name === "argus-gitlab" && workspace.gitlab_project_url) {
+            if (gitlabServerUrl) {
+              // Extract path from internal URL (e.g., "https://internal/foo/bar" → "/foo/bar")
+              try {
+                const parsed = new URL(workspace.gitlab_project_url)
+                return { ...svc, endpoint: `${gitlabServerUrl}${parsed.pathname}` }
+              } catch {
+                return { ...svc, endpoint: workspace.gitlab_project_url }
+              }
+            }
             return { ...svc, endpoint: workspace.gitlab_project_url }
           }
           return svc
