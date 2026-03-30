@@ -289,13 +289,24 @@ function ServiceDataListItem({
   const iconName = service.plugin_name.replace(/^argus-/, "").replace(/-deploy$/, "")
   const meta = service.metadata ?? {}
 
+  // Determine display URL: prefer metadata.browser_url for web access
+  const browserUrl = typeof meta.browser_url === "string" ? meta.browser_url : null
+  const displayUrl = browserUrl || service.endpoint
+  const openUrl = browserUrl || (service.endpoint && /^https?:\/\//.test(service.endpoint) ? service.endpoint : null)
+
   // Collect detail rows for expanded view
   const details: { label: string; value: string; secret?: boolean; link?: boolean }[] = []
+  // Show the main endpoint (e.g. bolt:// for Neo4j) if different from displayUrl
+  if (service.endpoint && service.endpoint !== displayUrl) {
+    details.push({ label: "Endpoint", value: service.endpoint, link: true })
+  }
   if (service.username) details.push({ label: "Username", value: service.username })
   if (service.password) details.push({ label: "Password", value: service.password, secret: true })
   if (service.access_token) details.push({ label: "Access Token", value: service.access_token, secret: true })
   for (const [key, val] of Object.entries(meta)) {
     if (val == null || val === "") continue
+    // Skip browser_url since it's already used as displayUrl
+    if (key === "browser_url") continue
     const strVal = String(val)
     const label = key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
     const isLink = /^https?:\/\//.test(strVal) || /^bolt:\/\//.test(strVal)
@@ -335,16 +346,16 @@ function ServiceDataListItem({
               {service.version ? `v${service.version}` : service.plugin_name}
             </code>
           </div>
-          {/* Endpoint inline */}
-          {service.endpoint && (
+          {/* Primary URL inline */}
+          {displayUrl && (
             <a
-              href={service.endpoint}
+              href={openUrl || displayUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 truncate text-xs text-blue-600 hover:underline dark:text-blue-400"
               onClick={(e) => e.stopPropagation()}
             >
-              {service.endpoint}
+              {displayUrl}
               <ExternalLink className="h-3 w-3 shrink-0" />
             </a>
           )}
@@ -360,8 +371,8 @@ function ServiceDataListItem({
       {expanded && (
         <div className="border-t bg-muted/20 px-4 py-4 pl-14">
           <div className="grid gap-x-10 gap-y-0.5 sm:grid-cols-2">
-            {service.endpoint && (
-              <DetailRow label="Endpoint" value={service.endpoint} link />
+            {displayUrl && (
+              <DetailRow label="URL" value={displayUrl} link />
             )}
             {details.map((d) => (
               <DetailRow
@@ -373,10 +384,10 @@ function ServiceDataListItem({
               />
             ))}
           </div>
-          {service.endpoint && (
+          {openUrl && (
             <div className="mt-3 pt-3 border-t">
               <a
-                href={service.endpoint}
+                href={openUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
