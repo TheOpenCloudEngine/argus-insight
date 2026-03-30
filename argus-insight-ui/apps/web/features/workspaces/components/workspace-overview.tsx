@@ -548,10 +548,12 @@ function memberInitials(m: WorkspaceMember): string {
 
 function WorkspaceMembersBar({
   workspaceId,
+  isOwner,
   refreshKey,
   onRefresh,
 }: {
   workspaceId: number
+  isOwner: boolean
   refreshKey: number
   onRefresh: () => void
 }) {
@@ -650,10 +652,12 @@ function WorkspaceMembersBar({
       <div className="rounded-lg border p-4">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold">Members ({members.length})</h3>
-          <Button variant="outline" size="sm" className="text-xs" onClick={openAddDialog}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            Add Member
-          </Button>
+          {isOwner && (
+            <Button variant="outline" size="sm" className="text-xs" onClick={openAddDialog}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              Add Member
+            </Button>
+          )}
         </div>
 
         {loading ? (
@@ -666,8 +670,8 @@ function WorkspaceMembersBar({
           <div className="flex flex-wrap gap-3">
             {members.map((m) => (
               <div key={m.id} className="group relative flex flex-col items-center gap-1 w-20">
-                {/* X button (hover only, not for owner) */}
-                {!m.is_owner && (
+                {/* X button (hover only, visible to workspace owner, not on owner member) */}
+                {isOwner && !m.is_owner && (
                   <button
                     className="absolute -top-1 -right-1 hidden group-hover:flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white text-[10px] leading-none hover:bg-red-600 z-10"
                     onClick={() => setRemoveTarget(m)}
@@ -1156,6 +1160,7 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
             {/* Members */}
             <WorkspaceMembersBar
               workspaceId={workspace.id}
+              isOwner={!!user && String(workspace.created_by) === user.sub}
               refreshKey={refreshKey}
               onRefresh={handleDeployComplete}
             />
