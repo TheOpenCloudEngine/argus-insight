@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { CheckCircle2, Loader2 } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
+import { Label } from "@workspace/ui/components/label"
 import {
   Card,
   CardContent,
@@ -25,6 +26,8 @@ interface MappingItem {
   icon: string
   pipeline_id: number | null
   pipeline_name: string | null
+  constraint: string
+  constraint_label: string
 }
 
 interface PipelineOption {
@@ -33,14 +36,18 @@ interface PipelineOption {
   display_name: string
 }
 
+interface LocalEdit {
+  pipeline?: string
+  constraint?: string
+}
+
 export function DeployMappingTab() {
   const [mappings, setMappings] = useState<MappingItem[]>([])
   const [pipelines, setPipelines] = useState<PipelineOption[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [saved, setSaved] = useState<Record<string, boolean>>({})
-  // Track local edits per service
-  const [edits, setEdits] = useState<Record<string, string>>({})
+  const [edits, setEdits] = useState<Record<string, LocalEdit>>({})
 
   useEffect(() => {
     async function load() {
@@ -66,37 +73,39 @@ export function DeployMappingTab() {
     load()
   }, [])
 
-  const handleSelect = (serviceKey: string, value: string) => {
-    setEdits((prev) => ({ ...prev, [serviceKey]: value }))
+  const handleEdit = (serviceKey: string, field: "pipeline" | "constraint", value: string) => {
+    setEdits((prev) => ({
+      ...prev,
+      [serviceKey]: { ...prev[serviceKey], [field]: value },
+    }))
     setSaved((prev) => ({ ...prev, [serviceKey]: false }))
   }
 
   const handleSave = async (serviceKey: string) => {
-    const selectedValue = edits[serviceKey]
-    const pipelineId =
-      selectedValue !== undefined
-        ? selectedValue === "none"
-          ? null
-          : parseInt(selectedValue)
-        : mappings.find((m) => m.service_key === serviceKey)?.pipeline_id ?? null
+    const mapping = mappings.find((m) => m.service_key === serviceKey)
+    const edit = edits[serviceKey]
+
+    const pipelineValue = edit?.pipeline ?? (mapping?.pipeline_id ? String(mapping.pipeline_id) : "none")
+    const pipelineId = pipelineValue === "none" ? null : parseInt(pipelineValue)
+    const constraint = edit?.constraint ?? mapping?.constraint ?? "per_workspace"
 
     setSaving((prev) => ({ ...prev, [serviceKey]: true }))
     try {
       const res = await authFetch(`/api/v1/settings/deploy-mapping/${serviceKey}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pipeline_id: pipelineId }),
+        body: JSON.stringify({ pipeline_id: pipelineId, constraint }),
       })
       if (res.ok) {
-        // Update local state
         setMappings((prev) =>
           prev.map((m) =>
             m.service_key === serviceKey
               ? {
                   ...m,
                   pipeline_id: pipelineId,
-                  pipeline_name:
-                    pipelines.find((p) => p.id === pipelineId)?.display_name ?? null,
+                  pipeline_name: pipelines.find((p) => p.id === pipelineId)?.display_name ?? null,
+                  constraint,
+                  constraint_label: constraint === "per_user" ? "One per user" : "One per workspace",
                 }
               : m,
           ),
@@ -122,18 +131,16 @@ export function DeployMappingTab() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Map each service to a pipeline. When users add a service from the Workspace
-        page, the mapped pipeline will be executed automatically.
+        Map each service to a pipeline and set deployment constraints.
+        When users add a service from the Workspace page, the mapped pipeline
+        will be executed automatically.
       </p>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {mappings.map((m) => {
-          const currentValue =
-            edits[m.service_key] !== undefined
-              ? edits[m.service_key]
-              : m.pipeline_id
-                ? String(m.pipeline_id)
-                : "none"
+          const edit = edits[m.service_key]
+          const currentPipeline = edit?.pipeline ?? (m.pipeline_id ? String(m.pipeline_id) : "none")
+          const currentConstraint = edit?.constraint ?? m.constraint
 
           return (
             <Card key={m.service_key}>
@@ -142,24 +149,43 @@ export function DeployMappingTab() {
                 <CardTitle className="text-sm">{m.service_label}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Select
-                  value={currentValue}
-                  onValueChange={(v) => handleSelect(m.service_key, v)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select pipeline..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">
-                      <span className="text-muted-foreground">No pipeline</span>
-                    </SelectItem>
-                    {pipelines.map((p) => (
-                      <SelectItem key={p.id} value={String(p.id)}>
-                        {p.display_name}
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Pipeline</Label>
+                  <Select
+                    value={currentPipeline}
+                    onValueChange={(v) => handleEdit(m.service_key, "pipeline", v)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select pipeline..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">
+                        <span className="text-muted-foreground">No pipeline</span>
                       </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                      {pipelines.map((p) => (
+                        <SelectItem key={p.id} value={String(p.id)}>
+                          {p.display_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Constraint</Label>
+                  <Select
+                    value={currentConstraint}
+                    onValueChange={(v) => handleEdit(m.service_key, "constraint", v)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="per_workspace">One per workspace</SelectItem>
+                      <SelectItem value="per_user">One per user</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
                 <div className="flex items-center justify-end gap-2">
                   {saved[m.service_key] && (

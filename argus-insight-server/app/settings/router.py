@@ -519,19 +519,25 @@ async def update_k8s_config(
 # ---------------------------------------------------------------------------
 
 DEPLOY_MAPPING_SERVICES = [
-    {"service_key": "mlflow", "service_label": "MLflow", "icon": "mlflow"},
-    {"service_key": "vscode", "service_label": "VS Code Server", "icon": "code"},
-    {"service_key": "airflow", "service_label": "Airflow", "icon": "airflow"},
-    {"service_key": "jupyter", "service_label": "Jupyter Lab", "icon": "jupyter"},
-    {"service_key": "kserve", "service_label": "KServe", "icon": "kserve"},
-    {"service_key": "neo4j", "service_label": "Neo4j", "icon": "neo4j"},
-    {"service_key": "milvus", "service_label": "Milvus", "icon": "milvus"},
-    {"service_key": "mindsdb", "service_label": "MindsDB", "icon": "brain"},
+    {"service_key": "mlflow", "service_label": "MLflow", "icon": "mlflow", "default_constraint": "per_workspace"},
+    {"service_key": "vscode", "service_label": "VS Code Server", "icon": "code", "default_constraint": "per_user"},
+    {"service_key": "airflow", "service_label": "Airflow", "icon": "airflow", "default_constraint": "per_workspace"},
+    {"service_key": "jupyter", "service_label": "Jupyter Lab", "icon": "jupyter", "default_constraint": "per_user"},
+    {"service_key": "kserve", "service_label": "KServe", "icon": "kserve", "default_constraint": "per_workspace"},
+    {"service_key": "neo4j", "service_label": "Neo4j", "icon": "neo4j", "default_constraint": "per_workspace"},
+    {"service_key": "milvus", "service_label": "Milvus", "icon": "milvus", "default_constraint": "per_workspace"},
+    {"service_key": "mindsdb", "service_label": "MindsDB", "icon": "brain", "default_constraint": "per_workspace"},
 ]
+
+CONSTRAINT_LABELS = {
+    "per_workspace": "One per workspace",
+    "per_user": "One per user",
+}
 
 
 class DeployMappingItem(BaseModel):
     pipeline_id: int | None = None
+    constraint: str | None = None  # "per_workspace" or "per_user"
 
 
 @router.get("/deploy-mapping")
@@ -559,10 +565,15 @@ async def get_deploy_mapping(session: AsyncSession = Depends(get_session)):
         key = f"service_{svc['service_key']}"
         raw_id = cfg.get(key, "")
         pipeline_id = int(raw_id) if raw_id else None
+        constraint = cfg.get(f"constraint_{svc['service_key']}", "") or svc["default_constraint"]
         mappings.append({
-            **svc,
+            "service_key": svc["service_key"],
+            "service_label": svc["service_label"],
+            "icon": svc["icon"],
             "pipeline_id": pipeline_id,
             "pipeline_name": pipeline_names.get(pipeline_id) if pipeline_id else None,
+            "constraint": constraint,
+            "constraint_label": CONSTRAINT_LABELS.get(constraint, constraint),
         })
 
     return {"mappings": mappings}
@@ -579,13 +590,16 @@ async def update_deploy_mapping(
     if service_key not in valid_keys:
         raise HTTPException(status_code=400, detail=f"Unknown service key: {service_key}")
 
-    config_key = f"service_{service_key}"
-    value = str(body.pipeline_id) if body.pipeline_id is not None else ""
-    await service.update_infra_category(
-        session, "deploy_mapping", {config_key: value},
+    items: dict[str, str] = {}
+    items[f"service_{service_key}"] = str(body.pipeline_id) if body.pipeline_id is not None else ""
+    if body.constraint:
+        items[f"constraint_{service_key}"] = body.constraint
+    await service.update_infra_category(session, "deploy_mapping", items)
+    logger.info(
+        "Deploy mapping updated: %s → pipeline_id=%s, constraint=%s",
+        service_key, body.pipeline_id, body.constraint,
     )
-    logger.info("Deploy mapping updated: %s → pipeline_id=%s", service_key, body.pipeline_id)
-    return {"status": "ok", "service_key": service_key, "pipeline_id": body.pipeline_id}
+    return {"status": "ok", "service_key": service_key, "pipeline_id": body.pipeline_id, "constraint": body.constraint}
 
 
 @router.get("/k8s/namespace/{namespace}")

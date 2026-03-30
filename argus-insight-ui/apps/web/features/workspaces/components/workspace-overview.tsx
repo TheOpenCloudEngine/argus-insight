@@ -527,15 +527,32 @@ interface DeployMappingEntry {
   icon: string
   pipeline_id: number | null
   pipeline_name: string | null
+  constraint: string      // "per_workspace" | "per_user"
+  constraint_label: string
+}
+
+// Map service_key to plugin_name patterns used in workspace services
+const SERVICE_KEY_TO_PLUGIN: Record<string, string> = {
+  mlflow: "argus-mlflow",
+  vscode: "argus-vscode-server",
+  airflow: "argus-airflow",
+  jupyter: "argus-jupyter",
+  kserve: "argus-kserve",
+  neo4j: "argus-neo4j",
+  milvus: "argus-milvus",
+  mindsdb: "argus-mindsdb",
 }
 
 function AddServiceButton({
   workspace,
+  services,
   onDeployComplete,
 }: {
   workspace: WorkspaceResponse
+  services: WorkspaceService[]
   onDeployComplete: () => void
 }) {
+  const { user } = useAuth()
   const [menuItems, setMenuItems] = useState<DeployMappingEntry[]>([])
 
   // Confirm dialog state
@@ -657,16 +674,36 @@ function AddServiceButton({
               <span className="text-muted-foreground text-xs">No services configured</span>
             </DropdownMenuItem>
           ) : (
-            menuItems.map((item) => (
-              <DropdownMenuItem
-                key={item.service_key}
-                onClick={() => handleMenuClick(item)}
-                disabled={workspace.status === "provisioning"}
-              >
-                <PluginIcon icon={item.icon} size={16} className="mr-2 rounded" />
-                {item.service_label}
-              </DropdownMenuItem>
-            ))
+            menuItems.map((item) => {
+              const pluginName = SERVICE_KEY_TO_PLUGIN[item.service_key]
+              const isProvisioning = workspace.status === "provisioning"
+
+              // Check constraint
+              let alreadyDeployed = false
+              if (item.constraint === "per_workspace" && pluginName) {
+                alreadyDeployed = services.some((s) => s.plugin_name === pluginName)
+              } else if (item.constraint === "per_user" && pluginName && user) {
+                // per_user: check if current user already has this service
+                // (service metadata or username match)
+                alreadyDeployed = services.some(
+                  (s) => s.plugin_name === pluginName && s.username === user.username,
+                )
+              }
+
+              return (
+                <DropdownMenuItem
+                  key={item.service_key}
+                  onClick={() => !alreadyDeployed && handleMenuClick(item)}
+                  disabled={isProvisioning || alreadyDeployed}
+                >
+                  <PluginIcon icon={item.icon} size={16} className="mr-2 rounded" />
+                  <span className="flex-1">{item.service_label}</span>
+                  {alreadyDeployed && (
+                    <span className="ml-2 text-[10px] text-muted-foreground">(deployed)</span>
+                  )}
+                </DropdownMenuItem>
+              )
+            })
           )}
         </DropdownMenuContent>
       </DropdownMenu>
@@ -936,6 +973,7 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
                 </h3>
                 <AddServiceButton
                   workspace={workspace}
+                  services={services}
                   onDeployComplete={handleDeployComplete}
                 />
               </div>
