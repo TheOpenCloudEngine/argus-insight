@@ -1191,10 +1191,10 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
             return true
           })
           .map((svc) => {
-            if (svc.plugin_name === "argus-mlflow") {
+            if (svc.plugin_name === "argus-mlflow" || svc.plugin_name === "argus-airflow") {
               return {
                 ...svc,
-                username: null,
+                username: svc.plugin_name === "argus-mlflow" ? null : svc.username,
                 metadata: { ...svc.metadata, display: {} },
                 _hideUrl: true,
                 _hideTimestamps: true,
