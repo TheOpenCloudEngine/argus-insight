@@ -9,4 +9,3 @@ changelog: |
   - Initial version
   - Creates project under /workspaces/{workspace_name} group
 upgradeable_from: []
-software_version: "17.9.1"

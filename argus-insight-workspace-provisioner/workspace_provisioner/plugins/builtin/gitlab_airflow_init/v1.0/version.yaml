@@ -8,4 +8,3 @@ changelog: |
   - Create airflow-dags/ directory with sample DAG if not exists
   - Provide gitlab_http_url and gitlab_token for Airflow git-sync
 upgradeable_from: []
-software_version: "1.0"

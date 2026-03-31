@@ -10,4 +10,3 @@ changelog: |
   - Creates workspace admin user with readwrite policy
   - Creates default bucket named after workspace
 upgradeable_from: []
-software_version: "2025.02.28"
