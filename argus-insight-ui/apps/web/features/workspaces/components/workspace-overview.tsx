@@ -759,6 +759,8 @@ const SERVICE_KEY_TO_PLUGIN: Record<string, string> = {
   neo4j: "argus-neo4j",
   milvus: "argus-milvus",
   mindsdb: "argus-mindsdb",
+  trino: "argus-trino",
+  starrocks: "argus-starrocks",
 }
 
 function AddServiceButton({

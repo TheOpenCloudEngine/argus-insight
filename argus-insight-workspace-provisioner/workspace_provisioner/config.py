@@ -401,6 +401,72 @@ class VScodeServerConfig(BaseModel):
     )
 
 
+class TrinoConfig(BaseModel):
+    """Trino distributed SQL query engine deployment settings."""
+
+    coordinator_image: str = Field(
+        default="trinodb/trino:latest",
+        description="Trino coordinator/worker container image",
+    )
+    worker_replicas: int = Field(
+        default=1,
+        description="Number of Trino worker replicas",
+    )
+    coordinator_resources: ResourceConfig = Field(
+        default_factory=lambda: ResourceConfig(
+            cpu_request="500m", cpu_limit="2",
+            memory_request="2Gi", memory_limit="4Gi",
+        ),
+        description="CPU/Memory for the coordinator",
+    )
+    worker_resources: ResourceConfig = Field(
+        default_factory=lambda: ResourceConfig(
+            cpu_request="500m", cpu_limit="2",
+            memory_request="2Gi", memory_limit="4Gi",
+        ),
+        description="CPU/Memory for each worker",
+    )
+
+
+class StarRocksConfig(BaseModel):
+    """StarRocks MPP analytics database deployment settings."""
+
+    fe_image: str = Field(
+        default="starrocks/fe-ubuntu:latest",
+        description="StarRocks Frontend container image",
+    )
+    be_image: str = Field(
+        default="starrocks/be-ubuntu:latest",
+        description="StarRocks Backend container image",
+    )
+    be_replicas: int = Field(
+        default=1,
+        description="Number of Backend replicas",
+    )
+    fe_storage_size: str = Field(
+        default="10Gi",
+        description="PVC size for FE metadata",
+    )
+    be_storage_size: str = Field(
+        default="50Gi",
+        description="PVC size for BE data",
+    )
+    fe_resources: ResourceConfig = Field(
+        default_factory=lambda: ResourceConfig(
+            cpu_request="500m", cpu_limit="2",
+            memory_request="2Gi", memory_limit="4Gi",
+        ),
+        description="CPU/Memory for Frontend",
+    )
+    be_resources: ResourceConfig = Field(
+        default_factory=lambda: ResourceConfig(
+            cpu_request="1", cpu_limit="4",
+            memory_request="4Gi", memory_limit="8Gi",
+        ),
+        description="CPU/Memory for each Backend",
+    )
+
+
 class ProvisioningConfig(BaseModel):
     """Top-level provisioning configuration.
 

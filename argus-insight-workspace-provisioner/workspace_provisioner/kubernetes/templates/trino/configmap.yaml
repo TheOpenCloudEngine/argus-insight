@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argus-trino-${WORKSPACE_NAME}-config
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: trino
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+data:
+  config-coordinator.properties: |
+    coordinator=true
+    node-scheduler.include-coordinator=false
+    http-server.http.port=8080
+    discovery.uri=http://argus-trino-${WORKSPACE_NAME}:8080
+  config-worker.properties: |
+    coordinator=false
+    http-server.http.port=8080
+    discovery.uri=http://argus-trino-${WORKSPACE_NAME}:8080
+  jvm.config: |
+    -server
+    -Xmx${TRINO_COORDINATOR_MEMORY_LIMIT}
+    -XX:+UseG1GC
+    -XX:G1HeapRegionSize=32M
+    -XX:+ExplicitGCInvokesConcurrent
+    -XX:+HeapDumpOnOutOfMemoryError
+    -Djdk.attach.allowAttachSelf=true
+  node.properties: |
+    node.environment=production
+  log.properties: |
+    io.trino=INFO

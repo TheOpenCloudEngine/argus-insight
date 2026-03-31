@@ -1,0 +1,124 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: argus-starrocks-${WORKSPACE_NAME}-fe
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: starrocks
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/component: fe
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+spec:
+  serviceName: argus-starrocks-${WORKSPACE_NAME}-fe
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: starrocks
+      app.kubernetes.io/instance: ${WORKSPACE_NAME}
+      app.kubernetes.io/component: fe
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: starrocks
+        app.kubernetes.io/instance: ${WORKSPACE_NAME}
+        app.kubernetes.io/component: fe
+        app.kubernetes.io/part-of: argus-insight
+        argus-insight/workspace: ${WORKSPACE_NAME}
+    spec:
+      containers:
+        - name: fe
+          image: ${STARROCKS_FE_IMAGE}
+          ports:
+            - name: http
+              containerPort: 8030
+            - name: mysql
+              containerPort: 9030
+            - name: rpc
+              containerPort: 9020
+            - name: edit-log
+              containerPort: 9010
+          resources:
+            requests:
+              cpu: "${STARROCKS_FE_CPU_REQUEST}"
+              memory: "${STARROCKS_FE_MEMORY_REQUEST}"
+            limits:
+              cpu: "${STARROCKS_FE_CPU_LIMIT}"
+              memory: "${STARROCKS_FE_MEMORY_LIMIT}"
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          volumeMounts:
+            - name: fe-data
+              mountPath: /opt/starrocks/fe/meta
+      volumes:
+        - name: fe-data
+          persistentVolumeClaim:
+            claimName: argus-starrocks-${WORKSPACE_NAME}-fe
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: argus-starrocks-${WORKSPACE_NAME}-be
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: starrocks
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/component: be
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+spec:
+  serviceName: argus-starrocks-${WORKSPACE_NAME}-be
+  replicas: ${STARROCKS_BE_REPLICAS}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: starrocks
+      app.kubernetes.io/instance: ${WORKSPACE_NAME}
+      app.kubernetes.io/component: be
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: starrocks
+        app.kubernetes.io/instance: ${WORKSPACE_NAME}
+        app.kubernetes.io/component: be
+        app.kubernetes.io/part-of: argus-insight
+        argus-insight/workspace: ${WORKSPACE_NAME}
+    spec:
+      containers:
+        - name: be
+          image: ${STARROCKS_BE_IMAGE}
+          ports:
+            - name: http
+              containerPort: 8040
+            - name: heartbeat
+              containerPort: 9050
+            - name: be-port
+              containerPort: 9060
+          env:
+            - name: FE_HOST
+              value: "argus-starrocks-${WORKSPACE_NAME}-fe"
+            - name: FE_PORT
+              value: "9020"
+          resources:
+            requests:
+              cpu: "${STARROCKS_BE_CPU_REQUEST}"
+              memory: "${STARROCKS_BE_MEMORY_REQUEST}"
+            limits:
+              cpu: "${STARROCKS_BE_CPU_LIMIT}"
+              memory: "${STARROCKS_BE_MEMORY_LIMIT}"
+          volumeMounts:
+            - name: be-data
+              mountPath: /opt/starrocks/be/storage
+      volumes:
+        - name: be-data
+          persistentVolumeClaim:
+            claimName: argus-starrocks-${WORKSPACE_NAME}-be

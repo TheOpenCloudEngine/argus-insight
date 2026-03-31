@@ -528,6 +528,8 @@ DEPLOY_MAPPING_SERVICES = [
     {"service_key": "neo4j", "service_label": "Neo4j", "icon": "neo4j", "default_constraint": "per_workspace"},
     {"service_key": "milvus", "service_label": "Milvus", "icon": "milvus", "default_constraint": "per_workspace"},
     {"service_key": "mindsdb", "service_label": "MindsDB", "icon": "brain", "default_constraint": "per_workspace"},
+    {"service_key": "trino", "service_label": "Trino", "icon": "trino", "default_constraint": "per_workspace"},
+    {"service_key": "starrocks", "service_label": "StarRocks", "icon": "starrocks", "default_constraint": "per_workspace"},
 ]
 
 CONSTRAINT_LABELS = {
@@ -666,6 +668,14 @@ BUILTIN_REPOS: dict[str, dict] = {
             {"repo_id": "baseos", "name": "Rocky Linux $releasever - BaseOS", "baseurl": "http://dl.rockylinux.org/pub/rocky/$releasever/BaseOS/$basearch/os/", "gpgcheck": True, "enabled": True},
             {"repo_id": "appstream", "name": "Rocky Linux $releasever - AppStream", "baseurl": "http://dl.rockylinux.org/pub/rocky/$releasever/AppStream/$basearch/os/", "gpgcheck": True, "enabled": True},
             {"repo_id": "extras", "name": "Rocky Linux $releasever - Extras", "baseurl": "http://dl.rockylinux.org/pub/rocky/$releasever/extras/$basearch/os/", "gpgcheck": True, "enabled": True},
+        ],
+    },
+    "rhel-10": {
+        "label": "RHEL 10 (UBI)",
+        "pkg_type": "yum",
+        "builtin": [
+            {"repo_id": "baseos", "name": "RHEL 10 BaseOS", "baseurl": "https://cdn.redhat.com/content/dist/rhel10/$releasever/$basearch/baseos/os/", "gpgcheck": True, "enabled": True},
+            {"repo_id": "appstream", "name": "RHEL 10 AppStream", "baseurl": "https://cdn.redhat.com/content/dist/rhel10/$releasever/$basearch/appstream/os/", "gpgcheck": True, "enabled": True},
         ],
     },
     # --- Alpine ---
