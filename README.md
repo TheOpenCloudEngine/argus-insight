@@ -166,6 +166,14 @@ Workspace 생성
           └── Dashboard (Agent 데이터) + Grafana (Prometheus)
 ```
 
-## License
+## R&R
 
-Apache License 2.0
+* Cho Hyun Je - Catalog Server
+* Cho Eun Ryang - Data Gathering (Semiconductor)
+* Kim Ha Neul - Architect
+* Oh Hyun A - Catealog Server
+* Park Jun Hong - Docker Image
+* Park Jae Soo - Docker Image
+* Choi Gyeong Min - Data Gathering (Semiconductor)
+* Kim Gyun Tae - Data Engineering
+* Kim Byoung Gon - PM / UI

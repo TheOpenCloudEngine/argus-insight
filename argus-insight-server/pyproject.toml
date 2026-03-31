@@ -27,6 +27,8 @@ dependencies = [
     "python-docx>=1.0.0",
     "python-pptx>=1.0.0",
     "mammoth>=1.6.0",
+    "kubernetes_asyncio>=30.0.0",
+    "sse-starlette>=2.0.0",
     "argus-insight-workspace-provisioner",
 ]
 

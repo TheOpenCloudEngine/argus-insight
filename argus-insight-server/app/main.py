@@ -29,6 +29,7 @@ from app.unity_catalog.router import router as unity_catalog_router
 from app.usermgr.router import router as usermgr_router
 from app.apps.registry_router import router as app_registry_router
 from app.apps.instance_router import router as app_instance_router
+from app.k8s.router import router as k8s_router
 from workspace_provisioner.router import router as workspace_router
 from workspace_provisioner.router import init_gitlab_client
 from workspace_provisioner.plugins.router import router as plugins_router
@@ -166,6 +167,7 @@ app.include_router(security_router, prefix="/api/v1")
 app.include_router(unity_catalog_router, prefix="/api/v1")
 app.include_router(app_registry_router, prefix="/api/v1")
 app.include_router(app_instance_router, prefix="/api/v1")
+app.include_router(k8s_router, prefix="/api/v1")
 app.include_router(workspace_router, prefix="/api/v1")
 app.include_router(plugins_router, prefix="/api/v1")
 

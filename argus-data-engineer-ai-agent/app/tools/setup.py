@@ -24,6 +24,14 @@ def create_tool_registry(catalog: CatalogClient) -> ToolRegistry:
         RunQualityCheckTool,
     )
     from app.tools.catalog.search import SearchDatasetsTool, SearchGlossaryTool
+    from app.tools.catalog.standard import (
+        AnalyzeTermTool,
+        AutoMapDatasetTool,
+        CheckDatasetComplianceTool,
+        GetDatasetTermMappingTool,
+        ListStandardDictionariesTool,
+        SearchStandardTermsTool,
+    )
 
     registry.register(SearchDatasetsTool(catalog))
     registry.register(SearchGlossaryTool(catalog))
@@ -40,6 +48,25 @@ def create_tool_registry(catalog: CatalogClient) -> ToolRegistry:
     registry.register(GetPlatformMetadataTool(catalog))
     registry.register(ListPipelinesTool(catalog))
     registry.register(RegisterPipelineTool(catalog))
+
+    # --- Standard compliance tools ---
+    registry.register(ListStandardDictionariesTool(catalog))
+    registry.register(SearchStandardTermsTool(catalog))
+    registry.register(AnalyzeTermTool(catalog))
+    registry.register(CheckDatasetComplianceTool(catalog))
+    registry.register(GetDatasetTermMappingTool(catalog))
+    registry.register(AutoMapDatasetTool(catalog))
+
+    # --- Analysis tools ---
+    from app.tools.analysis.impala_profile import (
+        AnalyzeImpalaProfileTextTool,
+        AnalyzeImpalaQueryProfileTool,
+        GetImpalaQueryProfileTool,
+    )
+
+    registry.register(AnalyzeImpalaQueryProfileTool(catalog))
+    registry.register(AnalyzeImpalaProfileTextTool(catalog))
+    registry.register(GetImpalaQueryProfileTool(catalog))
 
     # --- Code generation tools ---
     from app.tools.codegen.ddl import GenerateDDLTool

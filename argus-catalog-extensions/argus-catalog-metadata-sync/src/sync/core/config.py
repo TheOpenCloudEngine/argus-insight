@@ -310,6 +310,16 @@ class Settings:
         )
         self.impala_schedule_enabled: bool = _to_bool(impala_sched.get("enabled", True))
 
+        # Impala profile analysis settings
+        impala_profile = impala_raw.get("profile", {})
+        self.impala_daemon_http_port: int = int(impala_profile.get("daemon_http_port", 25000))
+        self.impala_daemon_tls_enabled: bool = _to_bool(
+            impala_profile.get("daemon_tls_enabled", False)
+        )
+        self.impala_profile_fetch_timeout: int = int(
+            impala_profile.get("fetch_timeout", 30)
+        )
+
     @property
     def database_url(self) -> str:
         """Build SQLAlchemy database URL from config."""

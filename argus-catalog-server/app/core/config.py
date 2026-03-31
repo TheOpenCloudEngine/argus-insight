@@ -90,6 +90,11 @@ class Settings:
         self.os_bucket: str = "model-artifacts"
         self.os_presigned_url_expiry: int = 3600
 
+        # Metadata Sync service (profile analysis proxy)
+        self.metadata_sync_base_url: str = _get(
+            "metadata_sync", "base_url", "http://localhost:4610"
+        )
+
         # External API Cache
         self.cache_max_size: int = int(_get_nested("external", "cache", "max_size", 1000))
         self.cache_ttl_seconds: int = int(_get_nested("external", "cache", "ttl_seconds", 300))

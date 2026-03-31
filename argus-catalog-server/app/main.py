@@ -14,6 +14,7 @@ from app import __version__
 from app.ai.router import router as ai_router
 from app.alert.router import router as alert_router
 from app.auth.router import router as auth_router  # Added for SSO AUTH
+from app.catalog.impala_profile_router import router as impala_profile_router
 from app.catalog.router import router as catalog_router
 from app.comments.router import router as comments_router
 from app.core.config import settings
@@ -175,6 +176,7 @@ app.include_router(ai_router, prefix="/api/v1")
 app.include_router(alert_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")  # Added for SSO AUTH
 app.include_router(external_router, prefix="/api/v1")
+app.include_router(impala_profile_router, prefix="/api/v1")
 
 
 @app.get("/health")

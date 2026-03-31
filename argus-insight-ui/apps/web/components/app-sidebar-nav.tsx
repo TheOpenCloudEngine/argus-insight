@@ -2,17 +2,26 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { ChevronRight } from "lucide-react"
 
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@workspace/ui/components/collapsible"
 import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from "@workspace/ui/components/sidebar"
 import { getIcon } from "@/lib/icon-map"
 import { useAuth } from "@/features/auth"
-import type { MenuGroup } from "@/types/menu"
+import type { MenuItem, MenuGroup } from "@/types/menu"
 
 interface AppSidebarNavProps {
   groups: MenuGroup[]
@@ -35,6 +44,16 @@ export function AppSidebarNav({ groups }: AppSidebarNavProps) {
             {group.items
               .filter((item) => !item.adminOnly || user?.is_admin)
               .map((item) => {
+              if (item.children?.length) {
+                return (
+                  <CollapsibleMenuItem
+                    key={item.id}
+                    item={item}
+                    pathname={pathname}
+                  />
+                )
+              }
+
               const Icon = getIcon(item.icon)
               return (
                 <SidebarMenuItem key={item.id}>
@@ -57,5 +76,57 @@ export function AppSidebarNav({ groups }: AppSidebarNavProps) {
         )
       })}
     </>
+  )
+}
+
+function CollapsibleMenuItem({
+  item,
+  pathname,
+}: {
+  item: MenuItem
+  pathname: string
+}) {
+  const Icon = getIcon(item.icon)
+  const isActive =
+    pathname === item.url ||
+    pathname.startsWith(item.url + "/") ||
+    item.children?.some(
+      (child) =>
+        pathname === child.url || pathname.startsWith(child.url + "/"),
+    )
+
+  return (
+    <Collapsible asChild defaultOpen={isActive} className="group/collapsible">
+      <SidebarMenuItem>
+        <CollapsibleTrigger asChild>
+          <SidebarMenuButton
+            tooltip={item.title}
+            isActive={pathname === item.url}
+            className="text-sm"
+          >
+            <Icon />
+            <span>{item.title}</span>
+            <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+          </SidebarMenuButton>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <SidebarMenuSub>
+            {item.children?.map((child) => {
+              const isChildActive =
+                pathname === child.url || pathname.startsWith(child.url + "/")
+              return (
+                <SidebarMenuSubItem key={child.id}>
+                  <SidebarMenuSubButton asChild isActive={isChildActive}>
+                    <Link href={child.url} prefetch={false}>
+                      <span>{child.title}</span>
+                    </Link>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              )
+            })}
+          </SidebarMenuSub>
+        </CollapsibleContent>
+      </SidebarMenuItem>
+    </Collapsible>
   )
 }

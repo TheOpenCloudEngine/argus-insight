@@ -34,14 +34,14 @@ argus-data-engineer-ai-agent/
 │   │   ├── base.py              # AgentLLMProvider ABC
 │   │   ├── registry.py          # 싱글톤 관리
 │   │   └── providers/           # Anthropic, OpenAI, Ollama
-│   ├── tools/                   # Agent 도구 (25개)
+│   ├── tools/                   # Agent 도구 (34개)
 │   │   ├── base.py              # BaseTool ABC, SafetyLevel (6단계)
 │   │   ├── registry.py          # ToolRegistry (승인 판단)
 │   │   ├── setup.py             # 전체 도구 등록
-│   │   ├── catalog/             # Catalog API 연동 도구 (15개)
+│   │   ├── catalog/             # Catalog API 연동 도구 (21개)
 │   │   ├── codegen/             # 코드 생성 도구 (4개: SQL, PySpark, DDL, Pipeline)
 │   │   ├── execution/           # 실행 도구 (6개: SQL실행, 미리보기, 검증, 파일관리)
-│   │   └── analysis/            # 분석 도구 (Phase 4)
+│   │   └── analysis/            # 분석 도구 (3개: Impala 프로파일 병목 탐지)
 │   ├── connectors/              # DB 커넥터 프레임워크
 │   │   ├── base.py              # DBConnector ABC, QueryResult
 │   │   ├── mysql.py             # MySQL/MariaDB (aiomysql, read-only)
@@ -84,7 +84,7 @@ make format   # ruff format
 | GET | /api/v1/settings/agent | Agent 설정 조회 |
 | PUT | /api/v1/settings/agent | Agent 설정 변경 |
 
-## Agent Tools (15개)
+## Agent Tools (24개)
 
 ### Catalog 조회 (Auto — 자동 실행)
 - `search_datasets` — 하이브리드 검색 (키워드 + 시맨틱)
@@ -98,6 +98,19 @@ make format   # ruff format
 - `get_quality_score` — 품질 점수
 - `get_catalog_stats` — 카탈로그 통계
 - `search_glossary` — 비즈니스 용어 검색
+
+### 데이터 표준 준수 검사 (Auto / Approve Write)
+- `list_standard_dictionaries` — 표준 사전 목록 조회 (Auto)
+- `search_standard_terms` — 표준 용어 검색 (Auto)
+- `analyze_standard_term` — 용어 형태소 분석 및 표준 물리명 생성 (Auto)
+- `check_dataset_compliance` — 데이터셋 표준 준수율 확인 (Auto)
+- `get_dataset_term_mapping` — 컬럼별 표준 용어 매핑 상세 조회 (Auto)
+- `auto_map_dataset` — 데이터셋 컬럼-표준 용어 자동 매핑 (Approve Write)
+
+### Impala 쿼리 프로파일 분석 (Auto — 자동 실행)
+- `analyze_impala_query_profile` — 쿼리 ID로 프로파일 가져와 병목 노드 자동 탐지
+- `analyze_impala_profile_text` — 사용자가 붙여넣은 프로파일 텍스트 분석
+- `get_impala_query_profile` — 쿼리 런타임 프로파일 원문 조회
 
 ### 코드 생성 (Auto — 자동 실행, 컨텍스트 수집만)
 - `generate_sql` — SQL 쿼리 생성 (SELECT, JOIN, MERGE 등 + 플랫폼별 방언)

@@ -648,3 +648,106 @@ async def collect_starrocks_query(event: dict):
     except Exception as e:
         logger.error("Failed to save StarRocks query event: %s", e)
         raise HTTPException(status_code=500, detail=f"Failed to save query event: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Impala Query Profile Analysis
+# ---------------------------------------------------------------------------
+
+class ProfileAnalyzeRequest(BaseModel):
+    profile_text: str
+
+
+@app.get("/collector/impala/queries/{query_id}/profile")
+async def get_impala_query_profile(query_id: str):
+    """Fetch the raw runtime profile text for an Impala query."""
+    fetcher = _create_profile_fetcher()
+    if not fetcher:
+        raise HTTPException(status_code=503, detail="Impala platform is not configured")
+
+    coordinator = _lookup_coordinator(query_id)
+    profile_text = fetcher.fetch_profile(query_id, coordinator_host=coordinator)
+    if not profile_text:
+        raise HTTPException(status_code=404, detail=f"Profile not found for query {query_id}")
+
+    return {"query_id": query_id, "profile": profile_text}
+
+
+@app.post("/collector/impala/queries/{query_id}/analyze")
+async def analyze_impala_query(query_id: str):
+    """Fetch profile for an Impala query and run bottleneck detection."""
+    fetcher = _create_profile_fetcher()
+    if not fetcher:
+        raise HTTPException(status_code=503, detail="Impala platform is not configured")
+
+    coordinator = _lookup_coordinator(query_id)
+    profile_text = fetcher.fetch_profile(query_id, coordinator_host=coordinator)
+    if not profile_text:
+        raise HTTPException(status_code=404, detail=f"Profile not found for query {query_id}")
+
+    return _analyze_profile_text(query_id, profile_text)
+
+
+@app.post("/collector/impala/profile/analyze")
+async def analyze_impala_profile_text(req: ProfileAnalyzeRequest):
+    """Analyze a raw Impala profile text submitted directly."""
+    if not req.profile_text.strip():
+        raise HTTPException(status_code=400, detail="profile_text is empty")
+    return _analyze_profile_text("user-submitted", req.profile_text)
+
+
+def _create_profile_fetcher():
+    """Create an ImpalaProfileFetcher from current settings, or None if disabled."""
+    if not settings.impala_enabled:
+        return None
+
+    from sync.platforms.impala.profile_fetcher import ImpalaProfileFetcher
+
+    return ImpalaProfileFetcher(
+        cm_host=settings.impala_cm_host,
+        cm_port=settings.impala_cm_port,
+        cm_username=settings.impala_cm_username,
+        cm_password=settings.impala_cm_password,
+        cluster_name=settings.impala_cm_cluster_name,
+        service_name=settings.impala_cm_service_name,
+        api_version=settings.impala_cm_api_version,
+        tls_enabled=settings.impala_cm_tls_enabled,
+        tls_verify=settings.impala_cm_tls_verify,
+        daemon_http_port=settings.impala_daemon_http_port,
+        daemon_tls_enabled=settings.impala_daemon_tls_enabled,
+        fetch_timeout=settings.impala_profile_fetch_timeout,
+    )
+
+
+def _lookup_coordinator(query_id: str) -> str | None:
+    """Look up the coordinator host for a query from the history table."""
+    from sync.core.database import get_session
+    from sync.platforms.impala.models import ImpalaQueryHistory
+
+    session = get_session()
+    try:
+        row = (
+            session.query(ImpalaQueryHistory.coordinator_host)
+            .filter_by(query_id=query_id)
+            .first()
+        )
+        return row[0] if row else None
+    finally:
+        session.close()
+
+
+def _analyze_profile_text(query_id: str, profile_text: str) -> dict:
+    """Parse profile and run bottleneck detection."""
+    from sync.platforms.impala.bottleneck_detector import BottleneckDetector
+    from sync.platforms.impala.profile_parser import ImpalaProfileParser
+
+    parser = ImpalaProfileParser()
+    profile = parser.parse(profile_text)
+
+    if not profile.query_id:
+        profile.query_id = query_id
+
+    detector = BottleneckDetector()
+    report = detector.analyze(profile)
+
+    return report.to_dict()
