@@ -19,7 +19,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@workspace/ui/components/select"
-import { crossCopyObjects, listBuckets, listObjects } from "@/features/object-storage/api"
+import { authFetch } from "@/features/auth/auth-fetch"
+
+const BASE = "/api/v1/objectfilemgr"
 
 interface CopyToDialogProps {
   open: boolean
@@ -52,7 +54,8 @@ export function CopyToDialog({
     setPhase("select")
     setCopyResult(null)
     setDestPrefix("")
-    listBuckets()
+    authFetch(`${BASE}/buckets`)
+      .then((res) => res.ok ? res.json() : { buckets: [] })
       .then((data) => {
         const names = (data.buckets ?? []).map((b: { name: string }) => b.name)
         setBuckets(names)
@@ -66,8 +69,14 @@ export function CopyToDialog({
     if (!destBucket) return
     setLoadingFolders(true)
     try {
-      const data = await listObjects(destBucket, destPrefix) as { folders?: { prefix: string; name: string }[]; objects?: unknown[] }
-      setFolders(data.folders ?? [])
+      const params = new URLSearchParams({ bucket: destBucket, prefix: destPrefix, delimiter: "/", max_keys: "1000" })
+      const res = await authFetch(`${BASE}/objects?${params.toString()}`)
+      if (res.ok) {
+        const data = await res.json()
+        setFolders(data.folders ?? [])
+      } else {
+        setFolders([])
+      }
     } catch {
       setFolders([])
     }
@@ -90,13 +99,19 @@ export function CopyToDialog({
   const handleCopy = async () => {
     setPhase("copying")
     try {
-      const result = await crossCopyObjects(
-        sourceBucket,
-        sourceKeys,
-        destBucket,
-        destPrefix,
-        overwrite,
-      )
+      const res = await authFetch(`${BASE}/objects/cross-copy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_bucket: sourceBucket,
+          source_keys: sourceKeys,
+          destination_bucket: destBucket,
+          destination_prefix: destPrefix,
+          overwrite,
+        }),
+      })
+      if (!res.ok) throw new Error("Copy failed")
+      const result = await res.json()
       setCopyResult({ copied: result.copied, skipped: result.skipped, errors: result.errors })
       setPhase("done")
       onComplete()
@@ -128,7 +143,6 @@ export function CopyToDialog({
 
         {phase === "select" && (
           <div className="space-y-4">
-            {/* Destination bucket */}
             <div className="space-y-1.5">
               <label className="text-xs font-medium">Destination Bucket</label>
               <Select value={destBucket} onValueChange={(v) => { setDestBucket(v); setDestPrefix("") }}>
@@ -143,7 +157,6 @@ export function CopyToDialog({
               </Select>
             </div>
 
-            {/* Folder browser */}
             <div className="space-y-1.5">
               <label className="text-xs font-medium">Destination Path</label>
               <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
@@ -177,21 +190,19 @@ export function CopyToDialog({
                   </p>
                 ) : (
                   folders.map((f) => (
-                      <button
-                        key={f.prefix}
-                        className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-sm hover:bg-muted/50"
-                        onClick={() => navigateToFolder(f.prefix)}
-                      >
-                        <Folder className="h-4 w-4 text-muted-foreground" /> {f.name}
-                      </button>
-                    )
-                  })
+                    <button
+                      key={f.prefix}
+                      className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-sm hover:bg-muted/50"
+                      onClick={() => navigateToFolder(f.prefix)}
+                    >
+                      <Folder className="h-4 w-4 text-muted-foreground" /> {f.name}
+                    </button>
+                  ))
                 )}
               </div>
               <p className="text-xs text-muted-foreground">Selected: {displayPath}</p>
             </div>
 
-            {/* Overwrite option */}
             <label className="flex items-center gap-2 text-sm">
               <Checkbox checked={overwrite} onCheckedChange={(v) => setOverwrite(!!v)} />
               Overwrite existing files
