@@ -39,7 +39,7 @@ export function CopyToDialog({
   const [buckets, setBuckets] = useState<string[]>([])
   const [destBucket, setDestBucket] = useState("")
   const [destPrefix, setDestPrefix] = useState("")
-  const [folders, setFolders] = useState<string[]>([])
+  const [folders, setFolders] = useState<{ prefix: string; name: string }[]>([])
   const [loadingFolders, setLoadingFolders] = useState(false)
   const [overwrite, setOverwrite] = useState(false)
 
@@ -66,9 +66,8 @@ export function CopyToDialog({
     if (!destBucket) return
     setLoadingFolders(true)
     try {
-      const data = await listObjects(destBucket, destPrefix) as { folders?: { prefix: string }[]; objects?: unknown[] }
-      const dirs = (data.folders ?? []).map((f) => String(f.prefix || f))
-      setFolders(dirs)
+      const data = await listObjects(destBucket, destPrefix) as { folders?: { prefix: string; name: string }[]; objects?: unknown[] }
+      setFolders(data.folders ?? [])
     } catch {
       setFolders([])
     }
@@ -177,16 +176,13 @@ export function CopyToDialog({
                     {destPrefix ? "No subfolders" : "No folders"}. Files will be copied here.
                   </p>
                 ) : (
-                  folders.map((f) => {
-                    const fStr = String(f)
-                    const name = fStr.replace(/\/$/, "").split("/").pop() || fStr
-                    return (
+                  folders.map((f) => (
                       <button
-                        key={f}
+                        key={f.prefix}
                         className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-sm hover:bg-muted/50"
-                        onClick={() => navigateToFolder(f)}
+                        onClick={() => navigateToFolder(f.prefix)}
                       >
-                        <Folder className="h-4 w-4 text-muted-foreground" /> {name}
+                        <Folder className="h-4 w-4 text-muted-foreground" /> {f.name}
                       </button>
                     )
                   })
