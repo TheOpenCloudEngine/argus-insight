@@ -1,4 +1,4 @@
-"""Workflow step: Deploy MariaDB to Kubernetes for a workspace."""
+"""Workflow step: Deploy MariaDB + phpMyAdmin to Kubernetes for a workspace."""
 
 import logging
 import secrets
@@ -39,6 +39,7 @@ class MariadbDeployStep(WorkflowStep):
 
         from workspace_provisioner.service import generate_service_id
         svc_id = generate_service_id()
+        hostname = f"argus-mariadb-{svc_id}.argus-insight.{domain}"
 
         variables = {
             "MARIA_IMAGE": config.image,
@@ -53,6 +54,7 @@ class MariadbDeployStep(WorkflowStep):
             "MARIA_MEMORY_LIMIT": config.resources.memory_limit,
             "WORKSPACE_NAME": workspace_name,
             "K8S_NAMESPACE": namespace,
+            "HOSTNAME": hostname,
         }
 
         manifests = render_manifests("mariadb", variables)
@@ -72,20 +74,26 @@ class MariadbDeployStep(WorkflowStep):
         ctx.set("mariadb_endpoint", f"argus-mariadb-{workspace_name}.{namespace}.svc.cluster.local:3306")
         ctx.set("mariadb_manifests", manifests)
 
+        # Register DNS for phpMyAdmin Web UI
+        from workspace_provisioner.workflow.steps.app_deploy import register_workspace_dns
+        await register_workspace_dns(hostname)
+
         from workspace_provisioner.service import register_workspace_service
         await register_workspace_service(
             workspace_id=ctx.workspace_id,
             plugin_name="argus-mariadb",
             display_name="MariaDB",
             version="11",
-            endpoint=f"mysql://{config.db_user}@argus-mariadb-{workspace_name}.{namespace}.svc.cluster.local:3306/{config.db_name}",
+            endpoint=f"http://{hostname}",
             service_id=svc_id,
             username=config.db_user,
             password=user_password,
             metadata={
                 "display": {
                     "Database": config.db_name,
-                    "Port": "3306",
+                    "MySQL Port": "3306",
+                    "Charset": "utf8mb4",
+                    "Web UI": "phpMyAdmin",
                 },
                 "internal": {
                     "host": f"argus-mariadb-{workspace_name}.{namespace}.svc.cluster.local",
@@ -95,7 +103,7 @@ class MariadbDeployStep(WorkflowStep):
             },
         )
 
-        return {"endpoint": f"argus-mariadb-{workspace_name}", "service_id": svc_id}
+        return {"endpoint": hostname, "service_id": svc_id}
 
     async def rollback(self, ctx: WorkflowContext) -> None:
         manifests = ctx.get("mariadb_manifests")

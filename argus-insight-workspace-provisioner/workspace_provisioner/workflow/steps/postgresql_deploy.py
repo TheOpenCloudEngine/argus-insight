@@ -1,4 +1,4 @@
-"""Workflow step: Deploy PostgreSQL to Kubernetes for a workspace."""
+"""Workflow step: Deploy PostgreSQL + Adminer to Kubernetes for a workspace."""
 
 import logging
 import secrets
@@ -38,6 +38,7 @@ class PostgresqlDeployStep(WorkflowStep):
 
         from workspace_provisioner.service import generate_service_id
         svc_id = generate_service_id()
+        hostname = f"argus-postgresql-{svc_id}.argus-insight.{domain}"
 
         variables = {
             "PG_IMAGE": config.image,
@@ -51,6 +52,7 @@ class PostgresqlDeployStep(WorkflowStep):
             "PG_MEMORY_LIMIT": config.resources.memory_limit,
             "WORKSPACE_NAME": workspace_name,
             "K8S_NAMESPACE": namespace,
+            "HOSTNAME": hostname,
         }
 
         manifests = render_manifests("postgresql", variables)
@@ -70,13 +72,17 @@ class PostgresqlDeployStep(WorkflowStep):
         ctx.set("postgresql_endpoint", f"argus-postgresql-{workspace_name}.{namespace}.svc.cluster.local:5432")
         ctx.set("postgresql_manifests", manifests)
 
+        # Register DNS for Adminer Web UI
+        from workspace_provisioner.workflow.steps.app_deploy import register_workspace_dns
+        await register_workspace_dns(hostname)
+
         from workspace_provisioner.service import register_workspace_service
         await register_workspace_service(
             workspace_id=ctx.workspace_id,
             plugin_name="argus-postgresql",
             display_name="PostgreSQL",
             version="17",
-            endpoint=f"postgresql://{config.db_user}@argus-postgresql-{workspace_name}.{namespace}.svc.cluster.local:5432/{config.db_name}",
+            endpoint=f"http://{hostname}",
             service_id=svc_id,
             username=config.db_user,
             password=password,
@@ -84,6 +90,8 @@ class PostgresqlDeployStep(WorkflowStep):
                 "display": {
                     "Database": config.db_name,
                     "Port": "5432",
+                    "Encoding": "UTF-8",
+                    "Web UI": "Adminer",
                 },
                 "internal": {
                     "host": f"argus-postgresql-{workspace_name}.{namespace}.svc.cluster.local",
@@ -92,7 +100,7 @@ class PostgresqlDeployStep(WorkflowStep):
             },
         )
 
-        return {"endpoint": f"argus-postgresql-{workspace_name}", "service_id": svc_id}
+        return {"endpoint": hostname, "service_id": svc_id}
 
     async def rollback(self, ctx: WorkflowContext) -> None:
         manifests = ctx.get("postgresql_manifests")

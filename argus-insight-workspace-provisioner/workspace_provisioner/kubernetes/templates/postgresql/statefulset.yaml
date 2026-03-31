@@ -42,6 +42,10 @@ spec:
                 secretKeyRef:
                   name: argus-postgresql-${WORKSPACE_NAME}
                   key: postgres-password
+            - name: POSTGRES_INITDB_ARGS
+              value: "--encoding=UTF8 --locale=C.UTF-8"
+            - name: LANG
+              value: "C.UTF-8"
           ports:
             - name: postgres
               containerPort: 5432
@@ -65,6 +69,21 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
+        - name: adminer
+          image: adminer:latest
+          env:
+            - name: ADMINER_DEFAULT_SERVER
+              value: "127.0.0.1"
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
   volumeClaimTemplates:
     - metadata:
         name: data

@@ -14,6 +14,35 @@ spec:
     - name: mysql
       port: 3306
       targetPort: mysql
+    - name: http
+      port: 80
+      targetPort: http
   selector:
     app.kubernetes.io/name: mariadb
     app.kubernetes.io/instance: ${WORKSPACE_NAME}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argus-mariadb-${WORKSPACE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: mariadb
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "64m"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: ${HOSTNAME}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argus-mariadb-${WORKSPACE_NAME}
+                port:
+                  name: http
