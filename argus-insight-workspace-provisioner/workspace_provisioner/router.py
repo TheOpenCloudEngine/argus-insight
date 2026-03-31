@@ -930,6 +930,21 @@ POSTGRESQL_BLOCKED_OPTIONS = {
     "password_encryption", "wal_level", "archive_mode",
 }
 
+JUPYTER_ALLOWED_OPTIONS = {
+    "ServerApp.max_body_size", "ServerApp.max_buffer_size",
+    "ServerApp.shutdown_no_activity_timeout", "ServerApp.terminals_enabled",
+    "MappingKernelManager.cull_idle_timeout", "MappingKernelManager.cull_interval",
+    "MappingKernelManager.cull_connected", "MappingKernelManager.default_kernel_name",
+    "ContentsManager.allow_hidden",
+}
+
+JUPYTER_BLOCKED_OPTIONS = {
+    "ServerApp.port", "ServerApp.ip", "ServerApp.root_dir",
+    "ServerApp.base_url", "ServerApp.certfile", "ServerApp.keyfile",
+    "ServerApp.open_browser", "ServerApp.allow_remote_access",
+    "ServerApp.token", "ServerApp.password",
+}
+
 MARIADB_ALLOWED_OPTIONS = {
     "max_connections", "wait_timeout", "interactive_timeout", "connect_timeout",
     "max_allowed_packet", "thread_cache_size",
@@ -1038,6 +1053,44 @@ async def get_service_config(
             "plugin_name": svc.plugin_name,
             "options": options,
             "allowed_options": sorted(POSTGRESQL_ALLOWED_OPTIONS),
+        }
+
+    if svc.plugin_name.startswith("argus-jupyter"):
+        # Jupyter uses INSTANCE_ID (service_id) in ConfigMap name
+        svc_service_id = svc.service_id or ""
+        configmap_name = f"argus-jupyter-{svc_service_id}-custom-config"
+        cmd = ["kubectl", "get", "configmap", configmap_name, "-n", namespace, "-o", "jsonpath={.data.custom_config\\.py}"]
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            return {"plugin_name": svc.plugin_name, "options": {}, "allowed_options": list(JUPYTER_ALLOWED_OPTIONS)}
+
+        # Parse Python config: c.Class.option = value
+        options = {}
+        for line in stdout.decode().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("c.") and "=" in line:
+                key = line.split("=", 1)[0].strip().replace("c.", "")
+                val = line.split("=", 1)[1].strip()
+                # Remove quotes from string values
+                if (val.startswith("'") and val.endswith("'")) or (val.startswith('"') and val.endswith('"')):
+                    val = val[1:-1]
+                options[key] = val
+
+        return {
+            "plugin_name": svc.plugin_name,
+            "options": options,
+            "allowed_options": sorted(JUPYTER_ALLOWED_OPTIONS),
         }
 
     return {"plugin_name": svc.plugin_name, "options": {}, "allowed_options": []}
@@ -1159,5 +1212,57 @@ async def update_service_config(
 
         logger.info("PostgreSQL config updated for workspace %s, restarting", ws.name)
         return {"status": "ok", "message": "Configuration updated. PostgreSQL is restarting."}
+
+    if svc.plugin_name.startswith("argus-jupyter"):
+        for key in body.options:
+            if key in JUPYTER_BLOCKED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Option '{key}' cannot be changed")
+            if key not in JUPYTER_ALLOWED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Unknown option '{key}'")
+
+        # Build Python config
+        lines = []
+        for key, val in body.options.items():
+            # Determine value type
+            if val in ("True", "False"):
+                lines.append(f"c.{key} = {val}")
+            elif val.isdigit() or (val.startswith("-") and val[1:].isdigit()):
+                lines.append(f"c.{key} = {val}")
+            else:
+                lines.append(f"c.{key} = '{val}'")
+        conf_content = "\n".join(lines) + "\n"
+
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+
+        svc_service_id = svc.service_id or ""
+        configmap_name = f"argus-jupyter-{svc_service_id}-custom-config"
+
+        import json as _json
+        patch = _json.dumps({"data": {"custom_config.py": conf_content}})
+        cmd = ["kubectl", "patch", "configmap", configmap_name, "-n", namespace, "--type=merge", f"-p={patch}"]
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to update config: {stderr.decode()}")
+
+        # Restart Deployment
+        cmd2 = ["kubectl", "rollout", "restart", f"deployment/argus-jupyter-{svc_service_id}", "-n", namespace]
+        if kubeconfig:
+            cmd2.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc2 = await asyncio.create_subprocess_exec(
+            *cmd2, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await proc2.communicate()
+
+        logger.info("JupyterLab config updated for service %s, restarting", svc_service_id)
+        return {"status": "ok", "message": "Configuration updated. JupyterLab is restarting."}
 
     raise HTTPException(status_code=400, detail=f"Configuration not supported for {svc.plugin_name}")

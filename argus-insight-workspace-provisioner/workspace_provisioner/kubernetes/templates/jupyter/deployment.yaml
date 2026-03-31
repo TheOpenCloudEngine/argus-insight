@@ -67,6 +67,9 @@ spec:
             - name: data-vol
               mountPath: /data
               mountPropagation: HostToContainer
+            - name: jupyter-config
+              mountPath: /home/jovyan/.jupyter/jupyter_notebook_config.py
+              subPath: custom_config.py
           readinessProbe:
             httpGet:
               path: /api
@@ -168,3 +171,6 @@ spec:
           emptyDir: {}
         - name: data-vol
           emptyDir: {}
+        - name: jupyter-config
+          configMap:
+            name: argus-jupyter-${INSTANCE_ID}-custom-config

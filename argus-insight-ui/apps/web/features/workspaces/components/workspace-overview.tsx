@@ -262,7 +262,7 @@ function DetailRow({
 /*  Service Configuration Sheet (MariaDB, PostgreSQL)                  */
 /* ------------------------------------------------------------------ */
 
-const CONFIGURABLE_PLUGINS = new Set(["argus-mariadb", "argus-postgresql"])
+const CONFIGURABLE_PLUGINS = new Set(["argus-mariadb", "argus-postgresql", "argus-jupyter", "argus-jupyter-tensorflow", "argus-jupyter-pyspark"])
 
 function ServiceConfigSheet({
   open,
@@ -320,7 +320,9 @@ function ServiceConfigSheet({
 
   // Group options by category based on plugin
   const isMariadb = service.plugin_name === "argus-mariadb"
-  const pluginLabel = isMariadb ? "MariaDB" : "PostgreSQL"
+  const isPostgresql = service.plugin_name === "argus-postgresql"
+  const isJupyter = service.plugin_name.startsWith("argus-jupyter")
+  const pluginLabel = isMariadb ? "MariaDB" : isPostgresql ? "PostgreSQL" : "JupyterLab"
 
   const groups: { title: string; keys: string[] }[] = isMariadb
     ? [
@@ -329,11 +331,17 @@ function ServiceConfigSheet({
         { title: "Logging", keys: ["slow_query_log", "long_query_time"] },
         { title: "Character Set", keys: ["character_set_server", "collation_server"] },
       ]
-    : [
+    : isPostgresql
+    ? [
         { title: "Connection", keys: ["max_connections"] },
         { title: "Memory", keys: ["shared_buffers", "work_mem", "maintenance_work_mem", "effective_cache_size", "wal_buffers", "temp_buffers"] },
         { title: "Performance", keys: ["checkpoint_completion_target", "random_page_cost", "effective_io_concurrency", "default_statistics_target"] },
         { title: "Logging", keys: ["log_min_duration_statement", "log_statement"] },
+      ]
+    : [
+        { title: "Server", keys: ["ServerApp.max_body_size", "ServerApp.max_buffer_size", "ServerApp.shutdown_no_activity_timeout", "ServerApp.terminals_enabled"] },
+        { title: "Kernel", keys: ["MappingKernelManager.cull_idle_timeout", "MappingKernelManager.cull_interval", "MappingKernelManager.cull_connected", "MappingKernelManager.default_kernel_name"] },
+        { title: "Contents", keys: ["ContentsManager.allow_hidden"] },
       ]
 
   const renderGroup = (title: string, keys: string[]) => {
