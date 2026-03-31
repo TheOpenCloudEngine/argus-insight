@@ -65,7 +65,7 @@ function PluginDetailSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-[420px] overflow-y-auto sm:max-w-[420px]">
+      <SheetContent side="right" className="w-[420px] overflow-y-auto sm:max-w-[420px] px-6">
         <SheetHeader className="pb-4">
           <div className="flex items-center gap-3">
             <PluginIcon icon={plugin.icon} size={40} className="shrink-0 rounded" />
