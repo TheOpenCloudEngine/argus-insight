@@ -23,8 +23,6 @@ import { Button } from "@workspace/ui/components/button"
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@workspace/ui/components/card"
@@ -177,76 +175,23 @@ function SecretValue({ value, label }: { value: string; label: string }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  My Workspace list (shown when no workspace is selected)            */
+/*  Empty state (no workspaces)                                        */
 /* ------------------------------------------------------------------ */
 
-function WorkspaceListView({ onSelect }: { onSelect: (ws: MyWorkspace) => void }) {
-  const [workspaces, setWorkspaces] = useState<MyWorkspace[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    authFetch("/api/v1/workspace/workspaces/my")
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => {
-        setWorkspaces(data)
-        setLoading(false)
-      })
-      .catch(() => {
-        setWorkspaces([])
-        setLoading(false)
-      })
-  }, [])
-
-  if (loading) {
-    return (
-      <div className="flex flex-1 items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
-  if (workspaces.length === 0) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 py-20">
-        <Container className="h-12 w-12 text-muted-foreground" />
-        <p className="text-muted-foreground">No workspaces found.</p>
-        <p className="text-xs text-muted-foreground">
-          Contact an administrator to create a workspace for you.
-        </p>
-      </div>
-    )
-  }
-
+function NoWorkspaceView() {
+  const router = useRouter()
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Select a workspace to view its resources.
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 py-20">
+      <Container className="h-14 w-14 text-muted-foreground" />
+      <h2 className="text-lg font-semibold">No Workspace Available</h2>
+      <p className="text-sm text-muted-foreground text-center max-w-md">
+        Create a workspace to start collaborating with your team.
+        You can deploy services, analyze data, and manage resources
+        in a shared environment.
       </p>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {workspaces.map((ws) => (
-          <Card
-            key={ws.id}
-            className="cursor-pointer transition-colors hover:bg-muted/50"
-            onClick={() => onSelect(ws)}
-          >
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="truncate text-sm">{ws.display_name}</CardTitle>
-                {statusBadge(ws.status)}
-              </div>
-              <CardDescription className="font-mono text-xs">
-                {ws.name}
-              </CardDescription>
-            </CardHeader>
-            <CardFooter className="pt-0">
-              <Button variant="ghost" size="sm" className="ml-auto text-xs">
-                Open
-                <ExternalLink className="ml-1 h-3 w-3" />
-              </Button>
-            </CardFooter>
-          </Card>
-        ))}
-      </div>
+      <Button onClick={() => router.push("/dashboard/workspaces")}>
+        Create Workspace
+      </Button>
     </div>
   )
 }
@@ -1292,17 +1237,37 @@ export function WorkspaceOverview() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const wsId = searchParams.get("ws")
+  const [checked, setChecked] = useState(false)
 
-  const handleSelectWorkspace = useCallback(
-    (ws: MyWorkspace) => {
-      router.push(`/dashboard/workspace?ws=${ws.id}`)
-    },
-    [router],
-  )
+  // If no workspace selected, auto-select first one
+  useEffect(() => {
+    if (wsId) {
+      setChecked(true)
+      return
+    }
+    authFetch("/api/v1/workspace/workspaces/my")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: MyWorkspace[]) => {
+        if (data.length > 0) {
+          router.replace(`/dashboard/workspace?ws=${data[0].id}`)
+        } else {
+          setChecked(true)
+        }
+      })
+      .catch(() => setChecked(true))
+  }, [wsId, router])
+
+  if (!checked) {
+    return (
+      <div className="flex flex-1 items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   if (wsId) {
     return <WorkspaceResourceView workspaceId={Number(wsId)} />
   }
 
-  return <WorkspaceListView onSelect={handleSelectWorkspace} />
+  return <NoWorkspaceView />
 }
