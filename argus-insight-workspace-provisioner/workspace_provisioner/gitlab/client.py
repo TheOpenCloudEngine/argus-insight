@@ -30,7 +30,7 @@ class GitLabClient:
 
     def __init__(self, url: str, private_token: str) -> None:
         self._url = url
-        self._gl = gitlab.Gitlab(url=url, private_token=private_token)
+        self._gl = gitlab.Gitlab(url=url, private_token=private_token, keep_base_url=True)
         self._gl.auth()
         logger.info("GitLab client authenticated: %s", url)
 
