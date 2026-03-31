@@ -66,8 +66,8 @@ export function CopyToDialog({
     if (!destBucket) return
     setLoadingFolders(true)
     try {
-      const data = await listObjects(destBucket, destPrefix)
-      const dirs = (data.folders ?? []).map((f: { prefix: string }) => f.prefix)
+      const data = await listObjects(destBucket, destPrefix) as { folders?: { prefix: string }[]; objects?: unknown[] }
+      const dirs = (data.folders ?? []).map((f) => String(f.prefix || f))
       setFolders(dirs)
     } catch {
       setFolders([])
@@ -178,7 +178,8 @@ export function CopyToDialog({
                   </p>
                 ) : (
                   folders.map((f) => {
-                    const name = f.replace(/\/$/, "").split("/").pop() || f
+                    const fStr = String(f)
+                    const name = fStr.replace(/\/$/, "").split("/").pop() || fStr
                     return (
                       <button
                         key={f}
