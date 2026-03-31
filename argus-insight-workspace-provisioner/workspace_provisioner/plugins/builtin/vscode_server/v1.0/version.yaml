@@ -12,3 +12,4 @@ changelog: |
   - No persistent storage (ephemeral workspace)
   - Nginx Ingress with auth-url authentication
 upgradeable_from: []
+os_key: debian-12

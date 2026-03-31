@@ -74,6 +74,7 @@ async def _build_plugin_response(
                 changelog=ver_meta.changelog,
                 upgradeable_from=ver_meta.upgradeable_from,
                 config_schema=schema,
+                os_key=ver_meta.os_key,
             )
         )
 

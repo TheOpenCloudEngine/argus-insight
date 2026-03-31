@@ -12,3 +12,4 @@ changelog: |
   - Attu Web UI sidecar (9091) for collection management
   - Persistent vector data storage
 upgradeable_from: []
+os_key: ubuntu-22.04

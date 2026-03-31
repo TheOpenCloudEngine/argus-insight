@@ -21,6 +21,7 @@ class PluginVersionResponse(BaseModel):
     changelog: str | None = None
     upgradeable_from: list[str] = []
     config_schema: dict | None = None  # JSON Schema for UI form generation
+    os_key: str | None = None  # OS+version key (e.g., "debian-12", "ubuntu-24.04")
 
 
 class PluginResponse(BaseModel):

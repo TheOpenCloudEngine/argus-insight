@@ -11,3 +11,4 @@ changelog: |
   - PostgreSQL 16 backend store
   - MinIO S3 artifact storage
 upgradeable_from: []
+os_key: debian-11

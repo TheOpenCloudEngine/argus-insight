@@ -32,6 +32,7 @@ class PluginVersionMeta:
     release_date: str | None = None
     min_k8s_version: str | None = None
     depends_on_override: dict[str, list[str]] | None = None
+    os_key: str | None = None
 
 
 @dataclass
