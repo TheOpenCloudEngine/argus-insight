@@ -434,7 +434,7 @@ export function WorkspaceGrid({ onSelect, onDeleted, refreshKey, onAddWorkspace 
         </div>
         {onAddWorkspace && (
           <Button onClick={onAddWorkspace}>
-            Add Workspace
+            Create Workspace
           </Button>
         )}
       </div>
