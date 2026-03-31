@@ -688,6 +688,7 @@ BUILTIN_REPOS: dict[str, dict] = {
 
 
 class RepoUpdateRequest(BaseModel):
+    enabled: bool = False
     builtin: list[dict]
     custom: list[dict]
 
@@ -710,6 +711,7 @@ async def get_repositories(session: AsyncSession = Depends(get_session)):
         result[os_key] = {
             "label": defaults["label"],
             "pkg_type": defaults["pkg_type"],
+            "enabled": saved.get("enabled", False),
             "builtin": saved.get("builtin", defaults["builtin"]),
             "custom": saved.get("custom", []),
         }
@@ -726,7 +728,7 @@ async def update_repositories(
     if os_key not in BUILTIN_REPOS:
         raise HTTPException(status_code=400, detail=f"Unknown OS key: {os_key}")
 
-    data = _json.dumps({"builtin": body.builtin, "custom": body.custom})
+    data = _json.dumps({"enabled": body.enabled, "builtin": body.builtin, "custom": body.custom})
     await service.update_infra_category(session, f"repo_{os_key}", {"repos": data})
     logger.info("Repositories updated: %s", os_key)
     return {"status": "ok", "os_key": os_key}

@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@workspace/ui/components/select"
+import { Switch } from "@workspace/ui/components/switch"
 import { authFetch } from "@/features/auth/auth-fetch"
 
 /* ------------------------------------------------------------------ */
@@ -35,6 +36,7 @@ interface ApkRepo { url: string; enabled: boolean }
 interface OsRepos {
   label: string
   pkg_type: "apt" | "yum" | "apk"
+  enabled: boolean
   builtin: Record<string, unknown>[]
   custom: Record<string, unknown>[]
 }
@@ -251,7 +253,11 @@ function RepoSection({
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <Switch
+            checked={repos.enabled}
+            onCheckedChange={(v) => onUpdate({ ...repos, enabled: v })}
+          />
           <CardTitle className="text-sm">{repos.label}</CardTitle>
           <Badge variant="outline" className="text-[10px]">{repos.pkg_type.toUpperCase()}</Badge>
         </div>
@@ -266,7 +272,7 @@ function RepoSection({
           )}
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className={`space-y-4 ${repos.enabled ? "" : "opacity-50"}`}>
         {/* Built-in */}
         <div>
           <p className="text-xs font-medium text-muted-foreground mb-2">Built-in</p>
@@ -384,7 +390,7 @@ export function RepositoriesSettings() {
       const res = await authFetch(`/api/v1/settings/repositories/${osKey}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ builtin: repos.builtin, custom: repos.custom }),
+        body: JSON.stringify({ enabled: repos.enabled, builtin: repos.builtin, custom: repos.custom }),
       })
       if (res.ok) {
         setSaved((prev) => ({ ...prev, [osKey]: true }))
