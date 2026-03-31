@@ -84,8 +84,6 @@ class PostgresqlDeployStep(WorkflowStep):
             version="17",
             endpoint=f"http://{hostname}",
             service_id=svc_id,
-            username=config.db_user,
-            password=password,
             metadata={
                 "display": {
                     "DB Name": config.db_name,

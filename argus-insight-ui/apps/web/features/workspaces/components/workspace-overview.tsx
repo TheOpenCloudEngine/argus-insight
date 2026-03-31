@@ -317,7 +317,8 @@ function ServiceDataListItem({
     if (val == null || val === "") continue
     const strVal = String(val)
     const isLink = /^https?:\/\//.test(strVal) || /^bolt:\/\//.test(strVal)
-    details.push({ label: key, value: strVal, link: isLink })
+    const isSecret = /password/i.test(key)
+    details.push({ label: key, value: strVal, link: isLink, secret: isSecret })
   }
   if (!effectiveHideTimestamps) {
     details.push({ label: "Created", value: formatDateTime(service.created_at) })

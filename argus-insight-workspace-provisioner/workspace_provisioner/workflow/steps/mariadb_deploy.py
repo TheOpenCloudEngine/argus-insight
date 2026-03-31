@@ -86,8 +86,6 @@ class MariadbDeployStep(WorkflowStep):
             version="11",
             endpoint=f"http://{hostname}",
             service_id=svc_id,
-            username=config.db_user,
-            password=user_password,
             metadata={
                 "display": {
                     "Root Username": "root",
