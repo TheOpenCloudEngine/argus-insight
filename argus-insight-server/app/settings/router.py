@@ -523,6 +523,7 @@ DEPLOY_MAPPING_SERVICES = [
     {"service_key": "vscode", "service_label": "VS Code Server", "icon": "code", "default_constraint": "per_user"},
     {"service_key": "airflow", "service_label": "Airflow", "icon": "airflow", "default_constraint": "per_workspace"},
     {"service_key": "jupyter", "service_label": "Jupyter Lab", "icon": "jupyter", "default_constraint": "per_user"},
+    {"service_key": "jupyter_tensorflow", "service_label": "JupyterLab TensorFlow", "icon": "jupyter", "default_constraint": "per_user"},
     {"service_key": "kserve", "service_label": "KServe", "icon": "kserve", "default_constraint": "per_workspace"},
     {"service_key": "neo4j", "service_label": "Neo4j", "icon": "neo4j", "default_constraint": "per_workspace"},
     {"service_key": "milvus", "service_label": "Milvus", "icon": "milvus", "default_constraint": "per_workspace"},

@@ -809,6 +809,7 @@ const SERVICE_KEY_TO_PLUGIN: Record<string, string> = {
   vscode: "argus-vscode-server",
   airflow: "argus-airflow",
   jupyter: "argus-jupyter",
+  jupyter_tensorflow: "argus-jupyter-tensorflow",
   kserve: "argus-kserve",
   neo4j: "argus-neo4j",
   milvus: "argus-milvus",
