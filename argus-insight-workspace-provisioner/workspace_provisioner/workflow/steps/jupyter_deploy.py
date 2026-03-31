@@ -11,6 +11,8 @@ This step:
 import logging
 import socket
 
+from urllib.parse import urlparse
+
 from workspace_provisioner.config import JupyterLabConfig
 from workspace_provisioner.kubernetes.client import (
     kubectl_apply,
@@ -117,11 +119,14 @@ class JupyterLabDeployStep(WorkflowStep):
             "WORKSPACE_BUCKET": workspace_bucket,
             "USER_BUCKET": user_bucket,
             "PIP_INDEX_URL": config.pip_index_url,
+            "PIP_TRUSTED_HOST": urlparse(config.pip_index_url).hostname or "pypi.org",
             "INSTALL_PACKAGES": install_packages,
             "ARGUS_SERVER_HOST": server_ip,
         }
 
         manifests = render_manifests("jupyter", variables)
+        from workspace_provisioner.repo_injector import inject_repo_config
+        manifests = await inject_repo_config(manifests, os_key="ubuntu-24.04", namespace=namespace, instance_id=svc_id)
         logger.info(
             "Deploying JupyterLab for workspace '%s' to namespace '%s'",
             workspace_name, namespace,
@@ -153,15 +158,20 @@ class JupyterLabDeployStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name=self._plugin_name,
             display_name=svc_display,
-            version="1.0",
+            version="4.3",
             endpoint=external_endpoint,
             service_id=svc_id,
+            username=username,
             metadata={
-                "image": config.image,
-                "internal_endpoint": internal_endpoint,
-                "workspace_bucket": workspace_bucket,
-                "user_bucket": user_bucket,
-                "namespace": namespace,
+                "display": {
+                    "Image": config.image,
+                    "Workspace Bucket": workspace_bucket,
+                    "User Bucket": user_bucket,
+                },
+                "internal": {
+                    "endpoint": internal_endpoint,
+                    "namespace": namespace,
+                },
             },
         )
 
@@ -199,6 +209,7 @@ class JupyterLabDeployStep(WorkflowStep):
             "S3_USE_SSL": "false",
             "WORKSPACE_BUCKET": "", "USER_BUCKET": "",
             "PIP_INDEX_URL": config.pip_index_url,
+            "PIP_TRUSTED_HOST": urlparse(config.pip_index_url).hostname or "pypi.org",
             "INSTALL_PACKAGES": "",
             "ARGUS_SERVER_HOST": "127.0.0.1",
         })

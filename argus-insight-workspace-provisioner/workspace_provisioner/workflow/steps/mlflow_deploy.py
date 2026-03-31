@@ -117,6 +117,8 @@ class MlflowDeployStep(WorkflowStep):
         }
 
         manifests = render_manifests("mlflow", variables)
+        from workspace_provisioner.repo_injector import inject_repo_config
+        manifests = await inject_repo_config(manifests, os_key="debian-11", namespace=namespace, instance_id=svc_id)
         logger.info(
             "Deploying MLflow for workspace '%s' to namespace '%s'",
             workspace_name,
@@ -161,13 +163,17 @@ class MlflowDeployStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-mlflow",
             display_name="MLflow Tracking Server",
-            version="1.0",
+            version="2.19.0",
             endpoint=f"http://{hostname}",
             service_id=svc_id,
             metadata={
-                "internal_endpoint": internal_endpoint,
-                "artifact_bucket": artifact_bucket,
-                "namespace": namespace,
+                "display": {
+                    "Artifact Bucket": artifact_bucket,
+                },
+                "internal": {
+                    "endpoint": internal_endpoint,
+                    "namespace": namespace,
+                },
             },
         )
 

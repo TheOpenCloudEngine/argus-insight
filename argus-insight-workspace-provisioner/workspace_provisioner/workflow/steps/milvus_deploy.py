@@ -73,6 +73,8 @@ class MilvusDeployStep(WorkflowStep):
         }
 
         manifests = render_manifests("milvus", variables)
+        from workspace_provisioner.repo_injector import inject_repo_config
+        manifests = await inject_repo_config(manifests, os_key="ubuntu-22.04", namespace=namespace, instance_id=svc_id)
         logger.info(
             "Deploying Milvus for workspace '%s' to namespace '%s'",
             workspace_name, namespace,
@@ -108,15 +110,20 @@ class MilvusDeployStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-milvus",
             display_name="Milvus Vector Database",
-            version="1.0",
+            version="2.5.6",
             endpoint=f"http://{hostname}",
             service_id=svc_id,
             metadata={
-                "internal_grpc": internal_grpc,
-                "internal_attu": internal_attu,
-                "grpc_port": 19530,
-                "attu_port": 3000,
-                "namespace": namespace,
+                "display": {
+                    "gRPC Port": "19530",
+                },
+                "internal": {
+                    "grpc": internal_grpc,
+                    "attu": internal_attu,
+                    "grpc_port": 19530,
+                    "attu_port": 3000,
+                    "namespace": namespace,
+                },
             },
         )
 

@@ -89,8 +89,8 @@ export default function WorkspacesPage() {
 
   // Name validation + debounced availability check
   const handleNameChange = useCallback((value: string) => {
-    // Only allow lowercase letters and numbers
-    const cleaned = value.replace(/[^a-z0-9]/g, "")
+    // Only allow lowercase letters, numbers, and underscore
+    const cleaned = value.replace(/[^a-z0-9_]/g, "")
     setWsName(cleaned)
     setWsNamespace(`${nsPrefix}${cleaned}`)
     setWsNameAvailable(null)
@@ -100,8 +100,12 @@ export default function WorkspacesPage() {
       setWsNameError(cleaned.length > 0 ? "Name must be at least 2 characters" : null)
       return
     }
-    if (!/^[a-z][a-z0-9]*$/.test(cleaned)) {
-      setWsNameError("Must start with a letter")
+    if (cleaned.length >= 12) {
+      setWsNameError("Name must be less than 12 characters")
+      return
+    }
+    if (!/^[a-z][a-z0-9_]*$/.test(cleaned)) {
+      setWsNameError("Must start with a lowercase letter")
       return
     }
     setWsNameError(null)
@@ -376,7 +380,7 @@ export default function WorkspacesPage() {
         <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {createPhase === "form" && "Add Workspace"}
+              {createPhase === "form" && "Create Workspace"}
               {createPhase === "progress" && "Creating Workspace"}
               {createPhase === "done" && "Workspace Created"}
               {createPhase === "error" && "Workspace Creation"}
@@ -471,7 +475,7 @@ export default function WorkspacesPage() {
                     )}
                   </div>
                 )}
-                <p className="text-xs text-muted-foreground">Lowercase letters and numbers only.</p>
+                <p className="text-xs text-muted-foreground">Lowercase letters, numbers, and _ only. Max 11 chars.</p>
               </div>
               <div className="space-y-1.5">
                 <Label>Display Name <span className="text-destructive">*</span></Label>

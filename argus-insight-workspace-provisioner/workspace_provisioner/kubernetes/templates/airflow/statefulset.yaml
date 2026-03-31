@@ -77,7 +77,19 @@ spec:
       containers:
         - name: webserver
           image: ${AIRFLOW_IMAGE}
-          command: ["airflow", "webserver"]
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              mkdir -p /home/airflow/.config/pip
+              cat > /home/airflow/.config/pip/pip.conf << 'PIPCONF'
+              [global]
+              index-url = ${PIP_INDEX_URL}
+              trusted-host = ${PIP_TRUSTED_HOST}
+              PIPCONF
+              exec airflow webserver
+          envFrom:
+            - configMapRef:
+                name: argus-airflow-${WORKSPACE_NAME}-custom-config
           env:
             - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
               value: "postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@argus-airflow-${WORKSPACE_NAME}-db:5432/airflow"
@@ -127,7 +139,19 @@ spec:
               mountPath: /opt/airflow/logs
         - name: scheduler
           image: ${AIRFLOW_IMAGE}
-          command: ["airflow", "scheduler"]
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              mkdir -p /home/airflow/.config/pip
+              cat > /home/airflow/.config/pip/pip.conf << 'PIPCONF'
+              [global]
+              index-url = ${PIP_INDEX_URL}
+              trusted-host = ${PIP_TRUSTED_HOST}
+              PIPCONF
+              exec airflow scheduler
+          envFrom:
+            - configMapRef:
+                name: argus-airflow-${WORKSPACE_NAME}-custom-config
           env:
             - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
               value: "postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@argus-airflow-${WORKSPACE_NAME}-db:5432/airflow"
@@ -155,8 +179,6 @@ spec:
           image: ${AIRFLOW_GIT_SYNC_IMAGE}
           command: ["/bin/sh", "/scripts/git-sync.sh"]
           env:
-            - name: GITLAB_REPO_URL
-              value: "${GITLAB_REPO_URL}"
             - name: GIT_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -165,6 +187,8 @@ spec:
           volumeMounts:
             - name: dags
               mountPath: /opt/airflow/dags
+            - name: git-repo
+              mountPath: /opt/airflow/git-repo
             - name: git-sync-script
               mountPath: /scripts
       volumes:
@@ -184,3 +208,5 @@ spec:
         - name: logs
           persistentVolumeClaim:
             claimName: argus-airflow-${WORKSPACE_NAME}-logs
+        - name: git-repo
+          emptyDir: {}

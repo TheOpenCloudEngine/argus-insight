@@ -260,6 +260,7 @@ export function UsersActionDialog({
           last_name: values.lastName,
           email: values.email,
           phone_number: values.phoneNumber,
+          ...(values.password ? { password: values.password } : {}),
         })
       } else {
         const roleMap: Record<string, "Admin" | "User"> = { admin: "Admin", user: "User" }

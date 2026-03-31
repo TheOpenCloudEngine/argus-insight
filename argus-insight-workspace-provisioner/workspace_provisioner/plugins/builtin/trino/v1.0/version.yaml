@@ -1,0 +1,14 @@
+version: "1.0"
+display_name: "v1.0 (Trino latest)"
+description: Trino with coordinator + worker, web UI on port 8080
+status: stable
+step_class: workspace_provisioner.workflow.steps.trino_deploy.TrinoDeployStep
+config_class: workspace_provisioner.config.TrinoConfig
+template_dir: trino
+changelog: |
+  - Trino coordinator + worker
+  - Web UI exposed via Ingress
+  - Persistent catalog configuration
+upgradeable_from: []
+os_key: rhel-10
+software_version: "480"

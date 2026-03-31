@@ -192,9 +192,15 @@ class MinioWorkspaceStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-minio-workspace",
             display_name="MinIO Workspace Bucket",
-            version="1.0",
+            version=None,
             endpoint=endpoint,
-            metadata={"bucket": bucket_name, "members": len(result.get("members_provisioned", []))},
+            metadata={
+                "display": {},
+                "internal": {
+                    "bucket": bucket_name,
+                    "members": len(result.get("members_provisioned", [])),
+                },
+            },
         )
 
         return result

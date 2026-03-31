@@ -36,6 +36,8 @@ spec:
               value: '["apoc"]'
             - name: NEO4J_server_default__listen__address
               value: "0.0.0.0"
+            - name: NEO4J_server_bolt_advertised__address
+              value: "${BOLT_HOSTNAME}:443"
           ports:
             - name: http
               containerPort: 7474

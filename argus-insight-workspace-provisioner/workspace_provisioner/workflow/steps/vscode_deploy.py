@@ -10,6 +10,7 @@ This step:
 
 import logging
 import socket
+from urllib.parse import urlparse
 
 from workspace_provisioner.config import VScodeServerConfig
 from workspace_provisioner.kubernetes.client import (
@@ -107,9 +108,13 @@ class VScodeServerDeployStep(WorkflowStep):
             "USER_BUCKET": user_bucket,
             "ARGUS_SERVER_HOST": server_ip,
             "APP_TYPE": "vscode",
+            "PIP_INDEX_URL": config.pip_index_url,
+            "PIP_TRUSTED_HOST": urlparse(config.pip_index_url).hostname or "pypi.org",
         }
 
         manifests = render_manifests("vscode", variables)
+        from workspace_provisioner.repo_injector import inject_repo_config
+        manifests = await inject_repo_config(manifests, os_key="debian-12", namespace=namespace, instance_id=instance_id)
         logger.info(
             "Deploying VS Code Server for workspace '%s' to namespace '%s'",
             workspace_name, namespace,
@@ -143,15 +148,19 @@ class VScodeServerDeployStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-vscode-server",
             display_name="VS Code Server",
-            version="1.1",
+            version="4.96.4",
             endpoint=external_endpoint,
             service_id=svc_id,
             username=username,
             metadata={
-                "internal_endpoint": internal_endpoint,
-                "workspace_bucket": workspace_bucket,
-                "user_bucket": user_bucket,
-                "namespace": namespace,
+                "display": {
+                    "Workspace Bucket": workspace_bucket,
+                    "User Bucket": user_bucket,
+                },
+                "internal": {
+                    "endpoint": internal_endpoint,
+                    "namespace": namespace,
+                },
             },
         )
 

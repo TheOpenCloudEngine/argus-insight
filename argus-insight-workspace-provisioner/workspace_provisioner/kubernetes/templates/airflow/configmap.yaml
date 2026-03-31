@@ -23,7 +23,7 @@ data:
     base_url = https://${HOSTNAME}
     web_server_port = 8080
     rbac = True
-    expose_config = False
+    expose_config = True
 
     [scheduler]
     dag_dir_list_interval = 30
@@ -34,16 +34,46 @@ data:
     remote_logging = False
 
   git-sync.sh: |
-    #!/bin/bash
+    #!/bin/sh
     set -e
     REPO_URL="${GITLAB_REPO_URL}"
+    TOKEN="${GIT_TOKEN}"
     BRANCH="main"
-    SYNC_DIR="/opt/airflow/dags"
+    REPO_DIR="/opt/airflow/git-repo"
+    DAGS_DIR="/opt/airflow/dags"
+    SUB_PATH="${AIRFLOW_DAGS_SUB_PATH}"
+
+    # Skip if no repo URL configured
+    if [ -z "$REPO_URL" ]; then
+      echo "No GITLAB_REPO_URL configured. Sleeping."
+      while true; do sleep 3600; done
+    fi
+
+    # Insert token into URL (https://oauth2:TOKEN@gitlab.../repo.git)
+    AUTH_URL=$(echo "$REPO_URL" | sed "s|https://|https://oauth2:${TOKEN}@|")
+    # Also handle http://
+    AUTH_URL=$(echo "$AUTH_URL" | sed "s|http://|http://oauth2:${TOKEN}@|")
+
     while true; do
-      if [ -d "$SYNC_DIR/.git" ]; then
-        cd "$SYNC_DIR" && git fetch origin "$BRANCH" && git reset --hard "origin/$BRANCH"
+      if [ -d "$REPO_DIR/.git" ]; then
+        cd "$REPO_DIR"
+        git fetch origin "$BRANCH" --depth=1 2>/dev/null
+        git reset --hard "origin/$BRANCH" 2>/dev/null
       else
-        git clone --branch "$BRANCH" --single-branch "$REPO_URL" "$SYNC_DIR"
+        git clone --branch "$BRANCH" --depth 1 --filter=blob:none \
+          --no-checkout "$AUTH_URL" "$REPO_DIR" 2>/dev/null
+        cd "$REPO_DIR"
+        git sparse-checkout init --cone
+        git sparse-checkout set "$SUB_PATH"
+        git checkout "$BRANCH" 2>/dev/null
       fi
+
+      # Sync subdirectory contents to Airflow dags folder
+      if [ -d "$REPO_DIR/$SUB_PATH" ]; then
+        # Clean dags dir and copy fresh (alpine/git has no rsync)
+        find "$DAGS_DIR" -mindepth 1 -not -name '.git*' -delete 2>/dev/null || true
+        cp -a "$REPO_DIR/$SUB_PATH/." "$DAGS_DIR/" 2>/dev/null || true
+      fi
+
       sleep ${AIRFLOW_GIT_SYNC_INTERVAL}
     done

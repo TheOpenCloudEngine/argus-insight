@@ -59,7 +59,7 @@ export function UploadDialog({
   function handleSubmit() {
     if (files.length === 0) return
     onConfirm(files)
-    setFiles([])
+    // Don't clear files here — let the parent close the dialog after upload completes
   }
 
   function handleOpenChange(nextOpen: boolean) {
@@ -84,21 +84,10 @@ export function UploadDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Drop zone */}
+        {/* File picker */}
         <div
-          onDragOver={(e) => {
-            e.preventDefault()
-            setIsDragOver(true)
-          }}
-          onDragLeave={() => setIsDragOver(false)}
-          onDrop={handleDrop}
           onClick={() => inputRef.current?.click()}
-          className={cn(
-            "border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors",
-            isDragOver
-              ? "border-primary bg-primary/5"
-              : "border-muted-foreground/25 hover:border-muted-foreground/50",
-          )}
+          className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors border-muted-foreground/25 hover:border-muted-foreground/50"
         >
           <input
             ref={inputRef}
@@ -112,8 +101,7 @@ export function UploadDialog({
           />
           <Upload className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
-            Drag & drop files here, or{" "}
-            <span className="text-primary font-medium">browse</span>
+            Click to <span className="text-primary font-medium">browse</span> files
           </p>
         </div>
 

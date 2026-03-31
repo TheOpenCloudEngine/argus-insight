@@ -73,6 +73,8 @@ class MindsdbDeployStep(WorkflowStep):
         }
 
         manifests = render_manifests("mindsdb", variables)
+        from workspace_provisioner.repo_injector import inject_repo_config
+        manifests = await inject_repo_config(manifests, os_key="debian-13", namespace=namespace, instance_id=svc_id)
         logger.info(
             "Deploying MindsDB for workspace '%s' to namespace '%s'",
             workspace_name, namespace,
@@ -109,17 +111,23 @@ class MindsdbDeployStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-mindsdb",
             display_name="MindsDB",
-            version="1.0",
+            version="26.0.1",
             endpoint=f"http://{hostname}",
             service_id=svc_id,
             metadata={
-                "internal_http": internal_http,
-                "internal_mysql": internal_mysql,
-                "internal_mongodb": internal_mongodb,
-                "http_port": 47334,
-                "mysql_port": 47335,
-                "mongodb_port": 47336,
-                "namespace": namespace,
+                "display": {
+                    "MySQL Port": "47335",
+                    "MongoDB Port": "47336",
+                },
+                "internal": {
+                    "http": internal_http,
+                    "mysql": internal_mysql,
+                    "mongodb": internal_mongodb,
+                    "http_port": 47334,
+                    "mysql_port": 47335,
+                    "mongodb_port": 47336,
+                    "namespace": namespace,
+                },
             },
         )
 

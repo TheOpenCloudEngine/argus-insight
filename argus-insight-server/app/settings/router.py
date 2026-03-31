@@ -514,6 +514,262 @@ async def update_k8s_config(
     return {"status": "ok", "message": "Kubernetes configuration saved"}
 
 
+# ---------------------------------------------------------------------------
+# Deploy Mapping (Service → Pipeline)
+# ---------------------------------------------------------------------------
+
+DEPLOY_MAPPING_SERVICES = [
+    {"service_key": "mlflow", "service_label": "MLflow", "icon": "mlflow", "default_constraint": "per_workspace"},
+    {"service_key": "vscode", "service_label": "VS Code Server", "icon": "code", "default_constraint": "per_user"},
+    {"service_key": "airflow", "service_label": "Airflow", "icon": "airflow", "default_constraint": "per_workspace"},
+    {"service_key": "jupyter", "service_label": "Jupyter Lab", "icon": "jupyter", "default_constraint": "per_user"},
+    {"service_key": "jupyter_tensorflow", "service_label": "JupyterLab TensorFlow", "icon": "jupyter", "default_constraint": "per_user"},
+    {"service_key": "kserve", "service_label": "KServe", "icon": "kserve", "default_constraint": "per_workspace"},
+    {"service_key": "neo4j", "service_label": "Neo4j", "icon": "neo4j", "default_constraint": "per_workspace"},
+    {"service_key": "milvus", "service_label": "Milvus", "icon": "milvus", "default_constraint": "per_workspace"},
+    {"service_key": "mindsdb", "service_label": "MindsDB", "icon": "brain", "default_constraint": "per_workspace"},
+    {"service_key": "trino", "service_label": "Trino", "icon": "trino", "default_constraint": "per_workspace"},
+    {"service_key": "starrocks", "service_label": "StarRocks", "icon": "starrocks", "default_constraint": "per_workspace"},
+    {"service_key": "postgresql", "service_label": "PostgreSQL", "icon": "postgresql", "default_constraint": "per_workspace"},
+    {"service_key": "mariadb", "service_label": "MariaDB", "icon": "mariadb", "default_constraint": "per_workspace"},
+]
+
+CONSTRAINT_LABELS = {
+    "per_workspace": "One per workspace",
+    "per_user": "One per user",
+}
+
+
+class DeployMappingItem(BaseModel):
+    pipeline_id: int | None = None
+    constraint: str | None = None  # "per_workspace" or "per_user"
+
+
+@router.get("/deploy-mapping")
+async def get_deploy_mapping(session: AsyncSession = Depends(get_session)):
+    """Get all service-to-pipeline deploy mappings."""
+    cfg = await service.get_config_by_category(session, "deploy_mapping")
+
+    # Also fetch pipeline names for display
+    pipeline_names: dict[int, str] = {}
+    try:
+        from sqlalchemy import select
+        from workspace_provisioner.plugins.models import ArgusPipeline
+        result = await session.execute(
+            select(ArgusPipeline.id, ArgusPipeline.display_name).where(
+                ArgusPipeline.deleted.is_(False),
+            )
+        )
+        for row in result:
+            pipeline_names[row.id] = row.display_name
+    except Exception:
+        pass
+
+    mappings = []
+    for svc in DEPLOY_MAPPING_SERVICES:
+        key = f"service_{svc['service_key']}"
+        raw_id = cfg.get(key, "")
+        pipeline_id = int(raw_id) if raw_id else None
+        constraint = cfg.get(f"constraint_{svc['service_key']}", "") or svc["default_constraint"]
+        mappings.append({
+            "service_key": svc["service_key"],
+            "service_label": svc["service_label"],
+            "icon": svc["icon"],
+            "pipeline_id": pipeline_id,
+            "pipeline_name": pipeline_names.get(pipeline_id) if pipeline_id else None,
+            "constraint": constraint,
+            "constraint_label": CONSTRAINT_LABELS.get(constraint, constraint),
+        })
+
+    return {"mappings": mappings}
+
+
+@router.put("/deploy-mapping/{service_key}")
+async def update_deploy_mapping(
+    service_key: str,
+    body: DeployMappingItem,
+    session: AsyncSession = Depends(get_session),
+):
+    """Set or clear the pipeline mapping for a service."""
+    valid_keys = {s["service_key"] for s in DEPLOY_MAPPING_SERVICES}
+    if service_key not in valid_keys:
+        raise HTTPException(status_code=400, detail=f"Unknown service key: {service_key}")
+
+    items: dict[str, str] = {}
+    items[f"service_{service_key}"] = str(body.pipeline_id) if body.pipeline_id is not None else ""
+    if body.constraint:
+        items[f"constraint_{service_key}"] = body.constraint
+    await service.update_infra_category(session, "deploy_mapping", items)
+    logger.info(
+        "Deploy mapping updated: %s → pipeline_id=%s, constraint=%s",
+        service_key, body.pipeline_id, body.constraint,
+    )
+    return {"status": "ok", "service_key": service_key, "pipeline_id": body.pipeline_id, "constraint": body.constraint}
+
+
+# ---------------------------------------------------------------------------
+# Package Repositories (OS-level: APT, YUM, APK)
+# ---------------------------------------------------------------------------
+
+import json as _json
+
+# OS+Version별 기본 레포지토리 정의
+BUILTIN_REPOS: dict[str, dict] = {
+    # --- Debian ---
+    "debian-11": {
+        "label": "Debian 11 (bullseye)",
+        "pkg_type": "apt",
+        "builtin": [
+            {"type": "deb", "url": "http://deb.debian.org/debian", "dist": "bullseye", "components": "main", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://deb.debian.org/debian", "dist": "bullseye-updates", "components": "main", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://security.debian.org/debian-security", "dist": "bullseye-security", "components": "main", "enabled": True, "trusted": False},
+        ],
+    },
+    "debian-12": {
+        "label": "Debian 12 (bookworm)",
+        "pkg_type": "apt",
+        "builtin": [
+            {"type": "deb", "url": "http://deb.debian.org/debian", "dist": "bookworm", "components": "main", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://deb.debian.org/debian", "dist": "bookworm-updates", "components": "main", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://security.debian.org/debian-security", "dist": "bookworm-security", "components": "main", "enabled": True, "trusted": False},
+        ],
+    },
+    "debian-13": {
+        "label": "Debian 13 (trixie)",
+        "pkg_type": "apt",
+        "builtin": [
+            {"type": "deb", "url": "http://deb.debian.org/debian", "dist": "trixie", "components": "main", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://deb.debian.org/debian", "dist": "trixie-updates", "components": "main", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://security.debian.org/debian-security", "dist": "trixie-security", "components": "main", "enabled": True, "trusted": False},
+        ],
+    },
+    # --- Ubuntu ---
+    "ubuntu-22.04": {
+        "label": "Ubuntu 22.04 (jammy)",
+        "pkg_type": "apt",
+        "builtin": [
+            {"type": "deb", "url": "http://archive.ubuntu.com/ubuntu", "dist": "jammy", "components": "main restricted universe", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://archive.ubuntu.com/ubuntu", "dist": "jammy-updates", "components": "main restricted universe", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://security.ubuntu.com/ubuntu", "dist": "jammy-security", "components": "main restricted universe", "enabled": True, "trusted": False},
+        ],
+    },
+    "ubuntu-24.04": {
+        "label": "Ubuntu 24.04 (noble)",
+        "pkg_type": "apt",
+        "builtin": [
+            {"type": "deb", "url": "http://archive.ubuntu.com/ubuntu", "dist": "noble", "components": "main restricted universe", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://archive.ubuntu.com/ubuntu", "dist": "noble-updates", "components": "main restricted universe", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://security.ubuntu.com/ubuntu", "dist": "noble-security", "components": "main restricted universe", "enabled": True, "trusted": False},
+        ],
+    },
+    # --- RHEL ---
+    "rocky-9": {
+        "label": "Rocky Linux 9",
+        "pkg_type": "yum",
+        "builtin": [
+            {"repo_id": "baseos", "name": "Rocky Linux $releasever - BaseOS", "baseurl": "http://dl.rockylinux.org/pub/rocky/$releasever/BaseOS/$basearch/os/", "gpgcheck": True, "enabled": True},
+            {"repo_id": "appstream", "name": "Rocky Linux $releasever - AppStream", "baseurl": "http://dl.rockylinux.org/pub/rocky/$releasever/AppStream/$basearch/os/", "gpgcheck": True, "enabled": True},
+            {"repo_id": "extras", "name": "Rocky Linux $releasever - Extras", "baseurl": "http://dl.rockylinux.org/pub/rocky/$releasever/extras/$basearch/os/", "gpgcheck": True, "enabled": True},
+        ],
+    },
+    "rhel-10": {
+        "label": "RHEL 10 (UBI)",
+        "pkg_type": "yum",
+        "builtin": [
+            {"repo_id": "baseos", "name": "RHEL 10 BaseOS", "baseurl": "https://cdn.redhat.com/content/dist/rhel10/$releasever/$basearch/baseos/os/", "gpgcheck": True, "enabled": True},
+            {"repo_id": "appstream", "name": "RHEL 10 AppStream", "baseurl": "https://cdn.redhat.com/content/dist/rhel10/$releasever/$basearch/appstream/os/", "gpgcheck": True, "enabled": True},
+        ],
+    },
+    # --- Alpine ---
+    "alpine-3.20": {
+        "label": "Alpine 3.20",
+        "pkg_type": "apk",
+        "builtin": [
+            {"url": "https://dl-cdn.alpinelinux.org/alpine/v3.20/main", "enabled": True},
+            {"url": "https://dl-cdn.alpinelinux.org/alpine/v3.20/community", "enabled": True},
+        ],
+    },
+    "alpine-3.21": {
+        "label": "Alpine 3.21",
+        "pkg_type": "apk",
+        "builtin": [
+            {"url": "https://dl-cdn.alpinelinux.org/alpine/v3.21/main", "enabled": True},
+            {"url": "https://dl-cdn.alpinelinux.org/alpine/v3.21/community", "enabled": True},
+        ],
+    },
+}
+
+
+class RepoUpdateRequest(BaseModel):
+    enabled: bool = False
+    builtin: list[dict]
+    custom: list[dict]
+
+
+@router.get("/repositories")
+async def get_repositories(session: AsyncSession = Depends(get_session)):
+    """Get all OS+version package repository configurations."""
+    # Build image map from plugin version.yaml os_key
+    image_map: dict[str, list[str]] = {}
+    try:
+        from workspace_provisioner.plugins.registry import PluginRegistry
+        registry = PluginRegistry.get_instance()
+        for plugin in registry.get_all():
+            for ver_key, ver_meta in plugin.versions.items():
+                if ver_meta.os_key:
+                    label = f"{plugin.display_name} v{ver_meta.version}"
+                    image_map.setdefault(ver_meta.os_key, []).append(label)
+    except Exception:
+        pass
+
+    result = {}
+    for os_key, defaults in BUILTIN_REPOS.items():
+        cfg = await service.get_config_by_category(session, f"repo_{os_key}")
+        raw = cfg.get("repos", "")
+        if raw:
+            try:
+                saved = _json.loads(raw)
+            except Exception:
+                saved = {}
+        else:
+            saved = {}
+
+        result[os_key] = {
+            "label": defaults["label"],
+            "pkg_type": defaults["pkg_type"],
+            "enabled": saved.get("enabled", False),
+            "builtin": saved.get("builtin", defaults["builtin"]),
+            "custom": saved.get("custom", []),
+            "images": image_map.get(os_key, []),
+        }
+    return result
+
+
+@router.put("/repositories/{os_key}")
+async def update_repositories(
+    os_key: str,
+    body: RepoUpdateRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Update repository configuration for a specific OS+version."""
+    if os_key not in BUILTIN_REPOS:
+        raise HTTPException(status_code=400, detail=f"Unknown OS key: {os_key}")
+
+    # Validate pkg_type consistency
+    expected_type = BUILTIN_REPOS[os_key]["pkg_type"]
+    for repo in body.builtin + body.custom:
+        if expected_type == "apt" and "type" not in repo:
+            raise HTTPException(status_code=400, detail=f"APT repo must have 'type' field. Got data for wrong OS?")
+        if expected_type == "yum" and "repo_id" not in repo:
+            raise HTTPException(status_code=400, detail=f"YUM repo must have 'repo_id' field. Got data for wrong OS?")
+
+    data = _json.dumps({"enabled": body.enabled, "builtin": body.builtin, "custom": body.custom})
+    await service.update_infra_category(session, f"repo_{os_key}", {"repos": data})
+    logger.info("Repositories updated: %s", os_key)
+    return {"status": "ok", "os_key": os_key}
+
+
+
 @router.get("/k8s/namespace/{namespace}")
 async def check_k8s_namespace(
     namespace: str,

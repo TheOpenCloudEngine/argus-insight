@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import {
+  Copy,
   Download,
   Eye,
   FolderPlus,
@@ -26,6 +27,7 @@ type BrowserToolbarProps = {
   onDelete: () => void
   onDownload: () => void
   onRename: () => void
+  onCopyTo: () => void
   onProperties: () => void
   onView: () => void
   viewDisabled: boolean
@@ -46,6 +48,7 @@ export function BrowserToolbar({
   onDelete,
   onDownload,
   onRename,
+  onCopyTo,
   onProperties,
   onView,
   viewDisabled,
@@ -154,6 +157,16 @@ export function BrowserToolbar({
         >
           <Pencil className="h-4 w-4" />
           Rename
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onCopyTo}
+          disabled={selectedCount === 0}
+          className="h-8 gap-1.5"
+        >
+          <Copy className="h-4 w-4" />
+          Copy to...
         </Button>
 
         <ToolbarSeparator />

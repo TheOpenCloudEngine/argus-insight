@@ -10,3 +10,4 @@ changelog: |
   - StatefulSet-based single node deployment
   - Ingress for API and Console endpoints
 upgradeable_from: []
+software_version: "2025.02.28"

@@ -11,3 +11,5 @@ changelog: |
   - PostgreSQL 16 for metadata store
   - Git-sync sidecar for automatic DAG loading from GitLab
 upgradeable_from: []
+os_key: debian-12
+software_version: "2.10.4"

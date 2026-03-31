@@ -1,0 +1,15 @@
+version: "1.0"
+display_name: "v1.0 (StarRocks latest)"
+description: StarRocks FE + BE with MySQL-compatible protocol and web UI
+status: stable
+step_class: workspace_provisioner.workflow.steps.starrocks_deploy.StarRocksDeployStep
+config_class: workspace_provisioner.config.StarRocksConfig
+template_dir: starrocks
+changelog: |
+  - StarRocks Frontend + Backend
+  - MySQL protocol on port 9030
+  - Web UI on port 8030
+  - Persistent data storage
+upgradeable_from: []
+os_key: ubuntu-22.04
+software_version: "4.0.8"

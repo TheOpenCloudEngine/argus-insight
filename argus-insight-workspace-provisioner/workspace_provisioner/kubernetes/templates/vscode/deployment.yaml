@@ -37,8 +37,8 @@ spec:
               mkdir -p /home/coder/.config/pip
               cat > /home/coder/.config/pip/pip.conf << 'PIPCONF'
               [global]
-              index-url = https://pypi.org/simple
-              trusted-host = pypi.org
+              index-url = ${PIP_INDEX_URL}
+              trusted-host = ${PIP_TRUSTED_HOST}
               PIPCONF
 
               # Default VS Code settings (only if not already customized)

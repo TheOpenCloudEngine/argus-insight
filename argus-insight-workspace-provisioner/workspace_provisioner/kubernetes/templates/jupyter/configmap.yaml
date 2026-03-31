@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argus-jupyter-${INSTANCE_ID}-custom-config
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: jupyterlab
+    app.kubernetes.io/instance: "${INSTANCE_ID}"
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+data:
+  custom_config.py: |
+    c.ServerApp.max_body_size = 536870912
+    c.ServerApp.max_buffer_size = 536870912
+    c.ServerApp.shutdown_no_activity_timeout = 0
+    c.ServerApp.terminals_enabled = True
+    c.MappingKernelManager.cull_idle_timeout = 0
+    c.MappingKernelManager.cull_interval = 300
+    c.MappingKernelManager.cull_connected = False
+    c.MappingKernelManager.default_kernel_name = 'python3'
+    c.ContentsManager.allow_hidden = False
