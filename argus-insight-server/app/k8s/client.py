@@ -208,6 +208,48 @@ class K8sClient:
             "git_version": info.git_version,
         }
 
+    # ── Node Metrics ─────────────────────────────────────────────
+
+    async def get_node_metrics(self) -> list[dict]:
+        """Fetch node metrics from metrics.k8s.io API. Returns [] if unavailable."""
+        await self._ensure_client()
+        try:
+            api = k8s_client.CustomObjectsApi(self._api_client)
+            result = await api.list_cluster_custom_object(
+                group="metrics.k8s.io",
+                version="v1beta1",
+                plural="nodes",
+            )
+            items = result.get("items", [])
+            metrics = []
+            for item in items:
+                metadata = item.get("metadata", {})
+                usage = item.get("usage", {})
+                metrics.append({
+                    "name": metadata.get("name", ""),
+                    "cpu_usage": usage.get("cpu", "0"),
+                    "memory_usage": usage.get("memory", "0"),
+                })
+            return metrics
+        except Exception as e:
+            logger.debug("Node metrics unavailable: %s", e)
+            return []
+
+    async def get_pod_metrics(self) -> list[dict]:
+        """Fetch pod metrics from metrics.k8s.io API. Returns [] if unavailable."""
+        await self._ensure_client()
+        try:
+            api = k8s_client.CustomObjectsApi(self._api_client)
+            result = await api.list_cluster_custom_object(
+                group="metrics.k8s.io",
+                version="v1beta1",
+                plural="pods",
+            )
+            return result.get("items", [])
+        except Exception as e:
+            logger.debug("Pod metrics unavailable: %s", e)
+            return []
+
     # ── List Resources ────────────────────────────────────────────
 
     async def list_resources(

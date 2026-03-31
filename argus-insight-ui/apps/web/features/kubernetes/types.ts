@@ -18,6 +18,42 @@ export interface ClusterInfo {
   error: string
 }
 
+export interface PodStatusBreakdown {
+  running: number
+  succeeded: number
+  pending: number
+  failed: number
+  unknown: number
+}
+
+export interface NamespacePodCount {
+  namespace: string
+  count: number
+}
+
+export interface NodeResourceInfo {
+  name: string
+  cpu_capacity: string
+  cpu_allocatable: string
+  cpu_usage: string
+  memory_capacity: string
+  memory_allocatable: string
+  memory_usage: string
+  pods_capacity: string
+  pods_allocatable: string
+  pods_running: number
+  ready: boolean
+}
+
+export interface NamespaceResourceUsage {
+  namespace: string
+  cpu_usage: string
+  cpu_requested: string
+  memory_usage: string
+  memory_requested: string
+  pod_count: number
+}
+
 export interface ClusterOverview {
   cluster: ClusterInfo
   nodes: ResourceCount
@@ -30,6 +66,10 @@ export interface ClusterOverview {
   cronjobs: ResourceCount
   namespaces: string[]
   recent_events: K8sEvent[]
+  pod_status_breakdown: PodStatusBreakdown
+  namespace_pod_counts: NamespacePodCount[]
+  node_resources: NodeResourceInfo[]
+  namespace_resource_usage: NamespaceResourceUsage[]
 }
 
 export interface NamespaceOverview {

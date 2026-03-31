@@ -170,7 +170,7 @@ export function NodeAgentView({ node }: NodeAgentViewProps) {
                               c.status === "True" && c.type !== "Ready" ? String(c.type) : "NotReady"}
                     />
                     <span className="font-medium">{String(c.type)}</span>
-                    <span className="text-muted-foreground text-xs">{String(c.message || "")}</span>
+                    <span className="text-muted-foreground text-sm">{String(c.message || "")}</span>
                   </div>
                 ))}
               </div>
@@ -189,7 +189,7 @@ export function NodeAgentView({ node }: NodeAgentViewProps) {
               <p className="text-sm text-muted-foreground">
                 No Argus agent matched for this node.
               </p>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 Looking for IP: {nodeIP} or hostname: {nodeHostname}
               </p>
               <Link href="/dashboard/server-management" prefetch={false}>
@@ -270,7 +270,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex gap-2">
       <span className="text-muted-foreground w-36 shrink-0">{label}:</span>
-      <span className="font-mono text-xs break-all">{value}</span>
+      <span className="font-mono text-sm break-all">{value}</span>
     </div>
   )
 }
@@ -323,7 +323,7 @@ function MetricCard({
           </>
         )}
         {detail && (
-          <p className="text-xs text-muted-foreground mt-1">{detail}</p>
+          <p className="text-sm text-muted-foreground mt-1">{detail}</p>
         )}
       </CardContent>
     </Card>

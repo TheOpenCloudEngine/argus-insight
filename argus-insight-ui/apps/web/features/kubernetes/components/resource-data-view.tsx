@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Eye, EyeOff } from "lucide-react"
+import dynamic from "next/dynamic"
 import { Button } from "@workspace/ui/components/button"
 import {
   Card,
@@ -10,6 +11,8 @@ import {
   CardTitle,
 } from "@workspace/ui/components/card"
 import type { K8sResourceItem } from "../types"
+
+const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false })
 
 interface ResourceDataViewProps {
   resource: K8sResourceItem
@@ -78,13 +81,40 @@ export function ResourceDataView({ resource }: ResourceDataViewProps) {
               )}
             </CardHeader>
             <CardContent>
-              <pre className="text-xs bg-muted p-2 rounded-md overflow-auto max-h-[200px] font-mono whitespace-pre-wrap break-all">
-                {displayValue}
-              </pre>
+              <DataMonacoViewer value={displayValue} />
             </CardContent>
           </Card>
         )
       })}
+    </div>
+  )
+}
+
+function DataMonacoViewer({ value }: { value: string }) {
+  const lineCount = useMemo(() => Math.max(value.split("\n").length, 3), [value])
+  const height = Math.min(lineCount * 22 + 16, 400)
+
+  return (
+    <div className="rounded-md border overflow-hidden">
+      <MonacoEditor
+        height={`${height}px`}
+        language="plaintext"
+        theme="light"
+        value={value}
+        options={{
+          readOnly: true,
+          minimap: { enabled: false },
+          fontSize: 14,
+          fontFamily: "var(--font-d2coding), 'D2Coding', monospace",
+          lineNumbers: "on",
+          scrollBeyondLastLine: false,
+          wordWrap: "on",
+          tabSize: 2,
+          automaticLayout: true,
+          renderLineHighlight: "none",
+          padding: { top: 8, bottom: 8 },
+        }}
+      />
     </div>
   )
 }

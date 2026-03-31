@@ -67,7 +67,7 @@ export function ResourceTable({
       switch (col.render) {
         case "age":
           return (
-            <span className="text-muted-foreground text-xs">
+            <span className="text-muted-foreground text-sm">
               {formatAge(strValue)}
             </span>
           )
@@ -98,7 +98,7 @@ export function ResourceTable({
               {Object.entries(labels).slice(0, 3).map(([k, v]) => (
                 <span
                   key={k}
-                  className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-xs"
+                  className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-sm"
                 >
                   {k}={v}
                 </span>
@@ -143,7 +143,7 @@ export function ResourceTable({
           />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
+          <span className="text-sm text-muted-foreground">
             {filteredItems.length} item{filteredItems.length !== 1 ? "s" : ""}
           </span>
           {onRefresh && (
@@ -161,7 +161,7 @@ export function ResourceTable({
               {resourceDef.columns.map((col) => (
                 <TableHead
                   key={col.header}
-                  className="text-xs h-9"
+                  className="text-sm h-9"
                   style={col.width ? { width: col.width } : undefined}
                 >
                   {col.header}

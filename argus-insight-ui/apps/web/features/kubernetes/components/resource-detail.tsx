@@ -24,6 +24,7 @@ import type { DetailTab, ResourceDef } from "../lib/resource-definitions"
 import { formatAge } from "../lib/formatters"
 import { StatusBadge } from "./status-badge"
 import { YamlEditor } from "./yaml-editor"
+import { YamlViewer } from "./yaml-viewer"
 import { PodLogViewer } from "./pod-log-viewer"
 import { EventList } from "./event-list"
 import { ResourceDataView } from "./resource-data-view"
@@ -104,7 +105,7 @@ export function ResourceDetail({
               <CardContent>
                 <div className="flex flex-wrap gap-1.5">
                   {Object.entries(labels).map(([k, v]) => (
-                    <Badge key={k} variant="outline" className="text-xs font-mono">
+                    <Badge key={k} variant="outline" className="text-sm font-[family-name:var(--font-d2coding)]">
                       {k}={v}
                     </Badge>
                   ))}
@@ -121,10 +122,10 @@ export function ResourceDetail({
               <CardContent>
                 <div className="space-y-1">
                   {Object.entries(annotations).map(([k, v]) => (
-                    <div key={k} className="text-xs">
-                      <span className="font-mono text-muted-foreground">{k}</span>
+                    <div key={k} className="text-sm font-[family-name:var(--font-d2coding)]">
+                      <span className="text-muted-foreground">{k}</span>
                       <span className="mx-1">=</span>
-                      <span className="font-mono break-all">{v}</span>
+                      <span className="break-all">{v}</span>
                     </div>
                   ))}
                 </div>
@@ -138,9 +139,7 @@ export function ResourceDetail({
                 <CardTitle className="text-sm">Spec</CardTitle>
               </CardHeader>
               <CardContent>
-                <pre className="text-xs bg-muted p-3 rounded-md overflow-auto max-h-[400px] font-mono">
-                  {JSON.stringify(resource.spec, null, 2)}
-                </pre>
+                <YamlViewer data={resource.spec} height="400px" />
               </CardContent>
             </Card>
           )}
@@ -205,21 +204,13 @@ export function ResourceDetail({
     rules: {
       label: "Rules",
       content: (
-        <pre className="text-xs bg-muted p-3 rounded-md overflow-auto font-mono">
-          {JSON.stringify((resource as Record<string, unknown>).rules || resource.spec, null, 2)}
-        </pre>
+        <YamlViewer data={(resource as Record<string, unknown>).rules || resource.spec} height="400px" />
       ),
     },
     volumes: {
       label: "Volumes",
       content: (
-        <pre className="text-xs bg-muted p-3 rounded-md overflow-auto font-mono">
-          {JSON.stringify(
-            (resource.spec as Record<string, unknown>)?.volumes ||
-            (resource.spec as Record<string, unknown>)?.volumeClaimTemplates,
-            null, 2,
-          )}
-        </pre>
+        <YamlViewer data={(resource.spec as Record<string, unknown>)?.volumes || (resource.spec as Record<string, unknown>)?.volumeClaimTemplates} height="300px" />
       ),
     },
     yaml: {
@@ -245,10 +236,10 @@ export function ResourceDetail({
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-semibold">{metadata.name}</h2>
               {metadata.namespace && (
-                <Badge variant="outline" className="text-xs">{metadata.namespace}</Badge>
+                <Badge variant="outline" className="text-sm">{metadata.namespace}</Badge>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">{resourceDef.singularLabel}</p>
+            <p className="text-sm text-muted-foreground">{resourceDef.singularLabel}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -296,7 +287,7 @@ function InfoRow({ label, value, mono }: { label: string; value: string; mono?: 
   return (
     <div className="flex gap-2">
       <span className="text-muted-foreground w-36 shrink-0">{label}:</span>
-      <span className={mono ? "font-mono text-xs break-all" : "break-all"}>{value}</span>
+      <span className={mono ? "font-mono text-sm break-all" : "text-sm break-all"}>{value}</span>
     </div>
   )
 }
@@ -321,11 +312,7 @@ function renderStatusSection(resource: K8sResourceItem) {
   }
 
   // Fallback: show raw status
-  return (
-    <pre className="text-xs bg-muted p-3 rounded-md overflow-auto max-h-[300px] font-mono">
-      {JSON.stringify(status, null, 2)}
-    </pre>
-  )
+  return <YamlViewer data={status} height="300px" />
 }
 
 function ContainersTab({ resource }: { resource: K8sResourceItem }) {
@@ -390,9 +377,7 @@ function ContainerCard({
         {container.resources && (
           <div className="mt-2">
             <span className="text-muted-foreground">Resources:</span>
-            <pre className="text-xs bg-muted p-2 rounded-md mt-1 font-mono">
-              {JSON.stringify(container.resources, null, 2)}
-            </pre>
+            <YamlViewer data={container.resources} height="120px" />
           </div>
         )}
       </CardContent>
@@ -411,11 +396,11 @@ function ConditionsTab({ resource }: { resource: K8sResourceItem }) {
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b bg-muted/50">
-            <th className="text-left py-2 px-3 text-xs font-medium">Type</th>
-            <th className="text-left py-2 px-3 text-xs font-medium">Status</th>
-            <th className="text-left py-2 px-3 text-xs font-medium">Reason</th>
-            <th className="text-left py-2 px-3 text-xs font-medium">Message</th>
-            <th className="text-left py-2 px-3 text-xs font-medium">Last Transition</th>
+            <th className="text-left py-2 px-3 text-sm font-medium">Type</th>
+            <th className="text-left py-2 px-3 text-sm font-medium">Status</th>
+            <th className="text-left py-2 px-3 text-sm font-medium">Reason</th>
+            <th className="text-left py-2 px-3 text-sm font-medium">Message</th>
+            <th className="text-left py-2 px-3 text-sm font-medium">Last Transition</th>
           </tr>
         </thead>
         <tbody>

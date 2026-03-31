@@ -92,12 +92,12 @@ export function YamlEditor({ resource, onSave }: YamlEditorProps) {
           </Button>
         </div>
         {isModified && (
-          <span className="text-xs text-amber-500">Modified</span>
+          <span className="text-sm text-amber-500">Modified</span>
         )}
       </div>
 
       {error && (
-        <div className="text-xs text-destructive bg-destructive/10 rounded-md px-3 py-2">
+        <div className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">
           {error}
         </div>
       )}

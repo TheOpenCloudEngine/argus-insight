@@ -25,6 +25,50 @@ class ResourceCount(BaseModel):
     warning: int = 0
 
 
+class PodStatusBreakdown(BaseModel):
+    """Pod phase breakdown for charts."""
+
+    running: int = 0
+    succeeded: int = 0
+    pending: int = 0
+    failed: int = 0
+    unknown: int = 0
+
+
+class NamespacePodCount(BaseModel):
+    """Pod count per namespace for distribution chart."""
+
+    namespace: str
+    count: int = 0
+
+
+class NodeResourceInfo(BaseModel):
+    """Node resource capacity and usage info."""
+
+    name: str
+    cpu_capacity: str = ""
+    cpu_allocatable: str = ""
+    cpu_usage: str = ""
+    memory_capacity: str = ""
+    memory_allocatable: str = ""
+    memory_usage: str = ""
+    pods_capacity: str = ""
+    pods_allocatable: str = ""
+    pods_running: int = 0
+    ready: bool = False
+
+
+class NamespaceResourceUsage(BaseModel):
+    """CPU and memory usage per namespace."""
+
+    namespace: str
+    cpu_usage: str = "0"
+    cpu_requested: str = "0"
+    memory_usage: str = "0"
+    memory_requested: str = "0"
+    pod_count: int = 0
+
+
 class ClusterOverview(BaseModel):
     """Cluster overview data for the dashboard."""
 
@@ -39,6 +83,10 @@ class ClusterOverview(BaseModel):
     cronjobs: ResourceCount = ResourceCount()
     namespaces: list[str] = []
     recent_events: list[dict] = []
+    pod_status_breakdown: PodStatusBreakdown = PodStatusBreakdown()
+    namespace_pod_counts: list[NamespacePodCount] = []
+    node_resources: list[NodeResourceInfo] = []
+    namespace_resource_usage: list[NamespaceResourceUsage] = []
 
 
 class NamespaceOverview(BaseModel):
