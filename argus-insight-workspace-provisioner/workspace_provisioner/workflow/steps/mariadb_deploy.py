@@ -35,7 +35,7 @@ class MariadbDeployStep(WorkflowStep):
 
         config: MariadbConfig = ctx.get("argus_mariadb_config", MariadbConfig())
         root_password = _gen_password()
-        user_password = config.db_password
+        user_password = _gen_password()
 
         from workspace_provisioner.service import generate_service_id
         svc_id = generate_service_id()

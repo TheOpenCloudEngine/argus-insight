@@ -34,7 +34,7 @@ class PostgresqlDeployStep(WorkflowStep):
         await ensure_namespace(namespace)
 
         config: PostgresqlConfig = ctx.get("argus_postgresql_config", PostgresqlConfig())
-        password = config.db_password
+        password = _gen_password()
 
         from workspace_provisioner.service import generate_service_id
         svc_id = generate_service_id()
