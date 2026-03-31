@@ -642,7 +642,7 @@ async function handleContextDelete() {
         onOpenChange={setCopyToOpen}
         sourceBucket={bucket}
         sourceKeys={Array.from(selectedKeys)}
-        onComplete={() => loadEntries(prefix)}
+        onComplete={() => fetchData(prefix)}
       />
     </div>
   )
