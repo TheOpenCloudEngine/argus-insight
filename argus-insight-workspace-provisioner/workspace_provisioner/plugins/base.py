@@ -137,6 +137,7 @@ def load_version_yaml(version_dir: Path) -> PluginVersionMeta:
         release_date=data.get("release_date"),
         min_k8s_version=data.get("min_k8s_version"),
         depends_on_override=data.get("depends_on_override"),
+        os_key=data.get("os_key"),
     )
 
 
