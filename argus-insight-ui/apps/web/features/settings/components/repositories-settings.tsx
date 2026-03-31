@@ -22,7 +22,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@workspace/ui/components/select"
-import { Switch } from "@workspace/ui/components/switch"
 import { authFetch } from "@/features/auth/auth-fetch"
 
 /* ------------------------------------------------------------------ */
@@ -254,9 +253,9 @@ function RepoSection({
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <div className="flex items-center gap-3">
-          <Switch
+          <Checkbox
             checked={repos.enabled}
-            onCheckedChange={(v) => onUpdate({ ...repos, enabled: v })}
+            onCheckedChange={(v) => onUpdate({ ...repos, enabled: !!v })}
           />
           <CardTitle className="text-sm">{repos.label}</CardTitle>
           <Badge variant="outline" className="text-[10px]">{repos.pkg_type.toUpperCase()}</Badge>
