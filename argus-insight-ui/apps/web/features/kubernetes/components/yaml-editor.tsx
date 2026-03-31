@@ -1,9 +1,13 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
 import { Copy, Save } from "lucide-react"
+import dynamic from "next/dynamic"
+import yaml from "js-yaml"
 import { Button } from "@workspace/ui/components/button"
 import type { K8sResourceItem } from "../types"
+
+const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false })
 
 interface YamlEditorProps {
   resource: K8sResourceItem
@@ -11,25 +15,36 @@ interface YamlEditorProps {
 }
 
 /**
- * YAML viewer/editor using a textarea (lightweight alternative to Monaco).
- * Displays the resource as formatted JSON (YAML support can be added later
- * with a js-yaml dependency).
+ * YAML viewer/editor using Monaco Editor with YAML syntax highlighting.
+ * Converts the K8s resource JSON to YAML for display, and back to JSON for save.
  */
 export function YamlEditor({ resource, onSave }: YamlEditorProps) {
-  const initialText = JSON.stringify(resource, null, 2)
-  const [text, setText] = useState(initialText)
+  const initialYaml = useMemo(() => {
+    try {
+      return yaml.dump(resource, { indent: 2, lineWidth: -1, noRefs: true })
+    } catch {
+      return JSON.stringify(resource, null, 2)
+    }
+  }, [resource])
+
+  const [text, setText] = useState(initialYaml)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const editorRef = useRef<unknown>(null)
 
-  const isModified = text !== initialText
+  const isModified = text !== initialYaml
+
+  const handleEditorDidMount = useCallback((editor: unknown) => {
+    editorRef.current = editor
+  }, [])
 
   const handleSave = useCallback(async () => {
     if (!onSave) return
     setError(null)
     setSaving(true)
     try {
-      const parsed = JSON.parse(text)
+      const parsed = yaml.load(text) as object
       await onSave(parsed)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save")
@@ -38,8 +53,19 @@ export function YamlEditor({ resource, onSave }: YamlEditorProps) {
     }
   }, [text, onSave])
 
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(text)
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      const ta = document.createElement("textarea")
+      ta.value = text
+      ta.style.position = "fixed"
+      ta.style.opacity = "0"
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand("copy")
+      document.body.removeChild(ta)
+    }
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }, [text])
@@ -76,13 +102,29 @@ export function YamlEditor({ resource, onSave }: YamlEditorProps) {
         </div>
       )}
 
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        className="w-full min-h-[500px] bg-zinc-950 text-zinc-100 font-mono text-xs leading-5 p-3 rounded-md border border-zinc-800 resize-y focus:outline-none focus:ring-1 focus:ring-blue-500"
-        spellCheck={false}
-        readOnly={!onSave}
-      />
+      <div className="rounded-md border overflow-hidden">
+        <MonacoEditor
+          height="calc(100vh - 320px)"
+          language="yaml"
+          theme="light"
+          value={text}
+          onChange={(value) => setText(value ?? "")}
+          onMount={handleEditorDidMount}
+          options={{
+            readOnly: !onSave,
+            minimap: { enabled: false },
+            fontSize: 13,
+            fontFamily: "var(--font-d2coding), 'D2Coding', monospace",
+            lineNumbers: "on",
+            scrollBeyondLastLine: false,
+            wordWrap: "on",
+            tabSize: 2,
+            automaticLayout: true,
+            renderLineHighlight: "line",
+            padding: { top: 8, bottom: 8 },
+          }}
+        />
+      </div>
     </div>
   )
 }
