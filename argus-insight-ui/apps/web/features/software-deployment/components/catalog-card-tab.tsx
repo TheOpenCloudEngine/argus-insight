@@ -180,9 +180,16 @@ export function CatalogCardTab({
                     className="shrink-0 rounded"
                   />
                   <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-sm font-semibold">
-                      {plugin.display_name}
-                    </h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="truncate text-sm font-semibold">
+                        {plugin.display_name}
+                      </h3>
+                      {latestVersion?.software_version && (
+                        <span className="shrink-0 text-xs text-muted-foreground font-mono">
+                          v{latestVersion.software_version}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-muted-foreground text-xs">
                       {plugin.category}
                     </p>
