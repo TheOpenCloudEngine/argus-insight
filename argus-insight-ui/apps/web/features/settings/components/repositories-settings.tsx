@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react"
+import { CheckCircle2, Copy, Disc, ExternalLink, Loader2, Plus, Trash2 } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
@@ -40,6 +40,106 @@ interface OsRepos {
 }
 
 type AllRepos = Record<string, OsRepos>
+
+/* ------------------------------------------------------------------ */
+/*  ISO Download Links                                                 */
+/* ------------------------------------------------------------------ */
+
+const ISO_LINKS: Record<string, { name: string; url: string }[]> = {
+  "debian-11": [
+    { name: "ISO Image", url: "https://cdimage.debian.org/cdimage/archive/11.11.0/amd64/iso-cd/" },
+    { name: "Package Mirror", url: "http://deb.debian.org/debian" },
+    { name: "Security Updates", url: "http://security.debian.org/debian-security" },
+  ],
+  "debian-12": [
+    { name: "ISO Image", url: "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/" },
+    { name: "Package Mirror", url: "http://deb.debian.org/debian" },
+    { name: "Security Updates", url: "http://security.debian.org/debian-security" },
+  ],
+  "debian-13": [
+    { name: "ISO Image", url: "https://cdimage.debian.org/cdimage/trixie_di_alpha1/amd64/iso-cd/" },
+    { name: "Package Mirror", url: "http://deb.debian.org/debian" },
+    { name: "Security Updates", url: "http://security.debian.org/debian-security" },
+  ],
+  "ubuntu-22.04": [
+    { name: "ISO Image", url: "https://releases.ubuntu.com/22.04/" },
+    { name: "Package Mirror", url: "http://archive.ubuntu.com/ubuntu" },
+    { name: "Security Updates", url: "http://security.ubuntu.com/ubuntu" },
+  ],
+  "ubuntu-24.04": [
+    { name: "ISO Image", url: "https://releases.ubuntu.com/24.04/" },
+    { name: "Package Mirror", url: "http://archive.ubuntu.com/ubuntu" },
+    { name: "Security Updates", url: "http://security.ubuntu.com/ubuntu" },
+  ],
+  "rocky-9": [
+    { name: "ISO Image", url: "https://rockylinux.org/download" },
+    { name: "BaseOS Mirror", url: "http://dl.rockylinux.org/pub/rocky/9/BaseOS/x86_64/os/" },
+    { name: "AppStream Mirror", url: "http://dl.rockylinux.org/pub/rocky/9/AppStream/x86_64/os/" },
+  ],
+  "alpine-3.20": [
+    { name: "ISO Image", url: "https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64/" },
+    { name: "Package Mirror (main)", url: "https://dl-cdn.alpinelinux.org/alpine/v3.20/main" },
+    { name: "Package Mirror (community)", url: "https://dl-cdn.alpinelinux.org/alpine/v3.20/community" },
+  ],
+  "alpine-3.21": [
+    { name: "ISO Image", url: "https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/x86_64/" },
+    { name: "Package Mirror (main)", url: "https://dl-cdn.alpinelinux.org/alpine/v3.21/main" },
+    { name: "Package Mirror (community)", url: "https://dl-cdn.alpinelinux.org/alpine/v3.21/community" },
+  ],
+}
+
+function CopyBtn({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = async () => {
+    try { await navigator.clipboard.writeText(value) } catch {
+      const ta = document.createElement("textarea"); ta.value = value; ta.style.position = "fixed"; ta.style.opacity = "0"
+      document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta)
+    }
+    setCopied(true); setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <button onClick={handleCopy} className="text-muted-foreground hover:text-foreground shrink-0">
+      {copied ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  )
+}
+
+function IsoDialog({ open, onOpenChange, osKey, label }: { open: boolean; onOpenChange: (o: boolean) => void; osKey: string; label: string }) {
+  const links = ISO_LINKS[osKey] || []
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{label} - Downloads</DialogTitle>
+          <DialogDescription>Official ISO and package repository download links.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          {links.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No download links available for this OS.</p>
+          ) : (
+            links.map((link) => (
+              <div key={link.name} className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">{link.name}</p>
+                <div className="flex items-center gap-2 rounded-md border px-3 py-2">
+                  <a href={link.url} target="_blank" rel="noopener noreferrer" className="flex-1 truncate text-sm text-blue-600 hover:underline dark:text-blue-400 font-mono">
+                    {link.url}
+                  </a>
+                  <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground shrink-0">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                  <CopyBtn value={link.url} />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="flex justify-end">
+          <Button size="sm" onClick={() => onOpenChange(false)}>Close</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 /* ------------------------------------------------------------------ */
 /*  APT Add Dialog                                                     */
@@ -134,6 +234,7 @@ function RepoSection({
   onSave: () => void
 }) {
   const [addOpen, setAddOpen] = useState(false)
+  const [isoOpen, setIsoOpen] = useState(false)
 
   const toggleBuiltin = (idx: number) => {
     const updated = [...repos.builtin]; updated[idx] = { ...updated[idx], enabled: !updated[idx].enabled }; onUpdate({ ...repos, builtin: updated })
@@ -154,9 +255,16 @@ function RepoSection({
           <CardTitle className="text-sm">{repos.label}</CardTitle>
           <Badge variant="outline" className="text-[10px]">{repos.pkg_type.toUpperCase()}</Badge>
         </div>
-        <Button variant="outline" size="sm" className="text-xs" onClick={() => setAddOpen(true)}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" />Add Repo
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="text-xs" onClick={() => setAddOpen(true)}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" />Add Repo
+          </Button>
+          {ISO_LINKS[osKey] && (
+            <Button variant="outline" size="sm" className="text-xs" onClick={() => setIsoOpen(true)}>
+              <Disc className="mr-1.5 h-3.5 w-3.5" />ISO
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Built-in */}
@@ -238,6 +346,7 @@ function RepoSection({
       {repos.pkg_type === "apt" && <AptAddDialog open={addOpen} onOpenChange={setAddOpen} onAdd={(r) => addCustom(r)} defaultDist={(repos.builtin[0] as AptRepo)?.dist?.replace(/-.*/, "") || ""} />}
       {repos.pkg_type === "yum" && <YumAddDialog open={addOpen} onOpenChange={setAddOpen} onAdd={(r) => addCustom(r)} />}
       {repos.pkg_type === "apk" && <ApkAddDialog open={addOpen} onOpenChange={setAddOpen} onAdd={(r) => addCustom(r)} />}
+      <IsoDialog open={isoOpen} onOpenChange={setIsoOpen} osKey={osKey} label={repos.label} />
     </Card>
   )
 }
