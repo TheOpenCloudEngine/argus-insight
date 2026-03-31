@@ -3,6 +3,11 @@ import type { ListObjectsResponse } from "@/components/object-storage-browser"
 
 const BASE = "/api/v1/objectfilemgr"
 
+// Direct backend URL for large file uploads (bypass Next.js middleware body limit)
+const DIRECT_BASE = typeof window !== "undefined"
+  ? `${window.location.protocol}//${window.location.hostname}:4500/api/v1/objectfilemgr`
+  : BASE
+
 // --------------------------------------------------------------------------- //
 // Error helpers
 // --------------------------------------------------------------------------- //
@@ -232,8 +237,8 @@ export async function uploadFiles(
     const formData = new FormData()
     formData.append("file", file)
 
-    const res = await authFetch(
-      `${BASE}/objects/upload?${params.toString()}`,
+    const res = await fetch(
+      `${DIRECT_BASE}/objects/upload?${params.toString()}`,
       {
         method: "POST",
         body: formData,
@@ -319,7 +324,7 @@ export function uploadFileWithProgress(
     formData.append("file", file)
 
     const xhr = new XMLHttpRequest()
-    xhr.open("POST", `${BASE}/objects/upload?${params.toString()}`)
+    xhr.open("POST", `${DIRECT_BASE}/objects/upload?${params.toString()}`)
 
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable) {
