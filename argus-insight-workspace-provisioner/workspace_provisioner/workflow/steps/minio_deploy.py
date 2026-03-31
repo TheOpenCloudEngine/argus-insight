@@ -121,7 +121,7 @@ class MinioDeployStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-minio",
             display_name="MinIO Object Storage",
-            version="1.0",
+            version="2025.02.28",
             endpoint=f"http://{external_endpoint}",
             username=root_user,
             password=root_password,

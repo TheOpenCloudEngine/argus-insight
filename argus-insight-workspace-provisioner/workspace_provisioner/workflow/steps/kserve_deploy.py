@@ -132,7 +132,7 @@ class KServeDeployStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-kserve",
             display_name="KServe Model Serving",
-            version="1.0",
+            version="0.14.1",
             endpoint=f"http://{hostname}",
             service_id=svc_id,
             metadata={

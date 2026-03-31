@@ -157,7 +157,7 @@ class GitLabCreateProjectStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-gitlab",
             display_name="GitLab Project",
-            version="1.0",
+            version="17.9.1",
             endpoint=workspace_url,
             username=gitlab_username,
             access_token=token_info["token"] if "token_info" in dir() and token_info else None,

@@ -148,7 +148,7 @@ class VScodeServerDeployStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-vscode-server",
             display_name="VS Code Server",
-            version="1.1",
+            version="4.96.4",
             endpoint=external_endpoint,
             service_id=svc_id,
             username=username,

@@ -14,3 +14,4 @@ changelog: |
   - Persistent model and metadata storage
 upgradeable_from: []
 os_key: debian-13
+software_version: "latest"

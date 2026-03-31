@@ -110,7 +110,7 @@ class MilvusDeployStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-milvus",
             display_name="Milvus Vector Database",
-            version="1.0",
+            version="2.5.6",
             endpoint=f"http://{hostname}",
             service_id=svc_id,
             metadata={

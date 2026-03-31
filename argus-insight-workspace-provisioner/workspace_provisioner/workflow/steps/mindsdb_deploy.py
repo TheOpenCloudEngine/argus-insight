@@ -111,7 +111,7 @@ class MindsdbDeployStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-mindsdb",
             display_name="MindsDB",
-            version="1.0",
+            version="latest",
             endpoint=f"http://{hostname}",
             service_id=svc_id,
             metadata={

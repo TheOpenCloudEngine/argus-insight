@@ -158,7 +158,7 @@ class JupyterLabDeployStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name=self._plugin_name,
             display_name=svc_display,
-            version="1.0",
+            version="4.3",
             endpoint=external_endpoint,
             service_id=svc_id,
             username=username,

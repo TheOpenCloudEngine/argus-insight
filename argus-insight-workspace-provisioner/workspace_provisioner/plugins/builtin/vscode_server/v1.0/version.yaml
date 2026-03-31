@@ -13,3 +13,4 @@ changelog: |
   - Nginx Ingress with auth-url authentication
 upgradeable_from: []
 os_key: debian-12
+software_version: "4.96.4"

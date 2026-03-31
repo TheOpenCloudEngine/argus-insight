@@ -16,3 +16,4 @@ changelog: |
 upgradeable_from:
   - "1.0"
 os_key: debian-12
+software_version: "4.96.4"

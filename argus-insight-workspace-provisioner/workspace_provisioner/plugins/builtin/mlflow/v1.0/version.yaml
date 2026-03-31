@@ -12,3 +12,4 @@ changelog: |
   - MinIO S3 artifact storage
 upgradeable_from: []
 os_key: debian-11
+software_version: "2.19.0"

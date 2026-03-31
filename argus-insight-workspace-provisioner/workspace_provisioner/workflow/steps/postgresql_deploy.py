@@ -75,7 +75,7 @@ class PostgresqlDeployStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-postgresql",
             display_name="PostgreSQL",
-            version="1.0",
+            version="17",
             endpoint=f"postgresql://{config.db_user}@argus-postgresql-{workspace_name}.{namespace}.svc.cluster.local:5432/{config.db_name}",
             service_id=svc_id,
             username=config.db_user,

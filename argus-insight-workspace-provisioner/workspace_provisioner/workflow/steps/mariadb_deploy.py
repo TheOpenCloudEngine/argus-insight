@@ -77,7 +77,7 @@ class MariadbDeployStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-mariadb",
             display_name="MariaDB",
-            version="1.0",
+            version="11",
             endpoint=f"mysql://{config.db_user}@argus-mariadb-{workspace_name}.{namespace}.svc.cluster.local:3306/{config.db_name}",
             service_id=svc_id,
             username=config.db_user,

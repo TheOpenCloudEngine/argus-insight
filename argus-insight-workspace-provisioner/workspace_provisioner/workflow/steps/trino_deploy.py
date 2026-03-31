@@ -90,7 +90,7 @@ class TrinoDeployStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-trino",
             display_name="Trino Query Engine",
-            version="1.0",
+            version="latest",
             endpoint=f"http://{hostname}",
             service_id=svc_id,
             metadata={

@@ -11,3 +11,4 @@ changelog: |
   - Auto-generated password
 upgradeable_from: []
 os_key: debian-12
+software_version: "17"

@@ -11,3 +11,4 @@ changelog: |
   - Per-member MinIO user creation and policy assignment
   - Uses Settings > Argus > Object Storage connection
 upgradeable_from: []
+software_version: "2025.02.28"

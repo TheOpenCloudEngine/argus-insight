@@ -14,3 +14,4 @@ changelog: |
   - Nginx Ingress with workspace auth support
 upgradeable_from: []
 os_key: ubuntu-24.04
+software_version: "4.3"

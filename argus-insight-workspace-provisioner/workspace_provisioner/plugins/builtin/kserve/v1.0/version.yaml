@@ -10,3 +10,4 @@ changelog: |
   - KServe 0.14.1 controller
   - Default runtime: kserve-mlserver
 upgradeable_from: []
+software_version: "0.14.1"

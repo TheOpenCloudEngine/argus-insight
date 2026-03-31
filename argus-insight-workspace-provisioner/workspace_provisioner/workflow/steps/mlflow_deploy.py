@@ -163,7 +163,7 @@ class MlflowDeployStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-mlflow",
             display_name="MLflow Tracking Server",
-            version="1.0",
+            version="2.19.0",
             endpoint=f"http://{hostname}",
             service_id=svc_id,
             metadata={

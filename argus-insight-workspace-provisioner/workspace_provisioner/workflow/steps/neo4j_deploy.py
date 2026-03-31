@@ -120,7 +120,7 @@ class Neo4jDeployStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-neo4j",
             display_name="Neo4j Graph Database",
-            version="1.0",
+            version="5.26",
             endpoint=f"bolt://{bolt_hostname}:80",
             service_id=svc_id,
             username="neo4j",

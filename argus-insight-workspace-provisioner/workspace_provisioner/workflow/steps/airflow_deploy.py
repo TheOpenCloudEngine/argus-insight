@@ -169,7 +169,7 @@ class AirflowDeployStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-airflow",
             display_name="Apache Airflow",
-            version="1.0",
+            version="2.10.4",
             endpoint=f"http://{hostname}",
             service_id=svc_id,
             username="admin",

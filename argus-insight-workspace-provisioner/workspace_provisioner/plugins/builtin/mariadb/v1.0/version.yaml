@@ -11,3 +11,4 @@ changelog: |
   - Auto-generated root password
 upgradeable_from: []
 os_key: ubuntu-24.04
+software_version: "11"

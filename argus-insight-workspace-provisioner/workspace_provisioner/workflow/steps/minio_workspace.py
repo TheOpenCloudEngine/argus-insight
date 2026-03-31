@@ -192,7 +192,7 @@ class MinioWorkspaceStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-minio-workspace",
             display_name="MinIO Workspace Bucket",
-            version="1.0",
+            version="2025.02.28",
             endpoint=endpoint,
             metadata={
                 "display": {},
