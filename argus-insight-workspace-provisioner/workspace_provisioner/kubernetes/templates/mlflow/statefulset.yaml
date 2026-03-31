@@ -36,6 +36,9 @@ spec:
                 --backend-store-uri=postgresql+psycopg2://mlflow:${MLFLOW_DB_PASSWORD}@argus-mlflow-${WORKSPACE_NAME}-db:5432/mlflow \
                 --default-artifact-root=s3://${MLFLOW_ARTIFACT_BUCKET}/mlflow-artifacts \
                 --serve-artifacts
+          envFrom:
+            - configMapRef:
+                name: argus-mlflow-${WORKSPACE_NAME}-custom-config
           env:
             - name: MLFLOW_S3_ENDPOINT_URL
               value: "http://argus-minio-${WORKSPACE_NAME}.${K8S_NAMESPACE}.svc.cluster.local:9000"

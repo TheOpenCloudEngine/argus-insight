@@ -262,7 +262,7 @@ function DetailRow({
 /*  Service Configuration Sheet (MariaDB, PostgreSQL)                  */
 /* ------------------------------------------------------------------ */
 
-const CONFIGURABLE_PLUGINS = new Set(["argus-mariadb", "argus-postgresql", "argus-jupyter", "argus-jupyter-tensorflow", "argus-jupyter-pyspark"])
+const CONFIGURABLE_PLUGINS = new Set(["argus-mariadb", "argus-postgresql", "argus-jupyter", "argus-jupyter-tensorflow", "argus-jupyter-pyspark", "argus-mlflow"])
 
 function ServiceConfigSheet({
   open,
@@ -322,7 +322,8 @@ function ServiceConfigSheet({
   const isMariadb = service.plugin_name === "argus-mariadb"
   const isPostgresql = service.plugin_name === "argus-postgresql"
   const isJupyter = service.plugin_name.startsWith("argus-jupyter")
-  const pluginLabel = isMariadb ? "MariaDB" : isPostgresql ? "PostgreSQL" : "JupyterLab"
+  const isMlflow = service.plugin_name === "argus-mlflow"
+  const pluginLabel = isMariadb ? "MariaDB" : isPostgresql ? "PostgreSQL" : isMlflow ? "MLflow" : "JupyterLab"
 
   const groups: { title: string; keys: string[] }[] = isMariadb
     ? [
@@ -337,6 +338,11 @@ function ServiceConfigSheet({
         { title: "Memory", keys: ["shared_buffers", "work_mem", "maintenance_work_mem", "effective_cache_size", "wal_buffers", "temp_buffers"] },
         { title: "Performance", keys: ["checkpoint_completion_target", "random_page_cost", "effective_io_concurrency", "default_statistics_target"] },
         { title: "Logging", keys: ["log_min_duration_statement", "log_statement"] },
+      ]
+    : isMlflow
+    ? [
+        { title: "Performance", keys: ["MLFLOW_WORKERS", "GUNICORN_CMD_ARGS"] },
+        { title: "Server", keys: ["MLFLOW_LOGGING_LEVEL", "MLFLOW_SERVE_ARTIFACTS"] },
       ]
     : [
         { title: "Server", keys: ["ServerApp.max_body_size", "ServerApp.max_buffer_size", "ServerApp.shutdown_no_activity_timeout", "ServerApp.terminals_enabled"] },

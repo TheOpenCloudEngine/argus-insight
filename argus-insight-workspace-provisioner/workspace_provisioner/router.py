@@ -945,6 +945,17 @@ JUPYTER_BLOCKED_OPTIONS = {
     "ServerApp.token", "ServerApp.password",
 }
 
+MLFLOW_ALLOWED_OPTIONS = {
+    "MLFLOW_WORKERS", "GUNICORN_CMD_ARGS",
+    "MLFLOW_LOGGING_LEVEL", "MLFLOW_SERVE_ARTIFACTS",
+}
+
+MLFLOW_BLOCKED_OPTIONS = {
+    "MLFLOW_TRACKING_URI", "MLFLOW_BACKEND_STORE_URI",
+    "MLFLOW_DEFAULT_ARTIFACT_ROOT", "MLFLOW_S3_ENDPOINT_URL",
+    "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
+}
+
 MARIADB_ALLOWED_OPTIONS = {
     "max_connections", "wait_timeout", "interactive_timeout", "connect_timeout",
     "max_allowed_packet", "thread_cache_size",
@@ -1091,6 +1102,32 @@ async def get_service_config(
             "plugin_name": svc.plugin_name,
             "options": options,
             "allowed_options": sorted(JUPYTER_ALLOWED_OPTIONS),
+        }
+
+    if svc.plugin_name == "argus-mlflow":
+        configmap_name = f"argus-mlflow-{ws.name}-custom-config"
+        cmd = ["kubectl", "get", "configmap", configmap_name, "-n", namespace, "-o", "json"]
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            return {"plugin_name": svc.plugin_name, "options": {}, "allowed_options": sorted(MLFLOW_ALLOWED_OPTIONS)}
+
+        import json as _json
+        cm = _json.loads(stdout.decode())
+        options = {k: v for k, v in cm.get("data", {}).items() if k in MLFLOW_ALLOWED_OPTIONS}
+
+        return {
+            "plugin_name": svc.plugin_name,
+            "options": options,
+            "allowed_options": sorted(MLFLOW_ALLOWED_OPTIONS),
         }
 
     return {"plugin_name": svc.plugin_name, "options": {}, "allowed_options": []}
@@ -1264,5 +1301,43 @@ async def update_service_config(
 
         logger.info("JupyterLab config updated for service %s, restarting", svc_service_id)
         return {"status": "ok", "message": "Configuration updated. JupyterLab is restarting."}
+
+    if svc.plugin_name == "argus-mlflow":
+        for key in body.options:
+            if key in MLFLOW_BLOCKED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Option '{key}' cannot be changed")
+            if key not in MLFLOW_ALLOWED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Unknown option '{key}'")
+
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+
+        configmap_name = f"argus-mlflow-{ws.name}-custom-config"
+
+        import json as _json
+        patch = _json.dumps({"data": body.options})
+        cmd = ["kubectl", "patch", "configmap", configmap_name, "-n", namespace, "--type=merge", f"-p={patch}"]
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to update config: {stderr.decode()}")
+
+        cmd2 = ["kubectl", "rollout", "restart", f"statefulset/argus-mlflow-{ws.name}", "-n", namespace]
+        if kubeconfig:
+            cmd2.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc2 = await asyncio.create_subprocess_exec(
+            *cmd2, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await proc2.communicate()
+
+        logger.info("MLflow config updated for workspace %s, restarting", ws.name)
+        return {"status": "ok", "message": "Configuration updated. MLflow is restarting."}
 
     raise HTTPException(status_code=400, detail=f"Configuration not supported for {svc.plugin_name}")
