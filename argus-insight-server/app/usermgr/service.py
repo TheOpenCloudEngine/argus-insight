@@ -214,6 +214,8 @@ async def modify_user(
         user.email = req.email
     if req.phone_number is not None:
         user.phone_number = req.phone_number
+    if req.password is not None:
+        user.password_hash = _hash_password(req.password)
 
     await session.commit()
     await session.refresh(user)

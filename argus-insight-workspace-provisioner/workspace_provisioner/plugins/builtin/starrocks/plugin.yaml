@@ -1,0 +1,18 @@
+name: argus-starrocks
+display_name: StarRocks Analytics DB
+description: Deploy StarRocks MPP analytics database with FE and BE nodes
+icon: starrocks
+category: database
+depends_on: []
+provides:
+  - starrocks_endpoint
+  - starrocks_manifests
+requires: []
+tags:
+  - sql
+  - analytics
+  - mpp
+  - columnar
+versions:
+  - "1.0"
+default_version: "1.0"

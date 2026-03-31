@@ -1,0 +1,82 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: argus-starrocks-${WORKSPACE_NAME}-fe
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: starrocks
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/component: fe
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8030
+      targetPort: http
+    - name: mysql
+      port: 9030
+      targetPort: mysql
+    - name: rpc
+      port: 9020
+      targetPort: rpc
+  selector:
+    app.kubernetes.io/name: starrocks
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/component: fe
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: argus-starrocks-${WORKSPACE_NAME}-be
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: starrocks
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/component: be
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8040
+      targetPort: http
+    - name: heartbeat
+      port: 9050
+      targetPort: heartbeat
+    - name: be-port
+      port: 9060
+      targetPort: be-port
+  selector:
+    app.kubernetes.io/name: starrocks
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/component: be
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argus-starrocks-${WORKSPACE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: starrocks
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "64m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: ${HOSTNAME}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argus-starrocks-${WORKSPACE_NAME}-fe
+                port:
+                  name: http

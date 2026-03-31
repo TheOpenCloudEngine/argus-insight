@@ -15,3 +15,5 @@ changelog: |
   - s3fs 1.94 (efrecon/s3fs)
 upgradeable_from:
   - "1.0"
+os_key: debian-12
+software_version: "4.96.4"

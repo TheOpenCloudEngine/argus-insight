@@ -339,6 +339,7 @@ class DeployPipelineRequest(BaseModel):
 async def deploy_pipeline_to_workspace(
     workspace_id: int,
     req: DeployPipelineRequest,
+    current_user: CurrentUser,
     session: AsyncSession = Depends(get_session),
     gitlab_client: GitLabClient = Depends(_get_gitlab_client),
 ):
@@ -383,20 +384,20 @@ async def deploy_pipeline_to_workspace(
     ws.status = "provisioning"
     await session.commit()
 
-    # Load creator info
+    # Load requesting user info (for per_user services like VS Code, Jupyter)
     from app.usermgr.models import ArgusUser
     from app.settings.service import get_config_by_category
-    creator_result = await session.execute(
-        select(ArgusUser).where(ArgusUser.id == ws.created_by)
+    req_user_result = await session.execute(
+        select(ArgusUser).where(ArgusUser.id == int(current_user.sub))
     )
-    creator = creator_result.scalars().first()
+    req_user = req_user_result.scalars().first()
     creator_info = {}
-    if creator:
+    if req_user:
         gitlab_cfg = await get_config_by_category(session, "gitlab")
         creator_info = {
-            "creator_username": creator.username,
-            "creator_email": creator.email,
-            "creator_name": f"{creator.first_name} {creator.last_name}".strip() or creator.username,
+            "creator_username": req_user.username,
+            "creator_email": req_user.email,
+            "creator_name": f"{req_user.first_name} {req_user.last_name}".strip() or req_user.username,
             "creator_password": gitlab_cfg.get("gitlab_password", "") or "Argus!nsight2026",
             "admin_user_id": ws.created_by,
         }
@@ -658,10 +659,25 @@ async def bulk_add_members(
                 user.gitlab_username = gitlab_username
                 user.gitlab_password = safe_password
 
+            # Resolve GitLab project ID from workspace record or service metadata
+            gl_project_id = ws.gitlab_project_id
+            if not gl_project_id:
+                from workspace_provisioner.models import ArgusWorkspaceService
+                svc_result = await session.execute(
+                    select(ArgusWorkspaceService).where(
+                        ArgusWorkspaceService.workspace_id == workspace_id,
+                        ArgusWorkspaceService.plugin_name == "argus-gitlab",
+                    )
+                )
+                gl_svc = svc_result.scalars().first()
+                if gl_svc and gl_svc.metadata_json:
+                    internal = gl_svc.metadata_json.get("internal", gl_svc.metadata_json)
+                    gl_project_id = internal.get("project_id")
+
             # Step 2: Add to project as Maintainer (all permissions except delete repo)
-            if ws.gitlab_project_id:
+            if gl_project_id:
                 await gitlab_client.add_project_member(
-                    project_id=ws.gitlab_project_id,
+                    project_id=gl_project_id,
                     user_id=gl_user["id"],
                     access_level=40,  # Maintainer
                 )
@@ -670,7 +686,7 @@ async def bulk_add_members(
                 token_name = f"{gitlab_username}-{ws.name}"
                 try:
                     token_info = await gitlab_client.create_project_access_token(
-                        project_id=ws.gitlab_project_id,
+                        project_id=gl_project_id,
                         name=token_name,
                     )
                     gitlab_token = token_info["token"]
@@ -680,7 +696,55 @@ async def bulk_add_members(
         except Exception as e:
             logger.warning("GitLab provisioning failed for user %d: %s", user_id, e)
 
-        # Step 4: Add workspace member
+        # Step 4: MinIO user creation + workspace bucket access
+        minio_provisioned = False
+        try:
+            from app.settings.service import get_config_by_category
+            cfg = await get_config_by_category(session, "argus")
+            minio_endpoint = cfg.get("object_storage_endpoint", "")
+            minio_access = cfg.get("object_storage_access_key", "")
+            minio_secret = cfg.get("object_storage_secret_key", "")
+            minio_ssl = cfg.get("object_storage_use_ssl", "false").lower() == "true"
+
+            if minio_endpoint and minio_access and minio_secret:
+                from workspace_provisioner.minio.client import MinioAdminClient
+                from workspace_provisioner.config import MinioWorkspaceConfig
+
+                ws_config_cfg = await get_config_by_category(session, "deploy_mapping")
+                bucket_prefix = "workspace-"  # default
+                minio_ep = minio_endpoint.replace("http://", "").replace("https://", "")
+                minio_client = MinioAdminClient(
+                    endpoint=minio_ep,
+                    root_user=minio_access,
+                    root_password=minio_secret,
+                    secure=minio_ssl,
+                )
+
+                bucket_name = f"{bucket_prefix}{ws.name}"
+                minio_username = f"user-{user.username}"
+
+                # Create MinIO user (idempotent - returns created=False if exists)
+                user_secret = secrets.token_urlsafe(16)
+                user_info = await minio_client.create_user(minio_username, user_secret)
+
+                # Set bucket policy for workspace bucket
+                await minio_client.set_user_bucket_policy(minio_username, bucket_name)
+
+                # Save S3 credentials if this is a new user
+                if user_info.get("created") and not user.s3_access_key:
+                    user.s3_access_key = minio_username
+                    user.s3_secret_key = user_secret
+                    user.s3_bucket = bucket_name
+
+                minio_provisioned = True
+                logger.info(
+                    "MinIO access granted for member %s: user=%s bucket=%s",
+                    user.username, minio_username, bucket_name,
+                )
+        except Exception as e:
+            logger.warning("MinIO provisioning failed for user %d: %s", user_id, e)
+
+        # Step 5: Add workspace member
         member = ArgusWorkspaceMember(
             workspace_id=workspace_id,
             user_id=user_id,
@@ -700,7 +764,11 @@ async def bulk_add_members(
             session, workspace_id, ws.name, "member_added",
             actor_user_id=int(current_user.sub), actor_username=current_user.username,
             target_user_id=user_id, target_username=user.username,
-            detail={"role": "User", "gitlab_provisioned": gitlab_token is not None},
+            detail={
+                "role": "User",
+                "gitlab_provisioned": gitlab_token is not None,
+                "minio_provisioned": minio_provisioned,
+            },
         )
 
     logger.info("Bulk added %d members to workspace %d", len(results), workspace_id)
@@ -750,23 +818,39 @@ async def remove_member(
     if ws and ws.created_by == member.user_id:
         raise HTTPException(status_code=400, detail="Cannot remove workspace owner")
 
-    # Remove from GitLab project
-    if ws and ws.gitlab_project_id:
-        user_result = await session.execute(
-            select(ArgusUser).where(ArgusUser.id == member.user_id)
+    # Load user info
+    user_result = await session.execute(
+        select(ArgusUser).where(ArgusUser.id == member.user_id)
+    )
+    user = user_result.scalars().first()
+
+    # Resolve GitLab project ID (workspace record or service metadata)
+    gl_project_id = ws.gitlab_project_id if ws else None
+    if not gl_project_id and ws:
+        from workspace_provisioner.models import ArgusWorkspaceService
+        svc_result = await session.execute(
+            select(ArgusWorkspaceService).where(
+                ArgusWorkspaceService.workspace_id == workspace_id,
+                ArgusWorkspaceService.plugin_name == "argus-gitlab",
+            )
         )
-        user = user_result.scalars().first()
-        if user:
-            gitlab_username = f"argus-{user.username}"
-            try:
-                gl_user = await gitlab_client.find_user(gitlab_username)
-                if gl_user:
-                    await gitlab_client.remove_project_member(
-                        project_id=ws.gitlab_project_id,
-                        user_id=gl_user["id"],
-                    )
-            except Exception as e:
-                logger.warning("Failed to remove GitLab member: %s", e)
+        gl_svc = svc_result.scalars().first()
+        if gl_svc and gl_svc.metadata_json:
+            internal = gl_svc.metadata_json.get("internal", gl_svc.metadata_json)
+            gl_project_id = internal.get("project_id")
+
+    # Remove from GitLab project
+    if gl_project_id and user:
+        gitlab_username = f"argus-{user.username}"
+        try:
+            gl_user = await gitlab_client.find_user(gitlab_username)
+            if gl_user:
+                await gitlab_client.remove_project_member(
+                    project_id=gl_project_id,
+                    user_id=gl_user["id"],
+                )
+        except Exception as e:
+            logger.warning("Failed to remove GitLab member: %s", e)
 
     # Remove from workspace
     if not await service.remove_member(session, member_id):
@@ -777,7 +861,7 @@ async def remove_member(
         session, workspace_id, ws.name, "member_removed",
         actor_user_id=int(current_user.sub), actor_username=current_user.username,
         target_user_id=member.user_id, target_username=user.username if user else None,
-        detail={"gitlab_removed": True},
+        detail={"gitlab_removed": gl_project_id is not None},
     )
 
     logger.info("DELETE /workspaces/%d/members/%d - removed (with GitLab)", workspace_id, member_id)
@@ -825,3 +909,526 @@ async def get_workspace_audit_logs(
         ],
         total=total, page=page, page_size=page_size,
     )
+
+
+# =========================================================================== #
+# Service Configuration (runtime config change)
+# =========================================================================== #
+
+POSTGRESQL_ALLOWED_OPTIONS = {
+    "max_connections", "shared_buffers", "work_mem", "maintenance_work_mem",
+    "effective_cache_size", "wal_buffers", "checkpoint_completion_target",
+    "random_page_cost", "effective_io_concurrency",
+    "log_min_duration_statement", "log_statement",
+    "temp_buffers", "default_statistics_target",
+}
+
+POSTGRESQL_BLOCKED_OPTIONS = {
+    "port", "data_directory", "hba_file", "ident_file",
+    "listen_addresses", "unix_socket_directories",
+    "ssl", "ssl_cert_file", "ssl_key_file",
+    "password_encryption", "wal_level", "archive_mode",
+}
+
+JUPYTER_ALLOWED_OPTIONS = {
+    "ServerApp.max_body_size", "ServerApp.max_buffer_size",
+    "ServerApp.shutdown_no_activity_timeout", "ServerApp.terminals_enabled",
+    "MappingKernelManager.cull_idle_timeout", "MappingKernelManager.cull_interval",
+    "MappingKernelManager.cull_connected", "MappingKernelManager.default_kernel_name",
+    "ContentsManager.allow_hidden",
+}
+
+JUPYTER_BLOCKED_OPTIONS = {
+    "ServerApp.port", "ServerApp.ip", "ServerApp.root_dir",
+    "ServerApp.base_url", "ServerApp.certfile", "ServerApp.keyfile",
+    "ServerApp.open_browser", "ServerApp.allow_remote_access",
+    "ServerApp.token", "ServerApp.password",
+}
+
+MLFLOW_ALLOWED_OPTIONS = {
+    "MLFLOW_WORKERS", "GUNICORN_CMD_ARGS",
+    "MLFLOW_LOGGING_LEVEL", "MLFLOW_SERVE_ARTIFACTS",
+}
+
+MLFLOW_BLOCKED_OPTIONS = {
+    "MLFLOW_TRACKING_URI", "MLFLOW_BACKEND_STORE_URI",
+    "MLFLOW_DEFAULT_ARTIFACT_ROOT", "MLFLOW_S3_ENDPOINT_URL",
+    "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
+}
+
+AIRFLOW_ALLOWED_OPTIONS = {
+    # core
+    "AIRFLOW__CORE__PARALLELISM", "AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG",
+    "AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG", "AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION",
+    "AIRFLOW__CORE__DEFAULT_TIMEZONE", "AIRFLOW__CORE__DAG_FILE_PROCESSOR_TIMEOUT",
+    # scheduler
+    "AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL", "AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL",
+    "AIRFLOW__SCHEDULER__PARSING_PROCESSES", "AIRFLOW__SCHEDULER__SCHEDULER_HEARTBEAT_SEC",
+    # webserver
+    "AIRFLOW__WEBSERVER__WEB_SERVER_WORKER_TIMEOUT", "AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE",
+    "AIRFLOW__WEBSERVER__HIDE_PAUSED_DAGS_BY_DEFAULT", "AIRFLOW__WEBSERVER__PAGE_SIZE",
+    "AIRFLOW__WEBSERVER__DEFAULT_DAG_RUN_DISPLAY_NUMBER", "AIRFLOW__WEBSERVER__WORKERS",
+    # logging
+    "AIRFLOW__LOGGING__LOGGING_LEVEL", "AIRFLOW__LOGGING__FAB_LOGGING_LEVEL",
+    # smtp
+    "AIRFLOW__SMTP__SMTP_HOST", "AIRFLOW__SMTP__SMTP_PORT",
+    "AIRFLOW__SMTP__SMTP_STARTTLS", "AIRFLOW__SMTP__SMTP_SSL",
+    "AIRFLOW__SMTP__SMTP_USER", "AIRFLOW__SMTP__SMTP_PASSWORD",
+    "AIRFLOW__SMTP__SMTP_MAIL_FROM",
+}
+
+AIRFLOW_BLOCKED_OPTIONS = {
+    "AIRFLOW__DATABASE__SQL_ALCHEMY_CONN", "AIRFLOW__CORE__FERNET_KEY",
+    "AIRFLOW__WEBSERVER__SECRET_KEY", "AIRFLOW__WEBSERVER__BASE_URL",
+    "AIRFLOW__WEBSERVER__WEB_SERVER_PORT", "AIRFLOW__CORE__DAGS_FOLDER",
+}
+
+MARIADB_ALLOWED_OPTIONS = {
+    "max_connections", "wait_timeout", "interactive_timeout", "connect_timeout",
+    "max_allowed_packet", "thread_cache_size",
+    "innodb_buffer_pool_size", "innodb_log_file_size", "innodb_flush_log_at_trx_commit",
+    "innodb_file_per_table", "tmp_table_size", "max_heap_table_size",
+    "sort_buffer_size", "join_buffer_size",
+    "slow_query_log", "long_query_time",
+    "character_set_server", "collation_server",
+}
+
+MARIADB_BLOCKED_OPTIONS = {
+    "port", "socket", "datadir", "pid_file", "log_bin", "server_id",
+    "bind_address", "skip_networking", "skip_grant_tables",
+    "plugin_load", "secure_file_priv", "basedir", "tmpdir",
+}
+
+
+class ServiceConfigUpdateRequest(BaseModel):
+    options: dict[str, str]
+
+
+@router.get("/workspaces/{workspace_id}/services/{service_id}/config")
+async def get_service_config(
+    workspace_id: int,
+    service_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Get the runtime configuration for a deployed service."""
+    import asyncio
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+
+    svc_result = await session.execute(
+        select(ArgusWorkspaceService).where(ArgusWorkspaceService.id == service_id)
+    )
+    svc = svc_result.scalars().first()
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    ws_result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    ws = ws_result.scalars().first()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    namespace = ws.k8s_namespace or f"argus-ws-{ws.name}"
+
+    if svc.plugin_name == "argus-mariadb":
+        configmap_name = f"argus-mariadb-{ws.name}-custom-config"
+        cmd = ["kubectl", "get", "configmap", configmap_name, "-n", namespace, "-o", "jsonpath={.data.custom\\.cnf}"]
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            return {"plugin_name": svc.plugin_name, "options": {}, "allowed_options": list(MARIADB_ALLOWED_OPTIONS)}
+
+        # Parse custom.cnf
+        options = {}
+        for line in stdout.decode().splitlines():
+            line = line.strip()
+            if not line or line.startswith("[") or line.startswith("#"):
+                continue
+            if "=" in line:
+                key, val = line.split("=", 1)
+                options[key.strip()] = val.strip()
+
+        return {
+            "plugin_name": svc.plugin_name,
+            "options": options,
+            "allowed_options": sorted(MARIADB_ALLOWED_OPTIONS),
+        }
+
+    if svc.plugin_name == "argus-postgresql":
+        configmap_name = f"argus-postgresql-{ws.name}-custom-config"
+        cmd = ["kubectl", "get", "configmap", configmap_name, "-n", namespace, "-o", "jsonpath={.data.custom\\.conf}"]
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            return {"plugin_name": svc.plugin_name, "options": {}, "allowed_options": list(POSTGRESQL_ALLOWED_OPTIONS)}
+
+        options = {}
+        for line in stdout.decode().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                key, val = line.split("=", 1)
+                options[key.strip()] = val.strip()
+
+        return {
+            "plugin_name": svc.plugin_name,
+            "options": options,
+            "allowed_options": sorted(POSTGRESQL_ALLOWED_OPTIONS),
+        }
+
+    if svc.plugin_name.startswith("argus-jupyter"):
+        # Jupyter uses INSTANCE_ID (service_id) in ConfigMap name
+        svc_service_id = svc.service_id or ""
+        configmap_name = f"argus-jupyter-{svc_service_id}-custom-config"
+        cmd = ["kubectl", "get", "configmap", configmap_name, "-n", namespace, "-o", "jsonpath={.data.custom_config\\.py}"]
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            return {"plugin_name": svc.plugin_name, "options": {}, "allowed_options": list(JUPYTER_ALLOWED_OPTIONS)}
+
+        # Parse Python config: c.Class.option = value
+        options = {}
+        for line in stdout.decode().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("c.") and "=" in line:
+                key = line.split("=", 1)[0].strip().replace("c.", "")
+                val = line.split("=", 1)[1].strip()
+                # Remove quotes from string values
+                if (val.startswith("'") and val.endswith("'")) or (val.startswith('"') and val.endswith('"')):
+                    val = val[1:-1]
+                options[key] = val
+
+        return {
+            "plugin_name": svc.plugin_name,
+            "options": options,
+            "allowed_options": sorted(JUPYTER_ALLOWED_OPTIONS),
+        }
+
+    if svc.plugin_name == "argus-mlflow":
+        configmap_name = f"argus-mlflow-{ws.name}-custom-config"
+        cmd = ["kubectl", "get", "configmap", configmap_name, "-n", namespace, "-o", "json"]
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            return {"plugin_name": svc.plugin_name, "options": {}, "allowed_options": sorted(MLFLOW_ALLOWED_OPTIONS)}
+
+        import json as _json
+        cm = _json.loads(stdout.decode())
+        options = {k: v for k, v in cm.get("data", {}).items() if k in MLFLOW_ALLOWED_OPTIONS}
+
+        return {
+            "plugin_name": svc.plugin_name,
+            "options": options,
+            "allowed_options": sorted(MLFLOW_ALLOWED_OPTIONS),
+        }
+
+    if svc.plugin_name == "argus-airflow":
+        configmap_name = f"argus-airflow-{ws.name}-custom-config"
+        cmd = ["kubectl", "get", "configmap", configmap_name, "-n", namespace, "-o", "json"]
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            return {"plugin_name": svc.plugin_name, "options": {}, "allowed_options": sorted(AIRFLOW_ALLOWED_OPTIONS)}
+
+        import json as _json
+        cm = _json.loads(stdout.decode())
+        options = {k: v for k, v in cm.get("data", {}).items() if k in AIRFLOW_ALLOWED_OPTIONS}
+
+        return {
+            "plugin_name": svc.plugin_name,
+            "options": options,
+            "allowed_options": sorted(AIRFLOW_ALLOWED_OPTIONS),
+        }
+
+    return {"plugin_name": svc.plugin_name, "options": {}, "allowed_options": []}
+
+
+@router.put("/workspaces/{workspace_id}/services/{service_id}/config")
+async def update_service_config(
+    workspace_id: int,
+    service_id: int,
+    body: ServiceConfigUpdateRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Update runtime configuration for a deployed service and restart."""
+    import asyncio
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+
+    svc_result = await session.execute(
+        select(ArgusWorkspaceService).where(ArgusWorkspaceService.id == service_id)
+    )
+    svc = svc_result.scalars().first()
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    ws_result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    ws = ws_result.scalars().first()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    namespace = ws.k8s_namespace or f"argus-ws-{ws.name}"
+
+    if svc.plugin_name == "argus-mariadb":
+        # Validate options
+        for key in body.options:
+            if key in MARIADB_BLOCKED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Option '{key}' cannot be changed")
+            if key not in MARIADB_ALLOWED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Unknown option '{key}'")
+
+        # Build custom.cnf content
+        lines = ["[mysqld]"]
+        for key, val in body.options.items():
+            lines.append(f"{key} = {val}")
+        cnf_content = "\n".join(lines) + "\n"
+
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+
+        configmap_name = f"argus-mariadb-{ws.name}-custom-config"
+
+        # Update ConfigMap via kubectl patch
+        import json as _json
+        patch = _json.dumps({"data": {"custom.cnf": cnf_content}})
+        cmd = ["kubectl", "patch", "configmap", configmap_name, "-n", namespace, "--type=merge", f"-p={patch}"]
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to update config: {stderr.decode()}")
+
+        # Restart StatefulSet
+        cmd2 = ["kubectl", "rollout", "restart", f"statefulset/argus-mariadb-{ws.name}", "-n", namespace]
+        if kubeconfig:
+            cmd2.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc2 = await asyncio.create_subprocess_exec(
+            *cmd2, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await proc2.communicate()
+
+        logger.info("MariaDB config updated for workspace %s, restarting", ws.name)
+        return {"status": "ok", "message": "Configuration updated. MariaDB is restarting."}
+
+    if svc.plugin_name == "argus-postgresql":
+        for key in body.options:
+            if key in POSTGRESQL_BLOCKED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Option '{key}' cannot be changed")
+            if key not in POSTGRESQL_ALLOWED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Unknown option '{key}'")
+
+        lines = []
+        for key, val in body.options.items():
+            lines.append(f"{key} = {val}")
+        conf_content = "\n".join(lines) + "\n"
+
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+
+        configmap_name = f"argus-postgresql-{ws.name}-custom-config"
+
+        import json as _json
+        patch = _json.dumps({"data": {"custom.conf": conf_content}})
+        cmd = ["kubectl", "patch", "configmap", configmap_name, "-n", namespace, "--type=merge", f"-p={patch}"]
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to update config: {stderr.decode()}")
+
+        cmd2 = ["kubectl", "rollout", "restart", f"statefulset/argus-postgresql-{ws.name}", "-n", namespace]
+        if kubeconfig:
+            cmd2.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc2 = await asyncio.create_subprocess_exec(
+            *cmd2, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await proc2.communicate()
+
+        logger.info("PostgreSQL config updated for workspace %s, restarting", ws.name)
+        return {"status": "ok", "message": "Configuration updated. PostgreSQL is restarting."}
+
+    if svc.plugin_name.startswith("argus-jupyter"):
+        for key in body.options:
+            if key in JUPYTER_BLOCKED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Option '{key}' cannot be changed")
+            if key not in JUPYTER_ALLOWED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Unknown option '{key}'")
+
+        # Build Python config
+        lines = []
+        for key, val in body.options.items():
+            # Determine value type
+            if val in ("True", "False"):
+                lines.append(f"c.{key} = {val}")
+            elif val.isdigit() or (val.startswith("-") and val[1:].isdigit()):
+                lines.append(f"c.{key} = {val}")
+            else:
+                lines.append(f"c.{key} = '{val}'")
+        conf_content = "\n".join(lines) + "\n"
+
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+
+        svc_service_id = svc.service_id or ""
+        configmap_name = f"argus-jupyter-{svc_service_id}-custom-config"
+
+        import json as _json
+        patch = _json.dumps({"data": {"custom_config.py": conf_content}})
+        cmd = ["kubectl", "patch", "configmap", configmap_name, "-n", namespace, "--type=merge", f"-p={patch}"]
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to update config: {stderr.decode()}")
+
+        # Restart Deployment
+        cmd2 = ["kubectl", "rollout", "restart", f"deployment/argus-jupyter-{svc_service_id}", "-n", namespace]
+        if kubeconfig:
+            cmd2.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc2 = await asyncio.create_subprocess_exec(
+            *cmd2, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await proc2.communicate()
+
+        logger.info("JupyterLab config updated for service %s, restarting", svc_service_id)
+        return {"status": "ok", "message": "Configuration updated. JupyterLab is restarting."}
+
+    if svc.plugin_name == "argus-mlflow":
+        for key in body.options:
+            if key in MLFLOW_BLOCKED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Option '{key}' cannot be changed")
+            if key not in MLFLOW_ALLOWED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Unknown option '{key}'")
+
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+
+        configmap_name = f"argus-mlflow-{ws.name}-custom-config"
+
+        import json as _json
+        patch = _json.dumps({"data": body.options})
+        cmd = ["kubectl", "patch", "configmap", configmap_name, "-n", namespace, "--type=merge", f"-p={patch}"]
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to update config: {stderr.decode()}")
+
+        cmd2 = ["kubectl", "rollout", "restart", f"statefulset/argus-mlflow-{ws.name}", "-n", namespace]
+        if kubeconfig:
+            cmd2.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc2 = await asyncio.create_subprocess_exec(
+            *cmd2, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await proc2.communicate()
+
+        logger.info("MLflow config updated for workspace %s, restarting", ws.name)
+        return {"status": "ok", "message": "Configuration updated. MLflow is restarting."}
+
+    if svc.plugin_name == "argus-airflow":
+        for key in body.options:
+            if key in AIRFLOW_BLOCKED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Option '{key}' cannot be changed")
+            if key not in AIRFLOW_ALLOWED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Unknown option '{key}'")
+
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+
+        configmap_name = f"argus-airflow-{ws.name}-custom-config"
+
+        import json as _json
+        patch = _json.dumps({"data": body.options})
+        cmd = ["kubectl", "patch", "configmap", configmap_name, "-n", namespace, "--type=merge", f"-p={patch}"]
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to update config: {stderr.decode()}")
+
+        cmd2 = ["kubectl", "rollout", "restart", f"statefulset/argus-airflow-{ws.name}", "-n", namespace]
+        if kubeconfig:
+            cmd2.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc2 = await asyncio.create_subprocess_exec(
+            *cmd2, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await proc2.communicate()
+
+        logger.info("Airflow config updated for workspace %s, restarting", ws.name)
+        return {"status": "ok", "message": "Configuration updated. Airflow is restarting."}
+
+    raise HTTPException(status_code=400, detail=f"Configuration not supported for {svc.plugin_name}")

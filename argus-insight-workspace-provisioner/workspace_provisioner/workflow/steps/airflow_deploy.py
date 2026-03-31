@@ -15,6 +15,7 @@ Architecture:
 import logging
 import secrets
 import string
+from urllib.parse import urlparse
 
 from cryptography.fernet import Fernet
 
@@ -94,6 +95,7 @@ class AirflowDeployStep(WorkflowStep):
             "AIRFLOW_POSTGRES_IMAGE": config.postgres_image,
             "AIRFLOW_GIT_SYNC_IMAGE": config.git_sync_image,
             "AIRFLOW_GIT_SYNC_INTERVAL": str(config.git_sync_interval),
+            "AIRFLOW_DAGS_SUB_PATH": config.dags_sub_path,
             "AIRFLOW_DAGS_STORAGE_SIZE": config.dags_storage_size,
             "AIRFLOW_LOGS_STORAGE_SIZE": config.logs_storage_size,
             "AIRFLOW_DB_STORAGE_SIZE": config.db_storage_size,
@@ -116,9 +118,13 @@ class AirflowDeployStep(WorkflowStep):
             "GITLAB_REPO_URL": gitlab_repo_url,
             "GITLAB_TOKEN": gitlab_token,
             "ARGUS_SERVER_HOST": ctx.get("argus_server_host", "127.0.0.1"),
+            "PIP_INDEX_URL": config.pip_index_url,
+            "PIP_TRUSTED_HOST": urlparse(config.pip_index_url).hostname or "pypi.org",
         }
 
         manifests = render_manifests("airflow", variables)
+        from workspace_provisioner.repo_injector import inject_repo_config
+        manifests = await inject_repo_config(manifests, os_key="debian-12", namespace=namespace, instance_id=svc_id)
         logger.info(
             "Deploying Airflow for workspace '%s' to namespace '%s'",
             workspace_name,
@@ -163,14 +169,17 @@ class AirflowDeployStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-airflow",
             display_name="Apache Airflow",
-            version="1.0",
+            version="2.10.4",
             endpoint=f"http://{hostname}",
             service_id=svc_id,
             username="admin",
             password=admin_password,
             metadata={
-                "internal_endpoint": internal_endpoint,
-                "namespace": namespace,
+                "display": {},
+                "internal": {
+                    "endpoint": internal_endpoint,
+                    "namespace": namespace,
+                },
             },
         )
 
@@ -192,6 +201,7 @@ class AirflowDeployStep(WorkflowStep):
             "AIRFLOW_POSTGRES_IMAGE": config.postgres_image,
             "AIRFLOW_GIT_SYNC_IMAGE": config.git_sync_image,
             "AIRFLOW_GIT_SYNC_INTERVAL": str(config.git_sync_interval),
+            "AIRFLOW_DAGS_SUB_PATH": config.dags_sub_path,
             "AIRFLOW_DAGS_STORAGE_SIZE": config.dags_storage_size,
             "AIRFLOW_LOGS_STORAGE_SIZE": config.logs_storage_size,
             "AIRFLOW_DB_STORAGE_SIZE": config.db_storage_size,
@@ -213,6 +223,8 @@ class AirflowDeployStep(WorkflowStep):
             "AIRFLOW_SECRET_KEY": "",
             "GITLAB_REPO_URL": ctx.get("gitlab_http_url", ""),
             "GITLAB_TOKEN": ctx.get("gitlab_token", ""),
+            "PIP_INDEX_URL": config.pip_index_url,
+            "PIP_TRUSTED_HOST": urlparse(config.pip_index_url).hostname or "pypi.org",
         })
 
     async def rollback(self, ctx: WorkflowContext) -> None:

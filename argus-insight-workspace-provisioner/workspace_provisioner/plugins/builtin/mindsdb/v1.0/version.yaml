@@ -13,3 +13,5 @@ changelog: |
   - MongoDB wire protocol (47336)
   - Persistent model and metadata storage
 upgradeable_from: []
+os_key: debian-13
+software_version: "26.0.1"

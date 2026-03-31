@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argus-starrocks-${WORKSPACE_NAME}-config
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: starrocks
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+data:
+  fe.conf: |
+    LOG_DIR = ${STARROCKS_HOME}/log
+    DATE = "$(date +%Y%m%d-%H%M%S)"
+    http_port = 8030
+    rpc_port = 9020
+    query_port = 9030
+    edit_log_port = 9010
+    mysql_service_nio_enabled = true
+  be.conf: |
+    LOG_DIR = ${STARROCKS_HOME}/log
+    be_port = 9060
+    webserver_port = 8040
+    heartbeat_service_port = 9050
+    brpc_port = 8060
+  register-backends.sh: |
+    #!/bin/bash
+    set -e
+    FE_HOST="argus-starrocks-${WORKSPACE_NAME}-fe"
+    FE_QUERY_PORT=9030
+    BE_SVC="argus-starrocks-${WORKSPACE_NAME}-be"
+    BE_HEARTBEAT_PORT=9050
+    REPLICAS=${STARROCKS_BE_REPLICAS}
+
+    echo "Waiting for FE to be ready..."
+    for i in $(seq 1 60); do
+      if mysql -h "$FE_HOST" -P "$FE_QUERY_PORT" -u root -e "SHOW FRONTENDS\G" >/dev/null 2>&1; then
+        echo "FE is ready."
+        break
+      fi
+      sleep 5
+    done
+
+    echo "Registering BE nodes..."
+    for i in $(seq 0 $((REPLICAS - 1))); do
+      BE_POD="${BE_SVC}-${i}.${BE_SVC}.${K8S_NAMESPACE}.svc.cluster.local"
+      echo "Adding backend: ${BE_POD}:${BE_HEARTBEAT_PORT}"
+      mysql -h "$FE_HOST" -P "$FE_QUERY_PORT" -u root -e \
+        "ALTER SYSTEM ADD BACKEND '${BE_POD}:${BE_HEARTBEAT_PORT}';" 2>/dev/null || \
+        echo "  (already registered or error, continuing)"
+    done
+    echo "Backend registration complete."

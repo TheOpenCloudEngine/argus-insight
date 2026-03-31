@@ -214,7 +214,7 @@ export async function deactivateUser(userId: string): Promise<void> {
  */
 export async function modifyUser(
   userId: string,
-  payload: { first_name?: string; last_name?: string; email?: string; phone_number?: string },
+  payload: { first_name?: string; last_name?: string; email?: string; phone_number?: string; password?: string },
 ): Promise<User> {
   const res = await authFetch(`${BASE}/users/${userId}`, {
     method: "PUT",

@@ -1,0 +1,17 @@
+name: argus-postgresql
+display_name: PostgreSQL
+description: Deploy PostgreSQL relational database with persistent storage
+icon: postgresql
+category: database
+depends_on: []
+provides:
+  - postgresql_endpoint
+  - postgresql_manifests
+requires: []
+tags:
+  - sql
+  - rdbms
+  - postgresql
+versions:
+  - "1.0"
+default_version: "1.0"

@@ -108,6 +108,29 @@ class CopyObjectResponse(BaseModel):
     etag: str | None = None
 
 
+class CrossCopyRequest(BaseModel):
+    """Request to copy objects between buckets."""
+
+    source_bucket: str = Field(..., description="Source bucket name")
+    source_keys: list[str] = Field(..., description="Source object keys (folders end with /)")
+    destination_bucket: str = Field(..., description="Destination bucket name")
+    destination_prefix: str = Field("", description="Destination prefix (folder path)")
+    overwrite: bool = Field(False, description="Overwrite existing files")
+
+
+class CrossCopyResult(BaseModel):
+    source: str
+    destination: str
+    status: str
+
+
+class CrossCopyResponse(BaseModel):
+    copied: int
+    skipped: int
+    errors: list[str] = []
+    results: list[CrossCopyResult] = []
+
+
 # --------------------------------------------------------------------------- #
 # Delete
 # --------------------------------------------------------------------------- #

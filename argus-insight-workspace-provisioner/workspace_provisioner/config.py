@@ -63,6 +63,10 @@ class AirflowConfig(BaseModel):
         default=60,
         description="Git-sync interval in seconds",
     )
+    dags_sub_path: str = Field(
+        default="airflow-dags",
+        description="Subdirectory in the Git repo containing DAG files",
+    )
     dags_storage_size: str = Field(
         default="10Gi",
         description="PVC size for DAGs volume",
@@ -82,6 +86,10 @@ class AirflowConfig(BaseModel):
     scheduler_resources: ResourceConfig = Field(
         default_factory=ResourceConfig,
         description="CPU/Memory for the scheduler container",
+    )
+    pip_index_url: str = Field(
+        default="https://pypi.org/simple",
+        description="Python pip index URL for DAG dependencies",
     )
 
 
@@ -390,6 +398,128 @@ class VScodeServerConfig(BaseModel):
     default_extensions: list[str] = Field(
         default_factory=list,
         description="VS Code extensions to install on first launch (e.g., ms-python.python)",
+    )
+
+
+class TrinoConfig(BaseModel):
+    """Trino distributed SQL query engine deployment settings."""
+
+    coordinator_image: str = Field(
+        default="trinodb/trino:latest",
+        description="Trino coordinator/worker container image",
+    )
+    worker_replicas: int = Field(
+        default=1,
+        description="Number of Trino worker replicas",
+    )
+    coordinator_resources: ResourceConfig = Field(
+        default_factory=lambda: ResourceConfig(
+            cpu_request="500m", cpu_limit="2",
+            memory_request="2Gi", memory_limit="4Gi",
+        ),
+        description="CPU/Memory for the coordinator",
+    )
+    worker_resources: ResourceConfig = Field(
+        default_factory=lambda: ResourceConfig(
+            cpu_request="500m", cpu_limit="2",
+            memory_request="2Gi", memory_limit="4Gi",
+        ),
+        description="CPU/Memory for each worker",
+    )
+
+
+class StarRocksConfig(BaseModel):
+    """StarRocks MPP analytics database deployment settings."""
+
+    fe_image: str = Field(
+        default="starrocks/fe-ubuntu:latest",
+        description="StarRocks Frontend container image",
+    )
+    be_image: str = Field(
+        default="starrocks/be-ubuntu:latest",
+        description="StarRocks Backend container image",
+    )
+    be_replicas: int = Field(
+        default=1,
+        description="Number of Backend replicas",
+    )
+    fe_storage_size: str = Field(
+        default="10Gi",
+        description="PVC size for FE metadata",
+    )
+    be_storage_size: str = Field(
+        default="50Gi",
+        description="PVC size for BE data",
+    )
+    fe_resources: ResourceConfig = Field(
+        default_factory=lambda: ResourceConfig(
+            cpu_request="500m", cpu_limit="2",
+            memory_request="2Gi", memory_limit="4Gi",
+        ),
+        description="CPU/Memory for Frontend",
+    )
+    be_resources: ResourceConfig = Field(
+        default_factory=lambda: ResourceConfig(
+            cpu_request="1", cpu_limit="4",
+            memory_request="4Gi", memory_limit="8Gi",
+        ),
+        description="CPU/Memory for each Backend",
+    )
+
+
+class PostgresqlConfig(BaseModel):
+    """PostgreSQL deployment settings."""
+
+    image: str = Field(
+        default="postgres:17-bookworm",
+        description="PostgreSQL container image",
+    )
+    storage_size: str = Field(
+        default="20Gi",
+        description="Persistent data volume size",
+    )
+    db_name: str = Field(
+        default="argus",
+        description="Default database name",
+    )
+    db_user: str = Field(
+        default="argus",
+        description="Database username",
+    )
+    resources: ResourceConfig = Field(
+        default_factory=lambda: ResourceConfig(
+            cpu_request="250m", cpu_limit="2",
+            memory_request="512Mi", memory_limit="2Gi",
+        ),
+        description="CPU/Memory for the PostgreSQL container",
+    )
+
+
+class MariadbConfig(BaseModel):
+    """MariaDB deployment settings."""
+
+    image: str = Field(
+        default="mariadb:11",
+        description="MariaDB container image",
+    )
+    storage_size: str = Field(
+        default="20Gi",
+        description="Persistent data volume size",
+    )
+    db_name: str = Field(
+        default="argus",
+        description="Default database name",
+    )
+    db_user: str = Field(
+        default="argus",
+        description="Database username",
+    )
+    resources: ResourceConfig = Field(
+        default_factory=lambda: ResourceConfig(
+            cpu_request="250m", cpu_limit="2",
+            memory_request="512Mi", memory_limit="2Gi",
+        ),
+        description="CPU/Memory for the MariaDB container",
     )
 
 

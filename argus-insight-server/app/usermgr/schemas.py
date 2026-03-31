@@ -112,6 +112,7 @@ class UserModifyRequest(BaseModel):
     last_name: str | None = Field(None, min_length=1, max_length=100)
     email: EmailStr | None = None
     phone_number: str | None = Field(None, max_length=30)
+    password: str | None = Field(None, min_length=4, max_length=128)
 
 
 class UserChangeRoleRequest(BaseModel):

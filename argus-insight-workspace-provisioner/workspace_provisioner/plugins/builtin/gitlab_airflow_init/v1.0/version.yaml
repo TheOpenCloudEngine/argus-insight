@@ -1,0 +1,10 @@
+version: "1.0"
+display_name: "v1.0"
+description: Initialize airflow-dags directory and provide git-sync credentials
+status: stable
+step_class: workspace_provisioner.workflow.steps.gitlab_airflow_init.GitlabAirflowInitStep
+template_dir: null
+changelog: |
+  - Create airflow-dags/ directory with sample DAG if not exists
+  - Provide gitlab_http_url and gitlab_token for Airflow git-sync
+upgradeable_from: []

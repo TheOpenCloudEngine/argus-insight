@@ -3,6 +3,11 @@ import type { ListObjectsResponse } from "@/components/object-storage-browser"
 
 const BASE = "/api/v1/objectfilemgr"
 
+// Direct backend URL for large file uploads (bypass Next.js middleware body limit)
+const DIRECT_BASE = typeof window !== "undefined"
+  ? `${window.location.protocol}//${window.location.hostname}:4500/api/v1/objectfilemgr`
+  : BASE
+
 // --------------------------------------------------------------------------- //
 // Error helpers
 // --------------------------------------------------------------------------- //
@@ -232,8 +237,8 @@ export async function uploadFiles(
     const formData = new FormData()
     formData.append("file", file)
 
-    const res = await authFetch(
-      `${BASE}/objects/upload?${params.toString()}`,
+    const res = await fetch(
+      `${DIRECT_BASE}/objects/upload?${params.toString()}`,
       {
         method: "POST",
         body: formData,
@@ -265,6 +270,41 @@ export async function copyObject(
   if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to copy object"))
 }
 
+export interface CrossCopyResult {
+  source: string
+  destination: string
+  status: string
+}
+
+export interface CrossCopyResponse {
+  copied: number
+  skipped: number
+  errors: string[]
+  results: CrossCopyResult[]
+}
+
+export async function crossCopyObjects(
+  sourceBucket: string,
+  sourceKeys: string[],
+  destinationBucket: string,
+  destinationPrefix: string,
+  overwrite: boolean = false,
+): Promise<CrossCopyResponse> {
+  const res = await authFetch(`${BASE}/objects/cross-copy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source_bucket: sourceBucket,
+      source_keys: sourceKeys,
+      destination_bucket: destinationBucket,
+      destination_prefix: destinationPrefix,
+      overwrite: overwrite,
+    }),
+  })
+  if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to copy objects"))
+  return res.json()
+}
+
 /**
  * Upload a single file with progress tracking via XMLHttpRequest.
  */
@@ -284,7 +324,7 @@ export function uploadFileWithProgress(
     formData.append("file", file)
 
     const xhr = new XMLHttpRequest()
-    xhr.open("POST", `${BASE}/objects/upload?${params.toString()}`)
+    xhr.open("POST", `${DIRECT_BASE}/objects/upload?${params.toString()}`)
 
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable) {

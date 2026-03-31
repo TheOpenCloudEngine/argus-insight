@@ -22,6 +22,7 @@ import { UploadDialog } from "./upload-dialog"
 import { DeleteDialog } from "./delete-dialog"
 import { PropertiesDialog } from "./properties-dialog"
 import { RenameDialog } from "./rename-dialog"
+import { CopyToDialog } from "./copy-to-dialog"
 import { UploadProgressDialog, type FileUploadStatus } from "./upload-progress-dialog"
 import { FileViewerDialog, isViewableFile } from "./file-viewer-dialog"
 import { CatViewerDialog } from "./cat-viewer-dialog"
@@ -87,6 +88,7 @@ export function ObjectStorageBrowser({
   // --- Context menu dialog state ---
   const [contextEntry, setContextEntry] = useState<StorageEntry | null>(null)
   const [renameOpen, setRenameOpen] = useState(false)
+  const [copyToOpen, setCopyToOpen] = useState(false)
 const [contextDeleteOpen, setContextDeleteOpen] = useState(false)
 
   // --- Drag-and-drop state ---
@@ -501,6 +503,7 @@ async function handleContextDelete() {
               setRenameOpen(true)
             }
           }}
+          onCopyTo={() => setCopyToOpen(true)}
           onProperties={() => {
             const id = Array.from(selectedKeys)[0]
             const entry = findEntryById(id)
@@ -633,6 +636,13 @@ async function handleContextDelete() {
         onOpenChange={setCatViewerOpen}
         entry={catViewerEntry}
         getDownloadUrl={(key) => dataSource.getDownloadUrl(bucket, key)}
+      />
+      <CopyToDialog
+        open={copyToOpen}
+        onOpenChange={setCopyToOpen}
+        sourceBucket={bucket}
+        sourceKeys={selectedRealKeys()}
+        onComplete={() => fetchData(prefix)}
       />
     </div>
   )

@@ -1,0 +1,14 @@
+version: "1.0"
+display_name: "v1.0 (PostgreSQL 17)"
+description: PostgreSQL 17 on Debian Bookworm with persistent data volume
+status: stable
+step_class: workspace_provisioner.workflow.steps.postgresql_deploy.PostgresqlDeployStep
+config_class: workspace_provisioner.config.PostgresqlConfig
+template_dir: postgresql
+changelog: |
+  - PostgreSQL 17 (Debian Bookworm)
+  - Persistent data volume
+  - Auto-generated password
+upgradeable_from: []
+os_key: debian-12
+software_version: "17"

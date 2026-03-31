@@ -13,3 +13,5 @@ changelog: |
   - Persistent data volume
   - Auto-generated password
 upgradeable_from: []
+os_key: debian-13
+software_version: "5.26"

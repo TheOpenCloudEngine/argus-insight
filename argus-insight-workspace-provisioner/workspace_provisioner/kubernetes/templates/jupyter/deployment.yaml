@@ -39,14 +39,14 @@ spec:
               cat > /home/jovyan/.config/pip/pip.conf << 'PIPCONF'
               [global]
               index-url = ${PIP_INDEX_URL}
-              trusted-host = pypi.org
+              trusted-host = ${PIP_TRUSTED_HOST}
               PIPCONF
 
               exec start-notebook.py \
                 --NotebookApp.token='' \
                 --NotebookApp.password='' \
                 --NotebookApp.allow_origin='*' \
-                --ServerApp.root_dir=/workspace \
+                --ServerApp.root_dir=/data \
                 --ip=0.0.0.0 \
                 --port=8888
           ports:
@@ -67,13 +67,16 @@ spec:
             - name: data-vol
               mountPath: /data
               mountPropagation: HostToContainer
+            - name: jupyter-config
+              mountPath: /home/jovyan/.jupyter/jupyter_notebook_config.py
+              subPath: custom_config.py
           readinessProbe:
             httpGet:
               path: /api
               port: http
             initialDelaySeconds: 10
             periodSeconds: 10
-        # Sidecar 1: Mount workspace bucket to /workspace
+        # Sidecar 1: Mount workspace bucket to /workspace (shared team storage)
         - name: s3fs-workspace
           image: ${S3FS_IMAGE}
           securityContext:
@@ -118,7 +121,7 @@ spec:
             - name: workspace-vol
               mountPath: /workspace
               mountPropagation: Bidirectional
-        # Sidecar 2: Mount personal bucket to /data
+        # Sidecar 2: Mount user bucket to /data (per-user working directory)
         - name: s3fs-data
           image: ${S3FS_IMAGE}
           securityContext:
@@ -168,3 +171,6 @@ spec:
           emptyDir: {}
         - name: data-vol
           emptyDir: {}
+        - name: jupyter-config
+          configMap:
+            name: argus-jupyter-${INSTANCE_ID}-custom-config

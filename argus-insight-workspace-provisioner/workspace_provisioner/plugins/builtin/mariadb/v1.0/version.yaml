@@ -1,0 +1,14 @@
+version: "1.0"
+display_name: "v1.0 (MariaDB 11)"
+description: MariaDB 11 on Ubuntu Noble with persistent data volume
+status: stable
+step_class: workspace_provisioner.workflow.steps.mariadb_deploy.MariadbDeployStep
+config_class: workspace_provisioner.config.MariadbConfig
+template_dir: mariadb
+changelog: |
+  - MariaDB 11 (Ubuntu 24.04)
+  - Persistent data volume
+  - Auto-generated root password
+upgradeable_from: []
+os_key: ubuntu-24.04
+software_version: "11"

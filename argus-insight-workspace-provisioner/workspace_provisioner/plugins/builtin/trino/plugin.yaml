@@ -1,0 +1,18 @@
+name: argus-trino
+display_name: Trino Query Engine
+description: Deploy Trino distributed SQL query engine with coordinator and worker
+icon: trino
+category: database
+depends_on: []
+provides:
+  - trino_endpoint
+  - trino_manifests
+requires: []
+tags:
+  - sql
+  - query-engine
+  - analytics
+  - federation
+versions:
+  - "1.0"
+default_version: "1.0"
