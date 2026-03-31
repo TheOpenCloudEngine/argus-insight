@@ -45,9 +45,11 @@ type AllRepos = Record<string, OsRepos>
 /*  APT Add Dialog                                                     */
 /* ------------------------------------------------------------------ */
 
-function AptAddDialog({ open, onOpenChange, onAdd }: { open: boolean; onOpenChange: (o: boolean) => void; onAdd: (r: AptRepo) => void }) {
-  const [form, setForm] = useState<AptRepo>({ type: "deb", url: "", dist: "", components: "main", enabled: true, trusted: true })
-  const handleAdd = () => { if (form.url && form.dist) { onAdd({ ...form }); onOpenChange(false); setForm({ type: "deb", url: "", dist: "", components: "main", enabled: true, trusted: true }) } }
+function AptAddDialog({ open, onOpenChange, onAdd, defaultDist }: { open: boolean; onOpenChange: (o: boolean) => void; onAdd: (r: AptRepo) => void; defaultDist: string }) {
+  const [form, setForm] = useState<AptRepo>({ type: "deb", url: "", dist: defaultDist, components: "main", enabled: true, trusted: true })
+  // Reset dist when dialog opens with new defaultDist
+  useEffect(() => { if (open) setForm((f) => ({ ...f, dist: defaultDist })) }, [open, defaultDist])
+  const handleAdd = () => { if (form.url && form.dist) { onAdd({ ...form }); onOpenChange(false); setForm({ type: "deb", url: "", dist: defaultDist, components: "main", enabled: true, trusted: true }) } }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -233,7 +235,7 @@ function RepoSection({
       </CardContent>
 
       {/* Add dialogs */}
-      {repos.pkg_type === "apt" && <AptAddDialog open={addOpen} onOpenChange={setAddOpen} onAdd={(r) => addCustom(r)} />}
+      {repos.pkg_type === "apt" && <AptAddDialog open={addOpen} onOpenChange={setAddOpen} onAdd={(r) => addCustom(r)} defaultDist={(repos.builtin[0] as AptRepo)?.dist?.replace(/-.*/, "") || ""} />}
       {repos.pkg_type === "yum" && <YumAddDialog open={addOpen} onOpenChange={setAddOpen} onAdd={(r) => addCustom(r)} />}
       {repos.pkg_type === "apk" && <ApkAddDialog open={addOpen} onOpenChange={setAddOpen} onAdd={(r) => addCustom(r)} />}
     </Card>
