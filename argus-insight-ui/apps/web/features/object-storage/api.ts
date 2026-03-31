@@ -265,6 +265,41 @@ export async function copyObject(
   if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to copy object"))
 }
 
+export interface CrossCopyResult {
+  source: string
+  destination: string
+  status: string
+}
+
+export interface CrossCopyResponse {
+  copied: number
+  skipped: number
+  errors: string[]
+  results: CrossCopyResult[]
+}
+
+export async function crossCopyObjects(
+  sourceBucket: string,
+  sourceKeys: string[],
+  destinationBucket: string,
+  destinationPrefix: string,
+  overwrite: boolean = false,
+): Promise<CrossCopyResponse> {
+  const res = await authFetch(`${BASE}/objects/cross-copy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source_bucket: sourceBucket,
+      source_keys: sourceKeys,
+      destination_bucket: destinationBucket,
+      destination_prefix: destinationPrefix,
+      overwrite: overwrite,
+    }),
+  })
+  if (!res.ok) throw new Error(await extractErrorMessage(res, "Failed to copy objects"))
+  return res.json()
+}
+
 /**
  * Upload a single file with progress tracking via XMLHttpRequest.
  */

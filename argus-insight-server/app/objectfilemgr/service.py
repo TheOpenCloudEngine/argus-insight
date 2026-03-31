@@ -305,6 +305,91 @@ async def copy_object(
     return CopyObjectResponse(key=destination_key, etag=etag)
 
 
+async def cross_copy_objects(
+    source_bucket: str,
+    source_keys: list[str],
+    destination_bucket: str,
+    destination_prefix: str,
+    overwrite: bool = False,
+) -> dict:
+    """Copy objects between buckets, supporting folders (recursive).
+
+    For folder keys (ending with /), lists all objects under that prefix
+    and copies each one preserving the relative path.
+    """
+    from app.objectfilemgr.schemas import CrossCopyResult
+
+    results: list[CrossCopyResult] = []
+    errors: list[str] = []
+    skipped = 0
+
+    async with get_s3_client() as s3:
+        for source_key in source_keys:
+            if source_key.endswith("/"):
+                # Folder: list all objects recursively and copy each
+                folder_name = source_key.rstrip("/").rsplit("/", 1)[-1]
+                continuation = None
+                while True:
+                    kwargs = {"Bucket": source_bucket, "Prefix": source_key, "MaxKeys": 1000}
+                    if continuation:
+                        kwargs["ContinuationToken"] = continuation
+                    resp = await s3.list_objects_v2(**kwargs)
+                    for obj in resp.get("Contents", []):
+                        obj_key = obj["Key"]
+                        relative = obj_key[len(source_key):]
+                        dest_key = f"{destination_prefix}{folder_name}/{relative}"
+                        try:
+                            if not overwrite:
+                                try:
+                                    await s3.head_object(Bucket=destination_bucket, Key=dest_key)
+                                    skipped += 1
+                                    results.append(CrossCopyResult(source=obj_key, destination=dest_key, status="skipped"))
+                                    continue
+                                except Exception:
+                                    pass
+                            await s3.copy_object(
+                                Bucket=destination_bucket,
+                                CopySource=f"{source_bucket}/{obj_key}",
+                                Key=dest_key,
+                            )
+                            results.append(CrossCopyResult(source=obj_key, destination=dest_key, status="ok"))
+                        except Exception as e:
+                            errors.append(f"{obj_key}: {e}")
+                            results.append(CrossCopyResult(source=obj_key, destination=dest_key, status="error"))
+
+                    if resp.get("IsTruncated"):
+                        continuation = resp.get("NextContinuationToken")
+                    else:
+                        break
+            else:
+                # File: copy directly
+                filename = source_key.rsplit("/", 1)[-1]
+                dest_key = f"{destination_prefix}{filename}"
+                try:
+                    if not overwrite:
+                        try:
+                            await s3.head_object(Bucket=destination_bucket, Key=dest_key)
+                            skipped += 1
+                            results.append(CrossCopyResult(source=source_key, destination=dest_key, status="skipped"))
+                            continue
+                        except Exception:
+                            pass
+                    await s3.copy_object(
+                        Bucket=destination_bucket,
+                        CopySource=f"{source_bucket}/{source_key}",
+                        Key=dest_key,
+                    )
+                    results.append(CrossCopyResult(source=source_key, destination=dest_key, status="ok"))
+                except Exception as e:
+                    errors.append(f"{source_key}: {e}")
+                    results.append(CrossCopyResult(source=source_key, destination=dest_key, status="error"))
+
+    copied = sum(1 for r in results if r.status == "ok")
+    logger.info("CrossCopy: %d copied, %d skipped, %d errors (%s -> %s)",
+                copied, skipped, len(errors), source_bucket, destination_bucket)
+    return {"copied": copied, "skipped": skipped, "errors": errors, "results": results}
+
+
 # =========================================================================== #
 # 2. Directory (Prefix) management
 # =========================================================================== #

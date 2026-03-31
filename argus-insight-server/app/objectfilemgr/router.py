@@ -31,6 +31,8 @@ from app.objectfilemgr.schemas import (
     CompleteMultipartResponse,
     CopyObjectRequest,
     CopyObjectResponse,
+    CrossCopyRequest,
+    CrossCopyResponse,
     CreateFolderRequest,
     CreateFolderResponse,
     DeleteObjectsRequest,
@@ -352,6 +354,21 @@ async def copy_object(
         )
     except Exception as e:
         _raise_if_s3_unavailable(e, "copy_object")
+
+
+@router.post("/objects/cross-copy", response_model=CrossCopyResponse)
+async def cross_copy_objects(body: CrossCopyRequest):
+    """Copy objects between buckets, with recursive folder support."""
+    try:
+        return await service.cross_copy_objects(
+            source_bucket=body.source_bucket,
+            source_keys=body.source_keys,
+            destination_bucket=body.destination_bucket,
+            destination_prefix=body.destination_prefix,
+            overwrite=body.overwrite,
+        )
+    except Exception as e:
+        _raise_if_s3_unavailable(e, "cross_copy_objects")
 
 
 # =========================================================================== #
