@@ -198,7 +198,7 @@ export function CatalogCardTab({
                 </CardHeader>
 
                 <CardContent className="pt-0">
-                  <p className="text-muted-foreground line-clamp-2 text-xs">
+                  <p className="text-foreground line-clamp-2 text-sm">
                     {plugin.description}
                   </p>
                 </CardContent>
@@ -208,13 +208,13 @@ export function CatalogCardTab({
                     <Badge
                       key={tag}
                       variant="outline"
-                      className="text-[10px]"
+                      className="text-xs"
                     >
                       {tag}
                     </Badge>
                   ))}
                   {plugin.tags.length > 3 && (
-                    <span className="text-muted-foreground text-[10px]">
+                    <span className="text-muted-foreground text-xs">
                       +{plugin.tags.length - 3}
                     </span>
                   )}
