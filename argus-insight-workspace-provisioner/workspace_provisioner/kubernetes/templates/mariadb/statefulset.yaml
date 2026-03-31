@@ -73,6 +73,9 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/mysql
+            - name: custom-config
+              mountPath: /etc/mysql/conf.d/custom.cnf
+              subPath: custom.cnf
         - name: phpmyadmin
           image: phpmyadmin:latest
           env:
@@ -97,6 +100,10 @@ spec:
             limits:
               cpu: "200m"
               memory: "256Mi"
+      volumes:
+        - name: custom-config
+          configMap:
+            name: argus-mariadb-${WORKSPACE_NAME}-custom-config
   volumeClaimTemplates:
     - metadata:
         name: data

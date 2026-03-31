@@ -909,3 +909,166 @@ async def get_workspace_audit_logs(
         ],
         total=total, page=page, page_size=page_size,
     )
+
+
+# =========================================================================== #
+# Service Configuration (runtime config change)
+# =========================================================================== #
+
+MARIADB_ALLOWED_OPTIONS = {
+    "max_connections", "wait_timeout", "interactive_timeout", "connect_timeout",
+    "max_allowed_packet", "thread_cache_size",
+    "innodb_buffer_pool_size", "innodb_log_file_size", "innodb_flush_log_at_trx_commit",
+    "innodb_file_per_table", "tmp_table_size", "max_heap_table_size",
+    "sort_buffer_size", "join_buffer_size",
+    "slow_query_log", "long_query_time",
+    "character_set_server", "collation_server",
+}
+
+MARIADB_BLOCKED_OPTIONS = {
+    "port", "socket", "datadir", "pid_file", "log_bin", "server_id",
+    "bind_address", "skip_networking", "skip_grant_tables",
+    "plugin_load", "secure_file_priv", "basedir", "tmpdir",
+}
+
+
+class ServiceConfigUpdateRequest(BaseModel):
+    options: dict[str, str]
+
+
+@router.get("/workspaces/{workspace_id}/services/{service_id}/config")
+async def get_service_config(
+    workspace_id: int,
+    service_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Get the runtime configuration for a deployed service."""
+    import asyncio
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+
+    svc_result = await session.execute(
+        select(ArgusWorkspaceService).where(ArgusWorkspaceService.id == service_id)
+    )
+    svc = svc_result.scalars().first()
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    ws_result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    ws = ws_result.scalars().first()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    namespace = ws.k8s_namespace or f"argus-ws-{ws.name}"
+
+    if svc.plugin_name == "argus-mariadb":
+        configmap_name = f"argus-mariadb-{ws.name}-custom-config"
+        cmd = ["kubectl", "get", "configmap", configmap_name, "-n", namespace, "-o", "jsonpath={.data.custom\\.cnf}"]
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            return {"plugin_name": svc.plugin_name, "options": {}, "allowed_options": list(MARIADB_ALLOWED_OPTIONS)}
+
+        # Parse custom.cnf
+        options = {}
+        for line in stdout.decode().splitlines():
+            line = line.strip()
+            if not line or line.startswith("[") or line.startswith("#"):
+                continue
+            if "=" in line:
+                key, val = line.split("=", 1)
+                options[key.strip()] = val.strip()
+
+        return {
+            "plugin_name": svc.plugin_name,
+            "options": options,
+            "allowed_options": sorted(MARIADB_ALLOWED_OPTIONS),
+        }
+
+    return {"plugin_name": svc.plugin_name, "options": {}, "allowed_options": []}
+
+
+@router.put("/workspaces/{workspace_id}/services/{service_id}/config")
+async def update_service_config(
+    workspace_id: int,
+    service_id: int,
+    body: ServiceConfigUpdateRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Update runtime configuration for a deployed service and restart."""
+    import asyncio
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+
+    svc_result = await session.execute(
+        select(ArgusWorkspaceService).where(ArgusWorkspaceService.id == service_id)
+    )
+    svc = svc_result.scalars().first()
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    ws_result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    ws = ws_result.scalars().first()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    namespace = ws.k8s_namespace or f"argus-ws-{ws.name}"
+
+    if svc.plugin_name == "argus-mariadb":
+        # Validate options
+        for key in body.options:
+            if key in MARIADB_BLOCKED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Option '{key}' cannot be changed")
+            if key not in MARIADB_ALLOWED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Unknown option '{key}'")
+
+        # Build custom.cnf content
+        lines = ["[mysqld]"]
+        for key, val in body.options.items():
+            lines.append(f"{key} = {val}")
+        cnf_content = "\n".join(lines) + "\n"
+
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+
+        configmap_name = f"argus-mariadb-{ws.name}-custom-config"
+
+        # Update ConfigMap via kubectl patch
+        import json as _json
+        patch = _json.dumps({"data": {"custom.cnf": cnf_content}})
+        cmd = ["kubectl", "patch", "configmap", configmap_name, "-n", namespace, "--type=merge", f"-p={patch}"]
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to update config: {stderr.decode()}")
+
+        # Restart StatefulSet
+        cmd2 = ["kubectl", "rollout", "restart", f"statefulset/argus-mariadb-{ws.name}", "-n", namespace]
+        if kubeconfig:
+            cmd2.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc2 = await asyncio.create_subprocess_exec(
+            *cmd2, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await proc2.communicate()
+
+        logger.info("MariaDB config updated for workspace %s, restarting", ws.name)
+        return {"status": "ok", "message": "Configuration updated. MariaDB is restarting."}
+
+    raise HTTPException(status_code=400, detail=f"Configuration not supported for {svc.plugin_name}")

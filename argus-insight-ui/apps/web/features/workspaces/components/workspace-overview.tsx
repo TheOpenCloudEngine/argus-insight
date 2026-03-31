@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, Fragment } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
   CheckCircle2,
@@ -15,6 +15,7 @@ import {
   Loader2,
   Plus,
   Server,
+  Settings,
   XCircle,
 } from "lucide-react"
 
@@ -44,6 +45,15 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@workspace/ui/components/sheet"
+import { Label } from "@workspace/ui/components/label"
+import { Separator } from "@workspace/ui/components/separator"
 import { authFetch } from "@/features/auth/auth-fetch"
 import { useAuth } from "@/features/auth"
 import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar"
@@ -248,18 +258,152 @@ function DetailRow({
   )
 }
 
+/* ------------------------------------------------------------------ */
+/*  Service Configuration Sheet (MariaDB, PostgreSQL)                  */
+/* ------------------------------------------------------------------ */
+
+const CONFIGURABLE_PLUGINS = new Set(["argus-mariadb"])
+
+function ServiceConfigSheet({
+  open,
+  onOpenChange,
+  workspaceId,
+  service,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  workspaceId: number
+  service: WorkspaceService
+}) {
+  const [options, setOptions] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setLoading(true)
+    setSaved(false)
+    setError(null)
+    authFetch(`/api/v1/workspace/workspaces/${workspaceId}/services/${service.id}/config`)
+      .then((res) => res.ok ? res.json() : { options: {} })
+      .then((data) => { setOptions(data.options ?? {}); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [open, workspaceId, service.id])
+
+  const handleSave = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/services/${service.id}/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ options }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.detail || `Failed: ${res.status}`)
+      }
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save")
+    }
+    setSaving(false)
+  }
+
+  const updateOption = (key: string, value: string) => {
+    setOptions((prev) => ({ ...prev, [key]: value }))
+    setSaved(false)
+  }
+
+  // Group options by category
+  const connectionKeys = ["max_connections", "wait_timeout", "interactive_timeout", "connect_timeout", "max_allowed_packet", "thread_cache_size"]
+  const performanceKeys = ["innodb_buffer_pool_size", "innodb_log_file_size", "innodb_flush_log_at_trx_commit", "tmp_table_size", "sort_buffer_size", "join_buffer_size"]
+  const loggingKeys = ["slow_query_log", "long_query_time"]
+  const charsetKeys = ["character_set_server", "collation_server"]
+
+  const renderGroup = (title: string, keys: string[]) => {
+    const activeKeys = keys.filter((k) => k in options)
+    if (activeKeys.length === 0) return null
+    return (
+      <div key={title} className="space-y-2">
+        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{title}</h4>
+        {activeKeys.map((key) => (
+          <div key={key} className="flex items-center gap-3">
+            <Label className="w-48 shrink-0 text-xs font-mono">{key}</Label>
+            <Input
+              className="h-8 text-sm"
+              value={options[key] ?? ""}
+              onChange={(e) => updateOption(key, e.target.value)}
+            />
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-[450px] overflow-y-auto sm:max-w-[450px] px-6">
+        <SheetHeader className="pb-4">
+          <SheetTitle>MariaDB Configuration</SheetTitle>
+          <SheetDescription>Edit configuration options. Changes will restart the service.</SheetDescription>
+        </SheetHeader>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {renderGroup("Connection", connectionKeys)}
+            {renderGroup("Performance", performanceKeys)}
+            {renderGroup("Logging", loggingKeys)}
+            {renderGroup("Character Set", charsetKeys)}
+
+            {error && (
+              <div className="rounded-md bg-red-50 text-red-700 border border-red-200 px-3 py-2 text-sm dark:bg-red-950 dark:text-red-200 dark:border-red-800">
+                {error}
+              </div>
+            )}
+            {saved && (
+              <div className="rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 text-sm dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800">
+                Configuration updated. MariaDB is restarting.
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+              <Button size="sm" onClick={handleSave} disabled={saving}>
+                {saving && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                Apply & Restart
+              </Button>
+            </div>
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
+  )
+}
+
 function ServiceDataListItem({
   service,
   hideTimestamps,
   onDelete,
+  workspaceId,
 }: {
   service: WorkspaceService
   hideTimestamps?: boolean
   onDelete?: (service: WorkspaceService) => void
+  workspaceId?: number
 }) {
   const [expanded, setExpanded] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [configOpen, setConfigOpen] = useState(false)
+  const isConfigurable = CONFIGURABLE_PLUGINS.has(service.plugin_name)
   // Map plugin_name to icon filename
   const PLUGIN_ICON_MAP: Record<string, string> = {
     "argus-vscode-server": "code",
@@ -405,16 +549,29 @@ function ServiceDataListItem({
               />
             ))}
           </div>
-          {onDelete && (
-            <div className="mt-3 flex items-center justify-end">
-              <Button
-                variant="destructive"
-                size="sm"
-                className="text-xs"
-                onClick={(e) => { e.stopPropagation(); setConfirmOpen(true) }}
-              >
-                Delete Service
-              </Button>
+          {(isConfigurable || onDelete) && (
+            <div className="mt-3 flex items-center justify-end gap-2">
+              {isConfigurable && workspaceId && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                  onClick={(e) => { e.stopPropagation(); setConfigOpen(true) }}
+                >
+                  <Settings className="mr-1.5 h-3.5 w-3.5" />
+                  Configure
+                </Button>
+              )}
+              {onDelete && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="text-xs"
+                  onClick={(e) => { e.stopPropagation(); setConfirmOpen(true) }}
+                >
+                  Delete Service
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -460,6 +617,15 @@ function ServiceDataListItem({
           </div>
         </DialogContent>
       </Dialog>
+      {/* Service Config Sheet */}
+      {isConfigurable && workspaceId && (
+        <ServiceConfigSheet
+          open={configOpen}
+          onOpenChange={setConfigOpen}
+          workspaceId={workspaceId}
+          service={service}
+        />
+      )}
     </div>
   )
 }
@@ -470,12 +636,14 @@ function ServiceDataList({
   onDelete,
   isOwner,
   perUserPlugins,
+  workspaceId,
 }: {
   services: WorkspaceService[]
   hideTimestamps?: boolean
   onDelete?: (service: WorkspaceService) => void
   isOwner?: boolean
   perUserPlugins?: Set<string>
+  workspaceId?: number
 }) {
   return (
     <div className="rounded-lg border">
@@ -491,6 +659,7 @@ function ServiceDataList({
             service={svc}
             hideTimestamps={hideTimestamps}
             onDelete={canDelete ? onDelete : undefined}
+            workspaceId={workspaceId}
           />
         )
       })}
@@ -1233,6 +1402,7 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
                   onDelete={handleDeleteService}
                   isOwner={!!user && String(workspace.created_by) === user.sub}
                   perUserPlugins={perUserPlugins}
+                  workspaceId={workspace.id}
                 />
               )}
             </div>
