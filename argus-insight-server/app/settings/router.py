@@ -602,6 +602,86 @@ async def update_deploy_mapping(
     return {"status": "ok", "service_key": service_key, "pipeline_id": body.pipeline_id, "constraint": body.constraint}
 
 
+# ---------------------------------------------------------------------------
+# Package Repositories (OS-level: APT, YUM, APK)
+# ---------------------------------------------------------------------------
+
+import json as _json
+
+BUILTIN_REPOS = {
+    "apt": {
+        "label": "Debian/Ubuntu (APT)",
+        "builtin": [
+            {"type": "deb", "url": "http://deb.debian.org/debian", "dist": "bookworm", "components": "main", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://deb.debian.org/debian", "dist": "bookworm-updates", "components": "main", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://security.debian.org/debian-security", "dist": "bookworm-security", "components": "main", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://archive.ubuntu.com/ubuntu", "dist": "noble", "components": "main restricted universe", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://archive.ubuntu.com/ubuntu", "dist": "noble-updates", "components": "main restricted universe", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://security.ubuntu.com/ubuntu", "dist": "noble-security", "components": "main restricted universe", "enabled": True, "trusted": False},
+        ],
+    },
+    "yum": {
+        "label": "RHEL/CentOS (YUM)",
+        "builtin": [
+            {"repo_id": "baseos", "name": "Rocky Linux $releasever - BaseOS", "baseurl": "http://dl.rockylinux.org/pub/rocky/$releasever/BaseOS/$basearch/os/", "gpgcheck": True, "enabled": True},
+            {"repo_id": "appstream", "name": "Rocky Linux $releasever - AppStream", "baseurl": "http://dl.rockylinux.org/pub/rocky/$releasever/AppStream/$basearch/os/", "gpgcheck": True, "enabled": True},
+            {"repo_id": "extras", "name": "Rocky Linux $releasever - Extras", "baseurl": "http://dl.rockylinux.org/pub/rocky/$releasever/extras/$basearch/os/", "gpgcheck": True, "enabled": True},
+        ],
+    },
+    "apk": {
+        "label": "Alpine (APK)",
+        "builtin": [
+            {"url": "https://dl-cdn.alpinelinux.org/alpine/v3.21/main", "enabled": True},
+            {"url": "https://dl-cdn.alpinelinux.org/alpine/v3.21/community", "enabled": True},
+        ],
+    },
+}
+
+
+class RepoUpdateRequest(BaseModel):
+    builtin: list[dict]
+    custom: list[dict]
+
+
+@router.get("/repositories")
+async def get_repositories(session: AsyncSession = Depends(get_session)):
+    """Get all OS-level package repository configurations."""
+    result = {}
+    for os_type, defaults in BUILTIN_REPOS.items():
+        cfg = await service.get_config_by_category(session, f"repo_{os_type}")
+        raw = cfg.get("repos", "")
+        if raw:
+            try:
+                saved = _json.loads(raw)
+            except Exception:
+                saved = {}
+        else:
+            saved = {}
+
+        result[os_type] = {
+            "label": defaults["label"],
+            "builtin": saved.get("builtin", defaults["builtin"]),
+            "custom": saved.get("custom", []),
+        }
+    return result
+
+
+@router.put("/repositories/{os_type}")
+async def update_repositories(
+    os_type: str,
+    body: RepoUpdateRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Update repository configuration for a specific OS type."""
+    if os_type not in BUILTIN_REPOS:
+        raise HTTPException(status_code=400, detail=f"Unknown OS type: {os_type}")
+
+    data = _json.dumps({"builtin": body.builtin, "custom": body.custom})
+    await service.update_infra_category(session, f"repo_{os_type}", {"repos": data})
+    logger.info("Repositories updated: %s", os_type)
+    return {"status": "ok", "os_type": os_type}
+
+
 @router.get("/k8s/namespace/{namespace}")
 async def check_k8s_namespace(
     namespace: str,
