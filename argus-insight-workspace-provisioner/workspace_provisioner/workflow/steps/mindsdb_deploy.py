@@ -73,6 +73,8 @@ class MindsdbDeployStep(WorkflowStep):
         }
 
         manifests = render_manifests("mindsdb", variables)
+        from workspace_provisioner.repo_injector import inject_repo_config
+        manifests = await inject_repo_config(manifests, os_key="debian-13", namespace=namespace, instance_id=svc_id)
         logger.info(
             "Deploying MindsDB for workspace '%s' to namespace '%s'",
             workspace_name, namespace,

@@ -83,6 +83,8 @@ class Neo4jDeployStep(WorkflowStep):
         }
 
         manifests = render_manifests("neo4j", variables)
+        from workspace_provisioner.repo_injector import inject_repo_config
+        manifests = await inject_repo_config(manifests, os_key="debian-13", namespace=namespace, instance_id=svc_id)
         logger.info(
             "Deploying Neo4j for workspace '%s' to namespace '%s'",
             workspace_name, namespace,

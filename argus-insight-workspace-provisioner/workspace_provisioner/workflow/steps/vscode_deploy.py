@@ -113,6 +113,8 @@ class VScodeServerDeployStep(WorkflowStep):
         }
 
         manifests = render_manifests("vscode", variables)
+        from workspace_provisioner.repo_injector import inject_repo_config
+        manifests = await inject_repo_config(manifests, os_key="debian-12", namespace=namespace, instance_id=instance_id)
         logger.info(
             "Deploying VS Code Server for workspace '%s' to namespace '%s'",
             workspace_name, namespace,

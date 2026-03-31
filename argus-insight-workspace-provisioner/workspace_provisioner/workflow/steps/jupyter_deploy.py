@@ -125,6 +125,8 @@ class JupyterLabDeployStep(WorkflowStep):
         }
 
         manifests = render_manifests("jupyter", variables)
+        from workspace_provisioner.repo_injector import inject_repo_config
+        manifests = await inject_repo_config(manifests, os_key="ubuntu-24.04", namespace=namespace, instance_id=svc_id)
         logger.info(
             "Deploying JupyterLab for workspace '%s' to namespace '%s'",
             workspace_name, namespace,
