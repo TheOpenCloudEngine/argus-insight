@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ChevronsUpDown, Check, Container } from "lucide-react"
+import { ChevronsUpDown, Check, Container, Plus } from "lucide-react"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
 
 import { cn } from "@workspace/ui/lib/utils"
@@ -112,6 +112,18 @@ export function WorkspaceSwitcher() {
                         />
                       </CommandItem>
                     ))}
+                  </CommandGroup>
+                  <CommandGroup>
+                    <CommandItem
+                      onSelect={() => {
+                        setOpen(false)
+                        router.push("/dashboard/workspaces")
+                      }}
+                      className="text-muted-foreground"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Create Workspace
+                    </CommandItem>
                   </CommandGroup>
                 </CommandList>
               </Command>
