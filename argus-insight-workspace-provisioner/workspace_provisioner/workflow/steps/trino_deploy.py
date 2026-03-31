@@ -1,6 +1,7 @@
 """Workflow step: Deploy Trino to Kubernetes for a workspace."""
 
 import logging
+import re
 
 from workspace_provisioner.config import TrinoConfig
 from workspace_provisioner.kubernetes.client import (
@@ -32,6 +33,14 @@ class TrinoDeployStep(WorkflowStep):
 
         config: TrinoConfig = ctx.get("argus_trino_config", TrinoConfig())
 
+        def k8s_mem_to_java(mem: str) -> str:
+            """Convert K8s memory (4Gi, 512Mi) to Java format (4G, 512M)."""
+            m = re.match(r"^(\d+)(Gi|Mi|G|M)$", mem)
+            if not m:
+                return mem
+            val, unit = m.group(1), m.group(2)
+            return f"{val}{'G' if unit.startswith('G') else 'M'}"
+
         from workspace_provisioner.service import generate_service_id
         svc_id = generate_service_id()
         hostname = f"argus-trino-{svc_id}.argus-insight.{domain}"
@@ -47,6 +56,8 @@ class TrinoDeployStep(WorkflowStep):
             "TRINO_WORKER_CPU_LIMIT": config.worker_resources.cpu_limit,
             "TRINO_WORKER_MEMORY_REQUEST": config.worker_resources.memory_request,
             "TRINO_WORKER_MEMORY_LIMIT": config.worker_resources.memory_limit,
+            "TRINO_COORDINATOR_JVM_XMX": k8s_mem_to_java(config.coordinator_resources.memory_limit),
+            "TRINO_WORKER_JVM_XMX": k8s_mem_to_java(config.worker_resources.memory_limit),
             "WORKSPACE_NAME": workspace_name,
             "K8S_NAMESPACE": namespace,
             "DOMAIN": domain,

@@ -44,7 +44,7 @@ spec:
               subPath: config-coordinator.properties
             - name: config
               mountPath: /etc/trino/jvm.config
-              subPath: jvm.config
+              subPath: jvm-coordinator.config
             - name: config
               mountPath: /etc/trino/node.properties
               subPath: node.properties
@@ -114,7 +114,7 @@ spec:
               subPath: config-worker.properties
             - name: config
               mountPath: /etc/trino/jvm.config
-              subPath: jvm.config
+              subPath: jvm-worker.config
             - name: config
               mountPath: /etc/trino/node.properties
               subPath: node.properties

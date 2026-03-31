@@ -71,6 +71,40 @@ class StarRocksDeployStep(WorkflowStep):
         if not ready:
             raise RuntimeError(f"StarRocks FE rollout timed out in {namespace}")
 
+        logger.info("Waiting for StarRocks BE rollout...")
+        await kubectl_rollout_status(
+            f"statefulset/argus-starrocks-{workspace_name}-be",
+            namespace=namespace, timeout=300, kubeconfig=kubeconfig,
+        )
+
+        # Register BE nodes with FE via register-backends.sh in ConfigMap
+        import asyncio
+        register_cmd = [
+            "kubectl", "exec",
+            f"argus-starrocks-{workspace_name}-fe-0",
+            f"-n", namespace,
+            "--", "bash", "-c",
+            f"""
+            FE_HOST=argus-starrocks-{workspace_name}-fe
+            for i in $(seq 0 {config.be_replicas - 1}); do
+              BE_POD="argus-starrocks-{workspace_name}-be-${{i}}.argus-starrocks-{workspace_name}-be.{namespace}.svc.cluster.local"
+              mysql -h "$FE_HOST" -P 9030 -u root -e "ALTER SYSTEM ADD BACKEND '${{BE_POD}}:9050';" 2>/dev/null || true
+            done
+            """,
+        ]
+        if kubeconfig:
+            register_cmd.insert(1, f"--kubeconfig={kubeconfig}")
+        proc = await asyncio.create_subprocess_exec(
+            *register_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode == 0:
+            logger.info("StarRocks BE registration complete")
+        else:
+            logger.warning("StarRocks BE registration may have issues: %s", stderr.decode())
+
         ctx.set("starrocks_endpoint", hostname)
         ctx.set("starrocks_manifests", manifests)
 

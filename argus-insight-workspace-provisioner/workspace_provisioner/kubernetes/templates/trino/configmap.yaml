@@ -18,9 +18,17 @@ data:
     coordinator=false
     http-server.http.port=8080
     discovery.uri=http://argus-trino-${WORKSPACE_NAME}:8080
-  jvm.config: |
+  jvm-coordinator.config: |
     -server
-    -Xmx${TRINO_COORDINATOR_MEMORY_LIMIT}
+    -Xmx${TRINO_COORDINATOR_JVM_XMX}
+    -XX:+UseG1GC
+    -XX:G1HeapRegionSize=32M
+    -XX:+ExplicitGCInvokesConcurrent
+    -XX:+HeapDumpOnOutOfMemoryError
+    -Djdk.attach.allowAttachSelf=true
+  jvm-worker.config: |
+    -server
+    -Xmx${TRINO_WORKER_JVM_XMX}
     -XX:+UseG1GC
     -XX:G1HeapRegionSize=32M
     -XX:+ExplicitGCInvokesConcurrent

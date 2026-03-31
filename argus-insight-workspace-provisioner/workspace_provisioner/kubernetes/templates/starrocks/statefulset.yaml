@@ -58,12 +58,23 @@ spec:
             initialDelaySeconds: 60
             periodSeconds: 30
           volumeMounts:
-            - name: fe-data
+            - name: fe-meta
               mountPath: /opt/starrocks/fe/meta
+            - name: config
+              mountPath: /opt/starrocks/fe/conf/fe.conf
+              subPath: fe.conf
       volumes:
-        - name: fe-data
-          persistentVolumeClaim:
-            claimName: argus-starrocks-${WORKSPACE_NAME}-fe
+        - name: config
+          configMap:
+            name: argus-starrocks-${WORKSPACE_NAME}-config
+  volumeClaimTemplates:
+    - metadata:
+        name: fe-meta
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: ${STARROCKS_FE_STORAGE_SIZE}
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -103,11 +114,8 @@ spec:
               containerPort: 9050
             - name: be-port
               containerPort: 9060
-          env:
-            - name: FE_HOST
-              value: "argus-starrocks-${WORKSPACE_NAME}-fe"
-            - name: FE_PORT
-              value: "9020"
+            - name: brpc
+              containerPort: 8060
           resources:
             requests:
               cpu: "${STARROCKS_BE_CPU_REQUEST}"
@@ -116,9 +124,20 @@ spec:
               cpu: "${STARROCKS_BE_CPU_LIMIT}"
               memory: "${STARROCKS_BE_MEMORY_LIMIT}"
           volumeMounts:
-            - name: be-data
+            - name: be-storage
               mountPath: /opt/starrocks/be/storage
+            - name: config
+              mountPath: /opt/starrocks/be/conf/be.conf
+              subPath: be.conf
       volumes:
-        - name: be-data
-          persistentVolumeClaim:
-            claimName: argus-starrocks-${WORKSPACE_NAME}-be
+        - name: config
+          configMap:
+            name: argus-starrocks-${WORKSPACE_NAME}-config
+  volumeClaimTemplates:
+    - metadata:
+        name: be-storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: ${STARROCKS_BE_STORAGE_SIZE}
