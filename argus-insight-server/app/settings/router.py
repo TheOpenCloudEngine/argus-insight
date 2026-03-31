@@ -608,28 +608,77 @@ async def update_deploy_mapping(
 
 import json as _json
 
-BUILTIN_REPOS = {
-    "apt": {
-        "label": "Debian/Ubuntu (APT)",
+# OS+Version별 기본 레포지토리 정의
+BUILTIN_REPOS: dict[str, dict] = {
+    # --- Debian ---
+    "debian-11": {
+        "label": "Debian 11 (bullseye)",
+        "pkg_type": "apt",
+        "builtin": [
+            {"type": "deb", "url": "http://deb.debian.org/debian", "dist": "bullseye", "components": "main", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://deb.debian.org/debian", "dist": "bullseye-updates", "components": "main", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://security.debian.org/debian-security", "dist": "bullseye-security", "components": "main", "enabled": True, "trusted": False},
+        ],
+    },
+    "debian-12": {
+        "label": "Debian 12 (bookworm)",
+        "pkg_type": "apt",
         "builtin": [
             {"type": "deb", "url": "http://deb.debian.org/debian", "dist": "bookworm", "components": "main", "enabled": True, "trusted": False},
             {"type": "deb", "url": "http://deb.debian.org/debian", "dist": "bookworm-updates", "components": "main", "enabled": True, "trusted": False},
             {"type": "deb", "url": "http://security.debian.org/debian-security", "dist": "bookworm-security", "components": "main", "enabled": True, "trusted": False},
+        ],
+    },
+    "debian-13": {
+        "label": "Debian 13 (trixie)",
+        "pkg_type": "apt",
+        "builtin": [
+            {"type": "deb", "url": "http://deb.debian.org/debian", "dist": "trixie", "components": "main", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://deb.debian.org/debian", "dist": "trixie-updates", "components": "main", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://security.debian.org/debian-security", "dist": "trixie-security", "components": "main", "enabled": True, "trusted": False},
+        ],
+    },
+    # --- Ubuntu ---
+    "ubuntu-22.04": {
+        "label": "Ubuntu 22.04 (jammy)",
+        "pkg_type": "apt",
+        "builtin": [
+            {"type": "deb", "url": "http://archive.ubuntu.com/ubuntu", "dist": "jammy", "components": "main restricted universe", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://archive.ubuntu.com/ubuntu", "dist": "jammy-updates", "components": "main restricted universe", "enabled": True, "trusted": False},
+            {"type": "deb", "url": "http://security.ubuntu.com/ubuntu", "dist": "jammy-security", "components": "main restricted universe", "enabled": True, "trusted": False},
+        ],
+    },
+    "ubuntu-24.04": {
+        "label": "Ubuntu 24.04 (noble)",
+        "pkg_type": "apt",
+        "builtin": [
             {"type": "deb", "url": "http://archive.ubuntu.com/ubuntu", "dist": "noble", "components": "main restricted universe", "enabled": True, "trusted": False},
             {"type": "deb", "url": "http://archive.ubuntu.com/ubuntu", "dist": "noble-updates", "components": "main restricted universe", "enabled": True, "trusted": False},
             {"type": "deb", "url": "http://security.ubuntu.com/ubuntu", "dist": "noble-security", "components": "main restricted universe", "enabled": True, "trusted": False},
         ],
     },
-    "yum": {
-        "label": "RHEL/CentOS (YUM)",
+    # --- RHEL ---
+    "rocky-9": {
+        "label": "Rocky Linux 9",
+        "pkg_type": "yum",
         "builtin": [
             {"repo_id": "baseos", "name": "Rocky Linux $releasever - BaseOS", "baseurl": "http://dl.rockylinux.org/pub/rocky/$releasever/BaseOS/$basearch/os/", "gpgcheck": True, "enabled": True},
             {"repo_id": "appstream", "name": "Rocky Linux $releasever - AppStream", "baseurl": "http://dl.rockylinux.org/pub/rocky/$releasever/AppStream/$basearch/os/", "gpgcheck": True, "enabled": True},
             {"repo_id": "extras", "name": "Rocky Linux $releasever - Extras", "baseurl": "http://dl.rockylinux.org/pub/rocky/$releasever/extras/$basearch/os/", "gpgcheck": True, "enabled": True},
         ],
     },
-    "apk": {
-        "label": "Alpine (APK)",
+    # --- Alpine ---
+    "alpine-3.20": {
+        "label": "Alpine 3.20",
+        "pkg_type": "apk",
+        "builtin": [
+            {"url": "https://dl-cdn.alpinelinux.org/alpine/v3.20/main", "enabled": True},
+            {"url": "https://dl-cdn.alpinelinux.org/alpine/v3.20/community", "enabled": True},
+        ],
+    },
+    "alpine-3.21": {
+        "label": "Alpine 3.21",
+        "pkg_type": "apk",
         "builtin": [
             {"url": "https://dl-cdn.alpinelinux.org/alpine/v3.21/main", "enabled": True},
             {"url": "https://dl-cdn.alpinelinux.org/alpine/v3.21/community", "enabled": True},
@@ -645,10 +694,10 @@ class RepoUpdateRequest(BaseModel):
 
 @router.get("/repositories")
 async def get_repositories(session: AsyncSession = Depends(get_session)):
-    """Get all OS-level package repository configurations."""
+    """Get all OS+version package repository configurations."""
     result = {}
-    for os_type, defaults in BUILTIN_REPOS.items():
-        cfg = await service.get_config_by_category(session, f"repo_{os_type}")
+    for os_key, defaults in BUILTIN_REPOS.items():
+        cfg = await service.get_config_by_category(session, f"repo_{os_key}")
         raw = cfg.get("repos", "")
         if raw:
             try:
@@ -658,28 +707,29 @@ async def get_repositories(session: AsyncSession = Depends(get_session)):
         else:
             saved = {}
 
-        result[os_type] = {
+        result[os_key] = {
             "label": defaults["label"],
+            "pkg_type": defaults["pkg_type"],
             "builtin": saved.get("builtin", defaults["builtin"]),
             "custom": saved.get("custom", []),
         }
     return result
 
 
-@router.put("/repositories/{os_type}")
+@router.put("/repositories/{os_key}")
 async def update_repositories(
-    os_type: str,
+    os_key: str,
     body: RepoUpdateRequest,
     session: AsyncSession = Depends(get_session),
 ):
-    """Update repository configuration for a specific OS type."""
-    if os_type not in BUILTIN_REPOS:
-        raise HTTPException(status_code=400, detail=f"Unknown OS type: {os_type}")
+    """Update repository configuration for a specific OS+version."""
+    if os_key not in BUILTIN_REPOS:
+        raise HTTPException(status_code=400, detail=f"Unknown OS key: {os_key}")
 
     data = _json.dumps({"builtin": body.builtin, "custom": body.custom})
-    await service.update_infra_category(session, f"repo_{os_type}", {"repos": data})
-    logger.info("Repositories updated: %s", os_type)
-    return {"status": "ok", "os_type": os_type}
+    await service.update_infra_category(session, f"repo_{os_key}", {"repos": data})
+    logger.info("Repositories updated: %s", os_key)
+    return {"status": "ok", "os_key": os_key}
 
 
 @router.get("/k8s/namespace/{namespace}")
