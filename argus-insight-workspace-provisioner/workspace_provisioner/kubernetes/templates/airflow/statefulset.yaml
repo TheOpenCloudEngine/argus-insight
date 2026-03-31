@@ -77,7 +77,16 @@ spec:
       containers:
         - name: webserver
           image: ${AIRFLOW_IMAGE}
-          command: ["airflow", "webserver"]
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              mkdir -p /home/airflow/.config/pip
+              cat > /home/airflow/.config/pip/pip.conf << 'PIPCONF'
+              [global]
+              index-url = ${PIP_INDEX_URL}
+              trusted-host = ${PIP_TRUSTED_HOST}
+              PIPCONF
+              exec airflow webserver
           env:
             - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
               value: "postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@argus-airflow-${WORKSPACE_NAME}-db:5432/airflow"
@@ -127,7 +136,16 @@ spec:
               mountPath: /opt/airflow/logs
         - name: scheduler
           image: ${AIRFLOW_IMAGE}
-          command: ["airflow", "scheduler"]
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              mkdir -p /home/airflow/.config/pip
+              cat > /home/airflow/.config/pip/pip.conf << 'PIPCONF'
+              [global]
+              index-url = ${PIP_INDEX_URL}
+              trusted-host = ${PIP_TRUSTED_HOST}
+              PIPCONF
+              exec airflow scheduler
           env:
             - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
               value: "postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@argus-airflow-${WORKSPACE_NAME}-db:5432/airflow"

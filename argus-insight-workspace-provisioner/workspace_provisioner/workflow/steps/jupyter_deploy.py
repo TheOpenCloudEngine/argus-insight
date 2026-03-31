@@ -11,6 +11,8 @@ This step:
 import logging
 import socket
 
+from urllib.parse import urlparse
+
 from workspace_provisioner.config import JupyterLabConfig
 from workspace_provisioner.kubernetes.client import (
     kubectl_apply,
@@ -117,6 +119,7 @@ class JupyterLabDeployStep(WorkflowStep):
             "WORKSPACE_BUCKET": workspace_bucket,
             "USER_BUCKET": user_bucket,
             "PIP_INDEX_URL": config.pip_index_url,
+            "PIP_TRUSTED_HOST": urlparse(config.pip_index_url).hostname or "pypi.org",
             "INSTALL_PACKAGES": install_packages,
             "ARGUS_SERVER_HOST": server_ip,
         }
@@ -204,6 +207,7 @@ class JupyterLabDeployStep(WorkflowStep):
             "S3_USE_SSL": "false",
             "WORKSPACE_BUCKET": "", "USER_BUCKET": "",
             "PIP_INDEX_URL": config.pip_index_url,
+            "PIP_TRUSTED_HOST": urlparse(config.pip_index_url).hostname or "pypi.org",
             "INSTALL_PACKAGES": "",
             "ARGUS_SERVER_HOST": "127.0.0.1",
         })

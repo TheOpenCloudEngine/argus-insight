@@ -15,6 +15,7 @@ Architecture:
 import logging
 import secrets
 import string
+from urllib.parse import urlparse
 
 from cryptography.fernet import Fernet
 
@@ -117,6 +118,8 @@ class AirflowDeployStep(WorkflowStep):
             "GITLAB_REPO_URL": gitlab_repo_url,
             "GITLAB_TOKEN": gitlab_token,
             "ARGUS_SERVER_HOST": ctx.get("argus_server_host", "127.0.0.1"),
+            "PIP_INDEX_URL": config.pip_index_url,
+            "PIP_TRUSTED_HOST": urlparse(config.pip_index_url).hostname or "pypi.org",
         }
 
         manifests = render_manifests("airflow", variables)
@@ -218,6 +221,8 @@ class AirflowDeployStep(WorkflowStep):
             "AIRFLOW_SECRET_KEY": "",
             "GITLAB_REPO_URL": ctx.get("gitlab_http_url", ""),
             "GITLAB_TOKEN": ctx.get("gitlab_token", ""),
+            "PIP_INDEX_URL": config.pip_index_url,
+            "PIP_TRUSTED_HOST": urlparse(config.pip_index_url).hostname or "pypi.org",
         })
 
     async def rollback(self, ctx: WorkflowContext) -> None:

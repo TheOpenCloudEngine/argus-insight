@@ -87,6 +87,10 @@ class AirflowConfig(BaseModel):
         default_factory=ResourceConfig,
         description="CPU/Memory for the scheduler container",
     )
+    pip_index_url: str = Field(
+        default="https://pypi.org/simple",
+        description="Python pip index URL for DAG dependencies",
+    )
 
 
 class MlflowConfig(BaseModel):

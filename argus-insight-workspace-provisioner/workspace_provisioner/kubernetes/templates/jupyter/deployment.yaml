@@ -39,7 +39,7 @@ spec:
               cat > /home/jovyan/.config/pip/pip.conf << 'PIPCONF'
               [global]
               index-url = ${PIP_INDEX_URL}
-              trusted-host = pypi.org
+              trusted-host = ${PIP_TRUSTED_HOST}
               PIPCONF
 
               exec start-notebook.py \

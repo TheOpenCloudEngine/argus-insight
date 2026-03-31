@@ -10,6 +10,7 @@ This step:
 
 import logging
 import socket
+from urllib.parse import urlparse
 
 from workspace_provisioner.config import VScodeServerConfig
 from workspace_provisioner.kubernetes.client import (
@@ -107,6 +108,8 @@ class VScodeServerDeployStep(WorkflowStep):
             "USER_BUCKET": user_bucket,
             "ARGUS_SERVER_HOST": server_ip,
             "APP_TYPE": "vscode",
+            "PIP_INDEX_URL": config.pip_index_url,
+            "PIP_TRUSTED_HOST": urlparse(config.pip_index_url).hostname or "pypi.org",
         }
 
         manifests = render_manifests("vscode", variables)
