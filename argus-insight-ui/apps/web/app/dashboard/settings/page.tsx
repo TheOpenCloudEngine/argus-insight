@@ -25,7 +25,7 @@ export default function SettingsPage() {
             <TabsTrigger value="security" className="text-base">Security</TabsTrigger>
             <TabsTrigger value="argus" className="text-base">Argus</TabsTrigger>
             <TabsTrigger value="auth" className="text-base">Authentication</TabsTrigger>
-            <TabsTrigger value="repositories" className="text-base">Repositories</TabsTrigger>
+            <TabsTrigger value="repositories" className="text-base">Image OS Repository</TabsTrigger>
           </TabsList>
           <TabsContent value="domain" className="mt-4">
             <DomainSettings />
