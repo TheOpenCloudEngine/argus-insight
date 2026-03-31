@@ -761,6 +761,8 @@ const SERVICE_KEY_TO_PLUGIN: Record<string, string> = {
   mindsdb: "argus-mindsdb",
   trino: "argus-trino",
   starrocks: "argus-starrocks",
+  postgresql: "argus-postgresql",
+  mariadb: "argus-mariadb",
 }
 
 function AddServiceButton({

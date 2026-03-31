@@ -530,6 +530,8 @@ DEPLOY_MAPPING_SERVICES = [
     {"service_key": "mindsdb", "service_label": "MindsDB", "icon": "brain", "default_constraint": "per_workspace"},
     {"service_key": "trino", "service_label": "Trino", "icon": "trino", "default_constraint": "per_workspace"},
     {"service_key": "starrocks", "service_label": "StarRocks", "icon": "starrocks", "default_constraint": "per_workspace"},
+    {"service_key": "postgresql", "service_label": "PostgreSQL", "icon": "postgresql", "default_constraint": "per_workspace"},
+    {"service_key": "mariadb", "service_label": "MariaDB", "icon": "mariadb", "default_constraint": "per_workspace"},
 ]
 
 CONSTRAINT_LABELS = {

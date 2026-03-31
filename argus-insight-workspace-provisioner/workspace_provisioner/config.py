@@ -467,6 +467,62 @@ class StarRocksConfig(BaseModel):
     )
 
 
+class PostgresqlConfig(BaseModel):
+    """PostgreSQL deployment settings."""
+
+    image: str = Field(
+        default="postgres:17-bookworm",
+        description="PostgreSQL container image",
+    )
+    storage_size: str = Field(
+        default="20Gi",
+        description="Persistent data volume size",
+    )
+    db_name: str = Field(
+        default="argus",
+        description="Default database name",
+    )
+    db_user: str = Field(
+        default="argus",
+        description="Database username",
+    )
+    resources: ResourceConfig = Field(
+        default_factory=lambda: ResourceConfig(
+            cpu_request="250m", cpu_limit="2",
+            memory_request="512Mi", memory_limit="2Gi",
+        ),
+        description="CPU/Memory for the PostgreSQL container",
+    )
+
+
+class MariadbConfig(BaseModel):
+    """MariaDB deployment settings."""
+
+    image: str = Field(
+        default="mariadb:11",
+        description="MariaDB container image",
+    )
+    storage_size: str = Field(
+        default="20Gi",
+        description="Persistent data volume size",
+    )
+    db_name: str = Field(
+        default="argus",
+        description="Default database name",
+    )
+    db_user: str = Field(
+        default="argus",
+        description="Database username",
+    )
+    resources: ResourceConfig = Field(
+        default_factory=lambda: ResourceConfig(
+            cpu_request="250m", cpu_limit="2",
+            memory_request="512Mi", memory_limit="2Gi",
+        ),
+        description="CPU/Memory for the MariaDB container",
+    )
+
+
 class ProvisioningConfig(BaseModel):
     """Top-level provisioning configuration.
 
