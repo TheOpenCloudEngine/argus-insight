@@ -38,6 +38,7 @@ interface OsRepos {
   enabled: boolean
   builtin: Record<string, unknown>[]
   custom: Record<string, unknown>[]
+  images: string[]
 }
 
 type AllRepos = Record<string, OsRepos>
@@ -272,6 +273,18 @@ function RepoSection({
         </div>
       </CardHeader>
       <CardContent className={`space-y-4 ${repos.enabled ? "" : "opacity-50"}`}>
+        {/* Images using this OS */}
+        {repos.images.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-muted-foreground mr-1">Images:</span>
+            {repos.images.map((img) => (
+              <Badge key={img} variant="secondary" className="text-[10px] font-mono">
+                {img}
+              </Badge>
+            ))}
+          </div>
+        )}
+
         {/* Built-in */}
         <div>
           <p className="text-xs font-medium text-muted-foreground mb-2">Built-in</p>
@@ -363,6 +376,7 @@ function RepoSection({
 export function RepositoriesSettings() {
   const [allRepos, setAllRepos] = useState<AllRepos>({})
   const [loading, setLoading] = useState(true)
+  const [scanning, setScanning] = useState(false)
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [saved, setSaved] = useState<Record<string, boolean>>({})
 
@@ -375,6 +389,18 @@ export function RepositoriesSettings() {
   }, [])
 
   useEffect(() => { loadConfig() }, [loadConfig])
+
+  const handleScanAll = async () => {
+    setScanning(true)
+    try {
+      const res = await authFetch("/api/v1/settings/repositories/scan", { method: "POST" })
+      if (res.ok) {
+        // Reload to get updated image_map
+        await loadConfig()
+      }
+    } catch { /* ignore */ }
+    setScanning(false)
+  }
 
   const handleUpdate = (osKey: string, repos: OsRepos) => {
     setAllRepos((prev) => ({ ...prev, [osKey]: repos }))
@@ -414,9 +440,15 @@ export function RepositoriesSettings() {
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">
-        Configure OS-level package repositories per OS version. These are injected into service containers during deployment.
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Configure OS-level package repositories per OS version. These are injected into service containers during deployment.
+        </p>
+        <Button variant="outline" size="sm" className="text-xs shrink-0 ml-4" onClick={handleScanAll} disabled={scanning}>
+          {scanning ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+          {scanning ? "Scanning..." : "Scan All Images"}
+        </Button>
+      </div>
 
       {aptKeys.length > 0 && (
         <div className="space-y-4">

@@ -696,6 +696,14 @@ class RepoUpdateRequest(BaseModel):
 @router.get("/repositories")
 async def get_repositories(session: AsyncSession = Depends(get_session)):
     """Get all OS+version package repository configurations."""
+    # Load cached image map
+    map_cfg = await service.get_config_by_category(session, "repo_image_map")
+    raw_map = map_cfg.get("image_map", "")
+    try:
+        image_map: dict[str, list[str]] = _json.loads(raw_map) if raw_map else {}
+    except Exception:
+        image_map = {}
+
     result = {}
     for os_key, defaults in BUILTIN_REPOS.items():
         cfg = await service.get_config_by_category(session, f"repo_{os_key}")
@@ -714,6 +722,7 @@ async def get_repositories(session: AsyncSession = Depends(get_session)):
             "enabled": saved.get("enabled", False),
             "builtin": saved.get("builtin", defaults["builtin"]),
             "custom": saved.get("custom", []),
+            "images": image_map.get(os_key, []),
         }
     return result
 
@@ -732,6 +741,116 @@ async def update_repositories(
     await service.update_infra_category(session, f"repo_{os_key}", {"repos": data})
     logger.info("Repositories updated: %s", os_key)
     return {"status": "ok", "os_key": os_key}
+
+
+@router.post("/repositories/scan")
+async def scan_image_os(session: AsyncSession = Depends(get_session)):
+    """Scan all plugin images to detect their OS and map to OS keys."""
+    import asyncio
+
+    # Collect unique images from plugin configs
+    images: dict[str, str] = {}  # image -> display label
+
+    try:
+        from workspace_provisioner.plugins.registry import PluginRegistry
+        registry = PluginRegistry.get_instance()
+        for plugin in registry.get_all():
+            for ver_key, ver_meta in plugin.versions.items():
+                if ver_meta.config_class:
+                    try:
+                        config_cls = registry.get_config_class(plugin.name, ver_key)
+                        if config_cls:
+                            instance = config_cls()
+                            # Look for image fields
+                            for field_name in dir(instance):
+                                if "image" in field_name and not field_name.startswith("_"):
+                                    val = getattr(instance, field_name, None)
+                                    if isinstance(val, str) and ("/" in val or ":" in val):
+                                        images[val] = f"{plugin.display_name} ({field_name})"
+                    except Exception:
+                        pass
+    except Exception as e:
+        logger.warning("Failed to load plugin images: %s", e)
+
+    # Also add well-known images
+    well_known = {
+        "postgres:16-alpine": "PostgreSQL (Airflow/MLflow DB)",
+        "alpine/git:latest": "Git Sync (Airflow DAGs)",
+        "efrecon/s3fs:1.94": "s3fs (VS Code/Jupyter sidecar)",
+    }
+    images.update(well_known)
+
+    # Detect OS for each image
+    OS_MAP = {
+        ("debian", "11"): "debian-11",
+        ("debian", "12"): "debian-12",
+        ("debian", "13"): "debian-13",
+        ("ubuntu", "22.04"): "ubuntu-22.04",
+        ("ubuntu", "24.04"): "ubuntu-24.04",
+        ("alpine", ""): None,  # will match by version prefix
+    }
+
+    result: dict[str, list[str]] = {}  # os_key -> [image, ...]
+
+    async def detect(image: str) -> tuple[str, str | None]:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "run", "--rm", "--entrypoint", "sh", image,
+                "-c", "cat /etc/os-release 2>/dev/null || true",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+            text = stdout.decode()
+
+            os_id = ""
+            version_id = ""
+            for line in text.splitlines():
+                if line.startswith("ID="):
+                    os_id = line.split("=", 1)[1].strip().strip('"').lower()
+                if line.startswith("VERSION_ID="):
+                    version_id = line.split("=", 1)[1].strip().strip('"')
+
+            if os_id == "alpine":
+                # Match by major.minor
+                major_minor = ".".join(version_id.split(".")[:2]) if version_id else ""
+                os_key = f"alpine-{major_minor}" if major_minor else None
+            elif os_id == "debian":
+                # Debian VERSION_ID is just the major number
+                os_key = f"debian-{version_id}" if version_id else None
+            elif os_id == "ubuntu":
+                os_key = f"ubuntu-{version_id}" if version_id else None
+            elif os_id in ("rocky", "centos", "rhel"):
+                major = version_id.split(".")[0] if version_id else ""
+                os_key = f"rocky-{major}" if major else None
+            else:
+                os_key = None
+
+            return image, os_key
+        except Exception as e:
+            logger.warning("Failed to detect OS for %s: %s", image, e)
+            return image, None
+
+    # Run detection in parallel (max 5 concurrent)
+    sem = asyncio.Semaphore(5)
+
+    async def detect_limited(img: str) -> tuple[str, str | None]:
+        async with sem:
+            return await detect(img)
+
+    tasks = [detect_limited(img) for img in images]
+    detections = await asyncio.gather(*tasks)
+
+    for image, os_key in detections:
+        if os_key:
+            result.setdefault(os_key, []).append(image)
+
+    # Save to DB
+    await service.update_infra_category(
+        session, "repo_image_map", {"image_map": _json.dumps(result)},
+    )
+    logger.info("Image OS scan complete: %d images, %d OS keys", len(images), len(result))
+    return {"scanned": len(images), "image_map": result}
 
 
 @router.get("/k8s/namespace/{namespace}")
