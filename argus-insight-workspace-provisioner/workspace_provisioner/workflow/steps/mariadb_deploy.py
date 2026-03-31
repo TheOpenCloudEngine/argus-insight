@@ -35,7 +35,7 @@ class MariadbDeployStep(WorkflowStep):
 
         config: MariadbConfig = ctx.get("argus_mariadb_config", MariadbConfig())
         root_password = _gen_password()
-        user_password = _gen_password()
+        user_password = config.db_password
 
         from workspace_provisioner.service import generate_service_id
         svc_id = generate_service_id()
@@ -90,14 +90,17 @@ class MariadbDeployStep(WorkflowStep):
             password=user_password,
             metadata={
                 "display": {
-                    "Database": config.db_name,
+                    "Root Username": "root",
+                    "Root Password": root_password,
+                    "DB Name": config.db_name,
+                    "DB User": config.db_user,
+                    "DB Password": user_password,
                     "MySQL Port": "3306",
                     "Charset": "utf8mb4",
-                    "Web UI": "phpMyAdmin",
+                    "phpMyAdmin": f"http://{hostname}",
                 },
                 "internal": {
                     "host": f"argus-mariadb-{workspace_name}.{namespace}.svc.cluster.local",
-                    "root_password": root_password,
                     "namespace": namespace,
                 },
             },

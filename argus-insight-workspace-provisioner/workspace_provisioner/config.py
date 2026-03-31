@@ -482,6 +482,10 @@ class PostgresqlConfig(BaseModel):
         default="argus",
         description="Default database name",
     )
+    db_password: str = Field(
+        default="argus",
+        description="Database password",
+    )
     db_user: str = Field(
         default="argus",
         description="Database username",
@@ -513,6 +517,10 @@ class MariadbConfig(BaseModel):
     db_user: str = Field(
         default="argus",
         description="Database username",
+    )
+    db_password: str = Field(
+        default="argus",
+        description="Database user password",
     )
     resources: ResourceConfig = Field(
         default_factory=lambda: ResourceConfig(

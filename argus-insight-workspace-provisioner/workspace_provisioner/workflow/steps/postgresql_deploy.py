@@ -34,7 +34,7 @@ class PostgresqlDeployStep(WorkflowStep):
         await ensure_namespace(namespace)
 
         config: PostgresqlConfig = ctx.get("argus_postgresql_config", PostgresqlConfig())
-        password = _gen_password()
+        password = config.db_password
 
         from workspace_provisioner.service import generate_service_id
         svc_id = generate_service_id()
@@ -88,10 +88,12 @@ class PostgresqlDeployStep(WorkflowStep):
             password=password,
             metadata={
                 "display": {
-                    "Database": config.db_name,
+                    "DB Name": config.db_name,
+                    "DB User": config.db_user,
+                    "DB Password": password,
                     "Port": "5432",
                     "Encoding": "UTF-8",
-                    "Web UI": "Adminer",
+                    "Adminer": f"http://{hostname}",
                 },
                 "internal": {
                     "host": f"argus-postgresql-{workspace_name}.{namespace}.svc.cluster.local",
