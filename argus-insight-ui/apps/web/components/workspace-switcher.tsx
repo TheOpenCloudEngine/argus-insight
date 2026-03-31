@@ -95,6 +95,7 @@ export function WorkspaceSwitcher() {
   const handleSelect = (ws: MyWorkspace) => {
     setSelected(ws)
     setOpen(false)
+    sessionStorage.setItem("argus_last_workspace_id", String(ws.id))
     router.push(`/dashboard/workspace?ws=${ws.id}`)
   }
 

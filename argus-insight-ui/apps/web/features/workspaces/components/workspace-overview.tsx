@@ -1233,18 +1233,34 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
 /*  Main component: switches between list and resource view            */
 /* ------------------------------------------------------------------ */
 
+const WS_SESSION_KEY = "argus_last_workspace_id"
+
 export function WorkspaceOverview() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const wsId = searchParams.get("ws")
   const [checked, setChecked] = useState(false)
 
-  // If no workspace selected, auto-select first one
+  // If ws param present, remember it
   useEffect(() => {
     if (wsId) {
+      sessionStorage.setItem(WS_SESSION_KEY, wsId)
       setChecked(true)
+    }
+  }, [wsId])
+
+  // If no ws param, try last selected or first available
+  useEffect(() => {
+    if (wsId) return
+
+    // Try last selected workspace from session
+    const lastId = sessionStorage.getItem(WS_SESSION_KEY)
+    if (lastId) {
+      router.replace(`/dashboard/workspace?ws=${lastId}`)
       return
     }
+
+    // No last selection — fetch and pick first
     authFetch("/api/v1/workspace/workspaces/my")
       .then((res) => (res.ok ? res.json() : []))
       .then((data: MyWorkspace[]) => {
