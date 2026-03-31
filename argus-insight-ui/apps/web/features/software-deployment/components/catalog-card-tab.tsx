@@ -221,13 +221,13 @@ export function CatalogCardTab({
                   <div className="flex-1" />
                   {latestVersion && (
                     <span
-                      className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusColor(latestVersion.status)}`}
+                      className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium ${statusColor(latestVersion.status)}`}
                     >
                       v{plugin.default_version} · {latestVersion.status}
                     </span>
                   )}
                   {!latestVersion && (
-                    <Badge variant="outline" className="text-[10px]">
+                    <Badge variant="outline" className="text-xs">
                       v{plugin.default_version}
                     </Badge>
                   )}
