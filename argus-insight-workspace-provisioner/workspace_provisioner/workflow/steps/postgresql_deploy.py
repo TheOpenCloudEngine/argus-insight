@@ -89,7 +89,7 @@ class PostgresqlDeployStep(WorkflowStep):
                     "DB Name": config.db_name,
                     "DB User": config.db_user,
                     "DB Password": password,
-                    "Port": "5432",
+                    "PostgreSQL Address": f"argus-postgresql-{workspace_name}.{namespace}.svc.cluster.local:5432",
                     "Encoding": "UTF-8",
                     "Adminer": f"http://{hostname}",
                 },

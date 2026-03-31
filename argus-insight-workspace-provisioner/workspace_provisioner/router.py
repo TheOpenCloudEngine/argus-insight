@@ -915,6 +915,21 @@ async def get_workspace_audit_logs(
 # Service Configuration (runtime config change)
 # =========================================================================== #
 
+POSTGRESQL_ALLOWED_OPTIONS = {
+    "max_connections", "shared_buffers", "work_mem", "maintenance_work_mem",
+    "effective_cache_size", "wal_buffers", "checkpoint_completion_target",
+    "random_page_cost", "effective_io_concurrency",
+    "log_min_duration_statement", "log_statement",
+    "temp_buffers", "default_statistics_target",
+}
+
+POSTGRESQL_BLOCKED_OPTIONS = {
+    "port", "data_directory", "hba_file", "ident_file",
+    "listen_addresses", "unix_socket_directories",
+    "ssl", "ssl_cert_file", "ssl_key_file",
+    "password_encryption", "wal_level", "archive_mode",
+}
+
 MARIADB_ALLOWED_OPTIONS = {
     "max_connections", "wait_timeout", "interactive_timeout", "connect_timeout",
     "max_allowed_packet", "thread_cache_size",
@@ -994,6 +1009,37 @@ async def get_service_config(
             "allowed_options": sorted(MARIADB_ALLOWED_OPTIONS),
         }
 
+    if svc.plugin_name == "argus-postgresql":
+        configmap_name = f"argus-postgresql-{ws.name}-custom-config"
+        cmd = ["kubectl", "get", "configmap", configmap_name, "-n", namespace, "-o", "jsonpath={.data.custom\\.conf}"]
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            return {"plugin_name": svc.plugin_name, "options": {}, "allowed_options": list(POSTGRESQL_ALLOWED_OPTIONS)}
+
+        options = {}
+        for line in stdout.decode().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                key, val = line.split("=", 1)
+                options[key.strip()] = val.strip()
+
+        return {
+            "plugin_name": svc.plugin_name,
+            "options": options,
+            "allowed_options": sorted(POSTGRESQL_ALLOWED_OPTIONS),
+        }
+
     return {"plugin_name": svc.plugin_name, "options": {}, "allowed_options": []}
 
 
@@ -1070,5 +1116,48 @@ async def update_service_config(
 
         logger.info("MariaDB config updated for workspace %s, restarting", ws.name)
         return {"status": "ok", "message": "Configuration updated. MariaDB is restarting."}
+
+    if svc.plugin_name == "argus-postgresql":
+        for key in body.options:
+            if key in POSTGRESQL_BLOCKED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Option '{key}' cannot be changed")
+            if key not in POSTGRESQL_ALLOWED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Unknown option '{key}'")
+
+        lines = []
+        for key, val in body.options.items():
+            lines.append(f"{key} = {val}")
+        conf_content = "\n".join(lines) + "\n"
+
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+
+        configmap_name = f"argus-postgresql-{ws.name}-custom-config"
+
+        import json as _json
+        patch = _json.dumps({"data": {"custom.conf": conf_content}})
+        cmd = ["kubectl", "patch", "configmap", configmap_name, "-n", namespace, "--type=merge", f"-p={patch}"]
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to update config: {stderr.decode()}")
+
+        cmd2 = ["kubectl", "rollout", "restart", f"statefulset/argus-postgresql-{ws.name}", "-n", namespace]
+        if kubeconfig:
+            cmd2.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc2 = await asyncio.create_subprocess_exec(
+            *cmd2, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await proc2.communicate()
+
+        logger.info("PostgreSQL config updated for workspace %s, restarting", ws.name)
+        return {"status": "ok", "message": "Configuration updated. PostgreSQL is restarting."}
 
     raise HTTPException(status_code=400, detail=f"Configuration not supported for {svc.plugin_name}")

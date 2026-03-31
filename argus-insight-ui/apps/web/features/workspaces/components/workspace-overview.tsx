@@ -262,7 +262,7 @@ function DetailRow({
 /*  Service Configuration Sheet (MariaDB, PostgreSQL)                  */
 /* ------------------------------------------------------------------ */
 
-const CONFIGURABLE_PLUGINS = new Set(["argus-mariadb"])
+const CONFIGURABLE_PLUGINS = new Set(["argus-mariadb", "argus-postgresql"])
 
 function ServiceConfigSheet({
   open,
@@ -318,11 +318,23 @@ function ServiceConfigSheet({
     setSaved(false)
   }
 
-  // Group options by category
-  const connectionKeys = ["max_connections", "wait_timeout", "interactive_timeout", "connect_timeout", "max_allowed_packet", "thread_cache_size"]
-  const performanceKeys = ["innodb_buffer_pool_size", "innodb_log_file_size", "innodb_flush_log_at_trx_commit", "tmp_table_size", "sort_buffer_size", "join_buffer_size"]
-  const loggingKeys = ["slow_query_log", "long_query_time"]
-  const charsetKeys = ["character_set_server", "collation_server"]
+  // Group options by category based on plugin
+  const isMariadb = service.plugin_name === "argus-mariadb"
+  const pluginLabel = isMariadb ? "MariaDB" : "PostgreSQL"
+
+  const groups: { title: string; keys: string[] }[] = isMariadb
+    ? [
+        { title: "Connection", keys: ["max_connections", "wait_timeout", "interactive_timeout", "connect_timeout", "max_allowed_packet", "thread_cache_size"] },
+        { title: "Performance", keys: ["innodb_buffer_pool_size", "innodb_log_file_size", "innodb_flush_log_at_trx_commit", "tmp_table_size", "sort_buffer_size", "join_buffer_size"] },
+        { title: "Logging", keys: ["slow_query_log", "long_query_time"] },
+        { title: "Character Set", keys: ["character_set_server", "collation_server"] },
+      ]
+    : [
+        { title: "Connection", keys: ["max_connections"] },
+        { title: "Memory", keys: ["shared_buffers", "work_mem", "maintenance_work_mem", "effective_cache_size", "wal_buffers", "temp_buffers"] },
+        { title: "Performance", keys: ["checkpoint_completion_target", "random_page_cost", "effective_io_concurrency", "default_statistics_target"] },
+        { title: "Logging", keys: ["log_min_duration_statement", "log_statement"] },
+      ]
 
   const renderGroup = (title: string, keys: string[]) => {
     const activeKeys = keys.filter((k) => k in options)
@@ -348,7 +360,7 @@ function ServiceConfigSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-[450px] overflow-y-auto sm:max-w-[450px] px-6">
         <SheetHeader className="pb-4">
-          <SheetTitle>MariaDB Configuration</SheetTitle>
+          <SheetTitle>{pluginLabel} Configuration</SheetTitle>
           <SheetDescription>Edit configuration options. Changes will restart the service.</SheetDescription>
         </SheetHeader>
 
@@ -358,10 +370,7 @@ function ServiceConfigSheet({
           </div>
         ) : (
           <div className="space-y-5">
-            {renderGroup("Connection", connectionKeys)}
-            {renderGroup("Performance", performanceKeys)}
-            {renderGroup("Logging", loggingKeys)}
-            {renderGroup("Character Set", charsetKeys)}
+            {groups.map((g) => renderGroup(g.title, g.keys))}
 
             {error && (
               <div className="rounded-md bg-red-50 text-red-700 border border-red-200 px-3 py-2 text-sm dark:bg-red-950 dark:text-red-200 dark:border-red-800">

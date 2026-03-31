@@ -66,9 +66,13 @@ spec:
               command: ["pg_isready", "-U", "${PG_DB_USER}"]
             initialDelaySeconds: 30
             periodSeconds: 30
+          args: ["-c", "config_file=/etc/postgresql/custom.conf"]
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
+            - name: custom-config
+              mountPath: /etc/postgresql/custom.conf
+              subPath: custom.conf
         - name: adminer
           image: adminer:latest
           env:
@@ -84,6 +88,10 @@ spec:
             limits:
               cpu: "200m"
               memory: "256Mi"
+      volumes:
+        - name: custom-config
+          configMap:
+            name: argus-postgresql-${WORKSPACE_NAME}-custom-config
   volumeClaimTemplates:
     - metadata:
         name: data
