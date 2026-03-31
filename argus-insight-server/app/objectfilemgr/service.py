@@ -198,6 +198,14 @@ async def put_object_stream(
         return {"key": key, "etag": etag}
 
     # Large file: multipart upload
+    # S3 requires each part (except the last) to be >= 5MB.
+    # We collect all data first, then split into proper-sized parts.
+    MIN_PART_SIZE = 5 * 1024 * 1024  # 5MB
+
+    # Read remaining data
+    remaining = await file.read()
+    all_data = first_chunk + remaining
+
     async with get_s3_client() as s3:
         mpu = await s3.create_multipart_upload(
             Bucket=bucket, Key=key, ContentType=content_type,
@@ -205,14 +213,19 @@ async def put_object_stream(
         upload_id = mpu["UploadId"]
         parts: list[dict] = []
         part_number = 1
-        total_size = 0
+        total_size = len(all_data)
 
         try:
-            # Upload first chunk (already read, may be > threshold)
             offset = 0
-            while offset < len(first_chunk):
-                end = min(offset + chunk_size, len(first_chunk))
-                chunk = first_chunk[offset:end]
+            while offset < total_size:
+                end = min(offset + chunk_size, total_size)
+                # If remaining data after this chunk would be < 5MB,
+                # include it in this chunk (make this the last part)
+                remaining_after = total_size - end
+                if 0 < remaining_after < MIN_PART_SIZE:
+                    end = total_size
+
+                chunk = all_data[offset:end]
                 resp = await s3.upload_part(
                     Bucket=bucket, Key=key, UploadId=upload_id,
                     PartNumber=part_number, Body=chunk,
@@ -221,25 +234,8 @@ async def put_object_stream(
                     "PartNumber": part_number,
                     "ETag": resp["ETag"],
                 })
-                total_size += len(chunk)
                 part_number += 1
                 offset = end
-
-            # Stream remaining chunks
-            while True:
-                chunk = await file.read(chunk_size)
-                if not chunk:
-                    break
-                resp = await s3.upload_part(
-                    Bucket=bucket, Key=key, UploadId=upload_id,
-                    PartNumber=part_number, Body=chunk,
-                )
-                parts.append({
-                    "PartNumber": part_number,
-                    "ETag": resp["ETag"],
-                })
-                total_size += len(chunk)
-                part_number += 1
 
             result = await s3.complete_multipart_upload(
                 Bucket=bucket, Key=key, UploadId=upload_id,
