@@ -59,7 +59,7 @@ export function UploadDialog({
   function handleSubmit() {
     if (files.length === 0) return
     onConfirm(files)
-    setFiles([])
+    // Don't clear files here — let the parent close the dialog after upload completes
   }
 
   function handleOpenChange(nextOpen: boolean) {
