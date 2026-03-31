@@ -55,6 +55,76 @@
       ]
     },
     {
+      "id": "kubernetes",
+      "label": "Kubernetes",
+      "items": [
+        {
+          "id": "k8s-overview",
+          "title": "Cluster Overview",
+          "url": "/dashboard/kubernetes",
+          "icon": "LayoutDashboard"
+        },
+        {
+          "id": "k8s-workloads",
+          "title": "Workloads",
+          "url": "/dashboard/kubernetes/workloads",
+          "icon": "Container",
+          "children": [
+            { "id": "k8s-pods", "title": "Pods", "url": "/dashboard/kubernetes/workloads/pods", "icon": "Box" },
+            { "id": "k8s-deployments", "title": "Deployments", "url": "/dashboard/kubernetes/workloads/deployments", "icon": "Layers" },
+            { "id": "k8s-statefulsets", "title": "StatefulSets", "url": "/dashboard/kubernetes/workloads/statefulsets", "icon": "Database" },
+            { "id": "k8s-daemonsets", "title": "DaemonSets", "url": "/dashboard/kubernetes/workloads/daemonsets", "icon": "Repeat" },
+            { "id": "k8s-jobs", "title": "Jobs", "url": "/dashboard/kubernetes/workloads/jobs", "icon": "Play" },
+            { "id": "k8s-cronjobs", "title": "CronJobs", "url": "/dashboard/kubernetes/workloads/cronjobs", "icon": "Clock" },
+            { "id": "k8s-replicasets", "title": "ReplicaSets", "url": "/dashboard/kubernetes/workloads/replicasets", "icon": "Copy" }
+          ]
+        },
+        {
+          "id": "k8s-network",
+          "title": "Network",
+          "url": "/dashboard/kubernetes/network",
+          "icon": "Network",
+          "children": [
+            { "id": "k8s-services", "title": "Services", "url": "/dashboard/kubernetes/network/services", "icon": "Globe" },
+            { "id": "k8s-ingresses", "title": "Ingresses", "url": "/dashboard/kubernetes/network/ingresses", "icon": "ArrowRightLeft" },
+            { "id": "k8s-endpoints", "title": "Endpoints", "url": "/dashboard/kubernetes/network/endpoints", "icon": "Plug" }
+          ]
+        },
+        {
+          "id": "k8s-storage",
+          "title": "Storage",
+          "url": "/dashboard/kubernetes/storage",
+          "icon": "HardDrive",
+          "children": [
+            { "id": "k8s-pvcs", "title": "PVCs", "url": "/dashboard/kubernetes/storage/pvcs", "icon": "HardDrive" },
+            { "id": "k8s-pvs", "title": "PVs", "url": "/dashboard/kubernetes/storage/pvs", "icon": "Database" },
+            { "id": "k8s-storageclasses", "title": "StorageClasses", "url": "/dashboard/kubernetes/storage/storageclasses", "icon": "Layers" }
+          ]
+        },
+        {
+          "id": "k8s-config",
+          "title": "Config",
+          "url": "/dashboard/kubernetes/config",
+          "icon": "Settings2",
+          "children": [
+            { "id": "k8s-configmaps", "title": "ConfigMaps", "url": "/dashboard/kubernetes/config/configmaps", "icon": "FileText" },
+            { "id": "k8s-secrets", "title": "Secrets", "url": "/dashboard/kubernetes/config/secrets", "icon": "KeyRound" }
+          ]
+        },
+        {
+          "id": "k8s-cluster",
+          "title": "Cluster",
+          "url": "/dashboard/kubernetes/cluster",
+          "icon": "Server",
+          "children": [
+            { "id": "k8s-nodes", "title": "Nodes", "url": "/dashboard/kubernetes/cluster/nodes", "icon": "Server" },
+            { "id": "k8s-namespaces", "title": "Namespaces", "url": "/dashboard/kubernetes/cluster/namespaces", "icon": "FolderOpen" },
+            { "id": "k8s-events", "title": "Events", "url": "/dashboard/kubernetes/cluster/events", "icon": "Zap" }
+          ]
+        }
+      ]
+    },
+    {
       "id": "analysis",
       "label": "Analysis",
       "items": [
