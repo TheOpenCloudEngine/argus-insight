@@ -78,7 +78,7 @@ function AptSection({
 }) {
   const [addOpen, setAddOpen] = useState(false)
   const [form, setForm] = useState<AptRepo>({
-    type: "deb", url: "", dist: "", components: "main", enabled: true, trusted: false,
+    type: "deb", url: "", dist: "", components: "main", enabled: true, trusted: true,
   })
 
   const toggleBuiltin = (idx: number) => {
@@ -119,11 +119,37 @@ function AptSection({
           <p className="text-xs font-medium text-muted-foreground mb-2">Built-in</p>
           <div className="space-y-1.5">
             {(repos.builtin as AptRepo[]).map((r, i) => (
-              <label key={i} className="flex items-center gap-2 text-sm rounded px-2 py-1 hover:bg-muted/50 cursor-pointer">
+              <div key={i} className="flex items-center gap-2 text-sm rounded px-2 py-1">
                 <Checkbox checked={r.enabled} onCheckedChange={() => toggleBuiltin(i)} />
-                <Badge variant="outline" className="text-[10px] font-mono">{r.type}</Badge>
-                <span className="truncate font-mono text-xs">{r.url} {r.dist} {r.components}</span>
-              </label>
+                <Badge variant="outline" className="text-[10px] font-mono shrink-0">{r.type}</Badge>
+                <Input
+                  className="h-7 text-xs font-mono flex-1"
+                  value={r.url}
+                  onChange={(e) => {
+                    const updated = [...repos.builtin] as AptRepo[]
+                    updated[i] = { ...updated[i], url: e.target.value }
+                    onUpdate({ ...repos, builtin: updated })
+                  }}
+                />
+                <Input
+                  className="h-7 text-xs font-mono w-28"
+                  value={r.dist}
+                  onChange={(e) => {
+                    const updated = [...repos.builtin] as AptRepo[]
+                    updated[i] = { ...updated[i], dist: e.target.value }
+                    onUpdate({ ...repos, builtin: updated })
+                  }}
+                />
+                <Input
+                  className="h-7 text-xs font-mono w-36"
+                  value={r.components}
+                  onChange={(e) => {
+                    const updated = [...repos.builtin] as AptRepo[]
+                    updated[i] = { ...updated[i], components: e.target.value }
+                    onUpdate({ ...repos, builtin: updated })
+                  }}
+                />
+              </div>
             ))}
           </div>
         </div>
@@ -265,12 +291,28 @@ function YumSection({
           <p className="text-xs font-medium text-muted-foreground mb-2">Built-in</p>
           <div className="space-y-1.5">
             {(repos.builtin as YumRepo[]).map((r, i) => (
-              <label key={i} className="flex items-center gap-2 text-sm rounded px-2 py-1 hover:bg-muted/50 cursor-pointer">
+              <div key={i} className="flex items-center gap-2 text-sm rounded px-2 py-1">
                 <Checkbox checked={r.enabled} onCheckedChange={() => toggleBuiltin(i)} />
-                <Badge variant="outline" className="text-[10px] font-mono">[{r.repo_id}]</Badge>
-                <span className="truncate text-xs flex-1">{r.name}</span>
-                <span className="truncate font-mono text-[10px] text-muted-foreground max-w-[300px]">{r.baseurl}</span>
-              </label>
+                <Badge variant="outline" className="text-[10px] font-mono shrink-0">[{r.repo_id}]</Badge>
+                <Input
+                  className="h-7 text-xs w-40"
+                  value={r.name}
+                  onChange={(e) => {
+                    const updated = [...repos.builtin] as YumRepo[]
+                    updated[i] = { ...updated[i], name: e.target.value }
+                    onUpdate({ ...repos, builtin: updated })
+                  }}
+                />
+                <Input
+                  className="h-7 text-xs font-mono flex-1"
+                  value={r.baseurl}
+                  onChange={(e) => {
+                    const updated = [...repos.builtin] as YumRepo[]
+                    updated[i] = { ...updated[i], baseurl: e.target.value }
+                    onUpdate({ ...repos, builtin: updated })
+                  }}
+                />
+              </div>
             ))}
           </div>
         </div>
@@ -400,10 +442,18 @@ function ApkSection({
           <p className="text-xs font-medium text-muted-foreground mb-2">Built-in</p>
           <div className="space-y-1.5">
             {(repos.builtin as ApkRepo[]).map((r, i) => (
-              <label key={i} className="flex items-center gap-2 text-sm rounded px-2 py-1 hover:bg-muted/50 cursor-pointer">
+              <div key={i} className="flex items-center gap-2 text-sm rounded px-2 py-1">
                 <Checkbox checked={r.enabled} onCheckedChange={() => toggleBuiltin(i)} />
-                <span className="truncate font-mono text-xs">{r.url}</span>
-              </label>
+                <Input
+                  className="h-7 text-xs font-mono flex-1"
+                  value={r.url}
+                  onChange={(e) => {
+                    const updated = [...repos.builtin] as ApkRepo[]
+                    updated[i] = { ...updated[i], url: e.target.value }
+                    onUpdate({ ...repos, builtin: updated })
+                  }}
+                />
+              </div>
             ))}
           </div>
         </div>
