@@ -272,19 +272,18 @@ function RepoSection({
           )}
         </div>
       </CardHeader>
+      {/* Images using this OS (always visible, not affected by enable toggle) */}
+      {repos.images.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 px-6 pb-3">
+          <span className="text-sm text-muted-foreground mr-1">Images:</span>
+          {repos.images.map((img) => (
+            <Badge key={img} variant="secondary" className="text-sm">
+              {img}
+            </Badge>
+          ))}
+        </div>
+      )}
       <CardContent className={`space-y-4 ${repos.enabled ? "" : "opacity-50"}`}>
-        {/* Images using this OS */}
-        {repos.images.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-muted-foreground mr-1">Images:</span>
-            {repos.images.map((img) => (
-              <Badge key={img} variant="secondary" className="text-sm">
-                {img}
-              </Badge>
-            ))}
-          </div>
-        )}
-
         {/* Built-in */}
         <div>
           <p className="text-xs font-medium text-muted-foreground mb-2">Built-in</p>
