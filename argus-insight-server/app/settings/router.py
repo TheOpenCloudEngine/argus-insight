@@ -743,6 +743,14 @@ async def update_repositories(
     if os_key not in BUILTIN_REPOS:
         raise HTTPException(status_code=400, detail=f"Unknown OS key: {os_key}")
 
+    # Validate pkg_type consistency
+    expected_type = BUILTIN_REPOS[os_key]["pkg_type"]
+    for repo in body.builtin + body.custom:
+        if expected_type == "apt" and "type" not in repo:
+            raise HTTPException(status_code=400, detail=f"APT repo must have 'type' field. Got data for wrong OS?")
+        if expected_type == "yum" and "repo_id" not in repo:
+            raise HTTPException(status_code=400, detail=f"YUM repo must have 'repo_id' field. Got data for wrong OS?")
+
     data = _json.dumps({"enabled": body.enabled, "builtin": body.builtin, "custom": body.custom})
     await service.update_infra_category(session, f"repo_{os_key}", {"repos": data})
     logger.info("Repositories updated: %s", os_key)
