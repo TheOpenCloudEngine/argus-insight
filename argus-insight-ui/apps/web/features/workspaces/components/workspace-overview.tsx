@@ -1140,6 +1140,15 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
             return true
           })
           .map((svc) => {
+            if (svc.plugin_name === "argus-mariadb" || svc.plugin_name === "argus-postgresql") {
+              return {
+                ...svc,
+                username: null,
+                password: null,
+                _hideUrl: true,
+                _hideTimestamps: true,
+              } as WorkspaceService & { _hideUrl?: boolean; _hideTimestamps?: boolean }
+            }
             if (svc.plugin_name === "argus-mlflow" || svc.plugin_name === "argus-airflow") {
               return {
                 ...svc,

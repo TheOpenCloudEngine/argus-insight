@@ -93,7 +93,7 @@ class MariadbDeployStep(WorkflowStep):
                     "DB Name": config.db_name,
                     "DB User": config.db_user,
                     "DB Password": user_password,
-                    "MySQL Port": "3306",
+                    "MySQL Address": f"argus-mariadb-{workspace_name}.{namespace}.svc.cluster.local:3306",
                     "Charset": "utf8mb4",
                     "phpMyAdmin": f"http://{hostname}",
                 },
