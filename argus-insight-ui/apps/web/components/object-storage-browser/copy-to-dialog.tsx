@@ -67,7 +67,7 @@ export function CopyToDialog({
     setLoadingFolders(true)
     try {
       const data = await listObjects(destBucket, destPrefix)
-      const dirs = (data.common_prefixes ?? []).map((p: string) => p)
+      const dirs = (data.folders ?? []).map((f: { prefix: string }) => f.prefix)
       setFolders(dirs)
     } catch {
       setFolders([])
