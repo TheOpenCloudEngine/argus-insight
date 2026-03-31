@@ -262,7 +262,7 @@ function DetailRow({
 /*  Service Configuration Sheet (MariaDB, PostgreSQL)                  */
 /* ------------------------------------------------------------------ */
 
-const CONFIGURABLE_PLUGINS = new Set(["argus-mariadb", "argus-postgresql", "argus-jupyter", "argus-jupyter-tensorflow", "argus-jupyter-pyspark", "argus-mlflow"])
+const CONFIGURABLE_PLUGINS = new Set(["argus-mariadb", "argus-postgresql", "argus-jupyter", "argus-jupyter-tensorflow", "argus-jupyter-pyspark", "argus-mlflow", "argus-airflow"])
 
 function ServiceConfigSheet({
   open,
@@ -323,7 +323,8 @@ function ServiceConfigSheet({
   const isPostgresql = service.plugin_name === "argus-postgresql"
   const isJupyter = service.plugin_name.startsWith("argus-jupyter")
   const isMlflow = service.plugin_name === "argus-mlflow"
-  const pluginLabel = isMariadb ? "MariaDB" : isPostgresql ? "PostgreSQL" : isMlflow ? "MLflow" : "JupyterLab"
+  const isAirflow = service.plugin_name === "argus-airflow"
+  const pluginLabel = isMariadb ? "MariaDB" : isPostgresql ? "PostgreSQL" : isMlflow ? "MLflow" : isAirflow ? "Airflow" : "JupyterLab"
 
   const groups: { title: string; keys: string[] }[] = isMariadb
     ? [
@@ -343,6 +344,14 @@ function ServiceConfigSheet({
     ? [
         { title: "Performance", keys: ["MLFLOW_WORKERS", "GUNICORN_CMD_ARGS"] },
         { title: "Server", keys: ["MLFLOW_LOGGING_LEVEL", "MLFLOW_SERVE_ARTIFACTS"] },
+      ]
+    : isAirflow
+    ? [
+        { title: "Core", keys: ["AIRFLOW__CORE__PARALLELISM", "AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG", "AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG", "AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION", "AIRFLOW__CORE__DEFAULT_TIMEZONE", "AIRFLOW__CORE__DAG_FILE_PROCESSOR_TIMEOUT"] },
+        { title: "Scheduler", keys: ["AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL", "AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL", "AIRFLOW__SCHEDULER__PARSING_PROCESSES", "AIRFLOW__SCHEDULER__SCHEDULER_HEARTBEAT_SEC"] },
+        { title: "Webserver", keys: ["AIRFLOW__WEBSERVER__WEB_SERVER_WORKER_TIMEOUT", "AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE", "AIRFLOW__WEBSERVER__HIDE_PAUSED_DAGS_BY_DEFAULT", "AIRFLOW__WEBSERVER__PAGE_SIZE", "AIRFLOW__WEBSERVER__DEFAULT_DAG_RUN_DISPLAY_NUMBER", "AIRFLOW__WEBSERVER__WORKERS"] },
+        { title: "Logging", keys: ["AIRFLOW__LOGGING__LOGGING_LEVEL", "AIRFLOW__LOGGING__FAB_LOGGING_LEVEL"] },
+        { title: "SMTP", keys: ["AIRFLOW__SMTP__SMTP_HOST", "AIRFLOW__SMTP__SMTP_PORT", "AIRFLOW__SMTP__SMTP_STARTTLS", "AIRFLOW__SMTP__SMTP_SSL", "AIRFLOW__SMTP__SMTP_USER", "AIRFLOW__SMTP__SMTP_PASSWORD", "AIRFLOW__SMTP__SMTP_MAIL_FROM"] },
       ]
     : [
         { title: "Server", keys: ["ServerApp.max_body_size", "ServerApp.max_buffer_size", "ServerApp.shutdown_no_activity_timeout", "ServerApp.terminals_enabled"] },

@@ -956,6 +956,33 @@ MLFLOW_BLOCKED_OPTIONS = {
     "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
 }
 
+AIRFLOW_ALLOWED_OPTIONS = {
+    # core
+    "AIRFLOW__CORE__PARALLELISM", "AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG",
+    "AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG", "AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION",
+    "AIRFLOW__CORE__DEFAULT_TIMEZONE", "AIRFLOW__CORE__DAG_FILE_PROCESSOR_TIMEOUT",
+    # scheduler
+    "AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL", "AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL",
+    "AIRFLOW__SCHEDULER__PARSING_PROCESSES", "AIRFLOW__SCHEDULER__SCHEDULER_HEARTBEAT_SEC",
+    # webserver
+    "AIRFLOW__WEBSERVER__WEB_SERVER_WORKER_TIMEOUT", "AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE",
+    "AIRFLOW__WEBSERVER__HIDE_PAUSED_DAGS_BY_DEFAULT", "AIRFLOW__WEBSERVER__PAGE_SIZE",
+    "AIRFLOW__WEBSERVER__DEFAULT_DAG_RUN_DISPLAY_NUMBER", "AIRFLOW__WEBSERVER__WORKERS",
+    # logging
+    "AIRFLOW__LOGGING__LOGGING_LEVEL", "AIRFLOW__LOGGING__FAB_LOGGING_LEVEL",
+    # smtp
+    "AIRFLOW__SMTP__SMTP_HOST", "AIRFLOW__SMTP__SMTP_PORT",
+    "AIRFLOW__SMTP__SMTP_STARTTLS", "AIRFLOW__SMTP__SMTP_SSL",
+    "AIRFLOW__SMTP__SMTP_USER", "AIRFLOW__SMTP__SMTP_PASSWORD",
+    "AIRFLOW__SMTP__SMTP_MAIL_FROM",
+}
+
+AIRFLOW_BLOCKED_OPTIONS = {
+    "AIRFLOW__DATABASE__SQL_ALCHEMY_CONN", "AIRFLOW__CORE__FERNET_KEY",
+    "AIRFLOW__WEBSERVER__SECRET_KEY", "AIRFLOW__WEBSERVER__BASE_URL",
+    "AIRFLOW__WEBSERVER__WEB_SERVER_PORT", "AIRFLOW__CORE__DAGS_FOLDER",
+}
+
 MARIADB_ALLOWED_OPTIONS = {
     "max_connections", "wait_timeout", "interactive_timeout", "connect_timeout",
     "max_allowed_packet", "thread_cache_size",
@@ -1128,6 +1155,32 @@ async def get_service_config(
             "plugin_name": svc.plugin_name,
             "options": options,
             "allowed_options": sorted(MLFLOW_ALLOWED_OPTIONS),
+        }
+
+    if svc.plugin_name == "argus-airflow":
+        configmap_name = f"argus-airflow-{ws.name}-custom-config"
+        cmd = ["kubectl", "get", "configmap", configmap_name, "-n", namespace, "-o", "json"]
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            return {"plugin_name": svc.plugin_name, "options": {}, "allowed_options": sorted(AIRFLOW_ALLOWED_OPTIONS)}
+
+        import json as _json
+        cm = _json.loads(stdout.decode())
+        options = {k: v for k, v in cm.get("data", {}).items() if k in AIRFLOW_ALLOWED_OPTIONS}
+
+        return {
+            "plugin_name": svc.plugin_name,
+            "options": options,
+            "allowed_options": sorted(AIRFLOW_ALLOWED_OPTIONS),
         }
 
     return {"plugin_name": svc.plugin_name, "options": {}, "allowed_options": []}
@@ -1339,5 +1392,43 @@ async def update_service_config(
 
         logger.info("MLflow config updated for workspace %s, restarting", ws.name)
         return {"status": "ok", "message": "Configuration updated. MLflow is restarting."}
+
+    if svc.plugin_name == "argus-airflow":
+        for key in body.options:
+            if key in AIRFLOW_BLOCKED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Option '{key}' cannot be changed")
+            if key not in AIRFLOW_ALLOWED_OPTIONS:
+                raise HTTPException(status_code=400, detail=f"Unknown option '{key}'")
+
+        from app.settings.service import get_config_by_category
+        cfg = await get_config_by_category(session, "k8s")
+        kubeconfig = cfg.get("k8s_kubeconfig_path", "")
+
+        configmap_name = f"argus-airflow-{ws.name}-custom-config"
+
+        import json as _json
+        patch = _json.dumps({"data": body.options})
+        cmd = ["kubectl", "patch", "configmap", configmap_name, "-n", namespace, "--type=merge", f"-p={patch}"]
+        if kubeconfig:
+            cmd.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to update config: {stderr.decode()}")
+
+        cmd2 = ["kubectl", "rollout", "restart", f"statefulset/argus-airflow-{ws.name}", "-n", namespace]
+        if kubeconfig:
+            cmd2.insert(1, f"--kubeconfig={kubeconfig}")
+
+        proc2 = await asyncio.create_subprocess_exec(
+            *cmd2, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await proc2.communicate()
+
+        logger.info("Airflow config updated for workspace %s, restarting", ws.name)
+        return {"status": "ok", "message": "Configuration updated. Airflow is restarting."}
 
     raise HTTPException(status_code=400, detail=f"Configuration not supported for {svc.plugin_name}")

@@ -87,6 +87,9 @@ spec:
               trusted-host = ${PIP_TRUSTED_HOST}
               PIPCONF
               exec airflow webserver
+          envFrom:
+            - configMapRef:
+                name: argus-airflow-${WORKSPACE_NAME}-custom-config
           env:
             - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
               value: "postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@argus-airflow-${WORKSPACE_NAME}-db:5432/airflow"
@@ -146,6 +149,9 @@ spec:
               trusted-host = ${PIP_TRUSTED_HOST}
               PIPCONF
               exec airflow scheduler
+          envFrom:
+            - configMapRef:
+                name: argus-airflow-${WORKSPACE_NAME}-custom-config
           env:
             - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
               value: "postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@argus-airflow-${WORKSPACE_NAME}-db:5432/airflow"
