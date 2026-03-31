@@ -117,7 +117,7 @@ class StarRocksDeployStep(WorkflowStep):
             workspace_id=ctx.workspace_id,
             plugin_name="argus-starrocks",
             display_name="StarRocks Analytics DB",
-            version="latest",
+            version="4.0.8",
             endpoint=f"http://{hostname}",
             service_id=svc_id,
             metadata={

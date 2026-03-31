@@ -11,4 +11,4 @@ changelog: |
   - Persistent catalog configuration
 upgradeable_from: []
 os_key: rhel-10
-software_version: "latest"
+software_version: "480"

@@ -12,4 +12,4 @@ changelog: |
   - Persistent data storage
 upgradeable_from: []
 os_key: ubuntu-22.04
-software_version: "latest"
+software_version: "4.0.8"
