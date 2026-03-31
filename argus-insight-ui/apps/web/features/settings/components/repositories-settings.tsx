@@ -275,10 +275,10 @@ function RepoSection({
       <CardContent className={`space-y-4 ${repos.enabled ? "" : "opacity-50"}`}>
         {/* Images using this OS */}
         {repos.images.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-xs text-muted-foreground mr-1">Images:</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground mr-1">Images:</span>
             {repos.images.map((img) => (
-              <Badge key={img} variant="secondary" className="text-[10px] font-mono">
+              <Badge key={img} variant="secondary" className="text-sm">
                 {img}
               </Badge>
             ))}
