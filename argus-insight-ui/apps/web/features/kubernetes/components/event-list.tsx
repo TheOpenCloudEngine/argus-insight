@@ -52,12 +52,12 @@ export function EventList({ namespace, fieldSelector }: EventListProps) {
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b bg-muted/50">
-            <th className="text-left py-2 px-3 text-xs font-medium w-16">Type</th>
-            <th className="text-left py-2 px-3 text-xs font-medium w-28">Reason</th>
-            <th className="text-left py-2 px-3 text-xs font-medium">Object</th>
-            <th className="text-left py-2 px-3 text-xs font-medium">Message</th>
-            <th className="text-left py-2 px-3 text-xs font-medium w-16">Count</th>
-            <th className="text-left py-2 px-3 text-xs font-medium w-16">Age</th>
+            <th className="text-left py-2 px-3 text-sm font-medium w-16">Type</th>
+            <th className="text-left py-2 px-3 text-sm font-medium w-28">Reason</th>
+            <th className="text-left py-2 px-3 text-sm font-medium">Object</th>
+            <th className="text-left py-2 px-3 text-sm font-medium">Message</th>
+            <th className="text-left py-2 px-3 text-sm font-medium w-16">Count</th>
+            <th className="text-left py-2 px-3 text-sm font-medium w-16">Age</th>
           </tr>
         </thead>
         <tbody>
@@ -72,7 +72,7 @@ export function EventList({ namespace, fieldSelector }: EventListProps) {
                 <td className="py-1.5 px-3">
                   <Badge
                     variant="outline"
-                    className={`text-[10px] px-1 py-0 ${
+                    className={`text-sm px-1 py-0 ${
                       isWarning
                         ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
                         : "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
@@ -81,13 +81,13 @@ export function EventList({ namespace, fieldSelector }: EventListProps) {
                     {String(e.type || "Normal")}
                   </Badge>
                 </td>
-                <td className="py-1.5 px-3 text-xs font-medium">{String(e.reason || "")}</td>
-                <td className="py-1.5 px-3 text-xs text-muted-foreground">
+                <td className="py-1.5 px-3 text-sm font-medium">{String(e.reason || "")}</td>
+                <td className="py-1.5 px-3 text-sm text-muted-foreground">
                   {involved ? `${involved.kind}/${involved.name}` : ""}
                 </td>
-                <td className="py-1.5 px-3 text-xs max-w-[400px] truncate">{String(e.message || "")}</td>
-                <td className="py-1.5 px-3 text-xs text-center">{Number(e.count || 1)}</td>
-                <td className="py-1.5 px-3 text-xs text-muted-foreground">{formatAge(lastTs)}</td>
+                <td className="py-1.5 px-3 text-sm max-w-[400px] truncate">{String(e.message || "")}</td>
+                <td className="py-1.5 px-3 text-sm text-center">{Number(e.count || 1)}</td>
+                <td className="py-1.5 px-3 text-sm text-muted-foreground">{formatAge(lastTs)}</td>
               </tr>
             )
           })}

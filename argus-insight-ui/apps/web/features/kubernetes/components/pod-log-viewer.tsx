@@ -111,13 +111,13 @@ export function PodLogViewer({ name, namespace, containers }: PodLogViewerProps)
         </Button>
 
         <div className="flex-1" />
-        <span className="text-xs text-muted-foreground">{lines.length} lines</span>
+        <span className="text-sm text-muted-foreground">{lines.length} lines</span>
       </div>
 
       {/* Log Output */}
       <div
         ref={logRef}
-        className="bg-zinc-950 text-zinc-100 rounded-md p-3 font-mono text-xs leading-5 overflow-auto max-h-[600px] min-h-[300px]"
+        className="bg-zinc-950 text-zinc-100 rounded-md p-3 font-[family-name:var(--font-d2coding)] text-sm leading-5 overflow-auto max-h-[600px] min-h-[300px]"
         onScroll={(e) => {
           const el = e.currentTarget
           const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50

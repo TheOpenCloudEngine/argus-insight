@@ -13,7 +13,11 @@ from app.k8s.schemas import (
     ClusterOverview,
     K8sResource,
     K8sResourceList,
+    NamespacePodCount,
     NamespaceOverview,
+    NamespaceResourceUsage,
+    NodeResourceInfo,
+    PodStatusBreakdown,
     ResourceCount,
 )
 from app.settings.models import ArgusConfiguration
@@ -122,6 +126,171 @@ def _count_jobs(items: list[dict]) -> ResourceCount:
     return ResourceCount(total=total, ready=ready, not_ready=not_ready, warning=warning)
 
 
+def _pod_status_breakdown(items: list[dict]) -> PodStatusBreakdown:
+    breakdown = PodStatusBreakdown()
+    for pod in items:
+        phase = (pod.get("status") or {}).get("phase", "Unknown")
+        if phase == "Running":
+            breakdown.running += 1
+        elif phase == "Succeeded":
+            breakdown.succeeded += 1
+        elif phase == "Pending":
+            breakdown.pending += 1
+        elif phase == "Failed":
+            breakdown.failed += 1
+        else:
+            breakdown.unknown += 1
+    return breakdown
+
+
+def _namespace_pod_counts(items: list[dict]) -> list[NamespacePodCount]:
+    ns_map: dict[str, int] = {}
+    for pod in items:
+        ns = (pod.get("metadata") or {}).get("namespace", "default")
+        ns_map[ns] = ns_map.get(ns, 0) + 1
+    counts = [NamespacePodCount(namespace=ns, count=c) for ns, c in ns_map.items()]
+    counts.sort(key=lambda x: x.count, reverse=True)
+    return counts
+
+
+def _extract_node_resources(
+    node_items: list[dict],
+    pod_items: list[dict] | None = None,
+    metrics: list[dict] | None = None,
+) -> list[NodeResourceInfo]:
+    metrics_map: dict[str, dict] = {}
+    if metrics:
+        for m in metrics:
+            metrics_map[m["name"]] = m
+
+    # Count running pods per node
+    node_pod_counts: dict[str, int] = {}
+    if pod_items:
+        for pod in pod_items:
+            phase = (pod.get("status") or {}).get("phase", "")
+            node_name = (pod.get("spec") or {}).get("nodeName", "")
+            if node_name and phase in ("Running", "Pending"):
+                node_pod_counts[node_name] = node_pod_counts.get(node_name, 0) + 1
+
+    result = []
+    for node in node_items:
+        metadata = node.get("metadata") or {}
+        status = node.get("status") or {}
+        capacity = status.get("capacity") or {}
+        allocatable = status.get("allocatable") or {}
+        conditions = status.get("conditions") or []
+        is_ready = any(
+            c.get("type") == "Ready" and c.get("status") == "True"
+            for c in conditions
+        )
+        name = metadata.get("name", "")
+        node_metrics = metrics_map.get(name, {})
+        result.append(NodeResourceInfo(
+            name=name,
+            cpu_capacity=capacity.get("cpu", "0"),
+            cpu_allocatable=allocatable.get("cpu", "0"),
+            cpu_usage=node_metrics.get("cpu_usage", "0"),
+            memory_capacity=capacity.get("memory", "0"),
+            memory_allocatable=allocatable.get("memory", "0"),
+            memory_usage=node_metrics.get("memory_usage", "0"),
+            pods_capacity=capacity.get("pods", "0"),
+            pods_allocatable=allocatable.get("pods", "0"),
+            pods_running=node_pod_counts.get(name, 0),
+            ready=is_ready,
+        ))
+    return result
+
+
+def _parse_cpu_nanocores(value: str) -> int:
+    """Parse CPU value to nanocores."""
+    if not value or value == "0":
+        return 0
+    if value.endswith("n"):
+        return int(value[:-1])
+    if value.endswith("u"):
+        return int(value[:-1]) * 1000
+    if value.endswith("m"):
+        return int(value[:-1]) * 1_000_000
+    return int(float(value) * 1_000_000_000)
+
+
+def _parse_memory_bytes(value: str) -> int:
+    """Parse memory value to bytes."""
+    if not value or value == "0":
+        return 0
+    if value.endswith("Ki"):
+        return int(value[:-2]) * 1024
+    if value.endswith("Mi"):
+        return int(value[:-2]) * 1024 * 1024
+    if value.endswith("Gi"):
+        return int(value[:-2]) * 1024 * 1024 * 1024
+    if value.endswith("Ti"):
+        return int(value[:-2]) * 1024 * 1024 * 1024 * 1024
+    return int(value)
+
+
+def _format_cpu_cores(nanocores: int) -> str:
+    """Format nanocores to cores string."""
+    cores = nanocores / 1_000_000_000
+    if cores >= 10:
+        return f"{cores:.1f}"
+    return f"{cores:.2f}"
+
+
+def _format_memory_mi(mem_bytes: int) -> str:
+    """Format bytes to MiB or GiB string."""
+    mi = mem_bytes / (1024 * 1024)
+    if mi >= 1024:
+        return f"{mi / 1024:.1f}Gi"
+    return f"{int(mi)}Mi"
+
+
+def _aggregate_namespace_resource_usage(
+    pod_metrics: list[dict],
+    pod_items: list[dict] | None = None,
+) -> list[NamespaceResourceUsage]:
+    """Aggregate CPU and memory usage by namespace from pod metrics."""
+    # Aggregate actual usage from metrics
+    ns_map: dict[str, dict] = {}
+    for pod in pod_metrics:
+        ns = (pod.get("metadata") or {}).get("namespace", "default")
+        containers = pod.get("containers") or []
+        if ns not in ns_map:
+            ns_map[ns] = {"cpu": 0, "memory": 0, "cpu_req": 0, "mem_req": 0, "pods": 0}
+        ns_map[ns]["pods"] += 1
+        for c in containers:
+            usage = c.get("usage") or {}
+            ns_map[ns]["cpu"] += _parse_cpu_nanocores(usage.get("cpu", "0"))
+            ns_map[ns]["memory"] += _parse_memory_bytes(usage.get("memory", "0"))
+
+    # Aggregate requested resources from pod specs
+    if pod_items:
+        for pod in pod_items:
+            phase = (pod.get("status") or {}).get("phase", "")
+            if phase not in ("Running", "Pending"):
+                continue
+            ns = (pod.get("metadata") or {}).get("namespace", "default")
+            if ns not in ns_map:
+                ns_map[ns] = {"cpu": 0, "memory": 0, "cpu_req": 0, "mem_req": 0, "pods": 0}
+            for c in (pod.get("spec") or {}).get("containers") or []:
+                requests = (c.get("resources") or {}).get("requests") or {}
+                ns_map[ns]["cpu_req"] += _parse_cpu_nanocores(requests.get("cpu", "0"))
+                ns_map[ns]["mem_req"] += _parse_memory_bytes(requests.get("memory", "0"))
+
+    result = []
+    for ns, data in ns_map.items():
+        result.append(NamespaceResourceUsage(
+            namespace=ns,
+            cpu_usage=_format_cpu_cores(data["cpu"]),
+            cpu_requested=_format_cpu_cores(data["cpu_req"]),
+            memory_usage=_format_memory_mi(data["memory"]),
+            memory_requested=_format_memory_mi(data["mem_req"]),
+            pod_count=data["pods"],
+        ))
+    result.sort(key=lambda x: float(x.cpu_usage), reverse=True)
+    return result
+
+
 def _count_simple(items: list[dict]) -> ResourceCount:
     return ResourceCount(total=len(items), ready=len(items))
 
@@ -193,6 +362,10 @@ async def get_cluster_overview(session: AsyncSession) -> ClusterOverview:
             else:
                 nodes_not_ready += 1
 
+        # Fetch metrics (best-effort, returns [] if unavailable)
+        node_metrics = await k8s.get_node_metrics()
+        pod_metrics = await k8s.get_pod_metrics()
+
         pod_data = await k8s.list_resources("pods")
         deploy_data = await k8s.list_resources("deployments")
         svc_data = await k8s.list_resources("services")
@@ -202,12 +375,14 @@ async def get_cluster_overview(session: AsyncSession) -> ClusterOverview:
         cj_data = await k8s.list_resources("cronjobs")
         event_data = await k8s.list_resources("events")
 
+        pod_items = pod_data.get("items", [])
+
         return ClusterOverview(
             cluster=cluster_info,
             nodes=ResourceCount(
                 total=len(node_items), ready=nodes_ready, not_ready=nodes_not_ready,
             ),
-            pods=_count_pods(pod_data.get("items", [])),
+            pods=_count_pods(pod_items),
             deployments=_count_deployments(deploy_data.get("items", [])),
             services=_count_simple(svc_data.get("items", [])),
             statefulsets=_count_statefulsets(sts_data.get("items", [])),
@@ -216,6 +391,10 @@ async def get_cluster_overview(session: AsyncSession) -> ClusterOverview:
             cronjobs=_count_simple(cj_data.get("items", [])),
             namespaces=namespaces,
             recent_events=_format_events(event_data.get("items", [])),
+            pod_status_breakdown=_pod_status_breakdown(pod_items),
+            namespace_pod_counts=_namespace_pod_counts(pod_items),
+            node_resources=_extract_node_resources(node_items, pod_items, node_metrics),
+            namespace_resource_usage=_aggregate_namespace_resource_usage(pod_metrics, pod_items),
         )
     finally:
         await k8s.close()
