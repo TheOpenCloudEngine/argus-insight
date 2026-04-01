@@ -180,6 +180,10 @@ class AirflowDeployStep(WorkflowStep):
                     "endpoint": internal_endpoint,
                     "namespace": namespace,
                 },
+                "resources": {
+                    "cpu_limit": config.webserver_resources.cpu_limit,
+                    "memory_limit": config.webserver_resources.memory_limit,
+                },
             },
         )
 

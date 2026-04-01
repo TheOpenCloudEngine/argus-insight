@@ -10,6 +10,7 @@ import { SecuritySettings } from "@/features/settings/components/security-settin
 import { ArgusSettings } from "@/features/settings/components/argus-settings"
 import { AuthSettings } from "@/features/settings/components/auth-settings"
 import { RepositoriesSettings } from "@/features/settings/components/repositories-settings"
+import { ResourceProfiles } from "@/features/settings/components/resource-profiles"
 
 export default function SettingsPage() {
   return (
@@ -26,6 +27,7 @@ export default function SettingsPage() {
             <TabsTrigger value="argus" className="text-base">Argus</TabsTrigger>
             <TabsTrigger value="auth" className="text-base">Authentication</TabsTrigger>
             <TabsTrigger value="repositories" className="text-base">Image OS Repository</TabsTrigger>
+            <TabsTrigger value="resource-profiles" className="text-base">Resource Profiles</TabsTrigger>
           </TabsList>
           <TabsContent value="domain" className="mt-4">
             <DomainSettings />
@@ -50,6 +52,9 @@ export default function SettingsPage() {
           </TabsContent>
           <TabsContent value="repositories" className="mt-4">
             <RepositoriesSettings />
+          </TabsContent>
+          <TabsContent value="resource-profiles" className="mt-4">
+            <ResourceProfiles />
           </TabsContent>
         </Tabs>
       </div>

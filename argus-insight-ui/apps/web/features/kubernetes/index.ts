@@ -10,6 +10,7 @@ export { YamlEditor } from "./components/yaml-editor"
 export { EventList } from "./components/event-list"
 export { ResourceDataView } from "./components/resource-data-view"
 export { NodeAgentView } from "./components/node-agent-view"
+export { NamespaceList } from "./components/namespace-list"
 export { ViewInKubernetes, ViewWorkspace, NamespaceWorkspaceDetector } from "./components/workspace-namespace-link"
 
 export * from "./api"

@@ -15,10 +15,40 @@ export interface WorkspaceResponse {
   mlflow_endpoint: string | null
   kserve_endpoint: string | null
   status: "provisioning" | "active" | "failed" | "deleting" | "deleted"
+  resource_profile_id: number | null
   created_by: number
   created_by_username: string | null
   created_at: string
   updated_at: string
+}
+
+export interface ResourceProfile {
+  id: number
+  name: string
+  display_name: string
+  description: string | null
+  cpu_cores: number
+  memory_gb: number
+  is_default: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ServiceResourceItem {
+  plugin_name: string
+  display_name: string | null
+  service_id: string | null
+  cpu_cores: number
+  memory_gb: number
+}
+
+export interface WorkspaceResourceUsage {
+  profile: ResourceProfile | null
+  cpu_used: number
+  cpu_limit: number | null
+  memory_used_gb: number
+  memory_limit_gb: number | null
+  services: ServiceResourceItem[]
 }
 
 export interface PaginatedWorkspaceResponse {

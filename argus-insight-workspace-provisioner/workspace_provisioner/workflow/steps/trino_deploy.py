@@ -101,6 +101,10 @@ class TrinoDeployStep(WorkflowStep):
                     "endpoint": f"http://argus-trino-{workspace_name}.{namespace}.svc.cluster.local:8080",
                     "namespace": namespace,
                 },
+                "resources": {
+                    "cpu_limit": config.coordinator_resources.cpu_limit,
+                    "memory_limit": config.coordinator_resources.memory_limit,
+                },
             },
         )
 

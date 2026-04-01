@@ -2,10 +2,12 @@ import { authFetch } from "@/features/auth/auth-fetch"
 import type {
   PaginatedAuditLogResponse,
   PaginatedWorkspaceResponse,
+  ResourceProfile,
   WorkspaceService,
   WorkspaceCredentials,
   WorkspaceMember,
   WorkspacePipeline,
+  WorkspaceResourceUsage,
   WorkspaceResponse,
 } from "./types"
 
@@ -137,6 +139,77 @@ export async function fetchWorkspaceAuditLogs(
     `${BASE}/workspaces/${workspaceId}/audit-logs?page=${page}&page_size=${pageSize}`,
   )
   if (!res.ok) throw new Error(await extractError(res, "Failed to fetch audit logs"))
+  return res.json()
+}
+
+// ── Resource Profiles ──────────────────────────────────────────
+
+const PROFILE_BASE = "/api/v1/resource-profiles"
+
+export async function fetchResourceProfiles(): Promise<ResourceProfile[]> {
+  const res = await authFetch(PROFILE_BASE)
+  if (!res.ok) throw new Error(await extractError(res, "Failed to fetch profiles"))
+  return res.json()
+}
+
+export async function createResourceProfile(data: {
+  name: string
+  display_name: string
+  description?: string
+  cpu_cores: number
+  memory_gb: number
+  is_default?: boolean
+}): Promise<ResourceProfile> {
+  const res = await authFetch(PROFILE_BASE, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(await extractError(res, "Failed to create profile"))
+  return res.json()
+}
+
+export async function updateResourceProfile(
+  id: number,
+  data: {
+    display_name?: string
+    description?: string
+    cpu_cores?: number
+    memory_gb?: number
+    is_default?: boolean
+  },
+): Promise<ResourceProfile> {
+  const res = await authFetch(`${PROFILE_BASE}/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(await extractError(res, "Failed to update profile"))
+  return res.json()
+}
+
+export async function deleteResourceProfile(id: number): Promise<void> {
+  const res = await authFetch(`${PROFILE_BASE}/${id}`, { method: "DELETE" })
+  if (!res.ok) throw new Error(await extractError(res, "Failed to delete profile"))
+}
+
+export async function assignWorkspaceProfile(
+  workspaceId: number,
+  profileId: number | null,
+): Promise<void> {
+  const res = await authFetch(`${BASE}/workspaces/${workspaceId}/resource-profile`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profile_id: profileId }),
+  })
+  if (!res.ok) throw new Error(await extractError(res, "Failed to assign profile"))
+}
+
+export async function fetchWorkspaceResourceUsage(
+  workspaceId: number,
+): Promise<WorkspaceResourceUsage> {
+  const res = await authFetch(`${BASE}/workspaces/${workspaceId}/resource-usage`)
+  if (!res.ok) throw new Error(await extractError(res, "Failed to fetch resource usage"))
   return res.json()
 }
 

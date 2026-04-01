@@ -28,6 +28,7 @@ import { YamlViewer } from "./yaml-viewer"
 import { PodLogViewer } from "./pod-log-viewer"
 import { EventList } from "./event-list"
 import { ResourceDataView } from "./resource-data-view"
+import { PodResourceUsage } from "./pod-resource-usage"
 
 interface ResourceDetailProps {
   resourceDef: ResourceDef
@@ -154,6 +155,7 @@ export function ResourceDetail({
               </CardContent>
             </Card>
           )}
+
         </div>
       ),
     },
@@ -212,6 +214,10 @@ export function ResourceDetail({
       content: (
         <YamlViewer data={(resource.spec as Record<string, unknown>)?.volumes || (resource.spec as Record<string, unknown>)?.volumeClaimTemplates} height="300px" />
       ),
+    },
+    "pod-usage": {
+      label: "Pod Resource Usage",
+      content: <PodResourceUsage namespace={metadata.name} />,
     },
     yaml: {
       label: "YAML",

@@ -7,6 +7,7 @@ import type {
   K8sResourceItem,
   K8sResourceList,
   NamespaceOverview,
+  NamespaceResourceUsage,
 } from "./types"
 
 const BASE = "/api/v1/k8s"
@@ -37,6 +38,12 @@ export async function fetchNamespaces(): Promise<string[]> {
   const res = await authFetch(`${BASE}/namespaces`)
   const data = await handleResponse<{ namespaces: string[] }>(res)
   return data.namespaces
+}
+
+export async function fetchNamespaceUsage(): Promise<NamespaceResourceUsage[]> {
+  const res = await authFetch(`${BASE}/namespace-usage`)
+  const data = await handleResponse<{ items: NamespaceResourceUsage[] }>(res)
+  return data.items
 }
 
 // ── Generic Resource CRUD ───────────────────────────────────────

@@ -101,6 +101,10 @@ class MariadbDeployStep(WorkflowStep):
                     "host": f"argus-mariadb-{workspace_name}.{namespace}.svc.cluster.local",
                     "namespace": namespace,
                 },
+                "resources": {
+                    "cpu_limit": config.resources.cpu_limit,
+                    "memory_limit": config.resources.memory_limit,
+                },
             },
         )
 

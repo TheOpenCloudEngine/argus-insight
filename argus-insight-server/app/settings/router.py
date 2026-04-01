@@ -485,6 +485,8 @@ class K8sConfig(BaseModel):
     kubeconfig_path: str = "/etc/rancher/k3s/k3s.yaml"
     namespace_prefix: str = "argus-ws-"
     context: str = ""
+    monitoring_cache_ttl: int = 60
+    monitoring_pod_filter: str = "argus-*"
 
 
 @router.get("/k8s")
@@ -495,6 +497,8 @@ async def get_k8s_config(session: AsyncSession = Depends(get_session)):
         kubeconfig_path=cfg.get("k8s_kubeconfig_path", "/etc/rancher/k3s/k3s.yaml"),
         namespace_prefix=cfg.get("k8s_namespace_prefix", "argus-ws-"),
         context=cfg.get("k8s_context", ""),
+        monitoring_cache_ttl=int(cfg.get("k8s_monitoring_cache_ttl", "60")),
+        monitoring_pod_filter=cfg.get("k8s_monitoring_pod_filter", "argus-*"),
     )
 
 
@@ -504,10 +508,13 @@ async def update_k8s_config(
     session: AsyncSession = Depends(get_session),
 ):
     """Update Kubernetes configuration."""
+    ttl = max(body.monitoring_cache_ttl, 60)
     items = {
         "k8s_kubeconfig_path": body.kubeconfig_path,
         "k8s_namespace_prefix": body.namespace_prefix,
         "k8s_context": body.context,
+        "k8s_monitoring_cache_ttl": str(ttl),
+        "k8s_monitoring_pod_filter": body.monitoring_pod_filter,
     }
     await service.update_infra_category(session, "k8s", items)
     logger.info("K8s config saved: kubeconfig=%s, prefix=%s", body.kubeconfig_path, body.namespace_prefix)

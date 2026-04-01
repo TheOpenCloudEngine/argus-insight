@@ -110,7 +110,7 @@ export function ClusterOverview() {
 
       {/* Namespace Resource Usage */}
       {data.namespace_resource_usage.length > 0 && (
-        <NamespaceResourceChart namespaces={data.namespace_resource_usage} nodeResources={data.node_resources} />
+        <NamespaceResourceChart namespaces={data.namespace_resource_usage} />
       )}
 
       {/* Node Resources */}
@@ -330,9 +330,9 @@ function NamespacePodChart({ namespacePods }: { namespacePods: ClusterOverviewTy
   )
 }
 
-function NamespaceResourceChart({ namespaces, nodeResources }: { namespaces: ClusterOverviewType["namespace_resource_usage"]; nodeResources: NodeResourceInfo[] }) {
-  const { chartData, clusterCpu, clusterMemory } = useMemo(() => {
-    const all = namespaces.map((ns) => ({
+function NamespaceResourceChart({ namespaces }: { namespaces: ClusterOverviewType["namespace_resource_usage"] }) {
+  const chartData = useMemo(() => {
+    return namespaces.slice(0, 10).map((ns) => ({
       namespace: ns.namespace,
       cpu: parseCpuDisplay(ns.cpu_usage),
       cpuReq: parseCpuDisplay(ns.cpu_requested),
@@ -344,11 +344,7 @@ function NamespaceResourceChart({ namespaces, nodeResources }: { namespaces: Clu
       memoryLabel: ns.memory_usage,
       memReqLabel: ns.memory_requested,
     }))
-    // Total allocatable from all nodes
-    const cCpu = nodeResources.reduce((sum, n) => sum + parseCpu(n.cpu_allocatable), 0)
-    const cMem = nodeResources.reduce((sum, n) => sum + parseMemoryGi(n.memory_allocatable), 0) * 1024 // to MiB
-    return { chartData: all.slice(0, 15), clusterCpu: cCpu, clusterMemory: cMem }
-  }, [namespaces, nodeResources])
+  }, [namespaces])
 
   return (
     <Card>
@@ -358,7 +354,7 @@ function NamespaceResourceChart({ namespaces, nodeResources }: { namespaces: Clu
           Namespace Resource Usage
         </CardTitle>
         <CardDescription className="text-sm">
-          CPU and memory usage per namespace (Top {chartData.length}) — Cluster allocatable: {clusterCpu} cores, {clusterMemory >= 1024 ? `${(clusterMemory / 1024).toFixed(1)}Gi` : `${Math.round(clusterMemory)}Mi`}
+          Usage vs requested resources per namespace (Top {chartData.length})
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -369,21 +365,17 @@ function NamespaceResourceChart({ namespaces, nodeResources }: { namespaces: Clu
                 <th className="text-left py-2 px-3 text-sm font-medium">Namespace</th>
                 <th className="text-right py-2 px-3 text-sm font-medium">Pods</th>
                 <th className="text-right py-2 px-3 text-sm font-medium">CPU</th>
-                <th className="text-left py-2 px-3 text-sm font-medium w-[120px]"></th>
-                <th className="text-right py-2 px-3 text-sm font-medium w-[50px] cursor-help" title="Percentage of cluster total allocatable CPU">%</th>
+                <th className="text-left py-2 px-3 text-sm font-medium w-[140px] cursor-help" title="Usage / Requested utilization rate"></th>
                 <th className="text-right py-2 px-3 text-sm font-medium">Memory</th>
-                <th className="text-left py-2 px-3 text-sm font-medium w-[120px]"></th>
-                <th className="text-right py-2 px-3 text-sm font-medium w-[50px] cursor-help" title="Percentage of cluster total allocatable memory">%</th>
+                <th className="text-left py-2 px-3 text-sm font-medium w-[140px] cursor-help" title="Usage / Requested utilization rate"></th>
               </tr>
             </thead>
             <tbody>
               {chartData.map((ns) => {
-                const maxCpu = chartData[0]?.cpu || 1
-                const maxMem = chartData.reduce((max, d) => Math.max(max, d.memory), 1)
-                const cpuBarPct = maxCpu > 0 ? (ns.cpu / maxCpu) * 100 : 0
-                const memBarPct = maxMem > 0 ? (ns.memory / maxMem) * 100 : 0
-                const cpuSharePct = clusterCpu > 0 ? (ns.cpu / clusterCpu) * 100 : 0
-                const memSharePct = clusterMemory > 0 ? (ns.memory / clusterMemory) * 100 : 0
+                const cpuUtilPct = ns.cpuReq > 0 ? (ns.cpu / ns.cpuReq) * 100 : 0
+                const memUtilPct = ns.memReq > 0 ? (ns.memory / ns.memReq) * 100 : 0
+                const cpuColor = cpuUtilPct > 100 ? "bg-red-600" : cpuUtilPct > 80 ? "bg-red-500" : cpuUtilPct > 60 ? "bg-amber-500" : "bg-blue-500"
+                const memColor = memUtilPct > 100 ? "bg-red-600" : memUtilPct > 80 ? "bg-red-500" : memUtilPct > 60 ? "bg-amber-500" : "bg-purple-500"
 
                 return (
                   <tr key={ns.namespace} className="border-b last:border-b-0 hover:bg-muted/30">
@@ -391,18 +383,30 @@ function NamespaceResourceChart({ namespaces, nodeResources }: { namespaces: Clu
                     <td className="py-1.5 px-3 text-right text-muted-foreground">{ns.pods}</td>
                     <td className="py-1.5 px-3 text-right whitespace-nowrap">{ns.cpuLabel} / {ns.cpuReqLabel} cores</td>
                     <td className="py-1.5 px-3">
-                      <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                        <div className="h-full rounded-full bg-blue-500" style={{ width: `${cpuBarPct}%` }} />
-                      </div>
+                      {ns.cpuReq > 0 ? (
+                        <div className="flex items-center gap-2">
+                          <div className="h-2 flex-1 rounded-full bg-muted overflow-hidden">
+                            <div className={`h-full rounded-full ${cpuColor}`} style={{ width: `${Math.min(cpuUtilPct, 100)}%` }} />
+                          </div>
+                          <span className="text-muted-foreground w-10 text-right">{cpuUtilPct.toFixed(0)}%</span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </td>
-                    <td className="py-1.5 px-3 text-right text-muted-foreground">{cpuSharePct.toFixed(1)}%</td>
                     <td className="py-1.5 px-3 text-right whitespace-nowrap">{ns.memoryLabel} / {ns.memReqLabel}</td>
                     <td className="py-1.5 px-3">
-                      <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                        <div className="h-full rounded-full bg-purple-500" style={{ width: `${memBarPct}%` }} />
-                      </div>
+                      {ns.memReq > 0 ? (
+                        <div className="flex items-center gap-2">
+                          <div className="h-2 flex-1 rounded-full bg-muted overflow-hidden">
+                            <div className={`h-full rounded-full ${memColor}`} style={{ width: `${Math.min(memUtilPct, 100)}%` }} />
+                          </div>
+                          <span className="text-muted-foreground w-10 text-right">{memUtilPct.toFixed(0)}%</span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </td>
-                    <td className="py-1.5 px-3 text-right text-muted-foreground">{memSharePct.toFixed(1)}%</td>
                   </tr>
                 )
               })}

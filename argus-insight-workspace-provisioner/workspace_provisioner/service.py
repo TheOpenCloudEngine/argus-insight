@@ -103,10 +103,26 @@ async def register_workspace_service(
 
     Multi-instance plugins (vscode, jupyter*) always INSERT a new record.
     Single-instance plugins upsert by (workspace_id, plugin_name).
+
+    Raises RuntimeError if the workspace's resource profile quota would be exceeded.
     """
     from app.core.database import async_session as get_async_session
 
     async with get_async_session() as session:
+        # Quota check: if metadata contains resources, verify against profile limits
+        if metadata and metadata.get("resources"):
+            res = metadata["resources"]
+            cpu_limit = res.get("cpu_limit", "0")
+            memory_limit = res.get("memory_limit", "0")
+            from app.resource_profile.service import check_resource_quota
+            allowed, details = await check_resource_quota(
+                session, workspace_id, cpu_limit, memory_limit,
+            )
+            if not allowed:
+                raise RuntimeError(
+                    f"Resource quota exceeded for workspace {workspace_id}: {details}"
+                )
+
         is_multi = plugin_name in MULTI_INSTANCE_PLUGINS
 
         if not is_multi:
@@ -361,6 +377,14 @@ async def create_workspace(
         logger.error("Workspace creation failed: name '%s' already exists", req.name)
         raise ValueError(f"Workspace '{req.name}' already exists")
 
+    # Resolve default resource profile
+    default_profile_id = None
+    try:
+        from app.resource_profile.service import get_default_profile_id
+        default_profile_id = await get_default_profile_id(session)
+    except Exception:
+        pass
+
     # Create workspace record
     workspace = ArgusWorkspace(
         name=req.name,
@@ -370,12 +394,13 @@ async def create_workspace(
         k8s_cluster=req.k8s_cluster,
         k8s_namespace=req.k8s_namespace or f"argus-ws-{req.name}",
         status=WorkspaceStatus.PROVISIONING.value,
+        resource_profile_id=default_profile_id,
         created_by=req.admin_user_id,
     )
     session.add(workspace)
     await session.commit()
     await session.refresh(workspace)
-    logger.info("Workspace created: %s (id=%d)", workspace.name, workspace.id)
+    logger.info("Workspace created: %s (id=%d, profile=%s)", workspace.name, workspace.id, default_profile_id)
 
     # Add creator as WorkspaceAdmin
     member = ArgusWorkspaceMember(

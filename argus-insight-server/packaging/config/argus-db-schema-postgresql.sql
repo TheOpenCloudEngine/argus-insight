@@ -285,9 +285,11 @@ INSERT INTO argus_configuration (category, config_key, config_value, description
 ('gitlab', 'gitlab_default_branch',     'main',                 'Default branch for new projects'),
 ('gitlab', 'gitlab_project_visibility', 'internal',             'Project visibility (internal, private, public)'),
 -- Kubernetes
-('k8s', 'k8s_kubeconfig_path',   '/etc/rancher/k3s/k3s.yaml', 'Path to kubeconfig file'),
-('k8s', 'k8s_namespace_prefix',  'argus-ws-',                  'Workspace namespace prefix'),
-('k8s', 'k8s_context',           '',                           'Kubeconfig context (empty = default)'),
+('k8s', 'k8s_kubeconfig_path',        '/etc/rancher/k3s/k3s.yaml', 'Path to kubeconfig file'),
+('k8s', 'k8s_namespace_prefix',       'argus-ws-',                  'Workspace namespace prefix'),
+('k8s', 'k8s_context',                '',                           'Kubeconfig context (empty = default)'),
+('k8s', 'k8s_monitoring_cache_ttl',   '60',                         'Cluster overview cache TTL in seconds (min 60)'),
+('k8s', 'k8s_monitoring_pod_filter',  'argus-*',                    'Pod name glob filter for namespace resource usage'),
 -- Image OS Repositories
 ('repo_debian-11', 'repos', '{"enabled":false,"builtin":[{"type":"deb","url":"http://deb.debian.org/debian","dist":"bullseye","components":"main","enabled":true,"trusted":false},{"type":"deb","url":"http://deb.debian.org/debian","dist":"bullseye-updates","components":"main","enabled":true,"trusted":false},{"type":"deb","url":"http://security.debian.org/debian-security","dist":"bullseye-security","components":"main","enabled":true,"trusted":false}],"custom":[]}', 'Package repositories for debian-11'),
 ('repo_debian-12', 'repos', '{"enabled":false,"builtin":[{"type":"deb","url":"http://deb.debian.org/debian","dist":"bookworm","components":"main","enabled":true,"trusted":false},{"type":"deb","url":"http://deb.debian.org/debian","dist":"bookworm-updates","components":"main","enabled":true,"trusted":false},{"type":"deb","url":"http://security.debian.org/debian-security","dist":"bookworm-security","components":"main","enabled":true,"trusted":false}],"custom":[]}', 'Package repositories for debian-12'),
@@ -452,6 +454,35 @@ COMMENT ON COLUMN argus_plugin_configs.plugin_name IS 'Plugin identifier (e.g. a
 COMMENT ON COLUMN argus_plugin_configs.display_order IS 'Execution order within the pipeline';
 COMMENT ON COLUMN argus_plugin_configs.selected_version IS 'Plugin version (NULL means default)';
 COMMENT ON COLUMN argus_plugin_configs.default_config IS 'Plugin config overrides as JSON';
+
+-- ---------------------------------------------------------------------------
+-- Resource Profiles
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS argus_resource_profiles (
+    id              SERIAL          PRIMARY KEY,
+    name            VARCHAR(100)    NOT NULL UNIQUE,
+    display_name    VARCHAR(255)    NOT NULL,
+    description     TEXT,
+    cpu_cores       NUMERIC(10,3)   NOT NULL,
+    memory_mb       BIGINT          NOT NULL,
+    is_default      BOOLEAN         NOT NULL DEFAULT FALSE,
+    created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+-- Enforce at most one default profile
+CREATE UNIQUE INDEX IF NOT EXISTS idx_resource_profiles_default
+    ON argus_resource_profiles (is_default) WHERE is_default = TRUE;
+
+CREATE OR REPLACE TRIGGER trg_resource_profiles_updated_at
+    BEFORE UPDATE ON argus_resource_profiles
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+COMMENT ON TABLE argus_resource_profiles IS 'Resource profiles defining CPU/Memory limits for workspaces';
+COMMENT ON COLUMN argus_resource_profiles.cpu_cores IS 'Total CPU cores (e.g. 8.000)';
+COMMENT ON COLUMN argus_resource_profiles.memory_mb IS 'Total memory in MiB (e.g. 16384 for 16 GiB)';
+COMMENT ON COLUMN argus_resource_profiles.is_default IS 'Default profile for new workspaces (at most one)';
 
 -- Seed default roles
 INSERT INTO argus_roles (role_id, name, description) VALUES ('argus-admin', 'Admin', 'Administrator with full access') ON CONFLICT (role_id) DO NOTHING;

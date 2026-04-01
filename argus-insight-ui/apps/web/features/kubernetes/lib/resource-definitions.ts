@@ -28,6 +28,7 @@ export type DetailTab =
   | "rules"
   | "conditions"
   | "volumes"
+  | "pod-usage"
 
 export interface ResourceDef {
   kind: string
@@ -572,7 +573,7 @@ export const RESOURCE_DEFINITIONS: Record<string, ResourceDef> = {
       { header: "Status", accessor: getNsStatus, render: "status-badge" },
       { header: "Age", accessor: "metadata.creationTimestamp", render: "age" },
     ],
-    detailTabs: ["overview", "events", "yaml"],
+    detailTabs: ["overview", "pod-usage", "events", "yaml"],
   },
   events: {
     kind: "Event",

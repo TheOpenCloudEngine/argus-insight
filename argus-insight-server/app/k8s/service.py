@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import fnmatch
 import logging
+import time
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,19 +27,25 @@ from app.settings.models import ArgusConfiguration
 logger = logging.getLogger(__name__)
 
 
-async def _get_k8s_config(session: AsyncSession) -> tuple[str, str]:
-    """Read kubeconfig_path and context from the database."""
+# ── Cluster Overview Cache ────────────────────────────────────────
+
+_overview_cache: ClusterOverview | None = None
+_overview_cache_time: float = 0
+
+
+async def _get_k8s_config(session: AsyncSession) -> dict[str, str]:
+    """Read all k8s config from the database."""
     result = await session.execute(
         select(ArgusConfiguration).where(ArgusConfiguration.category == "k8s")
     )
     rows = {r.config_key: r.config_value for r in result.scalars().all()}
-    kubeconfig = rows.get("k8s_kubeconfig_path", "/etc/rancher/k3s/k3s.yaml")
-    context = rows.get("k8s_context", "")
-    return kubeconfig, context
+    return rows
 
 
 async def _make_client(session: AsyncSession) -> K8sClient:
-    kubeconfig, context = await _get_k8s_config(session)
+    cfg = await _get_k8s_config(session)
+    kubeconfig = cfg.get("k8s_kubeconfig_path", "/etc/rancher/k3s/k3s.yaml")
+    context = cfg.get("k8s_context", "")
     return K8sClient(kubeconfig, context)
 
 
@@ -318,8 +326,40 @@ def _format_events(items: list[dict], limit: int = 20) -> list[dict]:
     return events[:limit]
 
 
+def _filter_pods_by_pattern(items: list[dict], pattern: str) -> list[dict]:
+    """Filter pod items by name pattern (fnmatch glob)."""
+    if not pattern or pattern == "*":
+        return items
+    return [
+        p for p in items
+        if fnmatch.fnmatch((p.get("metadata") or {}).get("name", ""), pattern)
+    ]
+
+
+def _filter_pod_metrics_by_pattern(items: list[dict], pattern: str) -> list[dict]:
+    """Filter pod metrics by name pattern (fnmatch glob)."""
+    if not pattern or pattern == "*":
+        return items
+    return [
+        p for p in items
+        if fnmatch.fnmatch((p.get("metadata") or {}).get("name", ""), pattern)
+    ]
+
+
 async def get_cluster_overview(session: AsyncSession) -> ClusterOverview:
-    """Aggregate cluster-wide overview data."""
+    """Aggregate cluster-wide overview data with server-side caching."""
+    global _overview_cache, _overview_cache_time
+
+    # Read monitoring settings
+    cfg = await _get_k8s_config(session)
+    cache_ttl = max(int(cfg.get("k8s_monitoring_cache_ttl", "60")), 60)
+    pod_filter = cfg.get("k8s_monitoring_pod_filter", "argus-*")
+
+    # Return cached result if still valid
+    now = time.monotonic()
+    if _overview_cache is not None and (now - _overview_cache_time) < cache_ttl:
+        return _overview_cache
+
     k8s = await _make_client(session)
     try:
         # Get cluster info
@@ -336,7 +376,7 @@ async def get_cluster_overview(session: AsyncSession) -> ClusterOverview:
                 cluster=ClusterInfo(connected=False, error=str(e)),
             )
 
-        # Fetch all resource lists in parallel-ish (sequential for simplicity)
+        # Fetch all resource lists
         ns_data = await k8s.list_resources("namespaces")
         ns_items = ns_data.get("items", [])
         namespaces = [
@@ -364,7 +404,7 @@ async def get_cluster_overview(session: AsyncSession) -> ClusterOverview:
 
         # Fetch metrics (best-effort, returns [] if unavailable)
         node_metrics = await k8s.get_node_metrics()
-        pod_metrics = await k8s.get_pod_metrics()
+        pod_metrics_raw = await k8s.get_pod_metrics()
 
         pod_data = await k8s.list_resources("pods")
         deploy_data = await k8s.list_resources("deployments")
@@ -375,14 +415,19 @@ async def get_cluster_overview(session: AsyncSession) -> ClusterOverview:
         cj_data = await k8s.list_resources("cronjobs")
         event_data = await k8s.list_resources("events")
 
-        pod_items = pod_data.get("items", [])
+        # All pods (unfiltered) for cluster-wide counts
+        all_pod_items = pod_data.get("items", [])
 
-        return ClusterOverview(
+        # Filtered pods/metrics for namespace resource usage
+        filtered_pod_items = _filter_pods_by_pattern(all_pod_items, pod_filter)
+        filtered_pod_metrics = _filter_pod_metrics_by_pattern(pod_metrics_raw, pod_filter)
+
+        overview = ClusterOverview(
             cluster=cluster_info,
             nodes=ResourceCount(
                 total=len(node_items), ready=nodes_ready, not_ready=nodes_not_ready,
             ),
-            pods=_count_pods(pod_items),
+            pods=_count_pods(all_pod_items),
             deployments=_count_deployments(deploy_data.get("items", [])),
             services=_count_simple(svc_data.get("items", [])),
             statefulsets=_count_statefulsets(sts_data.get("items", [])),
@@ -391,11 +436,24 @@ async def get_cluster_overview(session: AsyncSession) -> ClusterOverview:
             cronjobs=_count_simple(cj_data.get("items", [])),
             namespaces=namespaces,
             recent_events=_format_events(event_data.get("items", [])),
-            pod_status_breakdown=_pod_status_breakdown(pod_items),
-            namespace_pod_counts=_namespace_pod_counts(pod_items),
-            node_resources=_extract_node_resources(node_items, pod_items, node_metrics),
-            namespace_resource_usage=_aggregate_namespace_resource_usage(pod_metrics, pod_items),
+            pod_status_breakdown=_pod_status_breakdown(all_pod_items),
+            namespace_pod_counts=_namespace_pod_counts(all_pod_items),
+            node_resources=_extract_node_resources(
+                node_items, all_pod_items, node_metrics,
+            ),
+            namespace_resource_usage=_aggregate_namespace_resource_usage(
+                filtered_pod_metrics, filtered_pod_items,
+            ),
         )
+
+        # Update cache
+        _overview_cache = overview
+        _overview_cache_time = now
+        logger.debug(
+            "Cluster overview cached (ttl=%ds, pod_filter=%s)", cache_ttl, pod_filter,
+        )
+
+        return overview
     finally:
         await k8s.close()
 

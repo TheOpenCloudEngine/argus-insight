@@ -51,13 +51,24 @@ import {
 import { Checkbox } from "@workspace/ui/components/checkbox"
 import { Input } from "@workspace/ui/components/input"
 import {
+  assignWorkspaceProfile,
   bulkAddWorkspaceMembers,
   deleteWorkspaceService,
+  fetchResourceProfiles,
   fetchWorkspaceAuditLogs,
   fetchWorkspaceMembers,
+  fetchWorkspaceResourceUsage,
   fetchWorkspaceServices,
   removeWorkspaceMember,
 } from "@/features/workspaces/api"
+import type { ResourceProfile, WorkspaceResourceUsage } from "@/features/workspaces/types"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
 import { authFetch } from "@/features/auth/auth-fetch"
 
 interface WorkspaceDetailProps {
@@ -128,27 +139,70 @@ function roleBadge(role: string) {
 
 // ---------- Resources Tab ----------
 
+function ResourceUsageBar({ used, limit, label, unit }: { used: number; limit: number | null; label: string; unit: string }) {
+  if (!limit) return null
+  const pct = Math.min(100, Math.round((used / limit) * 100))
+  const color = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-green-500"
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-medium">{used} / {limit} {unit} ({pct}%)</span>
+      </div>
+      <div className="h-2 w-full rounded-full bg-muted">
+        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  )
+}
+
 function ResourcesTab({ workspace }: { workspace: WorkspaceResponse }) {
   const [services, setServices] = useState<WorkspaceService[]>([])
   const [loading, setLoading] = useState(true)
+  const [usage, setUsage] = useState<WorkspaceResourceUsage | null>(null)
+  const [profiles, setProfiles] = useState<ResourceProfile[]>([])
+  const [assigning, setAssigning] = useState(false)
 
-  const loadServices = () => {
+  const loadAll = () => {
     setLoading(true)
-    fetchWorkspaceServices(workspace.id)
-      .then(setServices)
-      .catch(() => setServices([]))
-      .finally(() => setLoading(false))
+    Promise.all([
+      fetchWorkspaceServices(workspace.id).catch(() => [] as WorkspaceService[]),
+      fetchWorkspaceResourceUsage(workspace.id).catch(() => null),
+      fetchResourceProfiles().catch(() => [] as ResourceProfile[]),
+    ]).then(([svcs, u, p]) => {
+      setServices(svcs)
+      setUsage(u)
+      setProfiles(p)
+    }).finally(() => setLoading(false))
   }
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    fetchWorkspaceServices(workspace.id)
-      .then((data) => { if (!cancelled) setServices(data) })
-      .catch(() => { if (!cancelled) setServices([]) })
-      .finally(() => { if (!cancelled) setLoading(false) })
+    Promise.all([
+      fetchWorkspaceServices(workspace.id).catch(() => [] as WorkspaceService[]),
+      fetchWorkspaceResourceUsage(workspace.id).catch(() => null),
+      fetchResourceProfiles().catch(() => [] as ResourceProfile[]),
+    ]).then(([svcs, u, p]) => {
+      if (cancelled) return
+      setServices(svcs)
+      setUsage(u)
+      setProfiles(p)
+    }).finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [workspace.id])
+
+  const handleProfileChange = async (value: string) => {
+    setAssigning(true)
+    try {
+      const profileId = value === "none" ? null : parseInt(value)
+      await assignWorkspaceProfile(workspace.id, profileId)
+      const u = await fetchWorkspaceResourceUsage(workspace.id).catch(() => null)
+      setUsage(u)
+    } finally {
+      setAssigning(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -156,10 +210,6 @@ function ResourcesTab({ workspace }: { workspace: WorkspaceResponse }) {
         <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
       </div>
     )
-  }
-
-  if (services.length === 0) {
-    return <div className="text-muted-foreground py-12 text-center text-sm">No services deployed</div>
   }
 
   const iconClass = "h-5 w-5"
@@ -173,17 +223,75 @@ function ResourcesTab({ workspace }: { workspace: WorkspaceResponse }) {
   }
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {services.map((svc) => (
-        <ServiceCard
-          key={svc.id}
-          svc={svc}
-          icon={serviceIcon(svc.plugin_name)}
-          workspaceName={workspace.name}
-          workspaceId={workspace.id}
-          onDeleted={loadServices}
-        />
-      ))}
+    <div className="space-y-4">
+      {/* Resource Quota Summary */}
+      <Card>
+        <CardHeader className="py-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm">Resource Quota</CardTitle>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Profile:</span>
+              <Select
+                value={usage?.profile?.id ? String(usage.profile.id) : "none"}
+                onValueChange={handleProfileChange}
+                disabled={assigning}
+              >
+                <SelectTrigger className="h-7 w-[160px] text-sm">
+                  <SelectValue placeholder="No profile" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No profile</SelectItem>
+                  {profiles.map((p) => (
+                    <SelectItem key={p.id} value={String(p.id)}>
+                      {p.display_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {usage && usage.cpu_limit ? (
+            <>
+              <ResourceUsageBar
+                used={usage.cpu_used}
+                limit={usage.cpu_limit}
+                label="CPU"
+                unit="Cores"
+              />
+              <ResourceUsageBar
+                used={usage.memory_used_gb}
+                limit={usage.memory_limit_gb}
+                label="Memory"
+                unit="GB"
+              />
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No resource profile assigned. Assign a profile to enforce quota limits.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Service Cards */}
+      {services.length === 0 ? (
+        <div className="text-muted-foreground py-12 text-center text-sm">No services deployed</div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {services.map((svc) => (
+            <ServiceCard
+              key={svc.id}
+              svc={svc}
+              icon={serviceIcon(svc.plugin_name)}
+              workspaceName={workspace.name}
+              workspaceId={workspace.id}
+              onDeleted={loadAll}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
