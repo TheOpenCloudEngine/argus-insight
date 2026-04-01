@@ -2,7 +2,9 @@
 
 import { useCallback, useMemo, useState } from "react"
 import Link from "next/link"
+import { ChevronDown, ChevronRight, Search, RefreshCw } from "lucide-react"
 import { Input } from "@workspace/ui/components/input"
+import { Badge } from "@workspace/ui/components/badge"
 import {
   Table,
   TableBody,
@@ -12,7 +14,6 @@ import {
   TableRow,
 } from "@workspace/ui/components/table"
 import { Skeleton } from "@workspace/ui/components/skeleton"
-import { Search, RefreshCw } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import type { K8sResourceItem } from "../types"
 import type { ColumnDef, ResourceDef } from "../lib/resource-definitions"
@@ -38,6 +39,20 @@ export function ResourceTable({
   onRefresh,
 }: ResourceTableProps) {
   const [search, setSearch] = useState("")
+  const [collapsed, setCollapsed] = useState<Set<string> | null>(null)
+
+  // Determine if we should group by namespace
+  const hasNamespaceColumn = resourceDef.columns.some((c) => c.header === "Namespace")
+  const isAllNamespaces = !namespace || namespace === "_all"
+  const groupByNamespace = hasNamespaceColumn && isAllNamespaces
+
+  // Columns to display (hide Namespace column when grouping)
+  const displayColumns = useMemo(() => {
+    if (groupByNamespace) {
+      return resourceDef.columns.filter((c) => c.header !== "Namespace")
+    }
+    return resourceDef.columns
+  }, [resourceDef.columns, groupByNamespace])
 
   const filteredItems = useMemo(() => {
     if (!search) return items
@@ -48,6 +63,41 @@ export function ResourceTable({
       return name.includes(q) || ns.includes(q)
     })
   }, [items, search])
+
+  // Group items by namespace
+  const groupedItems = useMemo(() => {
+    if (!groupByNamespace) return null
+    const groups: Map<string, K8sResourceItem[]> = new Map()
+    for (const item of filteredItems) {
+      const ns = item.metadata.namespace || "default"
+      if (!groups.has(ns)) groups.set(ns, [])
+      groups.get(ns)!.push(item)
+    }
+    // Sort by namespace name
+    return new Map([...groups.entries()].sort(([a], [b]) => a.localeCompare(b)))
+  }, [filteredItems, groupByNamespace])
+
+  // Auto-collapse all namespaces by default
+  const resolvedCollapsed = useMemo(() => {
+    if (collapsed !== null) return collapsed
+    if (groupedItems) {
+      return new Set(groupedItems.keys())
+    }
+    return new Set<string>()
+  }, [collapsed, groupedItems])
+
+  const toggleNamespace = useCallback((ns: string) => {
+    setCollapsed((prev) => {
+      const base = prev ?? resolvedCollapsed
+      const next = new Set(base)
+      if (next.has(ns)) {
+        next.delete(ns)
+      } else {
+        next.add(ns)
+      }
+      return next
+    })
+  }, [resolvedCollapsed])
 
   const getCellValue = useCallback(
     (item: K8sResourceItem, col: ColumnDef) => {
@@ -145,6 +195,7 @@ export function ResourceTable({
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">
             {filteredItems.length} item{filteredItems.length !== 1 ? "s" : ""}
+            {groupedItems && ` in ${groupedItems.size} namespace${groupedItems.size !== 1 ? "s" : ""}`}
           </span>
           {onRefresh && (
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onRefresh}>
@@ -158,7 +209,7 @@ export function ResourceTable({
         <Table>
           <TableHeader>
             <TableRow>
-              {resourceDef.columns.map((col) => (
+              {displayColumns.map((col) => (
                 <TableHead
                   key={col.header}
                   className="text-sm h-9"
@@ -173,7 +224,7 @@ export function ResourceTable({
             {loading && !items.length ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                  {resourceDef.columns.map((col) => (
+                  {displayColumns.map((col) => (
                     <TableCell key={col.header}>
                       <Skeleton className="h-4 w-24" />
                     </TableCell>
@@ -183,17 +234,34 @@ export function ResourceTable({
             ) : filteredItems.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={resourceDef.columns.length}
+                  colSpan={displayColumns.length}
                   className="h-24 text-center text-sm text-muted-foreground"
                 >
                   No {resourceDef.pluralLabel.toLowerCase()} found
                   {namespace && namespace !== "_all" ? ` in namespace "${namespace}"` : ""}
                 </TableCell>
               </TableRow>
+            ) : groupedItems ? (
+              // ── Grouped by Namespace ──
+              Array.from(groupedItems.entries()).map(([ns, nsItems]) => {
+                const isCollapsed = resolvedCollapsed.has(ns)
+                return (
+                  <NamespaceGroup
+                    key={ns}
+                    namespace={ns}
+                    items={nsItems}
+                    columns={displayColumns}
+                    collapsed={isCollapsed}
+                    onToggle={() => toggleNamespace(ns)}
+                    renderCell={renderCell}
+                  />
+                )
+              })
             ) : (
+              // ── Flat list ──
               filteredItems.map((item) => (
                 <TableRow key={item.metadata.uid || item.metadata.name}>
-                  {resourceDef.columns.map((col) => (
+                  {displayColumns.map((col) => (
                     <TableCell key={col.header} className="py-1.5">
                       {renderCell(item, col)}
                     </TableCell>
@@ -205,5 +273,58 @@ export function ResourceTable({
         </Table>
       </div>
     </div>
+  )
+}
+
+// ── Namespace Group ─────────────────────────────────────────────
+
+function NamespaceGroup({
+  namespace,
+  items,
+  columns,
+  collapsed,
+  onToggle,
+  renderCell,
+}: {
+  namespace: string
+  items: K8sResourceItem[]
+  columns: ColumnDef[]
+  collapsed: boolean
+  onToggle: () => void
+  renderCell: (item: K8sResourceItem, col: ColumnDef) => React.ReactNode
+}) {
+  return (
+    <>
+      {/* Group Header */}
+      <TableRow
+        className="bg-muted/40 hover:bg-muted/60 cursor-pointer"
+        onClick={onToggle}
+      >
+        <TableCell colSpan={columns.length} className="py-1.5">
+          <div className="flex items-center gap-2">
+            {collapsed ? (
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            )}
+            <span className="text-sm font-medium">{namespace}</span>
+            <Badge variant="outline" className="text-sm px-1.5 py-0">
+              {items.length}
+            </Badge>
+          </div>
+        </TableCell>
+      </TableRow>
+      {/* Group Items */}
+      {!collapsed &&
+        items.map((item) => (
+          <TableRow key={item.metadata.uid || `${namespace}/${item.metadata.name}`}>
+            {columns.map((col) => (
+              <TableCell key={col.header} className="py-1.5">
+                {renderCell(item, col)}
+              </TableCell>
+            ))}
+          </TableRow>
+        ))}
+    </>
   )
 }
