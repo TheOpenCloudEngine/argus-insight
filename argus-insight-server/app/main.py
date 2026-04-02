@@ -27,6 +27,7 @@ from app.security.router import router as security_router
 from app.servermgr.router import router as servermgr_router
 from app.unity_catalog.router import router as unity_catalog_router
 from app.usermgr.router import router as usermgr_router
+from app.voc.router import router as voc_router
 from app.apps.registry_router import router as app_registry_router
 from app.apps.instance_router import router as app_instance_router
 from app.k8s.router import router as k8s_router
@@ -73,6 +74,7 @@ async def lifespan(app: FastAPI):
     import app.usermgr.models  # noqa: F401
     import app.apps.models  # noqa: F401
     import app.resource_profile.models  # noqa: F401
+    import app.voc.models  # noqa: F401
     import workspace_provisioner.models  # noqa: F401
     import workspace_provisioner.plugins.models  # noqa: F401
 
@@ -175,6 +177,7 @@ app.include_router(resource_profile_router, prefix="/api/v1")
 app.include_router(resource_workspace_router, prefix="/api/v1")
 app.include_router(workspace_router, prefix="/api/v1")
 app.include_router(plugins_router, prefix="/api/v1")
+app.include_router(voc_router, prefix="/api/v1")
 
 
 @app.get("/health")

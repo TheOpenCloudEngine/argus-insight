@@ -14,6 +14,7 @@ Endpoint summary:
 - GET    /workspaces/{workspace_id}/workflow   - Get provisioning workflow status
 """
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -28,7 +29,15 @@ from workspace_provisioner import service
 from workspace_provisioner.gitlab.client import GitLabClient
 from workspace_provisioner.schemas import (
     AuditLogResponse,
+    ContainerInfo,
     PaginatedAuditLogResponse,
+    ServiceEventResponse,
+    ServiceLogSourcesResponse,
+    ServiceLogsResponse,
+    ActivityItem,
+    ServiceHealthItem,
+    StorageItem,
+    WorkspaceDashboardResponse,
     WorkspaceServiceResponse,
     PaginatedWorkspaceResponse,
     WorkspaceCreateRequest,
@@ -522,6 +531,206 @@ async def delete_workspace_service(
 
 
 # ---------------------------------------------------------------------------
+# Service log endpoints
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/workspaces/{workspace_id}/services/{service_id}/log-sources",
+    response_model=ServiceLogSourcesResponse,
+)
+async def get_service_log_sources(
+    workspace_id: int,
+    service_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Get available log sources (containers) for a workspace service."""
+    from app.k8s.service import _make_client
+
+    k8s = await _make_client(session)
+    try:
+        pod_name, namespace, pod = await service.resolve_service_pod(
+            session, workspace_id, service_id, k8s,
+        )
+    except ValueError as e:
+        await k8s.close()
+        raise HTTPException(status_code=404, detail=str(e))
+    finally:
+        await k8s.close()
+
+    containers = []
+    for cs in pod.get("status", {}).get("containerStatuses", []):
+        state = "unknown"
+        for s in ("running", "waiting", "terminated"):
+            if cs.get("state", {}).get(s):
+                state = s
+                break
+        containers.append(ContainerInfo(
+            name=cs["name"],
+            label=service._container_label(cs["name"]),
+            state=state,
+            restart_count=cs.get("restartCount", 0),
+        ))
+
+    init_containers = []
+    for cs in pod.get("status", {}).get("initContainerStatuses", []):
+        state = "unknown"
+        for s in ("running", "waiting", "terminated"):
+            if cs.get("state", {}).get(s):
+                state = s
+                break
+        init_containers.append(ContainerInfo(
+            name=cs["name"],
+            label=service._container_label(cs["name"]),
+            state=state,
+            restart_count=cs.get("restartCount", 0),
+        ))
+
+    return ServiceLogSourcesResponse(
+        workspace_id=workspace_id,
+        service_id=service_id,
+        plugin_name=pod.get("metadata", {}).get("labels", {}).get(
+            "app.kubernetes.io/name", "",
+        ),
+        pod_name=pod_name,
+        namespace=namespace,
+        containers=containers,
+        init_containers=init_containers,
+    )
+
+
+@router.get(
+    "/workspaces/{workspace_id}/services/{service_id}/logs",
+    response_model=ServiceLogsResponse,
+)
+async def get_service_logs(
+    request: Request,
+    workspace_id: int,
+    service_id: int,
+    container: str | None = Query(None, description="Container name"),
+    tail_lines: int = Query(100, alias="tailLines", ge=1, le=10000),
+    since_seconds: int | None = Query(None, alias="sinceSeconds"),
+    timestamps: bool = Query(True),
+    follow: bool = Query(False),
+    session: AsyncSession = Depends(get_session),
+):
+    """Get logs from a workspace service container.
+
+    If follow=true, returns an SSE stream instead of JSON.
+    """
+    from app.k8s.service import _make_client
+
+    k8s = await _make_client(session)
+    try:
+        pod_name, namespace, _pod = await service.resolve_service_pod(
+            session, workspace_id, service_id, k8s,
+        )
+    except ValueError as e:
+        await k8s.close()
+        raise HTTPException(status_code=404, detail=str(e))
+
+    if follow:
+        import json as json_module
+        from starlette.responses import StreamingResponse
+        from typing import AsyncIterator
+
+        async def log_stream() -> AsyncIterator[str]:
+            try:
+                async for line in k8s.get_pod_logs(
+                    pod_name, namespace,
+                    container=container,
+                    follow=True,
+                    tail_lines=tail_lines,
+                    since_seconds=since_seconds,
+                    timestamps=timestamps,
+                ):
+                    if await request.is_disconnected():
+                        break
+                    yield f"data: {json_module.dumps({'line': line})}\n\n"
+            except Exception as e:
+                yield f"event: error\ndata: {json_module.dumps({'error': str(e)})}\n\n"
+            finally:
+                await k8s.close()
+
+        return StreamingResponse(
+            log_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+    else:
+        try:
+            lines: list[str] = []
+            async for line in k8s.get_pod_logs(
+                pod_name, namespace,
+                container=container,
+                follow=False,
+                tail_lines=tail_lines,
+                since_seconds=since_seconds,
+                timestamps=timestamps,
+            ):
+                lines.append(line)
+            return ServiceLogsResponse(
+                pod_name=pod_name,
+                container=container or "",
+                lines=lines,
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to get logs for workspace=%d service=%d: %s",
+                workspace_id, service_id, e,
+            )
+            raise HTTPException(status_code=502, detail=str(e))
+        finally:
+            await k8s.close()
+
+
+@router.get(
+    "/workspaces/{workspace_id}/services/{service_id}/events",
+    response_model=list[ServiceEventResponse],
+)
+async def get_service_events(
+    workspace_id: int,
+    service_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Get Kubernetes events for a workspace service pod."""
+    from app.k8s.service import _make_client
+
+    k8s = await _make_client(session)
+    try:
+        pod_name, namespace, _pod = await service.resolve_service_pod(
+            session, workspace_id, service_id, k8s,
+        )
+    except ValueError:
+        await k8s.close()
+        return []
+
+    try:
+        event_data = await k8s.list_resources(
+            "events", namespace=namespace,
+            field_selector=f"involvedObject.name={pod_name}",
+        )
+    finally:
+        await k8s.close()
+
+    events = []
+    for ev in event_data.get("items", []):
+        events.append(ServiceEventResponse(
+            type=ev.get("type", "Normal"),
+            reason=ev.get("reason", ""),
+            message=ev.get("message", ""),
+            count=ev.get("count", 1),
+            first_timestamp=ev.get("firstTimestamp"),
+            last_timestamp=ev.get("lastTimestamp"),
+            source_component=ev.get("source", {}).get("component"),
+        ))
+    return events
+
+
+# ---------------------------------------------------------------------------
 # Pipeline association endpoints
 # ---------------------------------------------------------------------------
 
@@ -561,6 +770,183 @@ async def get_workspace_pipelines(
             created_at=wp.created_at,
         ))
     return responses
+
+
+# ---------------------------------------------------------------------------
+# Workspace dashboard (aggregated, minimal K8s calls)
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/workspaces/{workspace_id}/dashboard",
+    response_model=WorkspaceDashboardResponse,
+)
+async def get_workspace_dashboard(
+    workspace_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Aggregated workspace dashboard: pod health, PVC storage, recent activity.
+
+    Makes exactly 2 K8s API calls (list pods + list PVCs) and 1 DB query.
+    """
+    from app.k8s.service import _make_client
+    from workspace_provisioner.models import (
+        ArgusWorkspace, ArgusWorkspaceAuditLog, ArgusWorkspaceService,
+    )
+
+    # 1. Load workspace + services from DB
+    ws_result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    workspace = ws_result.scalars().first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    svc_result = await session.execute(
+        select(ArgusWorkspaceService)
+        .where(ArgusWorkspaceService.workspace_id == workspace_id)
+        .order_by(ArgusWorkspaceService.created_at)
+    )
+    db_services = svc_result.scalars().all()
+    namespace = workspace.k8s_namespace or f"argus-ws-{workspace.name}"
+
+    # 2. K8s: list pods + PVCs in namespace (2 API calls)
+    k8s = await _make_client(session)
+    try:
+        pod_data, pvc_data = await asyncio.gather(
+            k8s.list_resources("pods", namespace=namespace),
+            k8s.list_resources("persistentvolumeclaims", namespace=namespace),
+        )
+    finally:
+        await k8s.close()
+
+    pods = pod_data.get("items", [])
+    pvcs = pvc_data.get("items", [])
+
+    # 3. Match pods to services
+    health_items: list[ServiceHealthItem] = []
+    matched_pod_names: set[str] = set()
+
+    for svc in db_services:
+        short = service._plugin_short_name(svc.plugin_name)
+        matched_pod = None
+
+        # Try service_id match first, then short name + workspace name
+        for pod in pods:
+            pname = pod["metadata"]["name"]
+            if pname in matched_pod_names:
+                continue
+            if svc.service_id and svc.service_id in pname:
+                matched_pod = pod
+                break
+            if pname.startswith(f"argus-{short}-{workspace.name}"):
+                matched_pod = pod
+                break
+
+        if not matched_pod:
+            continue
+
+        matched_pod_names.add(matched_pod["metadata"]["name"])
+        pod_status = matched_pod.get("status", {})
+        phase = pod_status.get("phase", "Unknown")
+
+        # Ready check
+        conditions = pod_status.get("conditions", [])
+        ready = any(
+            c.get("type") == "Ready" and c.get("status") == "True"
+            for c in conditions
+        )
+
+        # Restarts + uptime from container statuses
+        restarts = 0
+        uptime_seconds = None
+        for cs in pod_status.get("containerStatuses", []):
+            restarts += cs.get("restartCount", 0)
+            started = cs.get("state", {}).get("running", {}).get("startedAt")
+            if started:
+                from datetime import datetime, timezone
+                try:
+                    start_dt = datetime.fromisoformat(started.replace("Z", "+00:00"))
+                    up = int((datetime.now(timezone.utc) - start_dt).total_seconds())
+                    if uptime_seconds is None or up < uptime_seconds:
+                        uptime_seconds = up
+                except (ValueError, TypeError):
+                    pass
+
+        # Resource requests/limits from first container spec
+        cpu_req = mem_req = cpu_lim = mem_lim = None
+        containers = matched_pod.get("spec", {}).get("containers", [])
+        if containers:
+            res = containers[0].get("resources", {})
+            cpu_req = res.get("requests", {}).get("cpu")
+            mem_req = res.get("requests", {}).get("memory")
+            cpu_lim = res.get("limits", {}).get("cpu")
+            mem_lim = res.get("limits", {}).get("memory")
+
+        health_items.append(ServiceHealthItem(
+            plugin_name=svc.plugin_name,
+            display_name=svc.display_name,
+            pod_name=matched_pod["metadata"]["name"],
+            phase=phase,
+            ready=ready,
+            restarts=restarts,
+            uptime_seconds=uptime_seconds,
+            cpu_request=cpu_req,
+            memory_request=mem_req,
+            cpu_limit=cpu_lim,
+            memory_limit=mem_lim,
+        ))
+
+    # 4. PVC storage
+    storage_items: list[StorageItem] = []
+    for pvc in pvcs:
+        pvc_name = pvc["metadata"]["name"]
+        capacity = pvc.get("status", {}).get("capacity", {}).get("storage")
+        pvc_phase = pvc.get("status", {}).get("phase", "Pending")
+
+        # Derive service hint from PVC name (e.g., "argus-minio-ml-team-data" → "minio")
+        hint = None
+        for svc in db_services:
+            short = service._plugin_short_name(svc.plugin_name)
+            if short in pvc_name:
+                hint = svc.display_name or svc.plugin_name
+                break
+
+        storage_items.append(StorageItem(
+            name=pvc_name,
+            capacity=capacity,
+            phase=pvc_phase,
+            service_hint=hint,
+        ))
+
+    # 5. Recent activity from audit logs (last 10, DB query only)
+    from workspace_provisioner.models import ArgusWorkspaceAuditLog
+    audit_result = await session.execute(
+        select(ArgusWorkspaceAuditLog)
+        .where(ArgusWorkspaceAuditLog.workspace_id == workspace_id)
+        .order_by(ArgusWorkspaceAuditLog.created_at.desc())
+        .limit(10)
+    )
+    activity_items = [
+        ActivityItem(
+            action=log.action,
+            actor_username=log.actor_username,
+            detail=log.detail,
+            created_at=log.created_at,
+        )
+        for log in audit_result.scalars().all()
+    ]
+
+    # 6. Service counts
+    total = len(db_services)
+    running = sum(1 for h in health_items if h.phase == "Running" and h.ready)
+
+    return WorkspaceDashboardResponse(
+        service_health=health_items,
+        storage=storage_items,
+        recent_activity=activity_items,
+        total_services=total,
+        running_services=running,
+    )
 
 
 # ---------------------------------------------------------------------------

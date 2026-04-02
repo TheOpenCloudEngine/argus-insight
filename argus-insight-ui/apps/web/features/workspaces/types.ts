@@ -157,3 +157,80 @@ export interface WorkflowExecution {
   created_at: string
   steps: WorkflowStep[]
 }
+
+// ---------------------------------------------------------------------------
+// Service log types
+// ---------------------------------------------------------------------------
+
+export interface ContainerInfo {
+  name: string
+  label: string
+  state: "running" | "waiting" | "terminated" | "unknown"
+  restart_count: number
+}
+
+export interface ServiceLogSources {
+  workspace_id: number
+  service_id: number
+  plugin_name: string
+  pod_name: string
+  namespace: string
+  containers: ContainerInfo[]
+  init_containers: ContainerInfo[]
+}
+
+export interface ServiceLogs {
+  pod_name: string
+  container: string
+  lines: string[]
+}
+
+export interface ServiceEvent {
+  type: "Normal" | "Warning"
+  reason: string
+  message: string
+  count: number
+  first_timestamp: string | null
+  last_timestamp: string | null
+  source_component: string | null
+}
+
+// ---------------------------------------------------------------------------
+// Workspace dashboard types
+// ---------------------------------------------------------------------------
+
+export interface ServiceHealthItem {
+  plugin_name: string
+  display_name: string | null
+  pod_name: string
+  phase: string
+  ready: boolean
+  restarts: number
+  uptime_seconds: number | null
+  cpu_request: string | null
+  memory_request: string | null
+  cpu_limit: string | null
+  memory_limit: string | null
+}
+
+export interface StorageItem {
+  name: string
+  capacity: string | null
+  phase: string
+  service_hint: string | null
+}
+
+export interface ActivityItem {
+  action: string
+  actor_username: string | null
+  detail: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface WorkspaceDashboard {
+  service_health: ServiceHealthItem[]
+  storage: StorageItem[]
+  recent_activity: ActivityItem[]
+  total_services: number
+  running_services: number
+}

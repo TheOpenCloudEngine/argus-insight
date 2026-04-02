@@ -287,3 +287,98 @@ class WorkflowExecutionResponse(BaseModel):
     error_message: str | None = None
     created_at: datetime
     steps: list[StepExecutionResponse] = []
+
+
+# ---------------------------------------------------------------------------
+# Service log schemas
+# ---------------------------------------------------------------------------
+
+class ContainerInfo(BaseModel):
+    """Describes a container within a pod that can produce logs."""
+
+    name: str = Field(..., description="Container name")
+    label: str = Field(..., description="Human-readable label")
+    state: str = Field("unknown", description="Container state: running, waiting, terminated")
+    restart_count: int = Field(0, description="Number of restarts")
+
+
+class ServiceLogSourcesResponse(BaseModel):
+    """Available log sources for a workspace service."""
+
+    workspace_id: int
+    service_id: int
+    plugin_name: str
+    pod_name: str
+    namespace: str
+    containers: list[ContainerInfo] = []
+    init_containers: list[ContainerInfo] = []
+
+
+class ServiceLogsResponse(BaseModel):
+    """Log lines from a specific container."""
+
+    pod_name: str
+    container: str
+    lines: list[str] = []
+
+
+class ServiceEventResponse(BaseModel):
+    """A Kubernetes event related to a service pod."""
+
+    type: str = Field(..., description="Normal or Warning")
+    reason: str
+    message: str
+    count: int = 1
+    first_timestamp: str | None = None
+    last_timestamp: str | None = None
+    source_component: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Workspace dashboard schemas
+# ---------------------------------------------------------------------------
+
+class ServiceHealthItem(BaseModel):
+    """Real-time pod health for a workspace service."""
+
+    plugin_name: str
+    display_name: str | None = None
+    pod_name: str
+    phase: str = Field(..., description="Pod phase: Running, Pending, Failed, etc.")
+    ready: bool = False
+    restarts: int = 0
+    uptime_seconds: int | None = None
+    cpu_request: str | None = None
+    memory_request: str | None = None
+    cpu_limit: str | None = None
+    memory_limit: str | None = None
+
+
+class StorageItem(BaseModel):
+    """PVC storage info for a workspace."""
+
+    name: str
+    capacity: str | None = None
+    phase: str = "Bound"
+    service_hint: str | None = Field(
+        None, description="Matched service name from PVC name pattern",
+    )
+
+
+class ActivityItem(BaseModel):
+    """Recent workspace activity entry."""
+
+    action: str
+    actor_username: str | None = None
+    detail: dict | None = None
+    created_at: datetime
+
+
+class WorkspaceDashboardResponse(BaseModel):
+    """Aggregated workspace dashboard data from a single API call."""
+
+    service_health: list[ServiceHealthItem] = []
+    storage: list[StorageItem] = []
+    recent_activity: list[ActivityItem] = []
+    total_services: int = 0
+    running_services: int = 0

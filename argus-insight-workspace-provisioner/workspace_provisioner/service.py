@@ -1203,3 +1203,105 @@ async def remove_member(session: AsyncSession, member_id: int) -> bool:
     return True
 
 
+# ---------------------------------------------------------------------------
+# Service log helpers
+# ---------------------------------------------------------------------------
+
+# Container label mapping: provides human-readable labels for known containers.
+_CONTAINER_LABELS: dict[str, str] = {
+    "webserver": "Webserver",
+    "scheduler": "Scheduler",
+    "git-sync": "DAG Sync",
+    "db-init": "DB Migration",
+    "create-admin": "Admin Setup",
+    "minio": "MinIO",
+    "mlflow": "MLflow",
+    "postgres": "PostgreSQL",
+    "neo4j": "Neo4j",
+    "trino": "Trino",
+    "mariadb": "MariaDB",
+    "milvus": "Milvus",
+    "fe": "Frontend (FE)",
+    "be": "Backend (BE)",
+    "mindsdb": "MindsDB",
+    "code-server": "VS Code",
+    "jupyter": "Jupyter",
+}
+
+
+async def resolve_service_pod(
+    session: AsyncSession,
+    workspace_id: int,
+    service_db_id: int,
+    k8s_client: object,
+) -> tuple[str, str, dict]:
+    """Find the K8s pod for a workspace service by scanning the namespace.
+
+    Instead of maintaining a mapping table between plugin names and K8s
+    labels, this lists pods in the workspace namespace and matches by
+    pod name — which always contains the service_id or workspace_name.
+
+    Returns (pod_name, namespace, pod_dict).
+    Raises ValueError if the workspace, service, or pod is not found.
+    """
+    ws_result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    workspace = ws_result.scalars().first()
+    if not workspace:
+        raise ValueError(f"Workspace not found: {workspace_id}")
+
+    svc_result = await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.id == service_db_id,
+            ArgusWorkspaceService.workspace_id == workspace_id,
+        )
+    )
+    svc = svc_result.scalars().first()
+    if not svc:
+        raise ValueError(f"Service not found: {service_db_id}")
+
+    namespace = workspace.k8s_namespace or f"argus-ws-{workspace.name}"
+
+    pod_data = await k8s_client.list_resources("pods", namespace=namespace)
+    pods = pod_data.get("items", [])
+
+    # Strategy 1: match by service_id in pod name (works for all services)
+    if svc.service_id:
+        for pod in pods:
+            if svc.service_id in pod["metadata"]["name"]:
+                return pod["metadata"]["name"], namespace, pod
+
+    # Strategy 2: match by plugin short name + workspace name
+    short = _plugin_short_name(svc.plugin_name)
+    prefix = f"argus-{short}-{workspace.name}"
+    for pod in pods:
+        if pod["metadata"]["name"].startswith(prefix):
+            return pod["metadata"]["name"], namespace, pod
+
+    raise ValueError(
+        f"No pods found for service {svc.plugin_name} "
+        f"(service_id={svc.service_id}) in namespace {namespace}"
+    )
+
+
+def _plugin_short_name(plugin_name: str) -> str:
+    """Derive a short name from plugin_name for pod name matching.
+
+    Examples: argus-minio-deploy → minio, argus-vscode-server → vscode
+    """
+    name = plugin_name
+    for suffix in ("-deploy", "-setup", "-workspace"):
+        if name.endswith(suffix):
+            name = name[: -len(suffix)]
+            break
+    if name.startswith("argus-"):
+        name = name[len("argus-"):]
+    return name
+
+
+def _container_label(name: str) -> str:
+    """Get a human-readable label for a container name."""
+    return _CONTAINER_LABELS.get(name, name.replace("-", " ").title())
+
+

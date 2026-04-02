@@ -3,10 +3,14 @@ import type {
   PaginatedAuditLogResponse,
   PaginatedWorkspaceResponse,
   ResourceProfile,
+  ServiceEvent,
+  ServiceLogSources,
+  ServiceLogs,
   WorkspaceService,
   WorkspaceCredentials,
   WorkspaceMember,
   WorkspacePipeline,
+  WorkspaceDashboard,
   WorkspaceResourceUsage,
   WorkspaceResponse,
 } from "./types"
@@ -210,6 +214,81 @@ export async function fetchWorkspaceResourceUsage(
 ): Promise<WorkspaceResourceUsage> {
   const res = await authFetch(`${BASE}/workspaces/${workspaceId}/resource-usage`)
   if (!res.ok) throw new Error(await extractError(res, "Failed to fetch resource usage"))
+  return res.json()
+}
+
+// ── Service Logs ─────────────────────────────────────────────────
+
+export async function fetchServiceLogSources(
+  workspaceId: number,
+  serviceId: number,
+): Promise<ServiceLogSources> {
+  const res = await authFetch(
+    `${BASE}/workspaces/${workspaceId}/services/${serviceId}/log-sources`,
+  )
+  if (!res.ok) throw new Error(await extractError(res, "Failed to fetch log sources"))
+  return res.json()
+}
+
+export async function fetchServiceLogs(
+  workspaceId: number,
+  serviceId: number,
+  opts: {
+    container?: string
+    tailLines?: number
+    sinceSeconds?: number
+    timestamps?: boolean
+  } = {},
+): Promise<ServiceLogs> {
+  const params = new URLSearchParams()
+  if (opts.container) params.set("container", opts.container)
+  if (opts.tailLines) params.set("tailLines", String(opts.tailLines))
+  if (opts.sinceSeconds) params.set("sinceSeconds", String(opts.sinceSeconds))
+  if (opts.timestamps !== undefined) params.set("timestamps", String(opts.timestamps))
+  const qs = params.toString()
+  const res = await authFetch(
+    `${BASE}/workspaces/${workspaceId}/services/${serviceId}/logs${qs ? `?${qs}` : ""}`,
+  )
+  if (!res.ok) throw new Error(await extractError(res, "Failed to fetch logs"))
+  return res.json()
+}
+
+export function createServiceLogStream(
+  workspaceId: number,
+  serviceId: number,
+  opts: {
+    container?: string
+    tailLines?: number
+    sinceSeconds?: number
+  } = {},
+): EventSource {
+  const params = new URLSearchParams({ follow: "true" })
+  if (opts.container) params.set("container", opts.container)
+  if (opts.tailLines) params.set("tailLines", String(opts.tailLines))
+  if (opts.sinceSeconds) params.set("sinceSeconds", String(opts.sinceSeconds))
+  return new EventSource(
+    `${BASE}/workspaces/${workspaceId}/services/${serviceId}/logs?${params}`,
+  )
+}
+
+export async function fetchServiceEvents(
+  workspaceId: number,
+  serviceId: number,
+): Promise<ServiceEvent[]> {
+  const res = await authFetch(
+    `${BASE}/workspaces/${workspaceId}/services/${serviceId}/events`,
+  )
+  if (!res.ok) throw new Error(await extractError(res, "Failed to fetch events"))
+  return res.json()
+}
+
+// ── Workspace Dashboard ──────────────────────────────────
+
+export async function fetchWorkspaceDashboard(
+  workspaceId: number,
+): Promise<WorkspaceDashboard> {
+  const res = await authFetch(`${BASE}/workspaces/${workspaceId}/dashboard`)
+  if (!res.ok) throw new Error(await extractError(res, "Failed to fetch dashboard"))
   return res.json()
 }
 

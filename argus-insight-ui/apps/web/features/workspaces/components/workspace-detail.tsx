@@ -156,6 +156,17 @@ function ResourceUsageBar({ used, limit, label, unit }: { used: number; limit: n
   )
 }
 
+const SERVICE_ICON_CLASS = "h-5 w-5"
+
+function serviceIcon(name: string) {
+  if (name.includes("gitlab")) return <FolderGit2 className={SERVICE_ICON_CLASS} />
+  if (name.includes("minio")) return <Database className={SERVICE_ICON_CLASS} />
+  if (name.includes("airflow")) return <Workflow className={SERVICE_ICON_CLASS} />
+  if (name.includes("mlflow")) return <Server className={SERVICE_ICON_CLASS} />
+  if (name.includes("kserve")) return <Server className={SERVICE_ICON_CLASS} />
+  return <Server className={SERVICE_ICON_CLASS} />
+}
+
 function ResourcesTab({ workspace }: { workspace: WorkspaceResponse }) {
   const [services, setServices] = useState<WorkspaceService[]>([])
   const [loading, setLoading] = useState(true)
@@ -210,16 +221,6 @@ function ResourcesTab({ workspace }: { workspace: WorkspaceResponse }) {
         <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
       </div>
     )
-  }
-
-  const iconClass = "h-5 w-5"
-  const serviceIcon = (name: string) => {
-    if (name.includes("gitlab")) return <FolderGit2 className={iconClass} />
-    if (name.includes("minio")) return <Database className={iconClass} />
-    if (name.includes("airflow")) return <Workflow className={iconClass} />
-    if (name.includes("mlflow")) return <Server className={iconClass} />
-    if (name.includes("kserve")) return <Server className={iconClass} />
-    return <Server className={iconClass} />
   }
 
   return (
