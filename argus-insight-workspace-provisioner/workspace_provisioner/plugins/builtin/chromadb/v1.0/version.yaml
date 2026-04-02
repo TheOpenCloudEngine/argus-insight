@@ -1,0 +1,15 @@
+version: "1.0"
+display_name: "v1.0 (ChromaDB)"
+description: ChromaDB vector database with persistent storage for RAG applications
+status: stable
+release_date: "2026-04-02"
+step_class: workspace_provisioner.workflow.steps.chromadb_deploy.ChromaDBDeployStep
+config_class: workspace_provisioner.config.ChromaDBConfig
+template_dir: chromadb
+changelog: |
+  - Initial version
+  - REST API on port 8000
+  - Persistent vector storage via PVC
+  - Internal-only access (no ingress)
+upgradeable_from: []
+software_version: "0.5"

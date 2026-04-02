@@ -1,0 +1,17 @@
+name: argus-langserve
+display_name: LangServe Agent
+description: LangChain-based Agent API server for deploying AI agents as REST endpoints
+icon: langserve
+category: ai
+depends_on: []
+provides:
+  - langserve_endpoint
+requires: []
+tags:
+  - ai-agent
+  - langchain
+  - api
+  - llm
+versions:
+  - "1.0"
+default_version: "1.0"

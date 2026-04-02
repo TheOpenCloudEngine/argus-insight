@@ -1,0 +1,16 @@
+version: "1.0"
+display_name: "v1.0 (Redis 7)"
+description: Redis 7 with AOF persistence and LRU eviction for agent memory/cache
+status: stable
+release_date: "2026-04-02"
+step_class: workspace_provisioner.workflow.steps.redis_deploy.RedisDeployStep
+config_class: workspace_provisioner.config.RedisConfig
+template_dir: redis
+changelog: |
+  - Initial version
+  - Redis 7 Alpine with AOF persistence
+  - LRU eviction policy (allkeys-lru)
+  - Persistent storage via PVC
+  - Internal-only access (no ingress)
+upgradeable_from: []
+software_version: "7.4"

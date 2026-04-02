@@ -84,6 +84,7 @@ MULTI_INSTANCE_PLUGINS = {
     "argus-vscode-server",
     "argus-jupyter", "argus-jupyter-tensorflow", "argus-jupyter-pyspark",
     "argus-rstudio",
+    "argus-langserve",
 }
 
 

@@ -1,0 +1,17 @@
+name: argus-vllm
+display_name: vLLM
+description: High-throughput GPU LLM serving with OpenAI-compatible API
+icon: vllm
+category: ai
+depends_on: []
+provides:
+  - vllm_endpoint
+requires: []
+tags:
+  - llm
+  - inference
+  - gpu
+  - ai-agent
+versions:
+  - "1.0"
+default_version: "1.0"

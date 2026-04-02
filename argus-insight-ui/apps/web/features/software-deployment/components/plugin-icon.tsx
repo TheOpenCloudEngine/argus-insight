@@ -8,10 +8,13 @@ import {
   Brain,
   Code,
   Database,
+  FlaskConical,
   GitBranch,
   HelpCircle,
   Sparkles,
   Star,
+  Tag,
+  Target,
   Workflow,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
@@ -46,6 +49,15 @@ const lucideFallback: Record<string, LucideIcon> = {
   kudu: Database,
   zookeeper: Blocks,
   feast: Database,
+  rstudio: Code,
+  h2o: FlaskConical,
+  labelstudio: Tag,
+  seldon: Target,
+  vllm: Sparkles,
+  ollama: Brain,
+  langserve: Workflow,
+  chromadb: Database,
+  redis: Database,
 }
 
 interface PluginIconProps {

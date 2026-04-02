@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argus-chromadb-${WORKSPACE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: chromadb
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chromadb
+      app.kubernetes.io/instance: ${WORKSPACE_NAME}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chromadb
+        app.kubernetes.io/instance: ${WORKSPACE_NAME}
+        app.kubernetes.io/part-of: argus-insight
+        argus-insight/workspace: ${WORKSPACE_NAME}
+    spec:
+      containers:
+        - name: chromadb
+          image: ${CHROMADB_IMAGE}
+          env:
+            - name: ANONYMIZED_TELEMETRY
+              value: "false"
+            - name: PERSIST_DIRECTORY
+              value: "/chroma/data"
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "${CHROMADB_CPU_REQUEST}"
+              memory: "${CHROMADB_MEMORY_REQUEST}"
+            limits:
+              cpu: "${CHROMADB_CPU_LIMIT}"
+              memory: "${CHROMADB_MEMORY_LIMIT}"
+          volumeMounts:
+            - name: data
+              mountPath: /chroma/data
+          readinessProbe:
+            httpGet:
+              path: /api/v1/heartbeat
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: argus-chromadb-${WORKSPACE_NAME}-data

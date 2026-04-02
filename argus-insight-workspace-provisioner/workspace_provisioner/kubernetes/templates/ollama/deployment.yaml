@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argus-ollama-${WORKSPACE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: ollama
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ollama
+      app.kubernetes.io/instance: ${WORKSPACE_NAME}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ollama
+        app.kubernetes.io/instance: ${WORKSPACE_NAME}
+        app.kubernetes.io/part-of: argus-insight
+        argus-insight/workspace: ${WORKSPACE_NAME}
+    spec:
+      containers:
+        - name: ollama
+          image: ${OLLAMA_IMAGE}
+          ports:
+            - name: http
+              containerPort: 11434
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "${OLLAMA_CPU_REQUEST}"
+              memory: "${OLLAMA_MEMORY_REQUEST}"
+            limits:
+              cpu: "${OLLAMA_CPU_LIMIT}"
+              memory: "${OLLAMA_MEMORY_LIMIT}"
+          volumeMounts:
+            - name: models
+              mountPath: /root/.ollama
+          readinessProbe:
+            httpGet:
+              path: /api/tags
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: argus-ollama-${WORKSPACE_NAME}-models

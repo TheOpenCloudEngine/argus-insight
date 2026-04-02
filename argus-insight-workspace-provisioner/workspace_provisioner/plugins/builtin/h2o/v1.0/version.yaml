@@ -1,0 +1,15 @@
+version: "1.0"
+display_name: "v1.0 (H2O AutoML + Flow)"
+description: H2O AutoML with Flow WebUI for no-code model building
+status: stable
+release_date: "2026-04-02"
+step_class: workspace_provisioner.workflow.steps.h2o_deploy.H2OAutoMLDeployStep
+config_class: workspace_provisioner.config.H2OAutoMLConfig
+template_dir: h2o
+changelog: |
+  - Initial version
+  - H2O AutoML with classification, regression, time-series, anomaly detection
+  - Flow WebUI for interactive model building
+  - Workspace auth via Nginx Ingress
+upgradeable_from: []
+software_version: "3.46"

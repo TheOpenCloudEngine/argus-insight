@@ -1,0 +1,15 @@
+version: "1.0"
+display_name: "v1.0 (Ollama)"
+description: Ollama local LLM server with persistent model storage
+status: stable
+release_date: "2026-04-02"
+step_class: workspace_provisioner.workflow.steps.ollama_deploy.OllamaDeployStep
+config_class: workspace_provisioner.config.OllamaConfig
+template_dir: ollama
+changelog: |
+  - Initial version
+  - REST API on port 11434
+  - Persistent model storage via PVC
+  - Support for Llama, Mistral, Qwen, Gemma, etc.
+upgradeable_from: []
+software_version: "0.5"

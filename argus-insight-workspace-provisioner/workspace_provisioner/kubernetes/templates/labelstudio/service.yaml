@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: argus-labelstudio-${WORKSPACE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: labelstudio
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: labelstudio
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argus-labelstudio-${WORKSPACE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: labelstudio
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+  annotations:
+    nginx.ingress.kubernetes.io/auth-url: "http://${ARGUS_SERVER_HOST}:4500/api/v1/workspace/workspaces/auth-verify?workspace=${WORKSPACE_NAME}"
+    nginx.ingress.kubernetes.io/proxy-body-size: "512m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: ${HOSTNAME}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argus-labelstudio-${WORKSPACE_NAME}
+                port:
+                  name: http

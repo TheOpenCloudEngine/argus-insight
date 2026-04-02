@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: argus-chromadb-${WORKSPACE_NAME}-data
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: chromadb
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: ${CHROMADB_STORAGE_SIZE}

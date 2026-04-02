@@ -235,6 +235,128 @@ class JupyterPySparkConfig(JupyterLabConfig):
     memory_limit: str = Field(default="8Gi", description="Memory limit")
 
 
+class H2OAutoMLConfig(BaseModel):
+    """H2O AutoML deployment settings."""
+
+    image: str = Field(
+        default="h2oai/h2o-open-source-k8s:latest",
+        description="H2O AutoML container image",
+    )
+    cpu_request: str = Field(default="1", description="CPU request")
+    cpu_limit: str = Field(default="4", description="CPU limit")
+    memory_request: str = Field(default="2Gi", description="Memory request")
+    memory_limit: str = Field(default="8Gi", description="Memory limit")
+    java_max_heap: str = Field(default="6g", description="JVM max heap (-Xmx)")
+
+
+class LabelStudioConfig(BaseModel):
+    """Label Studio deployment settings."""
+
+    image: str = Field(
+        default="heartexlabs/label-studio:latest",
+        description="Label Studio container image",
+    )
+    cpu_request: str = Field(default="250m", description="CPU request")
+    cpu_limit: str = Field(default="2", description="CPU limit")
+    memory_request: str = Field(default="512Mi", description="Memory request")
+    memory_limit: str = Field(default="2Gi", description="Memory limit")
+    storage_size: str = Field(default="10Gi", description="Data PVC size")
+
+
+class FeastConfig(BaseModel):
+    """Feast Feature Store deployment settings."""
+
+    image: str = Field(
+        default="feastdev/feature-server:latest",
+        description="Feast feature server image",
+    )
+    cpu_request: str = Field(default="250m", description="CPU request")
+    cpu_limit: str = Field(default="1", description="CPU limit")
+    memory_request: str = Field(default="256Mi", description="Memory request")
+    memory_limit: str = Field(default="1Gi", description="Memory limit")
+
+
+class SeldonCoreConfig(BaseModel):
+    """Seldon Core deployment settings."""
+
+    image: str = Field(
+        default="seldonio/seldon-core-operator:1.18.1",
+        description="Seldon Core operator image",
+    )
+    cpu_request: str = Field(default="250m", description="CPU request")
+    cpu_limit: str = Field(default="1", description="CPU limit")
+    memory_request: str = Field(default="256Mi", description="Memory request")
+    memory_limit: str = Field(default="512Mi", description="Memory limit")
+
+
+class VllmConfig(BaseModel):
+    """vLLM LLM serving deployment settings."""
+
+    image: str = Field(default="vllm/vllm-openai:latest", description="vLLM container image")
+    model: str = Field(default="meta-llama/Llama-3.1-8B-Instruct", description="HuggingFace model ID")
+    cpu_request: str = Field(default="2", description="CPU request")
+    cpu_limit: str = Field(default="4", description="CPU limit")
+    memory_request: str = Field(default="8Gi", description="Memory request")
+    memory_limit: str = Field(default="16Gi", description="Memory limit")
+    gpu_count: int = Field(default=1, description="Number of GPUs")
+    max_model_len: int = Field(default=4096, description="Max model context length")
+    hf_token: str = Field(default="", description="HuggingFace API token for gated models")
+
+
+class OllamaConfig(BaseModel):
+    """Ollama local LLM deployment settings."""
+
+    image: str = Field(default="ollama/ollama:latest", description="Ollama container image")
+    cpu_request: str = Field(default="1", description="CPU request")
+    cpu_limit: str = Field(default="4", description="CPU limit")
+    memory_request: str = Field(default="4Gi", description="Memory request")
+    memory_limit: str = Field(default="8Gi", description="Memory limit")
+    storage_size: str = Field(default="50Gi", description="Model storage PVC size")
+
+
+class LangServeConfig(BaseModel):
+    """LangServe Agent API deployment settings."""
+
+    image: str = Field(default="python:3.11-slim", description="LangServe container image")
+    cpu_request: str = Field(default="500m", description="CPU request")
+    cpu_limit: str = Field(default="2", description="CPU limit")
+    memory_request: str = Field(default="512Mi", description="Memory request")
+    memory_limit: str = Field(default="2Gi", description="Memory limit")
+    s3fs_image: str = Field(default="efrecon/s3fs:1.94", description="s3fs sidecar image")
+    agent_path: str = Field(
+        default="/workspace/agents/default",
+        description="Path to agent code directory (must contain server.py)",
+    )
+    pip_index_url: str = Field(default="https://pypi.org/simple", description="Python pip index URL")
+    disable_auth: bool = Field(
+        default=False,
+        description="Disable Ingress auth — API accessible without authentication",
+    )
+
+
+class ChromaDBConfig(BaseModel):
+    """ChromaDB vector database deployment settings."""
+
+    image: str = Field(default="chromadb/chroma:latest", description="ChromaDB container image")
+    cpu_request: str = Field(default="250m", description="CPU request")
+    cpu_limit: str = Field(default="1", description="CPU limit")
+    memory_request: str = Field(default="512Mi", description="Memory request")
+    memory_limit: str = Field(default="2Gi", description="Memory limit")
+    storage_size: str = Field(default="20Gi", description="Data PVC size")
+
+
+class RedisConfig(BaseModel):
+    """Redis deployment settings."""
+
+    image: str = Field(default="redis:7-alpine", description="Redis container image")
+    cpu_request: str = Field(default="100m", description="CPU request")
+    cpu_limit: str = Field(default="500m", description="CPU limit")
+    memory_request: str = Field(default="128Mi", description="Memory request")
+    memory_limit: str = Field(default="1Gi", description="Memory limit")
+    storage_size: str = Field(default="5Gi", description="Data PVC size")
+    maxmemory: str = Field(default="512mb", description="Redis maxmemory setting")
+
+
 class RStudioServerConfig(BaseModel):
     """RStudio Server deployment settings."""
 

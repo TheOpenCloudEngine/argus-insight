@@ -1,0 +1,17 @@
+name: argus-h2o
+display_name: H2O AutoML
+description: Automated machine learning platform with Flow WebUI for model selection, hyperparameter tuning, and ensembling
+icon: h2o
+category: ml
+depends_on: []
+provides:
+  - h2o_endpoint
+requires: []
+tags:
+  - automl
+  - machine-learning
+  - h2o
+  - model-training
+versions:
+  - "1.0"
+default_version: "1.0"

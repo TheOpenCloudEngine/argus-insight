@@ -1,0 +1,17 @@
+name: argus-labelstudio
+display_name: Label Studio
+description: Data labeling platform for images, text, audio, video, and time-series
+icon: labelstudio
+category: data
+depends_on: []
+provides:
+  - labelstudio_endpoint
+requires: []
+tags:
+  - labeling
+  - annotation
+  - data-preparation
+  - machine-learning
+versions:
+  - "1.0"
+default_version: "1.0"

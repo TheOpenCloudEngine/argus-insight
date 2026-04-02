@@ -1,0 +1,17 @@
+name: argus-ollama
+display_name: Ollama
+description: Run LLMs locally with easy model management (pull, run, serve)
+icon: ollama
+category: ai
+depends_on: []
+provides:
+  - ollama_endpoint
+requires: []
+tags:
+  - llm
+  - local
+  - ai-agent
+  - inference
+versions:
+  - "1.0"
+default_version: "1.0"

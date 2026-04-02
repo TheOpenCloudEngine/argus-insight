@@ -1,0 +1,16 @@
+version: "1.0"
+display_name: "v1.0 (Label Studio)"
+description: Label Studio for multi-type data annotation with persistent storage
+status: stable
+release_date: "2026-04-02"
+step_class: workspace_provisioner.workflow.steps.labelstudio_deploy.LabelStudioDeployStep
+config_class: workspace_provisioner.config.LabelStudioConfig
+template_dir: labelstudio
+changelog: |
+  - Initial version
+  - Image, text, audio, video labeling
+  - Persistent data storage via PVC
+  - Auto-created admin account per workspace
+  - Workspace auth via Nginx Ingress
+upgradeable_from: []
+software_version: "1.14"

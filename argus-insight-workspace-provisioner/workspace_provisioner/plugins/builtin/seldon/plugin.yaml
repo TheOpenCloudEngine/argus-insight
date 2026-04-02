@@ -1,0 +1,17 @@
+name: argus-seldon
+display_name: Seldon Core
+description: Advanced model serving with A/B testing, canary deployment, and explainability
+icon: seldon
+category: ml
+depends_on: []
+provides:
+  - seldon_endpoint
+requires: []
+tags:
+  - model-serving
+  - mlops
+  - inference
+  - a-b-testing
+versions:
+  - "1.0"
+default_version: "1.0"

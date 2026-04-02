@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: argus-seldon-${WORKSPACE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: seldon
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: seldon
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}

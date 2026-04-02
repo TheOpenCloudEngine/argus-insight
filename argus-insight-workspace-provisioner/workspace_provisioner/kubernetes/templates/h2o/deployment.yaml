@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argus-h2o-${WORKSPACE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: h2o
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: h2o
+      app.kubernetes.io/instance: ${WORKSPACE_NAME}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: h2o
+        app.kubernetes.io/instance: ${WORKSPACE_NAME}
+        app.kubernetes.io/part-of: argus-insight
+        argus-insight/workspace: ${WORKSPACE_NAME}
+    spec:
+      containers:
+        - name: h2o
+          image: ${H2O_IMAGE}
+          args:
+            - -Xmx${H2O_JAVA_MAX_HEAP}
+          ports:
+            - name: http
+              containerPort: 54321
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "${H2O_CPU_REQUEST}"
+              memory: "${H2O_MEMORY_REQUEST}"
+            limits:
+              cpu: "${H2O_CPU_LIMIT}"
+              memory: "${H2O_MEMORY_LIMIT}"
+          readinessProbe:
+            httpGet:
+              path: /3/About
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
