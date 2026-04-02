@@ -227,6 +227,36 @@ export interface ActivityItem {
   created_at: string
 }
 
+// ---------------------------------------------------------------------------
+// Model deployment types
+// ---------------------------------------------------------------------------
+
+export interface ModelVersionItem {
+  name: string
+  version: string
+  stage: string | null
+  description: string | null
+  run_id: string | null
+  artifact_uri: string | null
+  framework: string | null
+  metrics: Record<string, number>
+  created_at: string | null
+}
+
+export interface ModelListResponse {
+  models: ModelVersionItem[]
+  mlflow_available: boolean
+  kserve_available: boolean
+}
+
+export interface ModelServingStatus {
+  model_name: string
+  model_version: string | null
+  endpoint: string | null
+  status: string
+  ready: boolean
+}
+
 export interface WorkspaceDashboard {
   service_health: ServiceHealthItem[]
   storage: StorageItem[]

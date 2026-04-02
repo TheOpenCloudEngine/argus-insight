@@ -95,6 +95,7 @@ async def get_admin_overview(session: AsyncSession) -> AdminDashboardResponse:
             ArgusWorkspace.name,
             ArgusWorkspace.display_name,
             ArgusWorkspace.status,
+            ArgusWorkspace.k8s_namespace,
         ).where(ArgusWorkspace.status != "deleted")
     )).all()
     workspaces_total = len(ws_rows)
@@ -127,16 +128,16 @@ async def get_admin_overview(session: AsyncSession) -> AdminDashboardResponse:
     for svc in all_services:
         ws_svc_counts[svc.workspace_id] = ws_svc_counts.get(svc.workspace_id, 0) + 1
 
-    # Fetch pod resources from K8s for active workspaces
+    # Fetch pod resources from K8s for workspaces that have services
     ws_resources: dict[int, dict] = {}
-    active_ws = [r for r in ws_rows if r.status == "active"]
+    active_ws = [r for r in ws_rows if r.status in ("active", "failed") and ws_svc_counts.get(r.id, 0) > 0]
 
     if active_ws:
         from app.k8s.service import _make_client
         k8s = await _make_client(session)
         try:
             for ws_row in active_ws:
-                ns = f"argus-ws-{ws_row.name}"
+                ns = ws_row.k8s_namespace or f"argus-ws-{ws_row.name}"
                 try:
                     pod_data = await k8s.list_resources("pods", namespace=ns)
                     pvc_data = await k8s.list_resources(

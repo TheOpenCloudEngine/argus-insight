@@ -380,10 +380,16 @@ function ServiceCard({
                         )
                         if (!res.ok) throw new Error("Auth failed")
                         const data = await res.json()
-                        // Open auth-redirect on backend directly (not via Next.js proxy)
-                        // so the cookie is set with the correct domain
-                        const serverHost = window.location.hostname
-                        const redirectUrl = `http://${serverHost}:4500/api/v1/workspace/workspaces/auth-redirect?workspace=${workspaceName}&token=${data.token}&redirect=${encodeURIComponent(svc.endpoint!)}`
+                        // Call auth-redirect via the service's parent domain
+                        let authHost = window.location.hostname + ":4500"
+                        try {
+                          const svcHost = new URL(svc.endpoint!).hostname
+                          const parts = svcHost.split(".")
+                          if (parts.length > 2) {
+                            authHost = parts.slice(1).join(".") + ":4500"
+                          }
+                        } catch { /* fallback */ }
+                        const redirectUrl = `http://${authHost}/api/v1/workspace/workspaces/auth-redirect?workspace=${workspaceName}&token=${data.token}&redirect=${encodeURIComponent(svc.endpoint!)}`
                         window.open(redirectUrl, "_blank")
                       } catch {
                         // Fallback: direct open

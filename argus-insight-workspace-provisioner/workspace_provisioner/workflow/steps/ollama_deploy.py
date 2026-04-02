@@ -43,6 +43,7 @@ class OllamaDeployStep(WorkflowStep):
             "OLLAMA_MEMORY_REQUEST": config.memory_request,
             "OLLAMA_MEMORY_LIMIT": config.memory_limit,
             "OLLAMA_STORAGE_SIZE": config.storage_size,
+            "OLLAMA_DEFAULT_MODEL": config.default_model,
             "WORKSPACE_NAME": workspace_name,
             "K8S_NAMESPACE": namespace,
             "DOMAIN": domain,
@@ -51,7 +52,10 @@ class OllamaDeployStep(WorkflowStep):
         }
 
         manifests = render_manifests("ollama", variables)
-        logger.info("Deploying Ollama for workspace '%s'", workspace_name)
+        logger.info(
+            "Deploying Ollama for workspace '%s' (default_model=%s)",
+            workspace_name, config.default_model,
+        )
         await kubectl_apply(manifests, kubeconfig=kubeconfig)
 
         resource = f"deployment/argus-ollama-{workspace_name}"
@@ -79,7 +83,7 @@ class OllamaDeployStep(WorkflowStep):
             endpoint=external_endpoint,
             metadata={
                 "display": {
-                    "Image": config.image,
+                    "Default Model": config.default_model,
                     "Storage": config.storage_size,
                 },
                 "internal": {"endpoint": internal_endpoint, "namespace": namespace},
@@ -100,6 +104,7 @@ class OllamaDeployStep(WorkflowStep):
             "OLLAMA_CPU_REQUEST": config.cpu_request, "OLLAMA_CPU_LIMIT": config.cpu_limit,
             "OLLAMA_MEMORY_REQUEST": config.memory_request, "OLLAMA_MEMORY_LIMIT": config.memory_limit,
             "OLLAMA_STORAGE_SIZE": config.storage_size,
+            "OLLAMA_DEFAULT_MODEL": config.default_model,
             "WORKSPACE_NAME": ctx.workspace_name, "K8S_NAMESPACE": ns,
             "DOMAIN": ctx.domain, "HOSTNAME": hostname, "ARGUS_SERVER_HOST": "127.0.0.1",
         })

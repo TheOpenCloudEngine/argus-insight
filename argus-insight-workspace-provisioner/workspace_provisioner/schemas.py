@@ -335,6 +335,54 @@ class ServiceEventResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Model deployment schemas
+# ---------------------------------------------------------------------------
+
+class ModelVersionItem(BaseModel):
+    """A model version from MLflow Model Registry."""
+
+    name: str
+    version: str
+    stage: str | None = None
+    description: str | None = None
+    run_id: str | None = None
+    artifact_uri: str | None = None
+    framework: str | None = None
+    metrics: dict[str, float] = {}
+    created_at: str | None = None
+
+
+class ModelListResponse(BaseModel):
+    """List of registered models with their latest versions."""
+
+    models: list[ModelVersionItem] = []
+    mlflow_available: bool = True
+    kserve_available: bool = True
+
+
+class ModelDeployRequest(BaseModel):
+    """Request to deploy a model version as a KServe InferenceService."""
+
+    model_name: str
+    model_version: str
+    cpu: str = Field(default="1", description="CPU request")
+    memory: str = Field(default="2Gi", description="Memory request")
+    gpu: int = Field(default=0, description="GPU count")
+    min_replicas: int = Field(default=0, description="Min replicas (0=scale to zero)")
+    max_replicas: int = Field(default=3, description="Max replicas")
+
+
+class ModelServingStatus(BaseModel):
+    """Status of a deployed model serving."""
+
+    model_name: str
+    model_version: str | None = None
+    endpoint: str | None = None
+    status: str = "Unknown"
+    ready: bool = False
+
+
+# ---------------------------------------------------------------------------
 # Workspace dashboard schemas
 # ---------------------------------------------------------------------------
 

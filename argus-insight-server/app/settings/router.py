@@ -526,12 +526,16 @@ async def update_k8s_config(
 # ---------------------------------------------------------------------------
 
 DEPLOY_MAPPING_SERVICES = [
+    # Development
     {"service_key": "mlflow", "service_label": "MLflow", "icon": "mlflow", "default_constraint": "per_workspace"},
     {"service_key": "vscode", "service_label": "VS Code Server", "icon": "code", "default_constraint": "per_user"},
     {"service_key": "airflow", "service_label": "Airflow", "icon": "airflow", "default_constraint": "per_workspace"},
-    {"service_key": "jupyter", "service_label": "Jupyter Lab", "icon": "jupyter", "default_constraint": "per_user"},
+    {"service_key": "jupyter", "service_label": "JupyterLab", "icon": "jupyter", "default_constraint": "per_user"},
     {"service_key": "jupyter_tensorflow", "service_label": "JupyterLab TensorFlow", "icon": "jupyter", "default_constraint": "per_user"},
+    {"service_key": "jupyter_pyspark", "service_label": "JupyterLab PySpark", "icon": "jupyter", "default_constraint": "per_user"},
+    {"service_key": "rstudio", "service_label": "RStudio Server", "icon": "rstudio", "default_constraint": "per_user"},
     {"service_key": "kserve", "service_label": "KServe", "icon": "kserve", "default_constraint": "per_workspace"},
+    # Data
     {"service_key": "neo4j", "service_label": "Neo4j", "icon": "neo4j", "default_constraint": "per_workspace"},
     {"service_key": "milvus", "service_label": "Milvus", "icon": "milvus", "default_constraint": "per_workspace"},
     {"service_key": "mindsdb", "service_label": "MindsDB", "icon": "brain", "default_constraint": "per_workspace"},
@@ -539,6 +543,17 @@ DEPLOY_MAPPING_SERVICES = [
     {"service_key": "starrocks", "service_label": "StarRocks", "icon": "starrocks", "default_constraint": "per_workspace"},
     {"service_key": "postgresql", "service_label": "PostgreSQL", "icon": "postgresql", "default_constraint": "per_workspace"},
     {"service_key": "mariadb", "service_label": "MariaDB", "icon": "mariadb", "default_constraint": "per_workspace"},
+    # AutoML
+    {"service_key": "h2o", "service_label": "H2O AutoML", "icon": "h2o", "default_constraint": "per_workspace"},
+    {"service_key": "labelstudio", "service_label": "Label Studio", "icon": "labelstudio", "default_constraint": "per_workspace"},
+    {"service_key": "feast", "service_label": "Feast Feature Store", "icon": "feast", "default_constraint": "per_workspace"},
+    {"service_key": "seldon", "service_label": "Seldon Core", "icon": "seldon", "default_constraint": "per_workspace"},
+    # AI Agent
+    {"service_key": "vllm", "service_label": "vLLM", "icon": "vllm", "default_constraint": "per_workspace"},
+    {"service_key": "ollama", "service_label": "Ollama", "icon": "ollama", "default_constraint": "per_workspace"},
+    {"service_key": "langserve", "service_label": "LangServe Agent", "icon": "langserve", "default_constraint": "per_user"},
+    {"service_key": "chromadb", "service_label": "ChromaDB", "icon": "chromadb", "default_constraint": "per_workspace"},
+    {"service_key": "redis", "service_label": "Redis", "icon": "redis", "default_constraint": "per_workspace"},
 ]
 
 CONSTRAINT_LABELS = {

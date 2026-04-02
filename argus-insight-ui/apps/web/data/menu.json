@@ -35,6 +35,12 @@
           "icon": "Terminal"
         },
         {
+          "id": "ai-playground",
+          "title": "AI Playground",
+          "url": "/dashboard/ai-playground",
+          "icon": "Sparkles"
+        },
+        {
           "id": "file-browser",
           "title": "File Browser",
           "url": "/dashboard/file-browser",

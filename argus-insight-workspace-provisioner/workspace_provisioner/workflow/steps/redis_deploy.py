@@ -60,7 +60,8 @@ class RedisDeployStep(WorkflowStep):
         if not ready:
             raise RuntimeError(f"Redis rollout timed out: {resource} in {namespace}")
 
-        internal_endpoint = f"http://argus-redis-{workspace_name}.{namespace}.svc.cluster.local:6379"
+        hostname = f"argus-redis-{workspace_name}.{namespace}.svc.cluster.local"
+        internal_endpoint = f"redis://{hostname}:6379"
 
         ctx.set("redis_endpoint", internal_endpoint)
         ctx.set("redis_manifests", manifests)
@@ -71,21 +72,27 @@ class RedisDeployStep(WorkflowStep):
             plugin_name="argus-redis",
             display_name="Redis",
             version="7.4",
-            endpoint=internal_endpoint,
+            endpoint=None,
             metadata={
                 "display": {
-                    "Image": config.image,
+                    "Hostname": hostname,
+                    "Port": "6379",
                     "Storage": config.storage_size,
                     "Max Memory": config.maxmemory,
                 },
-                "internal": {"endpoint": internal_endpoint, "namespace": namespace},
+                "internal": {
+                    "endpoint": internal_endpoint,
+                    "hostname": hostname,
+                    "port": 6379,
+                    "namespace": namespace,
+                },
                 "resources": {
                     "cpu_request": config.cpu_request, "cpu_limit": config.cpu_limit,
                     "memory_request": config.memory_request, "memory_limit": config.memory_limit,
                 },
             },
         )
-        return {"endpoint": internal_endpoint}
+        return {"hostname": hostname, "port": 6379}
 
     def _render_manifests(self, ctx: WorkflowContext) -> str:
         config: RedisConfig = ctx.get("argus_redis_config", RedisConfig())

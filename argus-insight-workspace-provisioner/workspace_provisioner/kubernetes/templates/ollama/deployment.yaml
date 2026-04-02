@@ -25,6 +25,30 @@ spec:
       containers:
         - name: ollama
           image: ${OLLAMA_IMAGE}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              # Start ollama server in background
+              ollama serve &
+              SERVER_PID=$$!
+
+              # Wait for server to be ready
+              echo "[ollama] Waiting for server..."
+              for i in $$(seq 1 60); do
+                curl -s http://localhost:11434/api/tags >/dev/null 2>&1 && break
+                sleep 1
+              done
+
+              # Pull default model if specified and not already present
+              DEFAULT_MODEL="${OLLAMA_DEFAULT_MODEL}"
+              if [ -n "$$DEFAULT_MODEL" ]; then
+                echo "[ollama] Pulling model: $$DEFAULT_MODEL"
+                ollama pull "$$DEFAULT_MODEL" || echo "[ollama] Pull failed, continuing..."
+                echo "[ollama] Model ready: $$DEFAULT_MODEL"
+              fi
+
+              # Wait for server process
+              wait $$SERVER_PID
           ports:
             - name: http
               containerPort: 11434
@@ -43,7 +67,7 @@ spec:
             httpGet:
               path: /api/tags
               port: http
-            initialDelaySeconds: 10
+            initialDelaySeconds: 15
             periodSeconds: 10
       volumes:
         - name: models

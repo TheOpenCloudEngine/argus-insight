@@ -312,6 +312,10 @@ class OllamaConfig(BaseModel):
     memory_request: str = Field(default="4Gi", description="Memory request")
     memory_limit: str = Field(default="8Gi", description="Memory limit")
     storage_size: str = Field(default="50Gi", description="Model storage PVC size")
+    default_model: str = Field(
+        default="llama3.2:1b",
+        description="Model to pull on startup (e.g. llama3.2:1b, mistral, qwen2.5:3b)",
+    )
 
 
 class LangServeConfig(BaseModel):

@@ -73,6 +73,7 @@ import type { AuditLog, WorkspaceMember, WorkspaceResponse, WorkspaceService } f
 import { PluginIcon } from "@/features/software-deployment/components/plugin-icon"
 import { ServiceLogsPanel } from "@/features/workspaces/components/service-logs-panel"
 import { WorkspaceDashboardPanel } from "@/features/workspaces/components/workspace-dashboard"
+import { WorkspaceModels } from "@/features/workspaces/components/workspace-models"
 
 /* ------------------------------------------------------------------ */
 /*  Shared helpers                                                     */
@@ -428,11 +429,13 @@ function ServiceDataListItem({
   hideTimestamps,
   onDelete,
   workspaceId,
+  workspaceName,
 }: {
   service: WorkspaceService
   hideTimestamps?: boolean
   onDelete?: (service: WorkspaceService) => void
   workspaceId?: number
+  workspaceName?: string
 }) {
   const [expanded, setExpanded] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -553,17 +556,40 @@ function ServiceDataListItem({
         <div className="flex items-center gap-2 shrink-0">
           {statusBadge(service.status)}
           {openUrl && (
-            <a
-              href={openUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs h-6 px-2"
+              onClick={async (e) => {
+                e.stopPropagation()
+                try {
+                  const wsName = workspaceName || ""
+                  const res = await authFetch(
+                    `/api/v1/workspace/workspaces/auth-launch?workspace=${wsName}`
+                  )
+                  if (!res.ok) throw new Error("Auth failed")
+                  const data = await res.json()
+                  // Call auth-redirect via the service's parent domain
+                  // so the Set-Cookie domain matches *.argus-insight.{domain}
+                  let authHost = window.location.hostname + ":4500"
+                  try {
+                    const svcHost = new URL(openUrl).hostname // e.g. argus-rstudio-xxx.argus-insight.dev.net
+                    const parts = svcHost.split(".")
+                    if (parts.length > 2) {
+                      // Use parent domain: argus-insight.dev.net:4500
+                      authHost = parts.slice(1).join(".") + ":4500"
+                    }
+                  } catch { /* fallback to window.location.hostname */ }
+                  const redirectUrl = `http://${authHost}/api/v1/workspace/workspaces/auth-redirect?workspace=${wsName}&token=${data.token}&redirect=${encodeURIComponent(openUrl)}`
+                  window.open(redirectUrl, "_blank")
+                } catch {
+                  window.open(openUrl, "_blank")
+                }
+              }}
             >
-              <Button variant="outline" size="sm" className="text-xs h-6 px-2">
-                Open
-                <ExternalLink className="ml-1 h-3 w-3" />
-              </Button>
-            </a>
+              Open
+              <ExternalLink className="ml-1 h-3 w-3" />
+            </Button>
           )}
         </div>
       </div>
@@ -690,6 +716,7 @@ function ServiceDataList({
   isOwner,
   perUserPlugins,
   workspaceId,
+  workspaceName,
 }: {
   services: WorkspaceService[]
   hideTimestamps?: boolean
@@ -697,12 +724,11 @@ function ServiceDataList({
   isOwner?: boolean
   perUserPlugins?: Set<string>
   workspaceId?: number
+  workspaceName?: string
 }) {
   return (
     <div className="rounded-lg border">
       {services.map((svc) => {
-        // per_user services: user can delete their own
-        // per_workspace services: only owner can delete
         const canDelete = onDelete
           ? isOwner || (perUserPlugins?.has(svc.plugin_name) ?? false)
           : false
@@ -713,6 +739,7 @@ function ServiceDataList({
             hideTimestamps={hideTimestamps}
             onDelete={canDelete ? onDelete : undefined}
             workspaceId={workspaceId}
+            workspaceName={workspaceName}
           />
         )
       })}
@@ -975,12 +1002,16 @@ interface DeployMappingEntry {
 
 // Map service_key to plugin_name patterns used in workspace services
 const SERVICE_KEY_TO_PLUGIN: Record<string, string> = {
+  // Development
   mlflow: "argus-mlflow",
   vscode: "argus-vscode-server",
   airflow: "argus-airflow",
   jupyter: "argus-jupyter",
   jupyter_tensorflow: "argus-jupyter-tensorflow",
+  jupyter_pyspark: "argus-jupyter-pyspark",
+  rstudio: "argus-rstudio",
   kserve: "argus-kserve",
+  // Data
   neo4j: "argus-neo4j",
   milvus: "argus-milvus",
   mindsdb: "argus-mindsdb",
@@ -988,6 +1019,17 @@ const SERVICE_KEY_TO_PLUGIN: Record<string, string> = {
   starrocks: "argus-starrocks",
   postgresql: "argus-postgresql",
   mariadb: "argus-mariadb",
+  // AutoML
+  h2o: "argus-h2o",
+  labelstudio: "argus-labelstudio",
+  feast: "argus-feast",
+  seldon: "argus-seldon",
+  // AI Agent
+  vllm: "argus-vllm",
+  ollama: "argus-ollama",
+  langserve: "argus-langserve",
+  chromadb: "argus-chromadb",
+  redis: "argus-redis",
 }
 
 function AddServiceButton({
@@ -1319,8 +1361,16 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
       </div>
 
       {/* Dashboard: overview cards, service health, storage, activity */}
-      {workspace.status === "active" && (
+      {(workspace.status === "active" || workspace.status === "failed") && (
         <WorkspaceDashboardPanel workspaceId={workspace.id} />
+      )}
+
+      {/* Models: MLflow model registry + one-click KServe deploy */}
+      {(workspace.status === "active" || workspace.status === "failed") && (
+        <WorkspaceModels
+          workspace={workspace}
+          onDeployService={() => handleDeployComplete()}
+        />
       )}
 
       {(() => {
@@ -1417,6 +1467,48 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
                 _hideTimestamps: true,
               } as WorkspaceService & { _hideUrl?: boolean; _hideTimestamps?: boolean }
             }
+            if (svc.plugin_name === "argus-rstudio") {
+              return {
+                ...svc,
+                username: null,
+                _hideUrl: true,
+                _hideTimestamps: true,
+              } as WorkspaceService & { _hideUrl?: boolean; _hideTimestamps?: boolean }
+            }
+            if (svc.plugin_name === "argus-labelstudio") {
+              return {
+                ...svc,
+                _hideUrl: true,
+                _hideTimestamps: true,
+              } as WorkspaceService & { _hideUrl?: boolean; _hideTimestamps?: boolean }
+            }
+            if (svc.plugin_name === "argus-redis") {
+              const meta = svc.metadata ?? {}
+              const internal = (meta.internal ?? {}) as Record<string, unknown>
+              const display = (meta.display ?? {}) as Record<string, unknown>
+              // Derive hostname/port from internal metadata or endpoint
+              const hostname = internal.hostname
+                || svc.endpoint?.replace(/^https?:\/\//, "").replace(/:\d+$/, "")
+                || ""
+              const port = internal.port || "6379"
+              return {
+                ...svc,
+                endpoint: null,
+                username: null,
+                password: null,
+                metadata: {
+                  ...meta,
+                  display: {
+                    "Hostname": hostname,
+                    "Port": String(port),
+                    "Storage": display.Storage || display.storage_size || "",
+                    "Max Memory": display["Max Memory"] || display.maxmemory || "",
+                  },
+                },
+                _hideUrl: true,
+                _hideTimestamps: true,
+              } as WorkspaceService & { _hideUrl?: boolean; _hideTimestamps?: boolean }
+            }
             return svc
           })
 
@@ -1439,7 +1531,7 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="px-4 pb-4 pt-0">
-                  <ServiceDataList services={defaultServices} hideTimestamps />
+                  <ServiceDataList services={defaultServices} hideTimestamps workspaceName={workspace.name} />
                 </CardContent>
               </Card>
             )}
@@ -1470,6 +1562,7 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
                     isOwner={!!user && String(workspace.created_by) === user.sub}
                     perUserPlugins={perUserPlugins}
                     workspaceId={workspace.id}
+                    workspaceName={workspace.name}
                   />
                 )}
               </CardContent>

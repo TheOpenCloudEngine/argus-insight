@@ -35,6 +35,10 @@ from workspace_provisioner.schemas import (
     ServiceLogSourcesResponse,
     ServiceLogsResponse,
     ActivityItem,
+    ModelDeployRequest,
+    ModelListResponse,
+    ModelServingStatus,
+    ModelVersionItem,
     ServiceHealthItem,
     StorageItem,
     WorkspaceDashboardResponse,
@@ -253,14 +257,33 @@ async def workspace_auth_redirect(
     payload = _verify_ws_token(token, workspace)
     if not payload:
         return Response(content="Invalid or expired token", status_code=401)
-    from app.settings.service import get_config_by_category
-    domain_cfg = await get_config_by_category(session, "domain")
-    domain = domain_cfg.get("domain_name", "")
+    # Derive cookie domain from the redirect URL so the cookie is valid
+    # for the target service. E.g., redirect to
+    # "http://argus-rstudio-xxx.argus-insight.dev.net" → cookie domain ".argus-insight.dev.net"
+    cookie_domain = None
+    if redirect:
+        try:
+            from urllib.parse import urlparse as _urlparse
+            host = _urlparse(redirect).hostname or ""
+            # Strip first subdomain to get the shared parent domain
+            # e.g. "argus-rstudio-xxx.argus-insight.dev.net" → ".argus-insight.dev.net"
+            parts = host.split(".")
+            if len(parts) > 2:
+                cookie_domain = "." + ".".join(parts[1:])
+        except Exception:
+            pass
+
+    if not cookie_domain:
+        from app.settings.service import get_config_by_category
+        domain_cfg = await get_config_by_category(session, "domain")
+        domain = domain_cfg.get("domain_name", "")
+        cookie_domain = f".{domain}" if domain else None
+
     redirect_url = redirect or "/"
     response = Response(status_code=302, headers={"Location": redirect_url})
     response.set_cookie(
         key="argus_ws_token", value=token,
-        domain=f".{domain}" if domain else None,
+        domain=cookie_domain,
         path="/", max_age=_WS_AUTH_EXPIRY, httponly=False, samesite="lax",
     )
     return response
@@ -770,6 +793,533 @@ async def get_workspace_pipelines(
             created_at=wp.created_at,
         ))
     return responses
+
+
+# ---------------------------------------------------------------------------
+# LLM Proxy (AI Playground → workspace LLM services)
+# ---------------------------------------------------------------------------
+
+@router.post("/workspaces/{workspace_id}/llm/chat")
+async def llm_chat_proxy(
+    request: Request,
+    workspace_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Proxy chat completions to workspace LLM service (vLLM/Ollama).
+
+    Avoids CORS and auth issues by routing through the backend server
+    which can reach K8s internal endpoints directly via Ingress.
+    """
+    import httpx
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+    from starlette.responses import StreamingResponse
+
+    body = await request.json()
+    service_id = body.pop("_service_id", None)  # custom field to select service
+
+    ws_result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    workspace = ws_result.scalars().first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # Find target LLM service
+    svc_result = await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+            ArgusWorkspaceService.plugin_name.in_(["argus-vllm", "argus-ollama"]),
+        )
+    )
+    llm_services = svc_result.scalars().all()
+    if not llm_services:
+        raise HTTPException(status_code=404, detail="No LLM service in this workspace")
+
+    # Select service by _service_id or first available
+    target = None
+    if service_id:
+        target = next((s for s in llm_services if str(s.id) == str(service_id)), None)
+    if not target:
+        target = llm_services[0]
+
+    # Use external endpoint (Ingress) since server may be outside K8s
+    base_url = target.endpoint or ""
+    if not base_url:
+        raise HTTPException(status_code=502, detail="LLM service has no endpoint")
+
+    # Ollama needs /v1 prefix for OpenAI-compatible API
+    if target.plugin_name == "argus-ollama" and "/v1" not in base_url:
+        base_url = base_url.rstrip("/") + "/v1"
+
+    url = f"{base_url}/chat/completions"
+    is_stream = body.get("stream", False)
+
+    if is_stream:
+        async def proxy_stream():
+            async with httpx.AsyncClient(timeout=300) as client:
+                async with client.stream("POST", url, json=body) as resp:
+                    async for chunk in resp.aiter_bytes():
+                        yield chunk
+
+        return StreamingResponse(
+            proxy_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+    else:
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(url, json=body)
+            return Response(
+                content=resp.content,
+                status_code=resp.status_code,
+                media_type="application/json",
+            )
+
+
+@router.get("/workspaces/{workspace_id}/llm/models")
+async def llm_list_models(
+    workspace_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """List available models from workspace LLM services."""
+    import httpx
+    from workspace_provisioner.models import ArgusWorkspaceService
+
+    svc_result = await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+            ArgusWorkspaceService.plugin_name.in_(["argus-vllm", "argus-ollama"]),
+            ArgusWorkspaceService.status == "running",
+        )
+    )
+    services = svc_result.scalars().all()
+
+    result = []
+    for svc in services:
+        base_url = svc.endpoint or ""
+        if not base_url:
+            continue
+
+        try:
+            if svc.plugin_name == "argus-ollama":
+                async with httpx.AsyncClient(timeout=5) as client:
+                    resp = await client.get(f"{base_url}/api/tags")
+                    if resp.status_code == 200:
+                        for m in resp.json().get("models", []):
+                            result.append({
+                                "service_id": svc.id,
+                                "service_type": "ollama",
+                                "service_label": svc.display_name or "Ollama",
+                                "model": m["name"],
+                            })
+            elif svc.plugin_name == "argus-vllm":
+                async with httpx.AsyncClient(timeout=5) as client:
+                    resp = await client.get(f"{base_url}/v1/models")
+                    if resp.status_code == 200:
+                        for m in resp.json().get("data", []):
+                            result.append({
+                                "service_id": svc.id,
+                                "service_type": "vllm",
+                                "service_label": svc.display_name or "vLLM",
+                                "model": m["id"],
+                            })
+        except Exception as e:
+            logger.debug("Failed to list models from %s: %s", svc.plugin_name, e)
+
+    return {"models": result}
+
+
+# ---------------------------------------------------------------------------
+# Model deployment (MLflow → KServe)
+# ---------------------------------------------------------------------------
+
+# MLflow model flavor → KServe modelFormat mapping
+_FLAVOR_TO_KSERVE: dict[str, str] = {
+    "sklearn": "sklearn",
+    "pytorch": "pytorch",
+    "tensorflow": "tensorflow",
+    "xgboost": "xgboost",
+    "lightgbm": "lightgbm",
+    "onnx": "onnx",
+    "transformers": "huggingface",
+}
+
+
+def _detect_framework(run_info: dict) -> str:
+    """Detect model framework from MLflow run tags or flavors."""
+    tags = run_info.get("tags", {})
+    # Check mlflow.log_model.history tag
+    if isinstance(tags, dict):
+        for key in tags:
+            for flavor in _FLAVOR_TO_KSERVE:
+                if flavor in key.lower():
+                    return flavor
+    return "mlflow"  # fallback: mlserver handles all flavors
+
+
+def _check_service_exists(
+    services: list, plugin_name: str,
+) -> bool:
+    """Check if a specific plugin service exists in the workspace."""
+    return any(s.plugin_name == plugin_name for s in services)
+
+
+@router.get(
+    "/workspaces/{workspace_id}/models",
+    response_model=ModelListResponse,
+)
+async def list_models(
+    workspace_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """List registered models from workspace's MLflow instance.
+
+    Also reports whether MLflow and KServe are available.
+    """
+    import httpx
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+
+    # Load workspace + services
+    ws_result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    workspace = ws_result.scalars().first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    svc_result = await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+        )
+    )
+    services = svc_result.scalars().all()
+
+    mlflow_available = _check_service_exists(services, "argus-mlflow")
+    kserve_available = _check_service_exists(services, "argus-kserve")
+
+    if not mlflow_available:
+        return ModelListResponse(
+            models=[], mlflow_available=False, kserve_available=kserve_available,
+        )
+
+    # Find MLflow internal endpoint
+    mlflow_svc = next(
+        (s for s in services if s.plugin_name == "argus-mlflow"), None,
+    )
+    if not mlflow_svc:
+        return ModelListResponse(models=[], mlflow_available=False, kserve_available=kserve_available)
+
+    # Prefer external endpoint (works from both inside and outside K8s cluster),
+    # fall back to internal endpoint
+    mlflow_url = mlflow_svc.endpoint or (
+        mlflow_svc.metadata_json or {}
+    ).get("internal", {}).get("endpoint", "")
+
+    # Query MLflow REST API
+    models: list[ModelVersionItem] = []
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            # List registered models
+            resp = await client.get(
+                f"{mlflow_url}/api/2.0/mlflow/registered-models/search",
+                params={"max_results": 100},
+            )
+            if resp.status_code != 200:
+                return ModelListResponse(
+                    models=[], mlflow_available=True, kserve_available=kserve_available,
+                )
+            data = resp.json()
+            for rm in data.get("registered_models", []):
+                latest = rm.get("latest_versions", [{}])
+                for mv in latest:
+                    run_id = mv.get("run_id", "")
+                    # Fetch run metrics
+                    metrics: dict[str, float] = {}
+                    if run_id:
+                        try:
+                            run_resp = await client.get(
+                                f"{mlflow_url}/api/2.0/mlflow/runs/get",
+                                params={"run_id": run_id},
+                            )
+                            if run_resp.status_code == 200:
+                                run_data = run_resp.json().get("run", {})
+                                run_metrics = run_data.get("data", {}).get("metrics", [])
+                                for m in run_metrics:
+                                    metrics[m["key"]] = m["value"]
+                        except Exception:
+                            pass
+
+                    source = mv.get("source", "")
+                    models.append(ModelVersionItem(
+                        name=rm.get("name", ""),
+                        version=mv.get("version", "1"),
+                        stage=mv.get("current_stage"),
+                        description=mv.get("description"),
+                        run_id=run_id,
+                        artifact_uri=source,
+                        framework=_detect_framework(mv),
+                        metrics=metrics,
+                        created_at=mv.get("creation_timestamp"),
+                    ))
+    except Exception as e:
+        logger.warning("Failed to query MLflow at %s: %s", mlflow_url, e)
+
+    return ModelListResponse(
+        models=models,
+        mlflow_available=True,
+        kserve_available=kserve_available,
+    )
+
+
+@router.post(
+    "/workspaces/{workspace_id}/models/deploy",
+    response_model=ModelServingStatus,
+)
+async def deploy_model(
+    workspace_id: int,
+    req: ModelDeployRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Deploy a model version from MLflow as a KServe InferenceService."""
+    import httpx
+    from app.k8s.service import _make_client
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+
+    # Load workspace
+    ws_result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    workspace = ws_result.scalars().first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    svc_result = await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+        )
+    )
+    services = svc_result.scalars().all()
+
+    if not _check_service_exists(services, "argus-mlflow"):
+        raise HTTPException(status_code=400, detail="MLflow is not deployed in this workspace")
+    if not _check_service_exists(services, "argus-kserve"):
+        raise HTTPException(status_code=400, detail="KServe is not deployed in this workspace")
+
+    namespace = workspace.k8s_namespace or f"argus-ws-{workspace.name}"
+
+    # Get MLflow model artifact URI — prefer external endpoint
+    mlflow_svc = next(s for s in services if s.plugin_name == "argus-mlflow")
+    mlflow_url = mlflow_svc.endpoint or (
+        mlflow_svc.metadata_json or {}
+    ).get("internal", {}).get("endpoint", "")
+
+    artifact_uri = None
+    framework = "mlflow"
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{mlflow_url}/api/2.0/mlflow/model-versions/get",
+                params={"name": req.model_name, "version": req.model_version},
+            )
+            if resp.status_code == 200:
+                mv = resp.json().get("model_version", {})
+                artifact_uri = mv.get("source")
+                framework = _detect_framework(mv)
+    except Exception as e:
+        logger.warning("Failed to get model version from MLflow: %s", e)
+
+    if not artifact_uri:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Model {req.model_name} v{req.model_version} not found in MLflow",
+        )
+
+    # Build KServe InferenceService manifest
+    kserve_format = _FLAVOR_TO_KSERVE.get(framework, "mlflow")
+    isvc_name = f"argus-model-{req.model_name}".lower().replace("_", "-")[:63]
+
+    resource_requests = {"cpu": req.cpu, "memory": req.memory}
+    resource_limits = {"cpu": req.cpu, "memory": req.memory}
+    if req.gpu > 0:
+        resource_requests["nvidia.com/gpu"] = str(req.gpu)
+        resource_limits["nvidia.com/gpu"] = str(req.gpu)
+
+    isvc_manifest = {
+        "apiVersion": "serving.kserve.io/v1beta1",
+        "kind": "InferenceService",
+        "metadata": {
+            "name": isvc_name,
+            "namespace": namespace,
+            "labels": {
+                "app.kubernetes.io/part-of": "argus-insight",
+                "argus-insight/workspace": workspace.name,
+            },
+            "annotations": {
+                "mlflow.org/model-name": req.model_name,
+                "mlflow.org/model-version": req.model_version,
+            },
+        },
+        "spec": {
+            "predictor": {
+                "minReplicas": req.min_replicas,
+                "maxReplicas": req.max_replicas,
+                "model": {
+                    "modelFormat": {"name": kserve_format},
+                    "storageUri": artifact_uri,
+                    "resources": {
+                        "requests": resource_requests,
+                        "limits": resource_limits,
+                    },
+                },
+            },
+        },
+    }
+
+    # Apply via K8s API
+    k8s = await _make_client(session)
+    try:
+        # Use CustomObjectsApi for CRD
+        from kubernetes_asyncio import client as k8s_client
+        await k8s._ensure_client()
+        custom_api = k8s_client.CustomObjectsApi(k8s._api_client)
+
+        try:
+            # Try update first
+            await custom_api.patch_namespaced_custom_object(
+                group="serving.kserve.io",
+                version="v1beta1",
+                namespace=namespace,
+                plural="inferenceservices",
+                name=isvc_name,
+                body=isvc_manifest,
+            )
+        except Exception:
+            # Create if not exists
+            await custom_api.create_namespaced_custom_object(
+                group="serving.kserve.io",
+                version="v1beta1",
+                namespace=namespace,
+                plural="inferenceservices",
+                body=isvc_manifest,
+            )
+    finally:
+        await k8s.close()
+
+    endpoint = f"http://{isvc_name}.{namespace}.svc.cluster.local"
+
+    return ModelServingStatus(
+        model_name=req.model_name,
+        model_version=req.model_version,
+        endpoint=endpoint,
+        status="Deploying",
+        ready=False,
+    )
+
+
+@router.get(
+    "/workspaces/{workspace_id}/models/{model_name}/serving",
+    response_model=ModelServingStatus,
+)
+async def get_model_serving(
+    workspace_id: int,
+    model_name: str,
+    session: AsyncSession = Depends(get_session),
+):
+    """Get serving status of a deployed model."""
+    from app.k8s.service import _make_client
+    from workspace_provisioner.models import ArgusWorkspace
+
+    ws_result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    workspace = ws_result.scalars().first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    namespace = workspace.k8s_namespace or f"argus-ws-{workspace.name}"
+    isvc_name = f"argus-model-{model_name}".lower().replace("_", "-")[:63]
+
+    k8s = await _make_client(session)
+    try:
+        from kubernetes_asyncio import client as k8s_client
+        await k8s._ensure_client()
+        custom_api = k8s_client.CustomObjectsApi(k8s._api_client)
+
+        try:
+            isvc = await custom_api.get_namespaced_custom_object(
+                group="serving.kserve.io",
+                version="v1beta1",
+                namespace=namespace,
+                plural="inferenceservices",
+                name=isvc_name,
+            )
+        except Exception:
+            return ModelServingStatus(model_name=model_name, status="Not deployed")
+    finally:
+        await k8s.close()
+
+    conditions = isvc.get("status", {}).get("conditions", [])
+    ready = any(
+        c.get("type") == "Ready" and c.get("status") == "True"
+        for c in conditions
+    )
+    url = isvc.get("status", {}).get("url", "")
+    status = "Ready" if ready else "Deploying"
+
+    annotations = isvc.get("metadata", {}).get("annotations", {})
+    version = annotations.get("mlflow.org/model-version")
+
+    return ModelServingStatus(
+        model_name=model_name,
+        model_version=version,
+        endpoint=url or None,
+        status=status,
+        ready=ready,
+    )
+
+
+@router.delete("/workspaces/{workspace_id}/models/{model_name}/serving")
+async def undeploy_model(
+    workspace_id: int,
+    model_name: str,
+    session: AsyncSession = Depends(get_session),
+):
+    """Undeploy a model (delete KServe InferenceService)."""
+    from app.k8s.service import _make_client
+    from workspace_provisioner.models import ArgusWorkspace
+
+    ws_result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    workspace = ws_result.scalars().first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    namespace = workspace.k8s_namespace or f"argus-ws-{workspace.name}"
+    isvc_name = f"argus-model-{model_name}".lower().replace("_", "-")[:63]
+
+    k8s = await _make_client(session)
+    try:
+        from kubernetes_asyncio import client as k8s_client
+        await k8s._ensure_client()
+        custom_api = k8s_client.CustomObjectsApi(k8s._api_client)
+        await custom_api.delete_namespaced_custom_object(
+            group="serving.kserve.io",
+            version="v1beta1",
+            namespace=namespace,
+            plural="inferenceservices",
+            name=isvc_name,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Model serving not found: {e}")
+    finally:
+        await k8s.close()
+
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

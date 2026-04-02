@@ -10,6 +10,8 @@ import type {
   WorkspaceCredentials,
   WorkspaceMember,
   WorkspacePipeline,
+  ModelListResponse,
+  ModelServingStatus,
   WorkspaceDashboard,
   WorkspaceResourceUsage,
   WorkspaceResponse,
@@ -290,5 +292,58 @@ export async function fetchWorkspaceDashboard(
   const res = await authFetch(`${BASE}/workspaces/${workspaceId}/dashboard`)
   if (!res.ok) throw new Error(await extractError(res, "Failed to fetch dashboard"))
   return res.json()
+}
+
+// ── Models ───────────────────────────────────────────────
+
+export async function fetchWorkspaceModels(
+  workspaceId: number,
+): Promise<ModelListResponse> {
+  const res = await authFetch(`${BASE}/workspaces/${workspaceId}/models`)
+  if (!res.ok) throw new Error(await extractError(res, "Failed to fetch models"))
+  return res.json()
+}
+
+export async function deployModel(
+  workspaceId: number,
+  data: {
+    model_name: string
+    model_version: string
+    cpu?: string
+    memory?: string
+    gpu?: number
+    min_replicas?: number
+    max_replicas?: number
+  },
+): Promise<ModelServingStatus> {
+  const res = await authFetch(`${BASE}/workspaces/${workspaceId}/models/deploy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(await extractError(res, "Failed to deploy model"))
+  return res.json()
+}
+
+export async function fetchModelServing(
+  workspaceId: number,
+  modelName: string,
+): Promise<ModelServingStatus> {
+  const res = await authFetch(
+    `${BASE}/workspaces/${workspaceId}/models/${encodeURIComponent(modelName)}/serving`,
+  )
+  if (!res.ok) throw new Error(await extractError(res, "Failed to fetch serving status"))
+  return res.json()
+}
+
+export async function undeployModel(
+  workspaceId: number,
+  modelName: string,
+): Promise<void> {
+  const res = await authFetch(
+    `${BASE}/workspaces/${workspaceId}/models/${encodeURIComponent(modelName)}/serving`,
+    { method: "DELETE" },
+  )
+  if (!res.ok) throw new Error(await extractError(res, "Failed to undeploy model"))
 }
 
