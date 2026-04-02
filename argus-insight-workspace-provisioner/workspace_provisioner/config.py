@@ -235,6 +235,26 @@ class JupyterPySparkConfig(JupyterLabConfig):
     memory_limit: str = Field(default="8Gi", description="Memory limit")
 
 
+class RStudioServerConfig(BaseModel):
+    """RStudio Server deployment settings."""
+
+    image: str = Field(
+        default="rocker/tidyverse:4.4.3",
+        description="RStudio Server container image",
+    )
+    cpu_request: str = Field(default="500m", description="CPU request")
+    cpu_limit: str = Field(default="2", description="CPU limit")
+    memory_request: str = Field(default="1Gi", description="Memory request")
+    memory_limit: str = Field(default="4Gi", description="Memory limit")
+    workspace_path: str = Field(default="/workspace", description="Workspace S3 bucket mount path")
+    user_data_path: str = Field(default="/data", description="Personal S3 bucket mount path")
+    s3fs_image: str = Field(default="efrecon/s3fs:1.94", description="s3fs FUSE mount sidecar image")
+    install_packages: list[str] = Field(
+        default_factory=list,
+        description="Additional R packages to install on startup via install.packages()",
+    )
+
+
 class MilvusConfig(BaseModel):
     """Milvus Vector Database deployment settings."""
 

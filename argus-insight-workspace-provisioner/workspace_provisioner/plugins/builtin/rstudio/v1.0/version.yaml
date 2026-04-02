@@ -1,0 +1,17 @@
+version: "1.0"
+display_name: "v1.0 (rocker/tidyverse + dual S3)"
+description: RStudio Server with tidyverse stack and dual S3 bucket mount (workspace + personal)
+status: stable
+release_date: "2026-04-02"
+step_class: workspace_provisioner.workflow.steps.rstudio_deploy.RStudioServerDeployStep
+config_class: workspace_provisioner.config.RStudioServerConfig
+template_dir: rstudio
+changelog: |
+  - Initial version
+  - rocker/tidyverse base image (R 4.4.3 + tidyverse, ggplot2, data.table, shiny)
+  - Workspace auth via Nginx Ingress auth-url (DISABLE_AUTH=true on RStudio)
+  - Dual S3 mount: /workspace (shared) + /data (personal)
+  - Per-user multi-instance support
+upgradeable_from: []
+os_key: ubuntu-24.04
+software_version: "2024.12.0"

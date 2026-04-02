@@ -83,6 +83,7 @@ async def log_audit(
 MULTI_INSTANCE_PLUGINS = {
     "argus-vscode-server",
     "argus-jupyter", "argus-jupyter-tensorflow", "argus-jupyter-pyspark",
+    "argus-rstudio",
 }
 
 
