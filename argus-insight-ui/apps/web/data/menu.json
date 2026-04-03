@@ -35,6 +35,12 @@
           "icon": "Terminal"
         },
         {
+          "id": "ml-studio",
+          "title": "ML Studio",
+          "url": "/dashboard/ml-studio",
+          "icon": "FlaskConical"
+        },
+        {
           "id": "ai-playground",
           "title": "AI Playground",
           "url": "/dashboard/ai-playground",

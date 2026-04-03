@@ -28,6 +28,11 @@ import {
 } from "recharts"
 import { Badge } from "@workspace/ui/components/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@workspace/ui/components/tooltip"
 
 import { fetchAdminDashboard } from "@/features/dashboard/api"
 import type { AdminDashboard } from "@/features/dashboard/types"
@@ -271,7 +276,7 @@ function WorkspaceOverviewChart({ data }: { data: AdminDashboard }) {
                     <Cell key={d.name} fill={WS_STATUS_COLORS[d.name] || "#6b7280"} />
                   ))}
                 </Pie>
-                <RechartsTooltip formatter={(v: number, name: string) => [v, name]} />
+                <RechartsTooltip />
               </PieChart>
             </ResponsiveContainer>
             <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[10px] text-muted-foreground">
@@ -426,25 +431,50 @@ function RecentActivityPanel({ data }: { data: AdminDashboard }) {
         {data.recent_activity.length === 0 ? (
           <p className="text-muted-foreground text-center py-4">No recent activity.</p>
         ) : (
-          data.recent_activity.map((a, i) => (
-            <div key={i} className="flex items-center gap-2 py-1.5 border-b last:border-b-0">
-              {a.action.includes("created") || a.action.includes("completed") ? (
-                <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
-              ) : a.action.includes("failed") ? (
-                <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
-              ) : (
-                <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              )}
-              <span className="flex-1 truncate">
-                {a.action.replace(/_/g, " ")}
-                {a.workspace_name && <span className="text-muted-foreground"> · {a.workspace_name}</span>}
-              </span>
-              {a.actor_username && (
-                <span className="text-xs text-muted-foreground shrink-0">{a.actor_username}</span>
-              )}
-              <span className="text-xs text-muted-foreground shrink-0">{timeAgo(a.created_at)}</span>
-            </div>
-          ))
+          data.recent_activity.map((a, i) => {
+            const isFailed = a.action.includes("failed")
+            const isSuccess = a.action.includes("created") || a.action.includes("completed")
+            const detailText = a.detail && Object.keys(a.detail).length > 0
+              ? Object.entries(a.detail).map(([k, v]) => `${k}: ${v}`).join(", ")
+              : null
+            return (
+              <div key={i} className="flex items-start gap-2 py-1.5 border-b last:border-b-0">
+                <div className="mt-0.5 shrink-0">
+                  {isSuccess ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                  ) : isFailed ? (
+                    <XCircle className="h-3.5 w-3.5 text-red-500" />
+                  ) : (
+                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className={`truncate ${isFailed ? "text-red-600 dark:text-red-400" : ""}`}>
+                      {a.action.replace(/_/g, " ")}
+                    </span>
+                    {a.workspace_name && <span className="text-muted-foreground shrink-0">· {a.workspace_name}</span>}
+                  </div>
+                  {detailText && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <p className={`text-xs mt-0.5 truncate cursor-default ${isFailed ? "text-red-500/80" : "text-muted-foreground"}`}>
+                          {detailText}
+                        </p>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-[500px] whitespace-pre-wrap text-xs">
+                        {detailText}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
+                {a.actor_username && (
+                  <span className="text-xs text-muted-foreground shrink-0">{a.actor_username}</span>
+                )}
+                <span className="text-xs text-muted-foreground shrink-0">{timeAgo(a.created_at)}</span>
+              </div>
+            )
+          })
         )}
       </CardContent>
     </Card>
