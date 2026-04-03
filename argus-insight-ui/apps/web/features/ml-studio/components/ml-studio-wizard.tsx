@@ -16,8 +16,12 @@ import {
   Trophy,
   Upload,
 } from "lucide-react"
+import { AgGridReact } from "ag-grid-react"
+import { AllCommunityModule, ModuleRegistry } from "ag-grid-community"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
+
+ModuleRegistry.registerModules([AllCommunityModule])
 import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
 import { Checkbox } from "@workspace/ui/components/checkbox"
 import { Input } from "@workspace/ui/components/input"
@@ -49,6 +53,9 @@ interface ColumnInfo {
   missing: number
   unique: number
   sample_values: string[]
+  min_value: string | null
+  max_value: string | null
+  category_values: string[] | null
 }
 
 interface LeaderboardEntry {
@@ -143,7 +150,10 @@ export function MLStudioWizard() {
       authFetch("/api/v1/workspace/workspaces/my")
         .then((r) => (r.ok ? r.json() : []))
         .then((ws: { id: number }[]) => {
-          if (ws.length > 0) setWorkspaceId(ws[0]!.id)
+          if (ws.length > 0) {
+            setWorkspaceId(ws[0]!.id)
+            sessionStorage.setItem("argus_last_workspace_id", String(ws[0]!.id))
+          }
         })
         .catch(() => {})
     }
@@ -244,41 +254,51 @@ export function MLStudioWizard() {
   // ── Render Steps ────────────────────────────────────────
 
   return (
-    <div>
+    <div className="flex flex-1 flex-col" style={{ minHeight: 0 }}>
       <StepIndicator current={step} />
 
       {/* Step 1: Data */}
       {step === 1 && (
-        <Card>
-          <CardHeader className="py-3">
+        <Card className="flex flex-1 flex-col">
+          <CardHeader className="shrink-0 py-3">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Database className="h-4 w-4" /> Select Data Source
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 text-sm">
+          <CardContent className="flex flex-1 flex-col space-y-4 text-sm min-h-0">
+            {/* File selector */}
             <div className="space-y-1.5">
               <Label className="text-sm">Data File</Label>
               <div className="flex items-center gap-3">
                 <Button variant="outline" size="sm" onClick={() => setFilePickerOpen(true)}>
-                  <Upload className="mr-1.5 h-4 w-4" /> Browse Files
+                  <Upload className="mr-1.5 h-4 w-4" /> Select File
                 </Button>
                 {bucket && filePath ? (
                   <div className="flex items-center gap-2 text-sm">
                     <Badge variant="secondary" className="font-mono text-xs">{bucket}</Badge>
                     <span className="text-muted-foreground">/</span>
                     <span className="font-mono">{filePath}</span>
-                    {!previewing && columns.length === 0 && (
-                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={handlePreview}>
-                        Load Preview
-                      </Button>
-                    )}
                     {previewing && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                   </div>
                 ) : (
-                  <span className="text-sm text-muted-foreground">Select a CSV, Parquet, or Excel file from MinIO</span>
+                  <span className="text-sm text-muted-foreground">Select a data file from MinIO</span>
                 )}
               </div>
             </div>
+
+            {/* Supported formats info */}
+            {!bucket && (
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground space-y-1">
+                <p className="font-medium text-foreground">Supported File Formats</p>
+                <ul className="list-disc pl-5 space-y-0.5">
+                  <li><strong>CSV</strong> — Comma Separated Values (auto-detected delimiter: <code className="bg-muted px-1 rounded">,</code> <code className="bg-muted px-1 rounded">;</code> <code className="bg-muted px-1 rounded">|</code> <code className="bg-muted px-1 rounded">\t</code>)</li>
+                  <li><strong>TSV</strong> — Tab Separated Values</li>
+                  <li><strong>Parquet</strong> — Apache Parquet columnar format</li>
+                  <li><strong>Excel</strong> — .xlsx, .xls (first sheet only)</li>
+                </ul>
+                <p className="text-xs pt-1">CSV/TSV: first row must be column headers, UTF-8 encoding recommended.</p>
+              </div>
+            )}
 
             <FilePickerDialog
               open={filePickerOpen}
@@ -288,7 +308,6 @@ export function MLStudioWizard() {
                 setFilePath(p)
                 setColumns([])
                 setSampleRows([])
-                // Auto-preview after selection
                 setTimeout(() => {
                   setPreviewing(true)
                   authFetch("/api/v1/ml-studio/preview", {
@@ -311,41 +330,61 @@ export function MLStudioWizard() {
               }}
             />
 
+            {/* Column Profile — AG-Grid */}
             {columns.length > 0 && (
-              <>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <span>{rowCount} rows</span>
-                  <span>{columns.length} columns</span>
+              <div className="flex flex-1 flex-col min-h-0">
+                <div className="flex items-center justify-between pb-1">
+                  <Label className="text-sm">Column Profile</Label>
+                  <span className="text-xs text-muted-foreground">{rowCount.toLocaleString()} rows · {columns.length} columns</span>
                 </div>
-                <div className="max-h-[250px] overflow-auto rounded-lg border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-sm">Column</TableHead>
-                        <TableHead className="text-sm">Type</TableHead>
-                        <TableHead className="text-sm">Missing</TableHead>
-                        <TableHead className="text-sm">Unique</TableHead>
-                        <TableHead className="text-sm">Sample</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {columns.map((col) => (
-                        <TableRow key={col.name}>
-                          <TableCell className="font-mono text-sm">{col.name}</TableCell>
-                          <TableCell>
-                            <Badge variant="secondary" className="text-[10px]">{col.dtype}</Badge>
-                          </TableCell>
-                          <TableCell className="text-sm">{col.missing}</TableCell>
-                          <TableCell className="text-sm">{col.unique}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground truncate max-w-[200px]">
-                            {col.sample_values.join(", ")}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                <div className="ag-theme-alpine flex-1" style={{ width: "100%" }}>
+                  <style>{`.ag-theme-alpine { --ag-font-family: inherit; --ag-font-size: var(--text-sm); }`}</style>
+                  <AgGridReact
+                    rowData={columns.map((c) => ({
+                      name: c.name,
+                      dtype: c.dtype,
+                      missing: c.missing,
+                      unique: c.unique,
+                      min: c.min_value ?? "—",
+                      max: c.max_value ?? "—",
+                      sample: c.sample_values.join(", "),
+                    }))}
+                    columnDefs={[
+                      { headerName: "Column", field: "name", minWidth: 120, flex: 1, cellStyle: { fontFamily: "D2Coding, monospace" } },
+                      {
+                        headerName: "Type", field: "dtype", width: 100,
+                        editable: true,
+                        cellEditor: "agSelectCellEditor",
+                        cellEditorParams: {
+                          values: ["integer", "float", "boolean", "datetime", "category", "string", "exclude"],
+                        },
+                        cellStyle: (params: any) => {
+                          const v = params.value
+                          if (v === "exclude") return { color: "#dc2626", fontStyle: "italic" }
+                          return {}
+                        },
+                      },
+                      { headerName: "Missing", field: "missing", width: 70, cellStyle: { textAlign: "right" } },
+                      { headerName: "Unique", field: "unique", width: 70, cellStyle: { textAlign: "right" } },
+                      { headerName: "Min", field: "min", width: 130, cellStyle: { fontFamily: "D2Coding, monospace" } },
+                      { headerName: "Max", field: "max", width: 130, cellStyle: { fontFamily: "D2Coding, monospace" } },
+                      { headerName: "Sample", field: "sample", minWidth: 150, flex: 1, cellStyle: { color: "#888" } },
+                    ] as any[]}
+                    headerHeight={24}
+                    rowHeight={28}
+                    singleClickEdit={true}
+                    onCellValueChanged={(event: any) => {
+                      if (event.colDef.field === "dtype" && event.data) {
+                        setColumns((prev) =>
+                          prev.map((c) =>
+                            c.name === event.data.name ? { ...c, dtype: event.newValue } : c,
+                          ),
+                        )
+                      }
+                    }}
+                  />
                 </div>
-              </>
+              </div>
             )}
 
             <div className="flex justify-end">
@@ -446,9 +485,9 @@ export function MLStudioWizard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
-            <div className="max-h-[200px] overflow-auto rounded-lg border">
+            <div className="max-h-[300px] overflow-auto rounded-lg border text-sm">
               <Table>
-                <TableHeader>
+                <TableHeader className="sticky top-0 z-10 bg-background">
                   <TableRow>
                     <TableHead className="w-10"></TableHead>
                     <TableHead className="text-sm">Column</TableHead>
@@ -465,9 +504,9 @@ export function MLStudioWizard() {
                           onCheckedChange={() => toggleFeature(col.name)}
                         />
                       </TableCell>
-                      <TableCell className="font-mono text-sm">{col.name}</TableCell>
-                      <TableCell><Badge variant="secondary" className="text-[10px]">{col.dtype}</Badge></TableCell>
-                      <TableCell className="text-sm">{col.missing}</TableCell>
+                      <TableCell className="font-mono">{col.name}</TableCell>
+                      <TableCell>{col.dtype}</TableCell>
+                      <TableCell>{col.missing}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

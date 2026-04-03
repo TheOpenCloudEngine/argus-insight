@@ -5,9 +5,13 @@ import {
   BarChart3,
   CheckCircle2,
   Clock,
+  Code,
+  FileText,
   FlaskConical,
   Loader2,
+  ScrollText,
   Trophy,
+  Workflow,
   XCircle,
 } from "lucide-react"
 import { AgGridReact } from "ag-grid-react"
@@ -17,6 +21,7 @@ import {
   type ColDef,
   type PaginationNumberFormatterParams,
 } from "ag-grid-community"
+import Editor from "@monaco-editor/react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Card, CardContent } from "@workspace/ui/components/card"
 import {
@@ -33,6 +38,12 @@ import {
   TableHeader,
   TableRow,
 } from "@workspace/ui/components/table"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@workspace/ui/components/tabs"
 
 import { authFetch } from "@/features/auth/auth-fetch"
 
@@ -43,6 +54,7 @@ ModuleRegistry.registerModules([AllCommunityModule])
 interface TrainJob {
   id: number
   name: string
+  source: string  // wizard | modeler
   status: string
   task_type: string
   target_column: string
@@ -50,12 +62,16 @@ interface TrainJob {
   algorithm: string
   progress: number
   results: {
-    leaderboard: { rank: number; model_name: string; metrics: Record<string, number>; training_time_seconds: number }[]
-    best_model: { model_name: string; metrics: Record<string, number> } | null
-    feature_importance: Record<string, number>
-    metric_key: string
+    leaderboard?: { rank: number; model_name: string; metrics: Record<string, number>; training_time_seconds: number }[]
+    best_model?: { model_name: string; metrics: Record<string, number> } | null
+    feature_importance?: Record<string, number>
+    metric_key?: string
+    status?: string
+    message?: string
   } | null
   error_message: string | null
+  pipeline_id: number | null
+  generated_code: string | null
   author_username: string | null
   created_at: string
   completed_at: string | null
@@ -67,6 +83,17 @@ function formatDateTime(value: string): string {
   const d = new Date(value)
   const pad = (n: number) => String(n).padStart(2, "0")
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function formatDuration(startStr: string, endStr: string | null, status: string): string {
+  const start = new Date(startStr).getTime()
+  const end = endStr
+    ? new Date(endStr).getTime()
+    : (status === "running" || status === "pending" ? Date.now() : start)
+  const sec = Math.floor((end - start) / 1000)
+  if (sec < 60) return `${sec}s`
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ${sec % 60}s`
+  return `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; fontColor: string }> = {
@@ -81,9 +108,319 @@ const TASK_LABELS: Record<string, string> = {
   classification: "Classification",
   regression: "Regression",
   timeseries: "Time Series",
+  pipeline: "Pipeline",
 }
 
-// ── Component ─────────────────────────────────────────────
+// ── Wizard Detail ─────────────────────────────────────────
+
+function WizardJobDetail({ job }: { job: TrainJob }) {
+  return (
+    <div className="space-y-4 text-sm">
+      {/* Info */}
+      <div className="grid grid-cols-4 gap-3">
+        <div>
+          <span className="text-xs text-muted-foreground">Task</span>
+          <p>{TASK_LABELS[job.task_type] || job.task_type}</p>
+        </div>
+        <div>
+          <span className="text-xs text-muted-foreground">Target</span>
+          <p className="font-mono">{job.target_column}</p>
+        </div>
+        <div>
+          <span className="text-xs text-muted-foreground">Metric</span>
+          <p>{job.metric}</p>
+        </div>
+        <div>
+          <span className="text-xs text-muted-foreground">Algorithm</span>
+          <p>{job.algorithm}</p>
+        </div>
+      </div>
+
+      <JobProgress job={job} />
+      <JobError job={job} />
+
+      {/* Results */}
+      {job.results && (
+        <>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {job.results.best_model && (
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Trophy className="h-5 w-5 text-yellow-500" />
+                    <span className="font-semibold">{job.results.best_model.model_name}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {Object.entries(job.results.best_model.metrics).map(([k, v]) => (
+                      <div key={k} className="flex justify-between">
+                        <span className="text-muted-foreground">{k}</span>
+                        <span className="font-mono font-medium">{v.toFixed(4)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            <FeatureImportanceCard importance={job.results.feature_importance} />
+          </div>
+          <LeaderboardTable leaderboard={job.results.leaderboard} />
+        </>
+      )}
+
+      <JobFooter job={job} />
+    </div>
+  )
+}
+
+// ── Modeler Detail (3 tabs) ───────────────────────────────
+
+function ModelerJobDetail({ job }: { job: TrainJob }) {
+  const [logs, setLogs] = useState<string>("")
+  const [logsLoading, setLogsLoading] = useState(false)
+
+  const fetchLogs = async () => {
+    setLogsLoading(true)
+    try {
+      const wsId = sessionStorage.getItem("argus_last_workspace_id")
+      if (!wsId) return
+      const res = await authFetch(
+        `/api/v1/ml-studio/jobs/${job.id}/logs?workspace_id=${wsId}`,
+      )
+      if (res.ok) {
+        const data = await res.json()
+        setLogs(data.logs || "No logs available")
+      } else {
+        setLogs("Failed to fetch logs")
+      }
+    } catch {
+      setLogs("Failed to fetch logs")
+    } finally {
+      setLogsLoading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3 text-sm">
+      <JobProgress job={job} />
+      <JobError job={job} />
+
+      <Tabs defaultValue="results" className="w-full">
+        <TabsList className="h-8">
+          <TabsTrigger value="results" className="text-sm h-7 gap-1.5">
+            <BarChart3 className="h-3.5 w-3.5" /> Results
+          </TabsTrigger>
+          <TabsTrigger value="code" className="text-sm h-7 gap-1.5">
+            <Code className="h-3.5 w-3.5" /> Code
+          </TabsTrigger>
+          <TabsTrigger value="logs" className="text-sm h-7 gap-1.5" onClick={fetchLogs}>
+            <ScrollText className="h-3.5 w-3.5" /> Logs
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Results tab */}
+        <TabsContent value="results" className="mt-3 space-y-4">
+          {job.results ? (
+            <>
+              {job.results.message && (
+                <p className="text-sm text-muted-foreground">{job.results.message}</p>
+              )}
+              {job.results.best_model && (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <Card>
+                    <CardContent className="pt-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Trophy className="h-5 w-5 text-yellow-500" />
+                        <span className="font-semibold">{job.results.best_model.model_name}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {Object.entries(job.results.best_model.metrics).map(([k, v]) => (
+                          <div key={k} className="flex justify-between">
+                            <span className="text-muted-foreground">{k}</span>
+                            <span className="font-mono font-medium">{v.toFixed(4)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <FeatureImportanceCard importance={job.results.feature_importance} />
+                </div>
+              )}
+              <LeaderboardTable leaderboard={job.results.leaderboard} />
+              {!job.results.best_model && !job.results.leaderboard?.length && (
+                <div className="text-center py-8 text-muted-foreground">
+                  <CheckCircle2 className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">Pipeline executed successfully</p>
+                </div>
+              )}
+            </>
+          ) : job.status === "completed" ? (
+            <p className="text-sm text-muted-foreground py-4">No structured results</p>
+          ) : (
+            <p className="text-sm text-muted-foreground py-4">Results will appear after execution completes</p>
+          )}
+        </TabsContent>
+
+        {/* Code tab */}
+        <TabsContent value="code" className="mt-3">
+          {job.generated_code ? (
+            <div className="rounded border overflow-hidden" style={{ height: "45vh" }}>
+              <Editor
+                height="100%"
+                language="python"
+                value={job.generated_code}
+                options={{
+                  readOnly: true,
+                  minimap: { enabled: false },
+                  fontFamily: "'D2Coding', 'D2 Coding', monospace",
+                  fontSize: 13,
+                  lineNumbers: "on",
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  domReadOnly: true,
+                  padding: { top: 8 },
+                }}
+                theme="vs-dark"
+              />
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground py-4">No code available</p>
+          )}
+        </TabsContent>
+
+        {/* Logs tab */}
+        <TabsContent value="logs" className="mt-3">
+          {logsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : logs ? (
+            <div className="rounded border overflow-hidden" style={{ height: "45vh" }}>
+              <Editor
+                height="100%"
+                language="plaintext"
+                value={logs}
+                options={{
+                  readOnly: true,
+                  minimap: { enabled: false },
+                  fontFamily: "'D2Coding', 'D2 Coding', monospace",
+                  fontSize: 12,
+                  lineNumbers: "off",
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  domReadOnly: true,
+                  wordWrap: "on",
+                  padding: { top: 8 },
+                }}
+                theme="vs-dark"
+              />
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground py-4">Click the Logs tab to fetch execution logs</p>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      <JobFooter job={job} />
+    </div>
+  )
+}
+
+// ── Shared sub-components ────────────────────────────────
+
+function JobProgress({ job }: { job: TrainJob }) {
+  if (job.status !== "running" && job.status !== "pending") return null
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between text-xs text-muted-foreground">
+        <span>Progress</span>
+        <span>{job.progress}%</span>
+      </div>
+      <div className="h-2 w-full rounded-full bg-muted">
+        <div
+          className="h-full rounded-full bg-primary transition-all"
+          style={{ width: `${job.progress}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
+function JobError({ job }: { job: TrainJob }) {
+  if (!job.error_message) return null
+  return <p className="text-sm text-red-500 whitespace-pre-wrap">{job.error_message}</p>
+}
+
+function JobFooter({ job }: { job: TrainJob }) {
+  return (
+    <div className="flex gap-4 text-xs text-muted-foreground border-t pt-3">
+      <span>Created: {new Date(job.created_at).toLocaleString()}</span>
+      {job.completed_at && <span>Completed: {new Date(job.completed_at).toLocaleString()}</span>}
+      {job.author_username && <span>By: {job.author_username}</span>}
+      <span>Duration: {formatDuration(job.created_at, job.completed_at, job.status)}</span>
+    </div>
+  )
+}
+
+function FeatureImportanceCard({ importance }: { importance?: Record<string, number> }) {
+  if (!importance || Object.keys(importance).length === 0) return null
+  return (
+    <Card>
+      <CardContent className="pt-4">
+        <p className="font-semibold mb-3 flex items-center gap-2">
+          <BarChart3 className="h-4 w-4" /> Feature Importance
+        </p>
+        <div className="space-y-2">
+          {Object.entries(importance)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 8)
+            .map(([name, value]) => (
+              <div key={name} className="flex items-center gap-2">
+                <span className="w-28 truncate text-xs">{name}</span>
+                <div className="flex-1 h-3 rounded-full bg-muted">
+                  <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(value * 300, 100)}%` }} />
+                </div>
+                <span className="text-xs font-mono w-12 text-right">{(value * 100).toFixed(1)}%</span>
+              </div>
+            ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function LeaderboardTable({ leaderboard }: { leaderboard?: { rank: number; model_name: string; metrics: Record<string, number>; training_time_seconds: number }[] }) {
+  if (!leaderboard || leaderboard.length === 0) return null
+  return (
+    <div className="rounded-lg border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-10 text-sm">#</TableHead>
+            <TableHead className="text-sm">Model</TableHead>
+            {Object.keys(leaderboard[0]!.metrics).map((k) => (
+              <TableHead key={k} className="text-right text-sm">{k}</TableHead>
+            ))}
+            <TableHead className="text-right text-sm">Time</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {leaderboard.map((entry) => (
+            <TableRow key={entry.model_name} className={entry.rank === 1 ? "bg-green-50 dark:bg-green-900/20" : ""}>
+              <TableCell>{entry.rank === 1 ? <Trophy className="h-4 w-4 text-yellow-500" /> : entry.rank}</TableCell>
+              <TableCell className="font-medium">{entry.model_name}</TableCell>
+              {Object.values(entry.metrics).map((v, i) => (
+                <TableCell key={i} className="text-right font-mono">{v.toFixed(4)}</TableCell>
+              ))}
+              <TableCell className="text-right text-muted-foreground">{entry.training_time_seconds.toFixed(1)}s</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+// ── Main Component ────────────────────────────────────────
 
 export function MLStudioExperiments() {
   const [jobs, setJobs] = useState<TrainJob[]>([])
@@ -93,11 +430,20 @@ export function MLStudioExperiments() {
 
   useEffect(() => {
     async function load() {
-      const stored = sessionStorage.getItem("argus_last_workspace_id")
-      if (!stored) { setLoading(false); return }
+      let wsId = sessionStorage.getItem("argus_last_workspace_id")
+      if (!wsId) {
+        try {
+          const myRes = await authFetch("/api/v1/workspace/workspaces/my")
+          if (myRes.ok) {
+            const ws = await myRes.json()
+            if (ws.length > 0) { wsId = String(ws[0].id); sessionStorage.setItem("argus_last_workspace_id", wsId) }
+          }
+        } catch { /* ignore */ }
+      }
+      if (!wsId) { setLoading(false); return }
       try {
         const res = await authFetch(
-          `/api/v1/ml-studio/jobs?workspace_id=${stored}&page=1&page_size=50`,
+          `/api/v1/ml-studio/jobs?workspace_id=${wsId}&page=1&page_size=50`,
         )
         if (res.ok) {
           const data = await res.json()
@@ -121,9 +467,22 @@ export function MLStudioExperiments() {
   const columnDefs = useMemo<any[]>(
     () => [
       {
+        headerName: "Type",
+        width: 70,
+        valueGetter: (params: any) => (params.data?.source || "wizard") === "modeler" ? "M" : "W",
+        cellStyle: (params: any) => {
+          const isModeler = (params.data?.source || "wizard") === "modeler"
+          return {
+            fontWeight: 600,
+            color: isModeler ? "#8b5cf6" : "#3b82f6",
+            textAlign: "center",
+          }
+        },
+      },
+      {
         headerName: "Experiment",
         field: "name",
-        minWidth: 250,
+        minWidth: 220,
         flex: 2,
         valueGetter: (params: any) => {
           if (!params.data) return ""
@@ -141,6 +500,7 @@ export function MLStudioExperiments() {
         field: "target_column",
         width: 130,
         cellStyle: { fontFamily: "D2Coding, monospace" },
+        valueGetter: (params: any) => params.data?.target_column || "—",
       },
       {
         headerName: "Status",
@@ -191,14 +551,7 @@ export function MLStudioExperiments() {
         width: 100,
         valueGetter: (params: any) => {
           if (!params.data) return ""
-          const start = new Date(params.data.created_at).getTime()
-          const end = params.data.completed_at
-            ? new Date(params.data.completed_at).getTime()
-            : (params.data.status === "running" || params.data.status === "pending" ? Date.now() : start)
-          const sec = Math.floor((end - start) / 1000)
-          if (sec < 60) return `${sec}s`
-          if (sec < 3600) return `${Math.floor(sec / 60)}m ${sec % 60}s`
-          return `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`
+          return formatDuration(params.data.created_at, params.data.completed_at, params.data.status)
         },
       },
       {
@@ -235,10 +588,12 @@ export function MLStudioExperiments() {
       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
         <FlaskConical className="h-10 w-10 mb-3 opacity-30" />
         <p className="text-sm">No experiments yet</p>
-        <p className="text-xs mt-1">Start a new experiment from the Wizard tab</p>
+        <p className="text-xs mt-1">Start from the Wizard or Modeler tab</p>
       </div>
     )
   }
+
+  const isModeler = (selectedJob?.source || "wizard") === "modeler"
 
   return (
     <div className="flex flex-1 flex-col" style={{ minHeight: 0 }}>
@@ -257,14 +612,12 @@ export function MLStudioExperiments() {
           overlayNoRowsTemplate="No experiments yet."
           onCellClicked={(event: any) => {
             if (!event.data) return
-            // Kill column click
             if (event.colDef?.headerName === "" && (event.data.status === "running" || event.data.status === "pending")) {
               if (confirm(`Cancel job "${event.data.name}"?`)) {
                 handleKill(event.data.id)
               }
               return
             }
-            // Normal row click → open detail
             setSelectedJob(event.data)
             setDetailOpen(true)
           }}
@@ -280,152 +633,36 @@ export function MLStudioExperiments() {
         />
       </div>
 
-      {/* Detail Dialog */}
+      {/* Detail Dialog — switches between Wizard and Modeler */}
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="sm:max-w-[65vw] max-h-[65vh] overflow-y-auto">
+        <DialogContent className={`max-h-[80vh] overflow-y-auto ${isModeler ? "sm:max-w-[70vw]" : "sm:max-w-[65vw]"}`}>
           {selectedJob && (
             <>
               <DialogHeader>
                 <DialogTitle className="text-sm flex items-center gap-2">
-                  <FlaskConical className="h-4 w-4" />
+                  {isModeler ? (
+                    <Workflow className="h-4 w-4 text-violet-500" />
+                  ) : (
+                    <FlaskConical className="h-4 w-4" />
+                  )}
                   {selectedJob.name}
+                  <Badge
+                    variant="outline"
+                    className={`text-[10px] ${isModeler ? "border-violet-400 text-violet-600" : "border-blue-400 text-blue-600"}`}
+                  >
+                    {isModeler ? "Modeler" : "Wizard"}
+                  </Badge>
                   <Badge className={`text-[10px] ${(STATUS_CONFIG[selectedJob.status] || STATUS_CONFIG.pending!).color}`}>
                     {(STATUS_CONFIG[selectedJob.status] || STATUS_CONFIG.pending!).label}
                   </Badge>
                 </DialogTitle>
               </DialogHeader>
 
-              <div className="space-y-4 text-sm">
-                {/* Info */}
-                <div className="grid grid-cols-4 gap-3">
-                  <div>
-                    <span className="text-xs text-muted-foreground">Task</span>
-                    <p>{TASK_LABELS[selectedJob.task_type] || selectedJob.task_type}</p>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground">Target</span>
-                    <p className="font-mono">{selectedJob.target_column}</p>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground">Metric</span>
-                    <p>{selectedJob.metric}</p>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground">Algorithm</span>
-                    <p>{selectedJob.algorithm}</p>
-                  </div>
-                </div>
-
-                {/* Progress */}
-                {(selectedJob.status === "running" || selectedJob.status === "pending") && (
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Progress</span>
-                      <span>{selectedJob.progress}%</span>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-muted">
-                      <div
-                        className="h-full rounded-full bg-primary transition-all"
-                        style={{ width: `${selectedJob.progress}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Error */}
-                {selectedJob.error_message && (
-                  <p className="text-sm text-red-500">{selectedJob.error_message}</p>
-                )}
-
-                {/* Results */}
-                {selectedJob.results && (
-                  <>
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      {selectedJob.results.best_model && (
-                        <Card>
-                          <CardContent className="pt-4">
-                            <div className="flex items-center gap-2 mb-3">
-                              <Trophy className="h-5 w-5 text-yellow-500" />
-                              <span className="font-semibold">{selectedJob.results.best_model.model_name}</span>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
-                              {Object.entries(selectedJob.results.best_model.metrics).map(([k, v]) => (
-                                <div key={k} className="flex justify-between">
-                                  <span className="text-muted-foreground">{k}</span>
-                                  <span className="font-mono font-medium">{v.toFixed(4)}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      )}
-
-                      {selectedJob.results.feature_importance && Object.keys(selectedJob.results.feature_importance).length > 0 && (
-                        <Card>
-                          <CardContent className="pt-4">
-                            <p className="font-semibold mb-3 flex items-center gap-2">
-                              <BarChart3 className="h-4 w-4" /> Feature Importance
-                            </p>
-                            <div className="space-y-2">
-                              {Object.entries(selectedJob.results.feature_importance)
-                                .sort(([, a], [, b]) => b - a)
-                                .slice(0, 8)
-                                .map(([name, value]) => (
-                                  <div key={name} className="flex items-center gap-2">
-                                    <span className="w-28 truncate text-xs">{name}</span>
-                                    <div className="flex-1 h-3 rounded-full bg-muted">
-                                      <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(value * 300, 100)}%` }} />
-                                    </div>
-                                    <span className="text-xs font-mono w-12 text-right">{(value * 100).toFixed(1)}%</span>
-                                  </div>
-                                ))}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      )}
-                    </div>
-
-                    {selectedJob.results.leaderboard.length > 0 && (
-                      <div className="rounded-lg border">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="w-10 text-sm">#</TableHead>
-                              <TableHead className="text-sm">Model</TableHead>
-                              {Object.keys(selectedJob.results.leaderboard[0]!.metrics).map((k) => (
-                                <TableHead key={k} className="text-right text-sm">{k}</TableHead>
-                              ))}
-                              <TableHead className="text-right text-sm">Time</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {selectedJob.results.leaderboard.map((entry) => (
-                              <TableRow key={entry.model_name} className={entry.rank === 1 ? "bg-green-50 dark:bg-green-900/20" : ""}>
-                                <TableCell>{entry.rank === 1 ? <Trophy className="h-4 w-4 text-yellow-500" /> : entry.rank}</TableCell>
-                                <TableCell className="font-medium">{entry.model_name}</TableCell>
-                                {Object.values(entry.metrics).map((v, i) => (
-                                  <TableCell key={i} className="text-right font-mono">{v.toFixed(4)}</TableCell>
-                                ))}
-                                <TableCell className="text-right text-muted-foreground">{entry.training_time_seconds.toFixed(1)}s</TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                <div className="flex gap-4 text-xs text-muted-foreground border-t pt-3">
-                  <span>Created: {new Date(selectedJob.created_at).toLocaleString()}</span>
-                  {selectedJob.completed_at && (
-                    <span>Completed: {new Date(selectedJob.completed_at).toLocaleString()}</span>
-                  )}
-                  {selectedJob.author_username && (
-                    <span>By: {selectedJob.author_username}</span>
-                  )}
-                </div>
-              </div>
+              {isModeler ? (
+                <ModelerJobDetail job={selectedJob} />
+              ) : (
+                <WizardJobDetail job={selectedJob} />
+              )}
             </>
           )}
         </DialogContent>

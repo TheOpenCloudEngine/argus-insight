@@ -33,10 +33,13 @@ class DataPreviewRequest(BaseModel):
 
 class ColumnInfo(BaseModel):
     name: str
-    dtype: str
+    dtype: str  # integer | float | boolean | datetime | category | string
     missing: int = 0
     unique: int = 0
     sample_values: list[str] = []
+    min_value: str | None = None
+    max_value: str | None = None
+    category_values: list[str] | None = None
 
 
 class DataPreviewResponse(BaseModel):
@@ -74,6 +77,7 @@ class TrainJobResponse(BaseModel):
     id: int
     workspace_id: int
     name: str
+    source: str = "wizard"  # wizard | modeler
     status: str
     task_type: str
     target_column: str
@@ -84,6 +88,8 @@ class TrainJobResponse(BaseModel):
     config: dict | None = None
     results: dict | None = None
     error_message: str | None = None
+    pipeline_id: int | None = None
+    generated_code: str | None = None
     author_username: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -95,3 +101,56 @@ class TrainJobListResponse(BaseModel):
     total: int = 0
     page: int = 1
     page_size: int = 10
+
+
+# ---------------------------------------------------------------------------
+# Pipeline (Modeler DAG save/load)
+# ---------------------------------------------------------------------------
+
+class PipelineSaveRequest(BaseModel):
+    workspace_id: int
+    name: str = Field(..., max_length=255)
+    description: str = ""
+    pipeline_json: dict = Field(..., description="Serialized DAG: {nodes, edges, viewport}")
+
+
+class PipelineUpdateRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    pipeline_json: dict | None = None
+
+
+class PipelineResponse(BaseModel):
+    id: int
+    workspace_id: int
+    name: str
+    description: str
+    pipeline_json: dict
+    author_username: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PipelineListResponse(BaseModel):
+    pipelines: list[PipelineResponse] = []
+    total: int = 0
+
+
+class PipelineExecuteRequest(BaseModel):
+    workspace_id: int
+    name: str = Field(default="Modeler Pipeline", max_length=255)
+    pipeline_id: int | None = None
+    pipeline_json: dict = Field(..., description="Pipeline DAG: {nodes, edges}")
+    generated_code: str | None = None  # filled by server codegen
+
+
+class CodegenRequest(BaseModel):
+    workspace_id: int
+    pipeline_json: dict = Field(..., description="Pipeline DAG: {nodes, edges}")
+
+
+class CodegenResponse(BaseModel):
+    code: str = ""
+    valid: bool = True
+    errors: list[dict] = []
+    warnings: list[dict] = []

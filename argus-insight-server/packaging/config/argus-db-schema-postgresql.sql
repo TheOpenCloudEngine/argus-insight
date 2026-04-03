@@ -519,3 +519,129 @@ INSERT INTO argus_users (username, email, first_name, last_name, phone_number, p
 ('dohyun.lim',  'dohyun.lim@argus.io',   'Dohyun',    'Lim',    '010-8080-9191', '$2b$12$LJ3m4ys3Lk0TSwHjGBOuBe5E8fGjS1xtRyvAYq5J8K3gV2CQKZW6K', 'active',   2),
 ('subin.hong',  'subin.hong@argus.io',   'Subin',     'Hong',   '010-1010-2020', '$2b$12$LJ3m4ys3Lk0TSwHjGBOuBe5E8fGjS1xtRyvAYq5J8K3gV2CQKZW6K', 'inactive', 2)
 ON CONFLICT (username) DO NOTHING;
+
+
+-- ---------------------------------------------------------------------------
+-- VOC (Voice of Customer) tables
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_voc_issues (
+    id                  SERIAL          PRIMARY KEY,
+    title               VARCHAR(300)    NOT NULL,
+    description         TEXT            NOT NULL,
+    category            VARCHAR(30)     NOT NULL DEFAULT 'general',
+    priority            VARCHAR(20)     NOT NULL DEFAULT 'medium',
+    status              VARCHAR(20)     NOT NULL DEFAULT 'open',
+    author_user_id      INTEGER         NOT NULL,
+    author_username     VARCHAR(100),
+    assignee_user_id    INTEGER,
+    assignee_username   VARCHAR(100),
+    workspace_id        INTEGER,
+    workspace_name      VARCHAR(100),
+    service_id          INTEGER,
+    service_name        VARCHAR(100),
+    resource_detail     JSONB,
+    resolved_at         TIMESTAMPTZ,
+    closed_at           TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+CREATE OR REPLACE TRIGGER trg_voc_issues_updated_at
+    BEFORE UPDATE ON argus_voc_issues
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+COMMENT ON TABLE argus_voc_issues IS 'VOC (Voice of Customer) issue tracker';
+COMMENT ON COLUMN argus_voc_issues.category IS 'resource_request | service_issue | feature_request | account | general';
+COMMENT ON COLUMN argus_voc_issues.priority IS 'critical | high | medium | low';
+COMMENT ON COLUMN argus_voc_issues.status IS 'open | in_progress | resolved | rejected | closed';
+
+CREATE TABLE IF NOT EXISTS argus_voc_comments (
+    id                  SERIAL          PRIMARY KEY,
+    issue_id            INTEGER         NOT NULL,
+    parent_id           INTEGER,
+    author_user_id      INTEGER         NOT NULL,
+    author_username     VARCHAR(100),
+    body                TEXT            NOT NULL,
+    body_plain          TEXT,
+    is_system           BOOLEAN         NOT NULL DEFAULT FALSE,
+    is_deleted          BOOLEAN         NOT NULL DEFAULT FALSE,
+    created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_voc_comments_issue_id ON argus_voc_comments (issue_id);
+
+CREATE OR REPLACE TRIGGER trg_voc_comments_updated_at
+    BEFORE UPDATE ON argus_voc_comments
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+COMMENT ON TABLE argus_voc_comments IS 'Comments on VOC issues (user or system-generated)';
+COMMENT ON COLUMN argus_voc_comments.is_system IS 'True for auto-generated status-change comments';
+COMMENT ON COLUMN argus_voc_comments.is_deleted IS 'Soft-delete flag';
+
+
+-- ---------------------------------------------------------------------------
+-- ML Studio tables
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_ml_pipelines (
+    id                  SERIAL          PRIMARY KEY,
+    workspace_id        INTEGER         NOT NULL,
+    name                VARCHAR(255)    NOT NULL,
+    description         TEXT            DEFAULT '',
+    pipeline_json       JSONB           NOT NULL,
+    author_user_id      INTEGER         NOT NULL,
+    author_username     VARCHAR(100),
+    created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ml_pipelines_workspace_id ON argus_ml_pipelines (workspace_id);
+
+CREATE OR REPLACE TRIGGER trg_ml_pipelines_updated_at
+    BEFORE UPDATE ON argus_ml_pipelines
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+COMMENT ON TABLE argus_ml_pipelines IS 'Saved ML pipeline DAGs from the Modeler';
+COMMENT ON COLUMN argus_ml_pipelines.pipeline_json IS 'Serialized DAG: {nodes, edges, viewport, idCounter}';
+
+CREATE TABLE IF NOT EXISTS argus_ml_jobs (
+    id                  SERIAL          PRIMARY KEY,
+    workspace_id        INTEGER         NOT NULL,
+    name                VARCHAR(255)    NOT NULL,
+    source              VARCHAR(20)     NOT NULL DEFAULT 'wizard',
+    status              VARCHAR(20)     NOT NULL DEFAULT 'pending',
+    task_type           VARCHAR(30)     NOT NULL,
+    target_column       VARCHAR(255)    NOT NULL DEFAULT '',
+    metric              VARCHAR(50)     NOT NULL DEFAULT 'auto',
+    algorithm           VARCHAR(50)     NOT NULL DEFAULT 'auto',
+    data_source         JSONB           NOT NULL DEFAULT '{}',
+    config              JSONB,
+    results             JSONB,
+    error_message       TEXT,
+    progress            INTEGER         NOT NULL DEFAULT 0,
+    pipeline_id         INTEGER,
+    generated_code      TEXT,
+    author_user_id      INTEGER         NOT NULL,
+    author_username     VARCHAR(100),
+    created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    completed_at        TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_ml_jobs_workspace_id ON argus_ml_jobs (workspace_id);
+
+CREATE OR REPLACE TRIGGER trg_ml_jobs_updated_at
+    BEFORE UPDATE ON argus_ml_jobs
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+COMMENT ON TABLE argus_ml_jobs IS 'ML training/pipeline execution jobs';
+COMMENT ON COLUMN argus_ml_jobs.source IS 'wizard | modeler';
+COMMENT ON COLUMN argus_ml_jobs.status IS 'pending | running | completed | failed | cancelled';
+COMMENT ON COLUMN argus_ml_jobs.pipeline_id IS 'Linked pipeline ID (modeler only)';
+COMMENT ON COLUMN argus_ml_jobs.generated_code IS 'Generated Python code (modeler only)';

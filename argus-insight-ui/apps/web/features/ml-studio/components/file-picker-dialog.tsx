@@ -43,6 +43,8 @@ interface FilePickerDialogProps {
   onOpenChange: (open: boolean) => void
   onSelect: (bucket: string, path: string) => void
   fileFilter?: string[]
+  /** Allow selecting the current directory (not just files) */
+  allowDirectory?: boolean
 }
 
 // ── Helpers ───────────────────────────────────────────────
@@ -69,6 +71,7 @@ export function FilePickerDialog({
   onOpenChange,
   onSelect,
   fileFilter = [".csv", ".parquet", ".tsv", ".xlsx", ".xls"],
+  allowDirectory = false,
 }: FilePickerDialogProps) {
   const [buckets, setBuckets] = useState<BucketItem[]>([])
   const [selectedBucket, setSelectedBucket] = useState("")
@@ -154,6 +157,12 @@ export function FilePickerDialog({
 
   const selectFile = (key: string) => {
     onSelect(selectedBucket, key)
+    onOpenChange(false)
+  }
+
+  const selectDirectory = () => {
+    // Select current directory (prefix). Pass the prefix as-is (trailing slash included)
+    onSelect(selectedBucket, prefix)
     onOpenChange(false)
   }
 
@@ -284,9 +293,16 @@ export function FilePickerDialog({
           <span className="text-xs text-muted-foreground">
             {folders.length} folders, {objects.length} files
           </span>
-          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
+          <div className="flex gap-2">
+            {allowDirectory && selectedBucket && (
+              <Button size="sm" variant="secondary" className="text-sm" onClick={selectDirectory}>
+                <Folder className="mr-1.5 h-3.5 w-3.5" /> Select This Folder
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
