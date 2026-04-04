@@ -228,6 +228,8 @@ class TrinoDeployStep(WorkflowStep):
                     "UI Username": "admin",
                     "UI Password": ui_password,
                     "JDBC URL": f"jdbc:trino://{internal_host}:8080/memory",
+                    "JDBC Username": "admin",
+                    "JDBC Password": "(not required - authentication disabled)",
                     "JDBC Driver": "io.trino.jdbc.TrinoDriver",
                 },
                 "internal": {
