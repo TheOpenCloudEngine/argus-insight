@@ -1466,7 +1466,6 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
                 ...svc,
                 username: null,
                 password: null,
-                _hideUrl: true,
                 _hideTimestamps: true,
               } as WorkspaceService & { _hideUrl?: boolean; _hideTimestamps?: boolean }
             }
@@ -1475,7 +1474,6 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
                 ...svc,
                 username: svc.plugin_name === "argus-mlflow" ? null : svc.username,
                 metadata: { ...svc.metadata, display: {} },
-                _hideUrl: true,
                 _hideTimestamps: true,
               } as WorkspaceService & { _hideUrl?: boolean; _hideTimestamps?: boolean }
             }
