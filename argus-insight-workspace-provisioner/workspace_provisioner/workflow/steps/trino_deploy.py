@@ -205,6 +205,7 @@ class TrinoDeployStep(WorkflowStep):
         await register_workspace_dns(hostname)
 
         # 5. Register workspace service
+        internal_host = f"argus-trino-{workspace_name}.{namespace}.svc.cluster.local"
         from workspace_provisioner.service import register_workspace_service
         await register_workspace_service(
             workspace_id=ctx.workspace_id,
@@ -217,10 +218,13 @@ class TrinoDeployStep(WorkflowStep):
                 "display": {
                     "Tier": config.tier.capitalize(),
                     "Workers": str(config.worker_replicas),
-                    "Trino UI": f"http://{hostname}",
+                    "UI Username": "admin",
+                    "UI Password": "(any value or leave empty)",
+                    "JDBC URL": f"jdbc:trino://{internal_host}:8080/memory",
+                    "JDBC Driver": "io.trino.jdbc.TrinoDriver",
                 },
                 "internal": {
-                    "endpoint": f"http://argus-trino-{workspace_name}.{namespace}.svc.cluster.local:8080",
+                    "endpoint": f"http://{internal_host}:8080",
                     "namespace": namespace,
                 },
                 "resources": {
