@@ -51,6 +51,11 @@ spec:
             - name: config
               mountPath: /etc/trino/log.properties
               subPath: log.properties
+            - name: config
+              mountPath: /etc/trino/password-authenticator.properties
+              subPath: password-authenticator.properties
+            - name: auth
+              mountPath: /etc/trino/auth
             - name: catalogs
               mountPath: /etc/trino/catalog
           readinessProbe:
@@ -69,6 +74,12 @@ spec:
         - name: config
           configMap:
             name: argus-trino-${WORKSPACE_NAME}-config
+        - name: auth
+          configMap:
+            name: argus-trino-${WORKSPACE_NAME}-config
+            items:
+              - key: password.db
+                path: password.db
         - name: catalogs
           configMap:
             name: argus-trino-${WORKSPACE_NAME}-catalogs

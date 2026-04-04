@@ -138,10 +138,18 @@ class TrinoDeployStep(WorkflowStep):
         # Development tier: coordinator also acts as worker (single-node)
         include_coordinator = "true" if config.worker_replicas == 0 else "false"
 
-        # Auto-generate UI password for security
+        # Auto-generate password for Trino UI and JDBC authentication
         import secrets
         import string
+        import hashlib
+        import bcrypt
         ui_password = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(16))
+        # Trino file auth uses bcrypt hashed passwords (htpasswd format)
+        password_hash = bcrypt.hashpw(ui_password.encode(), bcrypt.gensalt()).decode()
+        # password.db format: username:bcrypt_hash
+        password_db_content = f"admin:{password_hash}"
+        # Shared secret for internal communication between coordinator and workers
+        shared_secret = secrets.token_hex(32)
 
         def k8s_mem_to_java(mem: str) -> str:
             """Convert K8s memory (4Gi, 512Mi) to Java format (4G, 512M)."""
@@ -160,6 +168,8 @@ class TrinoDeployStep(WorkflowStep):
             "TRINO_COORDINATOR_REPLICAS": str(config.coordinator_replicas),
             "TRINO_WORKER_REPLICAS": str(config.worker_replicas),
             "TRINO_INCLUDE_COORDINATOR": include_coordinator,
+            "TRINO_SHARED_SECRET": shared_secret,
+            "TRINO_PASSWORD_DB": password_db_content,
             "TRINO_COORDINATOR_CPU_REQUEST": config.coordinator_resources.cpu_request,
             "TRINO_COORDINATOR_CPU_LIMIT": config.coordinator_resources.cpu_limit,
             "TRINO_COORDINATOR_MEMORY_REQUEST": config.coordinator_resources.memory_request,
@@ -225,11 +235,9 @@ class TrinoDeployStep(WorkflowStep):
                     "Tier": config.tier.capitalize(),
                     "Coordinators": str(config.coordinator_replicas),
                     "Workers": str(config.worker_replicas),
-                    "UI Username": "admin",
-                    "UI Password": ui_password,
+                    "Username": "admin",
+                    "Password": ui_password,
                     "JDBC URL": f"jdbc:trino://{internal_host}:8080/memory",
-                    "JDBC Username": "admin",
-                    "JDBC Password": "(not required - authentication disabled)",
                     "JDBC Driver": "io.trino.jdbc.TrinoDriver",
                 },
                 "internal": {
