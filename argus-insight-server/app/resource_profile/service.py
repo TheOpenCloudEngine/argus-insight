@@ -56,7 +56,7 @@ async def create_resource_profile(
 
     profile = ArgusResourceProfile(
         name=req.name,
-        display_name=req.display_name,
+        display_name=req.name,  # display_name deprecated, use name
         description=req.description,
         cpu_cores=Decimal(str(req.cpu_cores)),
         memory_mb=_gb_to_mib(req.memory_gb),
@@ -101,8 +101,9 @@ async def update_resource_profile(
     if not profile:
         return None
 
-    if req.display_name is not None:
-        profile.display_name = req.display_name
+    if req.name is not None:
+        profile.name = req.name
+        profile.display_name = req.name  # keep in sync
     if req.description is not None:
         profile.description = req.description
     if req.cpu_cores is not None:
