@@ -322,11 +322,6 @@ export function SqlEditorPanel() {
                   onChange={(e) => setEditingTitle(e.target.value)}
                   onKeyDown={(e) => {
                     e.stopPropagation()
-                    if (e.key === "Enter") {
-                      const newTitle = editingTitle.trim() || tab.title
-                      updateTabTitle(tab.id, newTitle)
-                      setEditingTabId(null)
-                    }
                     if (e.key === "Escape") {
                       setEditingTabId(null)
                     }
