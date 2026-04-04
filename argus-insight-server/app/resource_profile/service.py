@@ -161,6 +161,21 @@ async def assign_profile_to_workspace(
     ws.resource_profile_id = profile_id
     await session.commit()
     logger.info("Workspace %d assigned profile_id=%s", workspace_id, profile_id)
+
+    # Update K8s ResourceQuota if workspace has an active namespace
+    if profile_id and ws.status == "active":
+        namespace = ws.k8s_namespace or f"argus-ws-{ws.name}"
+        profile = await get_resource_profile(session, profile_id)
+        if profile:
+            try:
+                from workspace_provisioner.workflow.steps.app_deploy import apply_resource_quota
+                import asyncio
+                await apply_resource_quota(namespace, profile.cpu_cores, profile.memory_gb * 1024)
+                logger.info("ResourceQuota updated: workspace=%d namespace=%s cpu=%s mem=%sGi",
+                            workspace_id, namespace, profile.cpu_cores, profile.memory_gb)
+            except Exception as e:
+                logger.warning("Failed to update ResourceQuota for workspace %d: %s", workspace_id, e)
+
     return True
 
 
