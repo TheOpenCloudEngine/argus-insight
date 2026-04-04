@@ -1,0 +1,15 @@
+version: "1.0"
+display_name: "v1.0 (vLLM OpenAI API)"
+description: vLLM with OpenAI-compatible API for LLM serving on GPU
+status: stable
+release_date: "2026-04-02"
+step_class: workspace_provisioner.workflow.steps.vllm_deploy.VllmDeployStep
+config_class: workspace_provisioner.config.VllmConfig
+template_dir: vllm
+changelog: |
+  - Initial version
+  - OpenAI-compatible /v1/chat/completions API
+  - PagedAttention for high throughput
+  - GPU support via nvidia.com/gpu resource requests
+upgradeable_from: []
+software_version: "0.6"

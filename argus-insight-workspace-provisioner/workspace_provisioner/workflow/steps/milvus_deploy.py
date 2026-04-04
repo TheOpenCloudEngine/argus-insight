@@ -124,6 +124,10 @@ class MilvusDeployStep(WorkflowStep):
                     "attu_port": 3000,
                     "namespace": namespace,
                 },
+                "resources": {
+                    "cpu_limit": config.resources.cpu_limit,
+                    "memory_limit": config.resources.memory_limit,
+                },
             },
         )
 

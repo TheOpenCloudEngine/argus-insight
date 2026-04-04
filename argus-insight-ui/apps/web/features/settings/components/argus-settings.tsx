@@ -93,8 +93,12 @@ export function ArgusSettings() {
   const [k8sKubeconfig, setK8sKubeconfig] = useState("/etc/rancher/k3s/k3s.yaml")
   const [k8sPrefix, setK8sPrefix] = useState("argus-ws-")
   const [k8sContext, setK8sContext] = useState("")
+  const [k8sMonCacheTtl, setK8sMonCacheTtl] = useState("60")
+  const [k8sMonPodFilter, setK8sMonPodFilter] = useState("argus-*")
   const [k8sSaving, setK8sSaving] = useState(false)
   const [k8sStatusMessage, setK8sStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [k8sMonSaving, setK8sMonSaving] = useState(false)
+  const [k8sMonStatusMessage, setK8sMonStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
   const loadConfig = useCallback(async () => {
     try {
@@ -138,6 +142,8 @@ export function ArgusSettings() {
           setK8sKubeconfig(k8sCfg.kubeconfig_path ?? "/etc/rancher/k3s/k3s.yaml")
           setK8sPrefix(k8sCfg.namespace_prefix ?? "argus-ws-")
           setK8sContext(k8sCfg.context ?? "")
+          setK8sMonCacheTtl(String(k8sCfg.monitoring_cache_ttl ?? 60))
+          setK8sMonPodFilter(k8sCfg.monitoring_pod_filter ?? "argus-*")
         }
       } catch { /* ignore */ }
     } catch (err) {
@@ -1146,6 +1152,88 @@ export function ArgusSettings() {
               />
               <p className="text-xs text-muted-foreground">
                 Kubeconfig context. Leave empty for default.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Kubernetes Monitoring ──────────────────────── */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Kubernetes Monitoring</CardTitle>
+              <CardDescription>Configure monitoring cache and pod filtering for the Cluster Overview dashboard.</CardDescription>
+            </div>
+            <Button
+              size="sm"
+              onClick={async () => {
+                const ttl = Math.max(parseInt(k8sMonCacheTtl) || 60, 60)
+                setK8sMonCacheTtl(String(ttl))
+                setK8sMonSaving(true)
+                setK8sMonStatusMessage(null)
+                try {
+                  const res = await authFetch("/api/v1/settings/k8s", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      kubeconfig_path: k8sKubeconfig,
+                      namespace_prefix: k8sPrefix,
+                      context: k8sContext,
+                      monitoring_cache_ttl: ttl,
+                      monitoring_pod_filter: k8sMonPodFilter,
+                    }),
+                  })
+                  if (!res.ok) throw new Error("Save failed")
+                  setK8sMonStatusMessage({ type: "success", text: "Kubernetes Monitoring configuration saved" })
+                  setTimeout(() => setK8sMonStatusMessage(null), 3000)
+                } catch (e) {
+                  setK8sMonStatusMessage({ type: "error", text: e instanceof Error ? e.message : "Save failed" })
+                } finally {
+                  setK8sMonSaving(false)
+                }
+              }}
+              disabled={k8sMonSaving}
+            >
+              {k8sMonSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Save className="h-4 w-4 mr-1.5" />}
+              Save
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {k8sMonStatusMessage && (
+            <div className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
+              k8sMonStatusMessage.type === "success"
+                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                : "bg-red-50 text-red-700 border border-red-200"
+            }`}>
+              {k8sMonStatusMessage.text}
+            </div>
+          )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Cache TTL (seconds) <span className="text-red-500">*</span></Label>
+              <Input
+                type="number"
+                min={60}
+                value={k8sMonCacheTtl}
+                onChange={(e) => setK8sMonCacheTtl(e.target.value)}
+                placeholder="60"
+              />
+              <p className="text-xs text-muted-foreground">
+                Server-side cache duration for Cluster Overview data. Minimum 60 seconds.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Pod Name Filter</Label>
+              <Input
+                value={k8sMonPodFilter}
+                onChange={(e) => setK8sMonPodFilter(e.target.value)}
+                placeholder="argus-*"
+              />
+              <p className="text-xs text-muted-foreground">
+                Glob pattern to filter pods in Namespace Resource Usage (e.g., argus-*, *, my-app-*).
               </p>
             </div>
           </div>

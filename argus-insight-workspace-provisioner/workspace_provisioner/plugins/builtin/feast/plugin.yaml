@@ -1,0 +1,17 @@
+name: argus-feast
+display_name: Feast Feature Store
+description: Feature store for managing and serving ML features with online/offline support
+icon: feast
+category: ml
+depends_on: []
+provides:
+  - feast_endpoint
+requires: []
+tags:
+  - feature-store
+  - machine-learning
+  - feature-engineering
+  - mlops
+versions:
+  - "1.0"
+default_version: "1.0"

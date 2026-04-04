@@ -1,0 +1,5 @@
+<svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <title>H2O AutoML</title>
+  <path fill="#FECE00" d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z"/>
+  <path fill="#1A1A2E" d="M7.5 8v8h1.5v-3.25h3V16H13.5V8H12v3.25H9V8H7.5zm9.25 4.5c0 1.38-1.12 2.5-2.5 2.5V16.5c2.21 0 4-1.79 4-4s-1.79-4-4-4V10c1.38 0 2.5 1.12 2.5 2.5z"/>
+</svg>

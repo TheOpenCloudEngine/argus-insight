@@ -1,0 +1,136 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argus-langserve-${INSTANCE_ID}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: langserve
+    app.kubernetes.io/instance: "${INSTANCE_ID}"
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: langserve
+      app.kubernetes.io/instance: "${INSTANCE_ID}"
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: langserve
+        app.kubernetes.io/instance: "${INSTANCE_ID}"
+        app.kubernetes.io/part-of: argus-insight
+        argus-insight/workspace: ${WORKSPACE_NAME}
+    spec:
+      containers:
+        - name: langserve
+          image: ${LANGSERVE_IMAGE}
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              # Configure pip
+              mkdir -p /root/.config/pip
+              cat > /root/.config/pip/pip.conf << PIPCONF
+              [global]
+              index-url = ${PIP_INDEX_URL}
+              PIPCONF
+
+              pip install --quiet langchain langserve uvicorn fastapi langchain-openai langchain-community 2>/dev/null
+
+              AGENT_DIR="${AGENT_PATH}"
+
+              # Wait for workspace S3FS mount
+              for i in $$(seq 1 30); do
+                ls /workspace/ >/dev/null 2>&1 && break
+                sleep 1
+              done
+
+              # Run user code if exists, otherwise start stub
+              if [ -f "$$AGENT_DIR/server.py" ]; then
+                echo "[langserve] Found agent at $$AGENT_DIR"
+                [ -f "$$AGENT_DIR/requirements.txt" ] && pip install --quiet -r "$$AGENT_DIR/requirements.txt" 2>/dev/null
+                cd "$$AGENT_DIR" && exec uvicorn server:app --host 0.0.0.0 --port 8000
+              else
+                echo "[langserve] No agent at $$AGENT_DIR — starting stub"
+                mkdir -p /app && cat > /app/server.py << 'PYEOF'
+              from fastapi import FastAPI
+              app = FastAPI(title="LangServe Agent")
+
+              @app.get("/health")
+              def health():
+                  return {"status": "ok"}
+
+              @app.get("/")
+              def root():
+                  return {"message": "No agent deployed. Create server.py in your agent_path via Jupyter."}
+              PYEOF
+                cd /app && exec uvicorn server:app --host 0.0.0.0 --port 8000
+              fi
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "${LANGSERVE_CPU_REQUEST}"
+              memory: "${LANGSERVE_MEMORY_REQUEST}"
+            limits:
+              cpu: "${LANGSERVE_CPU_LIMIT}"
+              memory: "${LANGSERVE_MEMORY_LIMIT}"
+          volumeMounts:
+            - name: workspace-vol
+              mountPath: /workspace
+              mountPropagation: HostToContainer
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+        - name: s3fs-workspace
+          image: ${S3FS_IMAGE}
+          securityContext:
+            privileged: true
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: argus-langserve-${INSTANCE_ID}
+                  key: aws-access-key
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: argus-langserve-${INSTANCE_ID}
+                  key: aws-secret-key
+            - name: S3_BUCKET
+              value: "${WORKSPACE_BUCKET}"
+            - name: S3_ENDPOINT
+              value: "${S3_ENDPOINT}"
+            - name: S3_USE_SSL
+              value: "${S3_USE_SSL}"
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "$${AWS_ACCESS_KEY_ID}:$${AWS_SECRET_ACCESS_KEY}" > /etc/passwd-s3fs
+              chmod 600 /etc/passwd-s3fs
+              SSL_OPT=""
+              if [ "$${S3_USE_SSL}" = "false" ]; then
+                SSL_OPT="-o no_check_certificate -o use_path_request_style"
+              else
+                SSL_OPT="-o use_path_request_style"
+              fi
+              exec s3fs "$${S3_BUCKET}" /workspace \
+                -o passwd_file=/etc/passwd-s3fs \
+                -o url="$${S3_ENDPOINT}" \
+                -o allow_other \
+                -o uid=0 -o gid=0 \
+                $${SSL_OPT} \
+                -f
+          volumeMounts:
+            - name: workspace-vol
+              mountPath: /workspace
+              mountPropagation: Bidirectional
+      volumes:
+        - name: workspace-vol
+          emptyDir: {}

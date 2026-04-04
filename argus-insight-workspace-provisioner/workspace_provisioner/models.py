@@ -6,7 +6,7 @@ Defines the database schema for workspaces, membership, and credentials:
 - ArgusWorkspaceCredential: Service credentials and connection info generated during provisioning.
 """
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text, func
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text, func
 
 from app.core.database import Base
 
@@ -58,6 +58,9 @@ class ArgusWorkspace(Base):
     mlflow_endpoint = Column(String(500))
     kserve_endpoint = Column(String(500))
     status = Column(String(20), nullable=False, default="provisioning")
+    resource_profile_id = Column(
+        Integer, ForeignKey("argus_resource_profiles.id", ondelete="SET NULL"),
+    )
     created_by = Column(Integer, ForeignKey("argus_users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

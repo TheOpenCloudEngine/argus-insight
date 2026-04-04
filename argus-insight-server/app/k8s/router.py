@@ -76,6 +76,48 @@ async def list_namespaces(session: AsyncSession = Depends(get_session)):
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
+# ── Namespace Resource Usage (from cached overview) ──────────────
+
+
+@router.get("/namespace-usage")
+async def get_namespace_usage(session: AsyncSession = Depends(get_session)):
+    """Return per-namespace resource usage from the cached cluster overview."""
+    try:
+        overview = await service.get_cluster_overview(session)
+        return {
+            "items": [item.model_dump() for item in overview.namespace_resource_usage],
+        }
+    except Exception as e:
+        logger.error("Failed to get namespace usage: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+# ── Pod Metrics (per namespace) ───────────────────────────────────
+
+
+@router.get("/pod-metrics")
+async def get_pod_metrics(
+    namespace: str | None = None,
+    session: AsyncSession = Depends(get_session),
+):
+    """Return pod metrics, optionally filtered by namespace."""
+    try:
+        k8s = await service._make_client(session)
+        try:
+            items = await k8s.get_pod_metrics()
+            if namespace:
+                items = [
+                    p for p in items
+                    if (p.get("metadata") or {}).get("namespace") == namespace
+                ]
+            return {"items": items}
+        finally:
+            await k8s.close()
+    except Exception as e:
+        logger.error("Failed to get pod metrics: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
 # ── Generic Namespaced Resource CRUD ──────────────────────────────
 
 

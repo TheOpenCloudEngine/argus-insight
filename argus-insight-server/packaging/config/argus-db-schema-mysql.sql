@@ -222,9 +222,11 @@ INSERT IGNORE INTO argus_configuration (category, config_key, config_value, desc
 ('gitlab', 'gitlab_default_branch',     'main',                 'Default branch for new projects'),
 ('gitlab', 'gitlab_project_visibility', 'internal',             'Project visibility (internal, private, public)'),
 -- Kubernetes
-('k8s', 'k8s_kubeconfig_path',   '/etc/rancher/k3s/k3s.yaml', 'Path to kubeconfig file'),
-('k8s', 'k8s_namespace_prefix',  'argus-ws-',                  'Workspace namespace prefix'),
-('k8s', 'k8s_context',           '',                           'Kubeconfig context (empty = default)'),
+('k8s', 'k8s_kubeconfig_path',        '/etc/rancher/k3s/k3s.yaml', 'Path to kubeconfig file'),
+('k8s', 'k8s_namespace_prefix',       'argus-ws-',                  'Workspace namespace prefix'),
+('k8s', 'k8s_context',                '',                           'Kubeconfig context (empty = default)'),
+('k8s', 'k8s_monitoring_cache_ttl',   '60',                         'Cluster overview cache TTL in seconds (min 60)'),
+('k8s', 'k8s_monitoring_pod_filter',  'argus-*',                    'Pod name glob filter for namespace resource usage'),
 -- Image OS Repositories
 ('repo_debian-11', 'repos', '{"enabled":false,"builtin":[{"type":"deb","url":"http://deb.debian.org/debian","dist":"bullseye","components":"main","enabled":true,"trusted":false},{"type":"deb","url":"http://deb.debian.org/debian","dist":"bullseye-updates","components":"main","enabled":true,"trusted":false},{"type":"deb","url":"http://security.debian.org/debian-security","dist":"bullseye-security","components":"main","enabled":true,"trusted":false}],"custom":[]}', 'Package repositories for debian-11'),
 ('repo_debian-12', 'repos', '{"enabled":false,"builtin":[{"type":"deb","url":"http://deb.debian.org/debian","dist":"bookworm","components":"main","enabled":true,"trusted":false},{"type":"deb","url":"http://deb.debian.org/debian","dist":"bookworm-updates","components":"main","enabled":true,"trusted":false},{"type":"deb","url":"http://security.debian.org/debian-security","dist":"bookworm-security","components":"main","enabled":true,"trusted":false}],"custom":[]}', 'Package repositories for debian-12'),
@@ -364,6 +366,23 @@ CREATE TABLE IF NOT EXISTS argus_plugin_configs (
     CONSTRAINT fk_plugin_config_pipeline FOREIGN KEY (pipeline_id) REFERENCES argus_pipelines(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   COMMENT='Plugin configuration within a pipeline (order, version, settings)';
+
+-- ---------------------------------------------------------------------------
+-- Resource Profiles
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_resource_profiles (
+    id              INT             AUTO_INCREMENT PRIMARY KEY,
+    name            VARCHAR(100)    NOT NULL UNIQUE              COMMENT 'Unique profile slug (e.g. small, medium, large)',
+    display_name    VARCHAR(255)    NOT NULL                     COMMENT 'Human-readable profile name',
+    description     TEXT                                         COMMENT 'Optional profile description',
+    cpu_cores       DECIMAL(10,3)   NOT NULL                     COMMENT 'Total CPU cores (e.g. 8.000)',
+    memory_mb       BIGINT          NOT NULL                     COMMENT 'Total memory in MiB (e.g. 16384 for 16 GiB)',
+    is_default      BOOLEAN         NOT NULL DEFAULT FALSE       COMMENT 'Default profile for new workspaces',
+    created_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Resource profiles defining CPU/Memory limits for workspaces';
 
 -- Seed default roles
 INSERT IGNORE INTO argus_roles (role_id, name, description) VALUES ('argus-admin', 'Admin', 'Administrator with full access');

@@ -35,6 +35,18 @@
           "icon": "Terminal"
         },
         {
+          "id": "ml-studio",
+          "title": "ML Studio",
+          "url": "/dashboard/ml-studio",
+          "icon": "FlaskConical"
+        },
+        {
+          "id": "ai-playground",
+          "title": "AI Playground",
+          "url": "/dashboard/ai-playground",
+          "icon": "Sparkles"
+        },
+        {
           "id": "file-browser",
           "title": "File Browser",
           "url": "/dashboard/file-browser",
@@ -57,6 +69,10 @@
           "title": "VS Code",
           "url": "/dashboard/vscode",
           "icon": "Code"
+          "id": "voc",
+          "title": "VOC",
+          "url": "/dashboard/voc",
+          "icon": "MessageSquareMore"
         }
       ]
     },

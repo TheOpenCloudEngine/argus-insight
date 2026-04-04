@@ -1,0 +1,18 @@
+name: argus-rstudio
+display_name: RStudio Server
+description: Browser-based R development environment with tidyverse, ggplot2, and data.table
+icon: rstudio
+category: development
+depends_on: []
+provides:
+  - rstudio_endpoint
+requires: []
+tags:
+  - ide
+  - r
+  - rstudio
+  - development
+  - data-science
+versions:
+  - "1.0"
+default_version: "1.0"

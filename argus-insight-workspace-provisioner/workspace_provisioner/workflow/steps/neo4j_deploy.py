@@ -137,6 +137,10 @@ class Neo4jDeployStep(WorkflowStep):
                     "http_port": 7474,
                     "namespace": namespace,
                 },
+                "resources": {
+                    "cpu_limit": config.resources.cpu_limit,
+                    "memory_limit": config.resources.memory_limit,
+                },
             },
         )
 

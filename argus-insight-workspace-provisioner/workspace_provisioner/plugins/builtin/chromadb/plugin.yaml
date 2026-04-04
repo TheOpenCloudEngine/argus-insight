@@ -1,0 +1,17 @@
+name: argus-chromadb
+display_name: ChromaDB
+description: Lightweight vector database for AI agent RAG and embedding storage
+icon: chromadb
+category: ai
+depends_on: []
+provides:
+  - chromadb_endpoint
+requires: []
+tags:
+  - vector-db
+  - rag
+  - embeddings
+  - ai-agent
+versions:
+  - "1.0"
+default_version: "1.0"

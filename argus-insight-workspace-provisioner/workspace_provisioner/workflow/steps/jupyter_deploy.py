@@ -172,6 +172,10 @@ class JupyterLabDeployStep(WorkflowStep):
                     "endpoint": internal_endpoint,
                     "namespace": namespace,
                 },
+                "resources": {
+                    "cpu_limit": config.cpu_limit,
+                    "memory_limit": config.memory_limit,
+                },
             },
         )
 

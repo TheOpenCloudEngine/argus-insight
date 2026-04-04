@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argus-labelstudio-${WORKSPACE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: labelstudio
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: labelstudio
+      app.kubernetes.io/instance: ${WORKSPACE_NAME}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: labelstudio
+        app.kubernetes.io/instance: ${WORKSPACE_NAME}
+        app.kubernetes.io/part-of: argus-insight
+        argus-insight/workspace: ${WORKSPACE_NAME}
+    spec:
+      containers:
+        - name: labelstudio
+          image: ${LABELSTUDIO_IMAGE}
+          env:
+            - name: LABEL_STUDIO_DISABLE_SIGNUP_WITHOUT_LINK
+              value: "true"
+            - name: LABEL_STUDIO_USERNAME
+              value: "${ADMIN_USERNAME}"
+            - name: LABEL_STUDIO_PASSWORD
+              value: "${ADMIN_PASSWORD}"
+            - name: LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED
+              value: "true"
+            - name: LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT
+              value: "/label-studio/data"
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "${LABELSTUDIO_CPU_REQUEST}"
+              memory: "${LABELSTUDIO_MEMORY_REQUEST}"
+            limits:
+              cpu: "${LABELSTUDIO_CPU_LIMIT}"
+              memory: "${LABELSTUDIO_MEMORY_LIMIT}"
+          volumeMounts:
+            - name: data
+              mountPath: /label-studio/data
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: argus-labelstudio-${WORKSPACE_NAME}-data

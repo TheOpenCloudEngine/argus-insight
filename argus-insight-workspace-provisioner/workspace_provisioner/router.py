@@ -14,6 +14,7 @@ Endpoint summary:
 - GET    /workspaces/{workspace_id}/workflow   - Get provisioning workflow status
 """
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -28,7 +29,19 @@ from workspace_provisioner import service
 from workspace_provisioner.gitlab.client import GitLabClient
 from workspace_provisioner.schemas import (
     AuditLogResponse,
+    ContainerInfo,
     PaginatedAuditLogResponse,
+    ServiceEventResponse,
+    ServiceLogSourcesResponse,
+    ServiceLogsResponse,
+    ActivityItem,
+    ModelDeployRequest,
+    ModelListResponse,
+    ModelServingStatus,
+    ModelVersionItem,
+    ServiceHealthItem,
+    StorageItem,
+    WorkspaceDashboardResponse,
     WorkspaceServiceResponse,
     PaginatedWorkspaceResponse,
     WorkspaceCreateRequest,
@@ -244,14 +257,33 @@ async def workspace_auth_redirect(
     payload = _verify_ws_token(token, workspace)
     if not payload:
         return Response(content="Invalid or expired token", status_code=401)
-    from app.settings.service import get_config_by_category
-    domain_cfg = await get_config_by_category(session, "domain")
-    domain = domain_cfg.get("domain_name", "")
+    # Derive cookie domain from the redirect URL so the cookie is valid
+    # for the target service. E.g., redirect to
+    # "http://argus-rstudio-xxx.argus-insight.dev.net" → cookie domain ".argus-insight.dev.net"
+    cookie_domain = None
+    if redirect:
+        try:
+            from urllib.parse import urlparse as _urlparse
+            host = _urlparse(redirect).hostname or ""
+            # Strip first subdomain to get the shared parent domain
+            # e.g. "argus-rstudio-xxx.argus-insight.dev.net" → ".argus-insight.dev.net"
+            parts = host.split(".")
+            if len(parts) > 2:
+                cookie_domain = "." + ".".join(parts[1:])
+        except Exception:
+            pass
+
+    if not cookie_domain:
+        from app.settings.service import get_config_by_category
+        domain_cfg = await get_config_by_category(session, "domain")
+        domain = domain_cfg.get("domain_name", "")
+        cookie_domain = f".{domain}" if domain else None
+
     redirect_url = redirect or "/"
     response = Response(status_code=302, headers={"Location": redirect_url})
     response.set_cookie(
         key="argus_ws_token", value=token,
-        domain=f".{domain}" if domain else None,
+        domain=cookie_domain,
         path="/", max_age=_WS_AUTH_EXPIRY, httponly=False, samesite="lax",
     )
     return response
@@ -522,6 +554,206 @@ async def delete_workspace_service(
 
 
 # ---------------------------------------------------------------------------
+# Service log endpoints
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/workspaces/{workspace_id}/services/{service_id}/log-sources",
+    response_model=ServiceLogSourcesResponse,
+)
+async def get_service_log_sources(
+    workspace_id: int,
+    service_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Get available log sources (containers) for a workspace service."""
+    from app.k8s.service import _make_client
+
+    k8s = await _make_client(session)
+    try:
+        pod_name, namespace, pod = await service.resolve_service_pod(
+            session, workspace_id, service_id, k8s,
+        )
+    except ValueError as e:
+        await k8s.close()
+        raise HTTPException(status_code=404, detail=str(e))
+    finally:
+        await k8s.close()
+
+    containers = []
+    for cs in pod.get("status", {}).get("containerStatuses", []):
+        state = "unknown"
+        for s in ("running", "waiting", "terminated"):
+            if cs.get("state", {}).get(s):
+                state = s
+                break
+        containers.append(ContainerInfo(
+            name=cs["name"],
+            label=service._container_label(cs["name"]),
+            state=state,
+            restart_count=cs.get("restartCount", 0),
+        ))
+
+    init_containers = []
+    for cs in pod.get("status", {}).get("initContainerStatuses", []):
+        state = "unknown"
+        for s in ("running", "waiting", "terminated"):
+            if cs.get("state", {}).get(s):
+                state = s
+                break
+        init_containers.append(ContainerInfo(
+            name=cs["name"],
+            label=service._container_label(cs["name"]),
+            state=state,
+            restart_count=cs.get("restartCount", 0),
+        ))
+
+    return ServiceLogSourcesResponse(
+        workspace_id=workspace_id,
+        service_id=service_id,
+        plugin_name=pod.get("metadata", {}).get("labels", {}).get(
+            "app.kubernetes.io/name", "",
+        ),
+        pod_name=pod_name,
+        namespace=namespace,
+        containers=containers,
+        init_containers=init_containers,
+    )
+
+
+@router.get(
+    "/workspaces/{workspace_id}/services/{service_id}/logs",
+    response_model=ServiceLogsResponse,
+)
+async def get_service_logs(
+    request: Request,
+    workspace_id: int,
+    service_id: int,
+    container: str | None = Query(None, description="Container name"),
+    tail_lines: int = Query(100, alias="tailLines", ge=1, le=10000),
+    since_seconds: int | None = Query(None, alias="sinceSeconds"),
+    timestamps: bool = Query(True),
+    follow: bool = Query(False),
+    session: AsyncSession = Depends(get_session),
+):
+    """Get logs from a workspace service container.
+
+    If follow=true, returns an SSE stream instead of JSON.
+    """
+    from app.k8s.service import _make_client
+
+    k8s = await _make_client(session)
+    try:
+        pod_name, namespace, _pod = await service.resolve_service_pod(
+            session, workspace_id, service_id, k8s,
+        )
+    except ValueError as e:
+        await k8s.close()
+        raise HTTPException(status_code=404, detail=str(e))
+
+    if follow:
+        import json as json_module
+        from starlette.responses import StreamingResponse
+        from typing import AsyncIterator
+
+        async def log_stream() -> AsyncIterator[str]:
+            try:
+                async for line in k8s.get_pod_logs(
+                    pod_name, namespace,
+                    container=container,
+                    follow=True,
+                    tail_lines=tail_lines,
+                    since_seconds=since_seconds,
+                    timestamps=timestamps,
+                ):
+                    if await request.is_disconnected():
+                        break
+                    yield f"data: {json_module.dumps({'line': line})}\n\n"
+            except Exception as e:
+                yield f"event: error\ndata: {json_module.dumps({'error': str(e)})}\n\n"
+            finally:
+                await k8s.close()
+
+        return StreamingResponse(
+            log_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+    else:
+        try:
+            lines: list[str] = []
+            async for line in k8s.get_pod_logs(
+                pod_name, namespace,
+                container=container,
+                follow=False,
+                tail_lines=tail_lines,
+                since_seconds=since_seconds,
+                timestamps=timestamps,
+            ):
+                lines.append(line)
+            return ServiceLogsResponse(
+                pod_name=pod_name,
+                container=container or "",
+                lines=lines,
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to get logs for workspace=%d service=%d: %s",
+                workspace_id, service_id, e,
+            )
+            raise HTTPException(status_code=502, detail=str(e))
+        finally:
+            await k8s.close()
+
+
+@router.get(
+    "/workspaces/{workspace_id}/services/{service_id}/events",
+    response_model=list[ServiceEventResponse],
+)
+async def get_service_events(
+    workspace_id: int,
+    service_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Get Kubernetes events for a workspace service pod."""
+    from app.k8s.service import _make_client
+
+    k8s = await _make_client(session)
+    try:
+        pod_name, namespace, _pod = await service.resolve_service_pod(
+            session, workspace_id, service_id, k8s,
+        )
+    except ValueError:
+        await k8s.close()
+        return []
+
+    try:
+        event_data = await k8s.list_resources(
+            "events", namespace=namespace,
+            field_selector=f"involvedObject.name={pod_name}",
+        )
+    finally:
+        await k8s.close()
+
+    events = []
+    for ev in event_data.get("items", []):
+        events.append(ServiceEventResponse(
+            type=ev.get("type", "Normal"),
+            reason=ev.get("reason", ""),
+            message=ev.get("message", ""),
+            count=ev.get("count", 1),
+            first_timestamp=ev.get("firstTimestamp"),
+            last_timestamp=ev.get("lastTimestamp"),
+            source_component=ev.get("source", {}).get("component"),
+        ))
+    return events
+
+
+# ---------------------------------------------------------------------------
 # Pipeline association endpoints
 # ---------------------------------------------------------------------------
 
@@ -561,6 +793,710 @@ async def get_workspace_pipelines(
             created_at=wp.created_at,
         ))
     return responses
+
+
+# ---------------------------------------------------------------------------
+# LLM Proxy (AI Playground → workspace LLM services)
+# ---------------------------------------------------------------------------
+
+@router.post("/workspaces/{workspace_id}/llm/chat")
+async def llm_chat_proxy(
+    request: Request,
+    workspace_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Proxy chat completions to workspace LLM service (vLLM/Ollama).
+
+    Avoids CORS and auth issues by routing through the backend server
+    which can reach K8s internal endpoints directly via Ingress.
+    """
+    import httpx
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+    from starlette.responses import StreamingResponse
+
+    body = await request.json()
+    service_id = body.pop("_service_id", None)  # custom field to select service
+
+    ws_result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    workspace = ws_result.scalars().first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # Find target LLM service
+    svc_result = await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+            ArgusWorkspaceService.plugin_name.in_(["argus-vllm", "argus-ollama"]),
+        )
+    )
+    llm_services = svc_result.scalars().all()
+    if not llm_services:
+        raise HTTPException(status_code=404, detail="No LLM service in this workspace")
+
+    # Select service by _service_id or first available
+    target = None
+    if service_id:
+        target = next((s for s in llm_services if str(s.id) == str(service_id)), None)
+    if not target:
+        target = llm_services[0]
+
+    # Use external endpoint (Ingress) since server may be outside K8s
+    base_url = target.endpoint or ""
+    if not base_url:
+        raise HTTPException(status_code=502, detail="LLM service has no endpoint")
+
+    # Ollama needs /v1 prefix for OpenAI-compatible API
+    if target.plugin_name == "argus-ollama" and "/v1" not in base_url:
+        base_url = base_url.rstrip("/") + "/v1"
+
+    url = f"{base_url}/chat/completions"
+    is_stream = body.get("stream", False)
+
+    if is_stream:
+        async def proxy_stream():
+            async with httpx.AsyncClient(timeout=300) as client:
+                async with client.stream("POST", url, json=body) as resp:
+                    async for chunk in resp.aiter_bytes():
+                        yield chunk
+
+        return StreamingResponse(
+            proxy_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+    else:
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(url, json=body)
+            return Response(
+                content=resp.content,
+                status_code=resp.status_code,
+                media_type="application/json",
+            )
+
+
+@router.get("/workspaces/{workspace_id}/llm/models")
+async def llm_list_models(
+    workspace_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """List available models from workspace LLM services."""
+    import httpx
+    from workspace_provisioner.models import ArgusWorkspaceService
+
+    svc_result = await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+            ArgusWorkspaceService.plugin_name.in_(["argus-vllm", "argus-ollama"]),
+            ArgusWorkspaceService.status == "running",
+        )
+    )
+    services = svc_result.scalars().all()
+
+    result = []
+    for svc in services:
+        base_url = svc.endpoint or ""
+        if not base_url:
+            continue
+
+        try:
+            if svc.plugin_name == "argus-ollama":
+                async with httpx.AsyncClient(timeout=5) as client:
+                    resp = await client.get(f"{base_url}/api/tags")
+                    if resp.status_code == 200:
+                        for m in resp.json().get("models", []):
+                            result.append({
+                                "service_id": svc.id,
+                                "service_type": "ollama",
+                                "service_label": svc.display_name or "Ollama",
+                                "model": m["name"],
+                            })
+            elif svc.plugin_name == "argus-vllm":
+                async with httpx.AsyncClient(timeout=5) as client:
+                    resp = await client.get(f"{base_url}/v1/models")
+                    if resp.status_code == 200:
+                        for m in resp.json().get("data", []):
+                            result.append({
+                                "service_id": svc.id,
+                                "service_type": "vllm",
+                                "service_label": svc.display_name or "vLLM",
+                                "model": m["id"],
+                            })
+        except Exception as e:
+            logger.debug("Failed to list models from %s: %s", svc.plugin_name, e)
+
+    return {"models": result}
+
+
+# ---------------------------------------------------------------------------
+# Model deployment (MLflow → KServe)
+# ---------------------------------------------------------------------------
+
+# MLflow model flavor → KServe modelFormat mapping
+_FLAVOR_TO_KSERVE: dict[str, str] = {
+    "sklearn": "sklearn",
+    "pytorch": "pytorch",
+    "tensorflow": "tensorflow",
+    "xgboost": "xgboost",
+    "lightgbm": "lightgbm",
+    "onnx": "onnx",
+    "transformers": "huggingface",
+}
+
+
+def _detect_framework(run_info: dict) -> str:
+    """Detect model framework from MLflow run tags or flavors."""
+    tags = run_info.get("tags", {})
+    # Check mlflow.log_model.history tag
+    if isinstance(tags, dict):
+        for key in tags:
+            for flavor in _FLAVOR_TO_KSERVE:
+                if flavor in key.lower():
+                    return flavor
+    return "mlflow"  # fallback: mlserver handles all flavors
+
+
+def _check_service_exists(
+    services: list, plugin_name: str,
+) -> bool:
+    """Check if a specific plugin service exists in the workspace."""
+    return any(s.plugin_name == plugin_name for s in services)
+
+
+@router.get(
+    "/workspaces/{workspace_id}/models",
+    response_model=ModelListResponse,
+)
+async def list_models(
+    workspace_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """List registered models from workspace's MLflow instance.
+
+    Also reports whether MLflow and KServe are available.
+    """
+    import httpx
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+
+    # Load workspace + services
+    ws_result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    workspace = ws_result.scalars().first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    svc_result = await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+        )
+    )
+    services = svc_result.scalars().all()
+
+    mlflow_available = _check_service_exists(services, "argus-mlflow")
+    kserve_available = _check_service_exists(services, "argus-kserve")
+
+    if not mlflow_available:
+        return ModelListResponse(
+            models=[], mlflow_available=False, kserve_available=kserve_available,
+        )
+
+    # Find MLflow internal endpoint
+    mlflow_svc = next(
+        (s for s in services if s.plugin_name == "argus-mlflow"), None,
+    )
+    if not mlflow_svc:
+        return ModelListResponse(models=[], mlflow_available=False, kserve_available=kserve_available)
+
+    # Prefer external endpoint (works from both inside and outside K8s cluster),
+    # fall back to internal endpoint
+    mlflow_url = mlflow_svc.endpoint or (
+        mlflow_svc.metadata_json or {}
+    ).get("internal", {}).get("endpoint", "")
+
+    # Query MLflow REST API
+    models: list[ModelVersionItem] = []
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            # List registered models
+            resp = await client.get(
+                f"{mlflow_url}/api/2.0/mlflow/registered-models/search",
+                params={"max_results": 100},
+            )
+            if resp.status_code != 200:
+                return ModelListResponse(
+                    models=[], mlflow_available=True, kserve_available=kserve_available,
+                )
+            data = resp.json()
+            for rm in data.get("registered_models", []):
+                latest = rm.get("latest_versions", [{}])
+                for mv in latest:
+                    run_id = mv.get("run_id", "")
+                    # Fetch run metrics
+                    metrics: dict[str, float] = {}
+                    if run_id:
+                        try:
+                            run_resp = await client.get(
+                                f"{mlflow_url}/api/2.0/mlflow/runs/get",
+                                params={"run_id": run_id},
+                            )
+                            if run_resp.status_code == 200:
+                                run_data = run_resp.json().get("run", {})
+                                run_metrics = run_data.get("data", {}).get("metrics", [])
+                                for m in run_metrics:
+                                    metrics[m["key"]] = m["value"]
+                        except Exception:
+                            pass
+
+                    source = mv.get("source", "")
+                    models.append(ModelVersionItem(
+                        name=rm.get("name", ""),
+                        version=mv.get("version", "1"),
+                        stage=mv.get("current_stage"),
+                        description=mv.get("description"),
+                        run_id=run_id,
+                        artifact_uri=source,
+                        framework=_detect_framework(mv),
+                        metrics=metrics,
+                        created_at=mv.get("creation_timestamp"),
+                    ))
+    except Exception as e:
+        logger.warning("Failed to query MLflow at %s: %s", mlflow_url, e)
+
+    return ModelListResponse(
+        models=models,
+        mlflow_available=True,
+        kserve_available=kserve_available,
+    )
+
+
+@router.post(
+    "/workspaces/{workspace_id}/models/deploy",
+    response_model=ModelServingStatus,
+)
+async def deploy_model(
+    workspace_id: int,
+    req: ModelDeployRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Deploy a model version from MLflow as a KServe InferenceService."""
+    import httpx
+    from app.k8s.service import _make_client
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+
+    # Load workspace
+    ws_result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    workspace = ws_result.scalars().first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    svc_result = await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+        )
+    )
+    services = svc_result.scalars().all()
+
+    if not _check_service_exists(services, "argus-mlflow"):
+        raise HTTPException(status_code=400, detail="MLflow is not deployed in this workspace")
+    if not _check_service_exists(services, "argus-kserve"):
+        raise HTTPException(status_code=400, detail="KServe is not deployed in this workspace")
+
+    namespace = workspace.k8s_namespace or f"argus-ws-{workspace.name}"
+
+    # Get MLflow model artifact URI — prefer external endpoint
+    mlflow_svc = next(s for s in services if s.plugin_name == "argus-mlflow")
+    mlflow_url = mlflow_svc.endpoint or (
+        mlflow_svc.metadata_json or {}
+    ).get("internal", {}).get("endpoint", "")
+
+    artifact_uri = None
+    framework = "mlflow"
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{mlflow_url}/api/2.0/mlflow/model-versions/get",
+                params={"name": req.model_name, "version": req.model_version},
+            )
+            if resp.status_code == 200:
+                mv = resp.json().get("model_version", {})
+                artifact_uri = mv.get("source")
+                framework = _detect_framework(mv)
+    except Exception as e:
+        logger.warning("Failed to get model version from MLflow: %s", e)
+
+    if not artifact_uri:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Model {req.model_name} v{req.model_version} not found in MLflow",
+        )
+
+    # Build KServe InferenceService manifest
+    kserve_format = _FLAVOR_TO_KSERVE.get(framework, "mlflow")
+    isvc_name = f"argus-model-{req.model_name}".lower().replace("_", "-")[:63]
+
+    resource_requests = {"cpu": req.cpu, "memory": req.memory}
+    resource_limits = {"cpu": req.cpu, "memory": req.memory}
+    if req.gpu > 0:
+        resource_requests["nvidia.com/gpu"] = str(req.gpu)
+        resource_limits["nvidia.com/gpu"] = str(req.gpu)
+
+    isvc_manifest = {
+        "apiVersion": "serving.kserve.io/v1beta1",
+        "kind": "InferenceService",
+        "metadata": {
+            "name": isvc_name,
+            "namespace": namespace,
+            "labels": {
+                "app.kubernetes.io/part-of": "argus-insight",
+                "argus-insight/workspace": workspace.name,
+            },
+            "annotations": {
+                "mlflow.org/model-name": req.model_name,
+                "mlflow.org/model-version": req.model_version,
+            },
+        },
+        "spec": {
+            "predictor": {
+                "minReplicas": req.min_replicas,
+                "maxReplicas": req.max_replicas,
+                "model": {
+                    "modelFormat": {"name": kserve_format},
+                    "storageUri": artifact_uri,
+                    "resources": {
+                        "requests": resource_requests,
+                        "limits": resource_limits,
+                    },
+                },
+            },
+        },
+    }
+
+    # Apply via K8s API
+    k8s = await _make_client(session)
+    try:
+        # Use CustomObjectsApi for CRD
+        from kubernetes_asyncio import client as k8s_client
+        await k8s._ensure_client()
+        custom_api = k8s_client.CustomObjectsApi(k8s._api_client)
+
+        try:
+            # Try update first
+            await custom_api.patch_namespaced_custom_object(
+                group="serving.kserve.io",
+                version="v1beta1",
+                namespace=namespace,
+                plural="inferenceservices",
+                name=isvc_name,
+                body=isvc_manifest,
+            )
+        except Exception:
+            # Create if not exists
+            await custom_api.create_namespaced_custom_object(
+                group="serving.kserve.io",
+                version="v1beta1",
+                namespace=namespace,
+                plural="inferenceservices",
+                body=isvc_manifest,
+            )
+    finally:
+        await k8s.close()
+
+    endpoint = f"http://{isvc_name}.{namespace}.svc.cluster.local"
+
+    return ModelServingStatus(
+        model_name=req.model_name,
+        model_version=req.model_version,
+        endpoint=endpoint,
+        status="Deploying",
+        ready=False,
+    )
+
+
+@router.get(
+    "/workspaces/{workspace_id}/models/{model_name}/serving",
+    response_model=ModelServingStatus,
+)
+async def get_model_serving(
+    workspace_id: int,
+    model_name: str,
+    session: AsyncSession = Depends(get_session),
+):
+    """Get serving status of a deployed model."""
+    from app.k8s.service import _make_client
+    from workspace_provisioner.models import ArgusWorkspace
+
+    ws_result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    workspace = ws_result.scalars().first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    namespace = workspace.k8s_namespace or f"argus-ws-{workspace.name}"
+    isvc_name = f"argus-model-{model_name}".lower().replace("_", "-")[:63]
+
+    k8s = await _make_client(session)
+    try:
+        from kubernetes_asyncio import client as k8s_client
+        await k8s._ensure_client()
+        custom_api = k8s_client.CustomObjectsApi(k8s._api_client)
+
+        try:
+            isvc = await custom_api.get_namespaced_custom_object(
+                group="serving.kserve.io",
+                version="v1beta1",
+                namespace=namespace,
+                plural="inferenceservices",
+                name=isvc_name,
+            )
+        except Exception:
+            return ModelServingStatus(model_name=model_name, status="Not deployed")
+    finally:
+        await k8s.close()
+
+    conditions = isvc.get("status", {}).get("conditions", [])
+    ready = any(
+        c.get("type") == "Ready" and c.get("status") == "True"
+        for c in conditions
+    )
+    url = isvc.get("status", {}).get("url", "")
+    status = "Ready" if ready else "Deploying"
+
+    annotations = isvc.get("metadata", {}).get("annotations", {})
+    version = annotations.get("mlflow.org/model-version")
+
+    return ModelServingStatus(
+        model_name=model_name,
+        model_version=version,
+        endpoint=url or None,
+        status=status,
+        ready=ready,
+    )
+
+
+@router.delete("/workspaces/{workspace_id}/models/{model_name}/serving")
+async def undeploy_model(
+    workspace_id: int,
+    model_name: str,
+    session: AsyncSession = Depends(get_session),
+):
+    """Undeploy a model (delete KServe InferenceService)."""
+    from app.k8s.service import _make_client
+    from workspace_provisioner.models import ArgusWorkspace
+
+    ws_result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    workspace = ws_result.scalars().first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    namespace = workspace.k8s_namespace or f"argus-ws-{workspace.name}"
+    isvc_name = f"argus-model-{model_name}".lower().replace("_", "-")[:63]
+
+    k8s = await _make_client(session)
+    try:
+        from kubernetes_asyncio import client as k8s_client
+        await k8s._ensure_client()
+        custom_api = k8s_client.CustomObjectsApi(k8s._api_client)
+        await custom_api.delete_namespaced_custom_object(
+            group="serving.kserve.io",
+            version="v1beta1",
+            namespace=namespace,
+            plural="inferenceservices",
+            name=isvc_name,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Model serving not found: {e}")
+    finally:
+        await k8s.close()
+
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Workspace dashboard (aggregated, minimal K8s calls)
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/workspaces/{workspace_id}/dashboard",
+    response_model=WorkspaceDashboardResponse,
+)
+async def get_workspace_dashboard(
+    workspace_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Aggregated workspace dashboard: pod health, PVC storage, recent activity.
+
+    Makes exactly 2 K8s API calls (list pods + list PVCs) and 1 DB query.
+    """
+    from app.k8s.service import _make_client
+    from workspace_provisioner.models import (
+        ArgusWorkspace, ArgusWorkspaceAuditLog, ArgusWorkspaceService,
+    )
+
+    # 1. Load workspace + services from DB
+    ws_result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    workspace = ws_result.scalars().first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    svc_result = await session.execute(
+        select(ArgusWorkspaceService)
+        .where(ArgusWorkspaceService.workspace_id == workspace_id)
+        .order_by(ArgusWorkspaceService.created_at)
+    )
+    db_services = svc_result.scalars().all()
+    namespace = workspace.k8s_namespace or f"argus-ws-{workspace.name}"
+
+    # 2. K8s: list pods + PVCs in namespace (2 API calls)
+    k8s = await _make_client(session)
+    try:
+        pod_data, pvc_data = await asyncio.gather(
+            k8s.list_resources("pods", namespace=namespace),
+            k8s.list_resources("persistentvolumeclaims", namespace=namespace),
+        )
+    finally:
+        await k8s.close()
+
+    pods = pod_data.get("items", [])
+    pvcs = pvc_data.get("items", [])
+
+    # 3. Match pods to services
+    health_items: list[ServiceHealthItem] = []
+    matched_pod_names: set[str] = set()
+
+    for svc in db_services:
+        short = service._plugin_short_name(svc.plugin_name)
+        matched_pod = None
+
+        # Try service_id match first, then short name + workspace name
+        for pod in pods:
+            pname = pod["metadata"]["name"]
+            if pname in matched_pod_names:
+                continue
+            if svc.service_id and svc.service_id in pname:
+                matched_pod = pod
+                break
+            if pname.startswith(f"argus-{short}-{workspace.name}"):
+                matched_pod = pod
+                break
+
+        if not matched_pod:
+            continue
+
+        matched_pod_names.add(matched_pod["metadata"]["name"])
+        pod_status = matched_pod.get("status", {})
+        phase = pod_status.get("phase", "Unknown")
+
+        # Ready check
+        conditions = pod_status.get("conditions", [])
+        ready = any(
+            c.get("type") == "Ready" and c.get("status") == "True"
+            for c in conditions
+        )
+
+        # Restarts + uptime from container statuses
+        restarts = 0
+        uptime_seconds = None
+        for cs in pod_status.get("containerStatuses", []):
+            restarts += cs.get("restartCount", 0)
+            started = cs.get("state", {}).get("running", {}).get("startedAt")
+            if started:
+                from datetime import datetime, timezone
+                try:
+                    start_dt = datetime.fromisoformat(started.replace("Z", "+00:00"))
+                    up = int((datetime.now(timezone.utc) - start_dt).total_seconds())
+                    if uptime_seconds is None or up < uptime_seconds:
+                        uptime_seconds = up
+                except (ValueError, TypeError):
+                    pass
+
+        # Resource requests/limits from first container spec
+        cpu_req = mem_req = cpu_lim = mem_lim = None
+        containers = matched_pod.get("spec", {}).get("containers", [])
+        if containers:
+            res = containers[0].get("resources", {})
+            cpu_req = res.get("requests", {}).get("cpu")
+            mem_req = res.get("requests", {}).get("memory")
+            cpu_lim = res.get("limits", {}).get("cpu")
+            mem_lim = res.get("limits", {}).get("memory")
+
+        health_items.append(ServiceHealthItem(
+            plugin_name=svc.plugin_name,
+            display_name=svc.display_name,
+            pod_name=matched_pod["metadata"]["name"],
+            phase=phase,
+            ready=ready,
+            restarts=restarts,
+            uptime_seconds=uptime_seconds,
+            cpu_request=cpu_req,
+            memory_request=mem_req,
+            cpu_limit=cpu_lim,
+            memory_limit=mem_lim,
+        ))
+
+    # 4. PVC storage
+    storage_items: list[StorageItem] = []
+    for pvc in pvcs:
+        pvc_name = pvc["metadata"]["name"]
+        capacity = pvc.get("status", {}).get("capacity", {}).get("storage")
+        pvc_phase = pvc.get("status", {}).get("phase", "Pending")
+
+        # Derive service hint from PVC name (e.g., "argus-minio-ml-team-data" → "minio")
+        hint = None
+        for svc in db_services:
+            short = service._plugin_short_name(svc.plugin_name)
+            if short in pvc_name:
+                hint = svc.display_name or svc.plugin_name
+                break
+
+        storage_items.append(StorageItem(
+            name=pvc_name,
+            capacity=capacity,
+            phase=pvc_phase,
+            service_hint=hint,
+        ))
+
+    # 5. Recent activity from audit logs (last 10, DB query only)
+    from workspace_provisioner.models import ArgusWorkspaceAuditLog
+    audit_result = await session.execute(
+        select(ArgusWorkspaceAuditLog)
+        .where(ArgusWorkspaceAuditLog.workspace_id == workspace_id)
+        .order_by(ArgusWorkspaceAuditLog.created_at.desc())
+        .limit(10)
+    )
+    activity_items = [
+        ActivityItem(
+            action=log.action,
+            actor_username=log.actor_username,
+            detail=log.detail,
+            created_at=log.created_at,
+        )
+        for log in audit_result.scalars().all()
+    ]
+
+    # 6. Service counts
+    total = len(db_services)
+    running = sum(1 for h in health_items if h.phase == "Running" and h.ready)
+
+    return WorkspaceDashboardResponse(
+        service_health=health_items,
+        storage=storage_items,
+        recent_activity=activity_items,
+        total_services=total,
+        running_services=running,
+    )
 
 
 # ---------------------------------------------------------------------------

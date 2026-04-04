@@ -130,6 +130,10 @@ class StarRocksDeployStep(WorkflowStep):
                     "fe_mysql": f"{internal_fe}:9030",
                     "namespace": namespace,
                 },
+                "resources": {
+                    "cpu_limit": config.fe_resources.cpu_limit,
+                    "memory_limit": config.fe_resources.memory_limit,
+                },
             },
         )
 

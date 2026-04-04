@@ -1,0 +1,15 @@
+version: "1.0"
+display_name: "v1.0 (Feast Feature Server)"
+description: Feast feature server for online feature serving via REST API
+status: stable
+release_date: "2026-04-02"
+step_class: workspace_provisioner.workflow.steps.feast_deploy.FeastDeployStep
+config_class: workspace_provisioner.config.FeastConfig
+template_dir: feast
+changelog: |
+  - Initial version
+  - REST API feature serving on port 6566
+  - Online feature retrieval for model inference
+  - Workspace auth via Nginx Ingress
+upgradeable_from: []
+software_version: "0.40"

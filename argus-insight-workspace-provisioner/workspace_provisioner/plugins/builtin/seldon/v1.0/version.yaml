@@ -1,0 +1,15 @@
+version: "1.0"
+display_name: "v1.0 (Seldon Core Operator)"
+description: Seldon Core operator for SeldonDeployment CRD-based model serving
+status: stable
+release_date: "2026-04-02"
+step_class: workspace_provisioner.workflow.steps.seldon_deploy.SeldonCoreDeployStep
+config_class: workspace_provisioner.config.SeldonCoreConfig
+template_dir: seldon
+changelog: |
+  - Initial version
+  - Single-namespace operator mode
+  - SeldonDeployment CRD for A/B testing, canary, shadow serving
+  - Supports custom containers, prepackaged model servers
+upgradeable_from: []
+software_version: "1.18"

@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS argus_workspaces (
     mlflow_endpoint VARCHAR(500)    DEFAULT NULL,
     kserve_endpoint VARCHAR(500)    DEFAULT NULL,
     status          VARCHAR(20)     NOT NULL DEFAULT 'provisioning',
+    resource_profile_id INT         DEFAULT NULL,
     created_by      INT             NOT NULL,
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

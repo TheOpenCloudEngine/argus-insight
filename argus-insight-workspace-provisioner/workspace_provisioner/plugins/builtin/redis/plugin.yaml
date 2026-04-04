@@ -1,0 +1,17 @@
+name: argus-redis
+display_name: Redis
+description: In-memory data store for AI agent memory, session management, and caching
+icon: redis
+category: ai
+depends_on: []
+provides:
+  - redis_endpoint
+requires: []
+tags:
+  - cache
+  - memory
+  - session
+  - ai-agent
+versions:
+  - "1.0"
+default_version: "1.0"

@@ -16,6 +16,7 @@ import {
   Plus,
   Server,
   Settings,
+  Terminal,
   XCircle,
 } from "lucide-react"
 
@@ -70,6 +71,9 @@ import {
 } from "@/features/workspaces/api"
 import type { AuditLog, WorkspaceMember, WorkspaceResponse, WorkspaceService } from "@/features/workspaces/types"
 import { PluginIcon } from "@/features/software-deployment/components/plugin-icon"
+import { ServiceLogsPanel } from "@/features/workspaces/components/service-logs-panel"
+import { WorkspaceDashboardPanel } from "@/features/workspaces/components/workspace-dashboard"
+import { WorkspaceModels } from "@/features/workspaces/components/workspace-models"
 
 /* ------------------------------------------------------------------ */
 /*  Shared helpers                                                     */
@@ -425,16 +429,19 @@ function ServiceDataListItem({
   hideTimestamps,
   onDelete,
   workspaceId,
+  workspaceName,
 }: {
   service: WorkspaceService
   hideTimestamps?: boolean
   onDelete?: (service: WorkspaceService) => void
   workspaceId?: number
+  workspaceName?: string
 }) {
   const [expanded, setExpanded] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [configOpen, setConfigOpen] = useState(false)
+  const [logsOpen, setLogsOpen] = useState(false)
   const isConfigurable = CONFIGURABLE_PLUGINS.has(service.plugin_name)
   // Map plugin_name to icon filename
   const PLUGIN_ICON_MAP: Record<string, string> = {
@@ -549,17 +556,40 @@ function ServiceDataListItem({
         <div className="flex items-center gap-2 shrink-0">
           {statusBadge(service.status)}
           {openUrl && (
-            <a
-              href={openUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs h-6 px-2"
+              onClick={async (e) => {
+                e.stopPropagation()
+                try {
+                  const wsName = workspaceName || ""
+                  const res = await authFetch(
+                    `/api/v1/workspace/workspaces/auth-launch?workspace=${wsName}`
+                  )
+                  if (!res.ok) throw new Error("Auth failed")
+                  const data = await res.json()
+                  // Call auth-redirect via the service's parent domain
+                  // so the Set-Cookie domain matches *.argus-insight.{domain}
+                  let authHost = window.location.hostname + ":4500"
+                  try {
+                    const svcHost = new URL(openUrl).hostname // e.g. argus-rstudio-xxx.argus-insight.dev.net
+                    const parts = svcHost.split(".")
+                    if (parts.length > 2) {
+                      // Use parent domain: argus-insight.dev.net:4500
+                      authHost = parts.slice(1).join(".") + ":4500"
+                    }
+                  } catch { /* fallback to window.location.hostname */ }
+                  const redirectUrl = `http://${authHost}/api/v1/workspace/workspaces/auth-redirect?workspace=${wsName}&token=${data.token}&redirect=${encodeURIComponent(openUrl)}`
+                  window.open(redirectUrl, "_blank")
+                } catch {
+                  window.open(openUrl, "_blank")
+                }
+              }}
             >
-              <Button variant="outline" size="sm" className="text-xs h-6 px-2">
-                Open
-                <ExternalLink className="ml-1 h-3 w-3" />
-              </Button>
-            </a>
+              Open
+              <ExternalLink className="ml-1 h-3 w-3" />
+            </Button>
           )}
         </div>
       </div>
@@ -581,29 +611,46 @@ function ServiceDataListItem({
               />
             ))}
           </div>
-          {(isConfigurable || onDelete) && (
-            <div className="mt-3 flex items-center justify-end gap-2">
-              {isConfigurable && workspaceId && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-xs"
-                  onClick={(e) => { e.stopPropagation(); setConfigOpen(true) }}
-                >
-                  <Settings className="mr-1.5 h-3.5 w-3.5" />
-                  Configure
-                </Button>
-              )}
-              {onDelete && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="text-xs"
-                  onClick={(e) => { e.stopPropagation(); setConfirmOpen(true) }}
-                >
-                  Delete Service
-                </Button>
-              )}
+          <div className="mt-3 flex items-center justify-end gap-2">
+            {workspaceId && service.status === "running" && (
+              <Button
+                variant={logsOpen ? "secondary" : "outline"}
+                size="sm"
+                className="text-xs"
+                onClick={(e) => { e.stopPropagation(); setLogsOpen(!logsOpen) }}
+              >
+                <Terminal className="mr-1.5 h-3.5 w-3.5" />
+                {logsOpen ? "Hide Logs" : "Logs"}
+              </Button>
+            )}
+            {isConfigurable && workspaceId && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                onClick={(e) => { e.stopPropagation(); setConfigOpen(true) }}
+              >
+                <Settings className="mr-1.5 h-3.5 w-3.5" />
+                Configure
+              </Button>
+            )}
+            {onDelete && (
+              <Button
+                variant="destructive"
+                size="sm"
+                className="text-xs"
+                onClick={(e) => { e.stopPropagation(); setConfirmOpen(true) }}
+              >
+                Delete Service
+              </Button>
+            )}
+          </div>
+          {logsOpen && workspaceId && (
+            <div className="mt-3">
+              <ServiceLogsPanel
+                workspaceId={workspaceId}
+                service={service}
+              />
             </div>
           )}
         </div>
@@ -669,6 +716,7 @@ function ServiceDataList({
   isOwner,
   perUserPlugins,
   workspaceId,
+  workspaceName,
 }: {
   services: WorkspaceService[]
   hideTimestamps?: boolean
@@ -676,12 +724,11 @@ function ServiceDataList({
   isOwner?: boolean
   perUserPlugins?: Set<string>
   workspaceId?: number
+  workspaceName?: string
 }) {
   return (
     <div className="rounded-lg border">
       {services.map((svc) => {
-        // per_user services: user can delete their own
-        // per_workspace services: only owner can delete
         const canDelete = onDelete
           ? isOwner || (perUserPlugins?.has(svc.plugin_name) ?? false)
           : false
@@ -692,6 +739,7 @@ function ServiceDataList({
             hideTimestamps={hideTimestamps}
             onDelete={canDelete ? onDelete : undefined}
             workspaceId={workspaceId}
+            workspaceName={workspaceName}
           />
         )
       })}
@@ -824,50 +872,52 @@ function WorkspaceMembersBar({
 
   return (
     <>
-      <div className="rounded-lg border p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold">Members ({members.length})</h3>
-          {isOwner && (
-            <Button variant="outline" size="sm" className="text-xs" onClick={openAddDialog}>
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              Add Member
-            </Button>
+      <Card>
+        <CardHeader className="py-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm">Members ({members.length})</CardTitle>
+            {isOwner && (
+              <Button variant="outline" size="sm" className="text-xs" onClick={openAddDialog}>
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                Add Member
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {loading ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : members.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">No members.</p>
+          ) : (
+            <div className="flex flex-wrap gap-3">
+              {members.map((m) => (
+                <div key={m.id} className="group relative flex flex-col items-center gap-1 w-20">
+                  {isOwner && !m.is_owner && (
+                    <button
+                      className="absolute -top-1 -right-1 hidden group-hover:flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white text-[10px] leading-none hover:bg-red-600 z-10"
+                      onClick={() => setRemoveTarget(m)}
+                    >
+                      ✕
+                    </button>
+                  )}
+                  <Avatar className="h-9 w-9">
+                    <AvatarFallback className="text-sm">{memberInitials(m)}</AvatarFallback>
+                  </Avatar>
+                  <span className="truncate text-sm text-center w-full">
+                    {m.display_name || m.username}
+                  </span>
+                  {m.is_owner && (
+                    <Badge variant="secondary" className="text-xs px-1.5 py-0">Owner</Badge>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
-        </div>
-
-        {loading ? (
-          <div className="flex items-center justify-center py-4">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          </div>
-        ) : members.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-4">No members.</p>
-        ) : (
-          <div className="flex flex-wrap gap-3">
-            {members.map((m) => (
-              <div key={m.id} className="group relative flex flex-col items-center gap-1 w-20">
-                {/* X button (hover only, visible to workspace owner, not on owner member) */}
-                {isOwner && !m.is_owner && (
-                  <button
-                    className="absolute -top-1 -right-1 hidden group-hover:flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white text-[10px] leading-none hover:bg-red-600 z-10"
-                    onClick={() => setRemoveTarget(m)}
-                  >
-                    ✕
-                  </button>
-                )}
-                <Avatar className="h-9 w-9">
-                  <AvatarFallback className="text-sm">{memberInitials(m)}</AvatarFallback>
-                </Avatar>
-                <span className="truncate text-sm text-center w-full">
-                  {m.display_name || m.username}
-                </span>
-                {m.is_owner && (
-                  <Badge variant="secondary" className="text-xs px-1.5 py-0">Owner</Badge>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Add Member Dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
@@ -952,12 +1002,16 @@ interface DeployMappingEntry {
 
 // Map service_key to plugin_name patterns used in workspace services
 const SERVICE_KEY_TO_PLUGIN: Record<string, string> = {
+  // Development
   mlflow: "argus-mlflow",
   vscode: "argus-vscode-server",
   airflow: "argus-airflow",
   jupyter: "argus-jupyter",
   jupyter_tensorflow: "argus-jupyter-tensorflow",
+  jupyter_pyspark: "argus-jupyter-pyspark",
+  rstudio: "argus-rstudio",
   kserve: "argus-kserve",
+  // Data
   neo4j: "argus-neo4j",
   milvus: "argus-milvus",
   mindsdb: "argus-mindsdb",
@@ -965,6 +1019,17 @@ const SERVICE_KEY_TO_PLUGIN: Record<string, string> = {
   starrocks: "argus-starrocks",
   postgresql: "argus-postgresql",
   mariadb: "argus-mariadb",
+  // AutoML
+  h2o: "argus-h2o",
+  labelstudio: "argus-labelstudio",
+  feast: "argus-feast",
+  seldon: "argus-seldon",
+  // AI Agent
+  vllm: "argus-vllm",
+  ollama: "argus-ollama",
+  langserve: "argus-langserve",
+  chromadb: "argus-chromadb",
+  redis: "argus-redis",
 }
 
 function AddServiceButton({
@@ -1295,6 +1360,19 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
         <div className="ml-auto">{statusBadge(workspace.status)}</div>
       </div>
 
+      {/* Dashboard: overview cards, service health, storage, activity */}
+      {(workspace.status === "active" || workspace.status === "failed") && (
+        <WorkspaceDashboardPanel workspaceId={workspace.id} />
+      )}
+
+      {/* Models: MLflow model registry + one-click KServe deploy */}
+      {(workspace.status === "active" || workspace.status === "failed") && (
+        <WorkspaceModels
+          workspace={workspace}
+          onDeployService={() => handleDeployComplete()}
+        />
+      )}
+
       {(() => {
         // Categorize services
         const hiddenPlugins = new Set(["argus-minio-workspace", "argus-minio-setup"])
@@ -1389,6 +1467,48 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
                 _hideTimestamps: true,
               } as WorkspaceService & { _hideUrl?: boolean; _hideTimestamps?: boolean }
             }
+            if (svc.plugin_name === "argus-rstudio") {
+              return {
+                ...svc,
+                username: null,
+                _hideUrl: true,
+                _hideTimestamps: true,
+              } as WorkspaceService & { _hideUrl?: boolean; _hideTimestamps?: boolean }
+            }
+            if (svc.plugin_name === "argus-labelstudio") {
+              return {
+                ...svc,
+                _hideUrl: true,
+                _hideTimestamps: true,
+              } as WorkspaceService & { _hideUrl?: boolean; _hideTimestamps?: boolean }
+            }
+            if (svc.plugin_name === "argus-redis") {
+              const meta = svc.metadata ?? {}
+              const internal = (meta.internal ?? {}) as Record<string, unknown>
+              const display = (meta.display ?? {}) as Record<string, unknown>
+              // Derive hostname/port from internal metadata or endpoint
+              const hostname = internal.hostname
+                || svc.endpoint?.replace(/^https?:\/\//, "").replace(/:\d+$/, "")
+                || ""
+              const port = internal.port || "6379"
+              return {
+                ...svc,
+                endpoint: null,
+                username: null,
+                password: null,
+                metadata: {
+                  ...meta,
+                  display: {
+                    "Hostname": hostname,
+                    "Port": String(port),
+                    "Storage": display.Storage || display.storage_size || "",
+                    "Max Memory": display["Max Memory"] || display.maxmemory || "",
+                  },
+                },
+                _hideUrl: true,
+                _hideTimestamps: true,
+              } as WorkspaceService & { _hideUrl?: boolean; _hideTimestamps?: boolean }
+            }
             return svc
           })
 
@@ -1404,40 +1524,49 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
 
             {/* Default Services */}
             {defaultServices.length > 0 && (
-              <div>
-                <h3 className="mb-3 text-sm font-semibold">
-                  Default Services ({defaultServices.length})
-                </h3>
-                <ServiceDataList services={defaultServices} hideTimestamps />
-              </div>
+              <Card>
+                <CardHeader className="py-3">
+                  <CardTitle className="text-sm">
+                    Default Services ({defaultServices.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-4 pt-0">
+                  <ServiceDataList services={defaultServices} hideTimestamps workspaceName={workspace.name} />
+                </CardContent>
+              </Card>
             )}
 
             {/* Deployed Services */}
-            <div>
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold">
-                  Deployed Services ({deployed.length})
-                </h3>
-                <AddServiceButton
-                  workspace={workspace}
-                  services={services}
-                  onDeployComplete={handleDeployComplete}
-                />
-              </div>
-              {deployed.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground text-sm rounded-lg border">
-                  No services deployed yet. Click "Add Service" to deploy one.
+            <Card>
+              <CardHeader className="py-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm">
+                    Deployed Services ({deployed.length})
+                  </CardTitle>
+                  <AddServiceButton
+                    workspace={workspace}
+                    services={services}
+                    onDeployComplete={handleDeployComplete}
+                  />
                 </div>
-              ) : (
-                <ServiceDataList
-                  services={deployed}
-                  onDelete={handleDeleteService}
-                  isOwner={!!user && String(workspace.created_by) === user.sub}
-                  perUserPlugins={perUserPlugins}
-                  workspaceId={workspace.id}
-                />
-              )}
-            </div>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 pt-0">
+                {deployed.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground text-sm">
+                    No services deployed yet. Click "Add Service" to deploy one.
+                  </div>
+                ) : (
+                  <ServiceDataList
+                    services={deployed}
+                    onDelete={handleDeleteService}
+                    isOwner={!!user && String(workspace.created_by) === user.sub}
+                    perUserPlugins={perUserPlugins}
+                    workspaceId={workspace.id}
+                    workspaceName={workspace.name}
+                  />
+                )}
+              </CardContent>
+            </Card>
           </>
         )
       })()}

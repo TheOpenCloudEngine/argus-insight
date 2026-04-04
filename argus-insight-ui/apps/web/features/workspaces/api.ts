@@ -2,10 +2,18 @@ import { authFetch } from "@/features/auth/auth-fetch"
 import type {
   PaginatedAuditLogResponse,
   PaginatedWorkspaceResponse,
+  ResourceProfile,
+  ServiceEvent,
+  ServiceLogSources,
+  ServiceLogs,
   WorkspaceService,
   WorkspaceCredentials,
   WorkspaceMember,
   WorkspacePipeline,
+  ModelListResponse,
+  ModelServingStatus,
+  WorkspaceDashboard,
+  WorkspaceResourceUsage,
   WorkspaceResponse,
 } from "./types"
 
@@ -138,5 +146,204 @@ export async function fetchWorkspaceAuditLogs(
   )
   if (!res.ok) throw new Error(await extractError(res, "Failed to fetch audit logs"))
   return res.json()
+}
+
+// ── Resource Profiles ──────────────────────────────────────────
+
+const PROFILE_BASE = "/api/v1/resource-profiles"
+
+export async function fetchResourceProfiles(): Promise<ResourceProfile[]> {
+  const res = await authFetch(PROFILE_BASE)
+  if (!res.ok) throw new Error(await extractError(res, "Failed to fetch profiles"))
+  return res.json()
+}
+
+export async function createResourceProfile(data: {
+  name: string
+  display_name: string
+  description?: string
+  cpu_cores: number
+  memory_gb: number
+  is_default?: boolean
+}): Promise<ResourceProfile> {
+  const res = await authFetch(PROFILE_BASE, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(await extractError(res, "Failed to create profile"))
+  return res.json()
+}
+
+export async function updateResourceProfile(
+  id: number,
+  data: {
+    display_name?: string
+    description?: string
+    cpu_cores?: number
+    memory_gb?: number
+    is_default?: boolean
+  },
+): Promise<ResourceProfile> {
+  const res = await authFetch(`${PROFILE_BASE}/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(await extractError(res, "Failed to update profile"))
+  return res.json()
+}
+
+export async function deleteResourceProfile(id: number): Promise<void> {
+  const res = await authFetch(`${PROFILE_BASE}/${id}`, { method: "DELETE" })
+  if (!res.ok) throw new Error(await extractError(res, "Failed to delete profile"))
+}
+
+export async function assignWorkspaceProfile(
+  workspaceId: number,
+  profileId: number | null,
+): Promise<void> {
+  const res = await authFetch(`${BASE}/workspaces/${workspaceId}/resource-profile`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profile_id: profileId }),
+  })
+  if (!res.ok) throw new Error(await extractError(res, "Failed to assign profile"))
+}
+
+export async function fetchWorkspaceResourceUsage(
+  workspaceId: number,
+): Promise<WorkspaceResourceUsage> {
+  const res = await authFetch(`${BASE}/workspaces/${workspaceId}/resource-usage`)
+  if (!res.ok) throw new Error(await extractError(res, "Failed to fetch resource usage"))
+  return res.json()
+}
+
+// ── Service Logs ─────────────────────────────────────────────────
+
+export async function fetchServiceLogSources(
+  workspaceId: number,
+  serviceId: number,
+): Promise<ServiceLogSources> {
+  const res = await authFetch(
+    `${BASE}/workspaces/${workspaceId}/services/${serviceId}/log-sources`,
+  )
+  if (!res.ok) throw new Error(await extractError(res, "Failed to fetch log sources"))
+  return res.json()
+}
+
+export async function fetchServiceLogs(
+  workspaceId: number,
+  serviceId: number,
+  opts: {
+    container?: string
+    tailLines?: number
+    sinceSeconds?: number
+    timestamps?: boolean
+  } = {},
+): Promise<ServiceLogs> {
+  const params = new URLSearchParams()
+  if (opts.container) params.set("container", opts.container)
+  if (opts.tailLines) params.set("tailLines", String(opts.tailLines))
+  if (opts.sinceSeconds) params.set("sinceSeconds", String(opts.sinceSeconds))
+  if (opts.timestamps !== undefined) params.set("timestamps", String(opts.timestamps))
+  const qs = params.toString()
+  const res = await authFetch(
+    `${BASE}/workspaces/${workspaceId}/services/${serviceId}/logs${qs ? `?${qs}` : ""}`,
+  )
+  if (!res.ok) throw new Error(await extractError(res, "Failed to fetch logs"))
+  return res.json()
+}
+
+export function createServiceLogStream(
+  workspaceId: number,
+  serviceId: number,
+  opts: {
+    container?: string
+    tailLines?: number
+    sinceSeconds?: number
+  } = {},
+): EventSource {
+  const params = new URLSearchParams({ follow: "true" })
+  if (opts.container) params.set("container", opts.container)
+  if (opts.tailLines) params.set("tailLines", String(opts.tailLines))
+  if (opts.sinceSeconds) params.set("sinceSeconds", String(opts.sinceSeconds))
+  return new EventSource(
+    `${BASE}/workspaces/${workspaceId}/services/${serviceId}/logs?${params}`,
+  )
+}
+
+export async function fetchServiceEvents(
+  workspaceId: number,
+  serviceId: number,
+): Promise<ServiceEvent[]> {
+  const res = await authFetch(
+    `${BASE}/workspaces/${workspaceId}/services/${serviceId}/events`,
+  )
+  if (!res.ok) throw new Error(await extractError(res, "Failed to fetch events"))
+  return res.json()
+}
+
+// ── Workspace Dashboard ──────────────────────────────────
+
+export async function fetchWorkspaceDashboard(
+  workspaceId: number,
+): Promise<WorkspaceDashboard> {
+  const res = await authFetch(`${BASE}/workspaces/${workspaceId}/dashboard`)
+  if (!res.ok) throw new Error(await extractError(res, "Failed to fetch dashboard"))
+  return res.json()
+}
+
+// ── Models ───────────────────────────────────────────────
+
+export async function fetchWorkspaceModels(
+  workspaceId: number,
+): Promise<ModelListResponse> {
+  const res = await authFetch(`${BASE}/workspaces/${workspaceId}/models`)
+  if (!res.ok) throw new Error(await extractError(res, "Failed to fetch models"))
+  return res.json()
+}
+
+export async function deployModel(
+  workspaceId: number,
+  data: {
+    model_name: string
+    model_version: string
+    cpu?: string
+    memory?: string
+    gpu?: number
+    min_replicas?: number
+    max_replicas?: number
+  },
+): Promise<ModelServingStatus> {
+  const res = await authFetch(`${BASE}/workspaces/${workspaceId}/models/deploy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error(await extractError(res, "Failed to deploy model"))
+  return res.json()
+}
+
+export async function fetchModelServing(
+  workspaceId: number,
+  modelName: string,
+): Promise<ModelServingStatus> {
+  const res = await authFetch(
+    `${BASE}/workspaces/${workspaceId}/models/${encodeURIComponent(modelName)}/serving`,
+  )
+  if (!res.ok) throw new Error(await extractError(res, "Failed to fetch serving status"))
+  return res.json()
+}
+
+export async function undeployModel(
+  workspaceId: number,
+  modelName: string,
+): Promise<void> {
+  const res = await authFetch(
+    `${BASE}/workspaces/${workspaceId}/models/${encodeURIComponent(modelName)}/serving`,
+    { method: "DELETE" },
+  )
+  if (!res.ok) throw new Error(await extractError(res, "Failed to undeploy model"))
 }
 

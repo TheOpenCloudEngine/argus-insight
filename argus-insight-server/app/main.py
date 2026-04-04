@@ -27,9 +27,13 @@ from app.security.router import router as security_router
 from app.servermgr.router import router as servermgr_router
 from app.unity_catalog.router import router as unity_catalog_router
 from app.usermgr.router import router as usermgr_router
+from app.voc.router import router as voc_router
+from app.ml_studio.router import router as ml_studio_router
 from app.apps.registry_router import router as app_registry_router
 from app.apps.instance_router import router as app_instance_router
 from app.k8s.router import router as k8s_router
+from app.resource_profile.router import router as resource_profile_router
+from app.resource_profile.router import workspace_router as resource_workspace_router
 from workspace_provisioner.router import router as workspace_router
 from workspace_provisioner.router import init_gitlab_client
 from workspace_provisioner.plugins.router import router as plugins_router
@@ -71,6 +75,9 @@ async def lifespan(app: FastAPI):
     import app.objectfilemgr.models  # noqa: F401
     import app.usermgr.models  # noqa: F401
     import app.apps.models  # noqa: F401
+    import app.resource_profile.models  # noqa: F401
+    import app.voc.models  # noqa: F401
+    import app.ml_studio.models  # noqa: F401
     import workspace_provisioner.models  # noqa: F401
     import workspace_provisioner.plugins.models  # noqa: F401
     import app.sql.models  # noqa: F401
@@ -170,9 +177,13 @@ app.include_router(unity_catalog_router, prefix="/api/v1")
 app.include_router(app_registry_router, prefix="/api/v1")
 app.include_router(app_instance_router, prefix="/api/v1")
 app.include_router(k8s_router, prefix="/api/v1")
+app.include_router(resource_profile_router, prefix="/api/v1")
+app.include_router(resource_workspace_router, prefix="/api/v1")
 app.include_router(workspace_router, prefix="/api/v1")
 app.include_router(plugins_router, prefix="/api/v1")
 app.include_router(sql_router, prefix="/api/v1")
+app.include_router(voc_router, prefix="/api/v1")
+app.include_router(ml_studio_router, prefix="/api/v1")
 
 
 @app.get("/health")

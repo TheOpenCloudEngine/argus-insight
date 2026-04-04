@@ -1,5 +1,5 @@
-import { ResourceListPage } from "@/features/kubernetes"
+import { NamespaceList } from "@/features/kubernetes/components/namespace-list"
 
 export default function NamespacesPage() {
-  return <ResourceListPage resourceType="namespaces" />
+  return <NamespaceList />
 }

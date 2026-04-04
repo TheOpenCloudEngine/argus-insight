@@ -1,0 +1,16 @@
+version: "1.0"
+display_name: "v1.0 (LangServe + S3)"
+description: LangServe Agent API with workspace S3 bucket mount for code/data access
+status: stable
+release_date: "2026-04-02"
+step_class: workspace_provisioner.workflow.steps.langserve_deploy.LangServeDeployStep
+config_class: workspace_provisioner.config.LangServeConfig
+template_dir: langserve
+changelog: |
+  - Initial version
+  - FastAPI + LangServe for agent API serving
+  - S3FS workspace mount for shared code/data
+  - Per-user multi-instance support
+  - Workspace auth via Nginx Ingress
+upgradeable_from: []
+software_version: "0.3"

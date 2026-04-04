@@ -97,6 +97,10 @@ class PostgresqlDeployStep(WorkflowStep):
                     "host": f"argus-postgresql-{workspace_name}.{namespace}.svc.cluster.local",
                     "namespace": namespace,
                 },
+                "resources": {
+                    "cpu_limit": config.resources.cpu_limit,
+                    "memory_limit": config.resources.memory_limit,
+                },
             },
         )
 
