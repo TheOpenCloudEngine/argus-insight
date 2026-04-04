@@ -691,6 +691,12 @@ async def _run_provisioning_workflow(
 
             ctx.workspace_id = workspace_id
 
+            # Pass per-plugin config to context (e.g. Trino tier)
+            if req.plugin_config:
+                for key, val in req.plugin_config.items():
+                    ctx.set(key, val)
+                logger.info("Plugin config injected into context: %s", list(req.plugin_config.keys()))
+
             execution = await executor.run(
                 workspace_id=workspace_id,
                 workflow_name="workspace-provision",

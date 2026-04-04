@@ -365,6 +365,7 @@ async def get_workspace(
 
 class DeployPipelineRequest(BaseModel):
     pipeline_id: int
+    plugin_config: dict | None = None  # Optional per-plugin config (e.g. {"tier": "standard"} for Trino)
 
 
 @router.post("/workspaces/{workspace_id}/deploy")
@@ -410,6 +411,7 @@ async def deploy_pipeline_to_workspace(
         domain=ws.domain,
         admin_user_id=ws.created_by,
         pipeline_ids=[req.pipeline_id],
+        plugin_config=req.plugin_config,
     )
 
     # Update workspace status

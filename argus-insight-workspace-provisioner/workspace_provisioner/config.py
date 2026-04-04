@@ -548,20 +548,30 @@ class VScodeServerConfig(BaseModel):
 
 
 class TrinoConfig(BaseModel):
-    """Trino distributed SQL query engine deployment settings."""
+    """Trino distributed SQL query engine deployment settings.
 
+    Tier presets:
+      - development: Single coordinator (include-coordinator=true), 0 workers
+      - standard: Coordinator + 1 worker
+      - performance: Coordinator + 3 workers
+    """
+
+    tier: str = Field(
+        default="development",
+        description="Deployment tier: development | standard | performance",
+    )
     coordinator_image: str = Field(
-        default="trinodb/trino:latest",
+        default="trinodb/trino:480",
         description="Trino coordinator/worker container image",
     )
     worker_replicas: int = Field(
-        default=1,
-        description="Number of Trino worker replicas",
+        default=0,
+        description="Number of Trino worker replicas (0 = single-node)",
     )
     coordinator_resources: ResourceConfig = Field(
         default_factory=lambda: ResourceConfig(
-            cpu_request="500m", cpu_limit="2",
-            memory_request="2Gi", memory_limit="4Gi",
+            cpu_request="500m", cpu_limit="1",
+            memory_request="1Gi", memory_limit="2Gi",
         ),
         description="CPU/Memory for the coordinator",
     )
@@ -572,6 +582,45 @@ class TrinoConfig(BaseModel):
         ),
         description="CPU/Memory for each worker",
     )
+
+    @classmethod
+    def from_tier(cls, tier: str) -> "TrinoConfig":
+        """Create a TrinoConfig from a tier preset."""
+        presets = {
+            "development": cls(
+                tier="development",
+                worker_replicas=0,
+                coordinator_resources=ResourceConfig(
+                    cpu_request="500m", cpu_limit="1",
+                    memory_request="1Gi", memory_limit="2Gi",
+                ),
+            ),
+            "standard": cls(
+                tier="standard",
+                worker_replicas=1,
+                coordinator_resources=ResourceConfig(
+                    cpu_request="500m", cpu_limit="1",
+                    memory_request="1Gi", memory_limit="2Gi",
+                ),
+                worker_resources=ResourceConfig(
+                    cpu_request="1", cpu_limit="2",
+                    memory_request="2Gi", memory_limit="4Gi",
+                ),
+            ),
+            "performance": cls(
+                tier="performance",
+                worker_replicas=3,
+                coordinator_resources=ResourceConfig(
+                    cpu_request="500m", cpu_limit="1",
+                    memory_request="1Gi", memory_limit="2Gi",
+                ),
+                worker_resources=ResourceConfig(
+                    cpu_request="1", cpu_limit="2",
+                    memory_request="2Gi", memory_limit="4Gi",
+                ),
+            ),
+        }
+        return presets.get(tier, presets["development"])
 
 
 class StarRocksConfig(BaseModel):

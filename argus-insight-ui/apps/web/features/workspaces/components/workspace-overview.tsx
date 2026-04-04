@@ -1047,6 +1047,7 @@ function AddServiceButton({
   // Confirm dialog state
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pendingItem, setPendingItem] = useState<DeployMappingEntry | null>(null)
+  const [trinoTier, setTrinoTier] = useState<string>("development")
 
   // Deploy progress dialog state
   const [deployOpen, setDeployOpen] = useState(false)
@@ -1092,12 +1093,19 @@ function AddServiceButton({
       return
     }
 
+    // Build deploy payload — include plugin_config for Trino tier
+    const isTrino = item.service_key === "trino"
+    const deployBody: Record<string, unknown> = { pipeline_id: pipelineId }
+    if (isTrino) {
+      deployBody.plugin_config = { argus_trino_tier: trinoTier }
+    }
+
     // Deploy
     try {
       const res = await authFetch(`/api/v1/workspace/workspaces/${workspace.id}/deploy`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pipeline_id: pipelineId }),
+        body: JSON.stringify(deployBody),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
@@ -1196,19 +1204,53 @@ function AddServiceButton({
 
       {/* Confirm Deploy Dialog */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Deploy Service</DialogTitle>
+            <DialogTitle>Deploy {pendingItem?.service_label}</DialogTitle>
             <DialogDescription>
-              Would you like to deploy {pendingItem?.service_label} to this workspace?
+              {pendingItem?.service_key === "trino"
+                ? "Select a deployment tier for Trino and deploy to this workspace."
+                : `Would you like to deploy ${pendingItem?.service_label} to this workspace?`}
             </DialogDescription>
           </DialogHeader>
+
+          {/* Trino Tier Selection */}
+          {pendingItem?.service_key === "trino" && (
+            <div className="space-y-2 py-2">
+              {[
+                { tier: "development", label: "Development", desc: "Single node — 1 CPU, 2 GiB", cpu: "1", mem: "2Gi" },
+                { tier: "standard", label: "Standard", desc: "Coordinator + 1 Worker — 3 CPU, 6 GiB", cpu: "3", mem: "6Gi" },
+                { tier: "performance", label: "Performance", desc: "Coordinator + 3 Workers — 7 CPU, 14 GiB", cpu: "7", mem: "14Gi" },
+              ].map((t) => (
+                <label
+                  key={t.tier}
+                  className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                    trinoTier === t.tier ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="trino-tier"
+                    value={t.tier}
+                    checked={trinoTier === t.tier}
+                    onChange={() => setTrinoTier(t.tier)}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <div className="text-sm font-medium">{t.label}</div>
+                    <div className="text-xs text-muted-foreground">{t.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" size="sm" onClick={() => setConfirmOpen(false)}>
               Cancel
             </Button>
             <Button size="sm" onClick={handleConfirmDeploy}>
-              OK
+              Deploy
             </Button>
           </div>
         </DialogContent>

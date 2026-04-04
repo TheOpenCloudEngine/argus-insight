@@ -51,6 +51,8 @@ spec:
             - name: config
               mountPath: /etc/trino/log.properties
               subPath: log.properties
+            - name: catalogs
+              mountPath: /etc/trino/catalog
           readinessProbe:
             httpGet:
               path: /v1/info
@@ -67,6 +69,9 @@ spec:
         - name: config
           configMap:
             name: argus-trino-${WORKSPACE_NAME}-config
+        - name: catalogs
+          configMap:
+            name: argus-trino-${WORKSPACE_NAME}-catalogs
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -121,7 +126,12 @@ spec:
             - name: config
               mountPath: /etc/trino/log.properties
               subPath: log.properties
+            - name: catalogs
+              mountPath: /etc/trino/catalog
       volumes:
         - name: config
           configMap:
             name: argus-trino-${WORKSPACE_NAME}-config
+        - name: catalogs
+          configMap:
+            name: argus-trino-${WORKSPACE_NAME}-catalogs
