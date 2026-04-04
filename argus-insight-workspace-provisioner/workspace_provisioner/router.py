@@ -16,6 +16,7 @@ Endpoint summary:
 
 import asyncio
 import logging
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -366,6 +367,275 @@ async def get_workspace(
 class DeployPipelineRequest(BaseModel):
     pipeline_id: int
     plugin_config: dict | None = None  # Optional per-plugin config (e.g. {"tier": "standard"} for Trino)
+
+
+class TrinoConfigureRequest(BaseModel):
+    """Request body for Trino runtime configuration changes."""
+    tier: str | None = None  # development | standard | performance | custom
+    coordinator_replicas: int | None = None
+    worker_replicas: int | None = None
+    coordinator_cpu_limit: str | None = None
+    coordinator_memory_limit: str | None = None
+    worker_cpu_limit: str | None = None
+    worker_memory_limit: str | None = None
+    query_max_memory: str | None = None
+    query_max_memory_per_node: str | None = None
+    refresh_catalogs: bool = False
+
+
+@router.post("/workspaces/{workspace_id}/trino/configure/validate")
+async def validate_trino_configure(
+    workspace_id: int,
+    req: TrinoConfigureRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Check if Trino configuration change fits within workspace resource quota."""
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+    from app.resource_profile.models import ArgusResourceProfile
+    from app.resource_profile.resource_utils import parse_cpu, parse_memory_to_mib
+
+    ws = (await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )).scalars().first()
+    if not ws:
+        raise HTTPException(404, "Workspace not found")
+
+    # Get profile limits
+    profile = None
+    if ws.resource_profile_id:
+        profile = (await session.execute(
+            select(ArgusResourceProfile).where(ArgusResourceProfile.id == ws.resource_profile_id)
+        )).scalars().first()
+
+    # Current total usage from all running services
+    svcs = (await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+            ArgusWorkspaceService.status == "running",
+        )
+    )).scalars().all()
+
+    current_cpu = Decimal("0")
+    current_mem_mib = 0
+    trino_cpu = Decimal("0")
+    trino_mem_mib = 0
+    for svc in svcs:
+        meta = svc.metadata_json if hasattr(svc, 'metadata_json') else (svc.metadata if isinstance(svc.metadata, dict) else {})
+        res = meta.get("resources", {})
+        cpu = parse_cpu(res.get("cpu_limit", "0"))
+        mem = parse_memory_to_mib(res.get("memory_limit", "0"))
+        current_cpu += cpu
+        current_mem_mib += mem
+        if svc.plugin_name == "argus-trino":
+            trino_cpu = cpu
+            trino_mem_mib = mem
+
+    # Calculate new Trino resource
+    coord_replicas = req.coordinator_replicas or 1
+    worker_replicas = req.worker_replicas or 0
+    coord_cpu = parse_cpu(req.coordinator_cpu_limit or "1")
+    coord_mem = parse_memory_to_mib(req.coordinator_memory_limit or "2Gi")
+    worker_cpu = parse_cpu(req.worker_cpu_limit or "2")
+    worker_mem = parse_memory_to_mib(req.worker_memory_limit or "4Gi")
+
+    new_trino_cpu = coord_cpu * coord_replicas + worker_cpu * worker_replicas
+    new_trino_mem = coord_mem * coord_replicas + worker_mem * worker_replicas
+
+    # Delta
+    delta_cpu = new_trino_cpu - trino_cpu
+    delta_mem = new_trino_mem - trino_mem_mib
+
+    after_cpu = float(current_cpu + delta_cpu)
+    after_mem = (current_mem_mib + delta_mem) / 1024  # GiB
+
+    limit_cpu = float(profile.cpu_cores) if profile else 999
+    limit_mem = float(profile.memory_mb) / 1024 if profile else 999
+
+    allowed = after_cpu <= limit_cpu and after_mem <= limit_mem
+
+    return {
+        "allowed": allowed,
+        "current": {"cpu_used": float(current_cpu), "memory_used_gb": round(current_mem_mib / 1024, 1)},
+        "limit": {"cpu": limit_cpu, "memory_gb": round(limit_mem, 1)},
+        "delta": {"cpu": float(delta_cpu), "memory_gb": round(float(delta_mem) / 1024, 1)},
+        "after": {"cpu_used": round(after_cpu, 1), "memory_used_gb": round(after_mem, 1)},
+        "message": "" if allowed else f"Exceeds workspace limit ({limit_cpu} CPU, {limit_mem:.0f}Gi). Upgrade the resource profile.",
+    }
+
+
+@router.post("/workspaces/{workspace_id}/trino/configure")
+async def configure_trino(
+    workspace_id: int,
+    req: TrinoConfigureRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Apply Trino configuration changes (replicas, resources, query limits, catalogs)."""
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+
+    ws = (await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )).scalars().first()
+    if not ws:
+        raise HTTPException(404, "Workspace not found")
+
+    namespace = ws.k8s_namespace or f"argus-ws-{ws.name}"
+
+    # Find Trino service
+    svc = (await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+            ArgusWorkspaceService.plugin_name == "argus-trino",
+            ArgusWorkspaceService.status == "running",
+        )
+    )).scalars().first()
+    if not svc:
+        raise HTTPException(404, "Trino service not found in this workspace")
+
+    import asyncio as aio
+    import json as json_mod
+    import re
+
+    def k8s_mem_to_java(mem: str) -> str:
+        m = re.match(r"^(\d+)(Gi|Mi|G|M)$", mem)
+        if not m:
+            return mem
+        val, unit = m.group(1), m.group(2)
+        return f"{val}{'G' if unit.startswith('G') else 'M'}"
+
+    coord_replicas = req.coordinator_replicas or 1
+    worker_replicas = req.worker_replicas or 0
+    coord_cpu = req.coordinator_cpu_limit or "1"
+    coord_mem = req.coordinator_memory_limit or "2Gi"
+    worker_cpu = req.worker_cpu_limit or "2"
+    worker_mem = req.worker_memory_limit or "4Gi"
+    include_coord = "true" if worker_replicas == 0 else "false"
+    query_max = req.query_max_memory or "1GB"
+    query_max_node = req.query_max_memory_per_node or "512MB"
+
+    # 1. Update ConfigMap (coordinator config with query limits)
+    from workspace_provisioner.kubernetes.client import kubectl_apply
+
+    meta = svc.metadata if isinstance(svc.metadata, dict) else (json_mod.loads(svc.metadata) if isinstance(svc.metadata, str) else {})
+    shared_secret = ""
+    # Extract shared secret from current configmap
+    proc = await aio.create_subprocess_exec(
+        "kubectl", "get", "configmap", f"argus-trino-{ws.name}-config",
+        "-n", namespace, "-o", "jsonpath={.data.config-coordinator\\.properties}",
+        stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+    )
+    out, _ = await proc.communicate()
+    for line in out.decode().split("\n"):
+        if "shared-secret=" in line:
+            shared_secret = line.split("=", 1)[1].strip()
+            break
+
+    coord_config = f"""coordinator=true
+node-scheduler.include-coordinator={include_coord}
+http-server.http.port=8080
+http-server.process-forwarded=true
+http-server.authentication.type=PASSWORD
+http-server.authentication.allow-insecure-over-http=true
+web-ui.enabled=true
+web-ui.authentication.type=FIXED
+web-ui.user=admin
+discovery.uri=http://argus-trino-{ws.name}:8080
+query.max-memory={query_max}
+query.max-memory-per-node={query_max_node}
+internal-communication.shared-secret={shared_secret}
+"""
+
+    # Patch configmap coordinator config
+    proc = await aio.create_subprocess_exec(
+        "kubectl", "get", "configmap", f"argus-trino-{ws.name}-config",
+        "-n", namespace, "-o", "json",
+        stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+    )
+    cm_out, _ = await proc.communicate()
+    cm = json_mod.loads(cm_out.decode())
+    cm["data"]["config-coordinator.properties"] = coord_config
+    cm["data"]["jvm-coordinator.config"] = f"""-server
+-Xmx{k8s_mem_to_java(coord_mem)}
+-XX:+UseG1GC
+-XX:G1HeapRegionSize=32M
+-XX:+ExplicitGCInvokesConcurrent
+-XX:+HeapDumpOnOutOfMemoryError
+-Djdk.attach.allowAttachSelf=true
+"""
+    cm["data"]["jvm-worker.config"] = f"""-server
+-Xmx{k8s_mem_to_java(worker_mem)}
+-XX:+UseG1GC
+-XX:G1HeapRegionSize=32M
+-XX:+ExplicitGCInvokesConcurrent
+-XX:+HeapDumpOnOutOfMemoryError
+-Djdk.attach.allowAttachSelf=true
+"""
+    await kubectl_apply(json_mod.dumps(cm))
+    logger.info("Trino ConfigMap updated: query_max=%s, include_coord=%s", query_max, include_coord)
+
+    # 2. Refresh catalogs if requested
+    if req.refresh_catalogs:
+        from workspace_provisioner.workflow.steps.trino_deploy import _build_catalog_configmap
+        catalog_yaml = await _build_catalog_configmap(workspace_id, ws.name, namespace)
+        await kubectl_apply(catalog_yaml)
+        logger.info("Trino catalogs refreshed for workspace %s", ws.name)
+
+    # 3. Patch Coordinator Deployment (replicas + resources)
+    patch_cmd = [
+        "kubectl", "patch", "deployment", f"argus-trino-{ws.name}",
+        "-n", namespace, "--type=json", "-p", json_mod.dumps([
+            {"op": "replace", "path": "/spec/replicas", "value": coord_replicas},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/cpu", "value": coord_cpu},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": coord_mem},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/cpu", "value": f"{int(float(coord_cpu.rstrip('m')) * 500)}m" if not coord_cpu.endswith("m") else coord_cpu},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/memory", "value": coord_mem},
+        ]),
+    ]
+    proc = await aio.create_subprocess_exec(*patch_cmd, stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE)
+    await proc.communicate()
+
+    # 4. Patch Worker Deployment (replicas + resources)
+    patch_cmd = [
+        "kubectl", "patch", "deployment", f"argus-trino-{ws.name}-worker",
+        "-n", namespace, "--type=json", "-p", json_mod.dumps([
+            {"op": "replace", "path": "/spec/replicas", "value": worker_replicas},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/cpu", "value": worker_cpu},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": worker_mem},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/cpu", "value": f"{int(float(worker_cpu.rstrip('m')) * 500)}m" if not worker_cpu.endswith("m") else worker_cpu},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/memory", "value": worker_mem},
+        ]),
+    ]
+    proc = await aio.create_subprocess_exec(*patch_cmd, stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE)
+    await proc.communicate()
+
+    # 5. Rollout restart to pick up ConfigMap changes
+    proc = await aio.create_subprocess_exec(
+        "kubectl", "rollout", "restart", f"deployment/argus-trino-{ws.name}",
+        "-n", namespace, stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+    )
+    await proc.communicate()
+
+    # 6. Update service metadata
+    meta["display"]["Tier"] = (req.tier or "custom").capitalize()
+    meta["display"]["Coordinators"] = str(coord_replicas)
+    meta["display"]["Workers"] = str(worker_replicas)
+    meta["resources"] = {
+        "cpu_limit": coord_cpu,
+        "memory_limit": coord_mem,
+        "worker_cpu_limit": worker_cpu,
+        "worker_memory_limit": worker_mem,
+    }
+    from sqlalchemy import text
+    await session.execute(
+        text("UPDATE argus_workspace_services SET metadata = :m WHERE id = :id"),
+        {"m": json_mod.dumps(meta), "id": svc.id},
+    )
+    await session.commit()
+
+    logger.info("Trino configured: ws=%s tier=%s coord=%d×%s/%s worker=%d×%s/%s",
+                ws.name, req.tier, coord_replicas, coord_cpu, coord_mem,
+                worker_replicas, worker_cpu, worker_mem)
+
+    return {"status": "ok", "message": "Trino configuration applied. Pods are restarting."}
 
 
 @router.post("/workspaces/{workspace_id}/deploy")

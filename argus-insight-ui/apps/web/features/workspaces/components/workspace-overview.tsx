@@ -266,7 +266,7 @@ function DetailRow({
 /*  Service Configuration Sheet (MariaDB, PostgreSQL)                  */
 /* ------------------------------------------------------------------ */
 
-const CONFIGURABLE_PLUGINS = new Set(["argus-mariadb", "argus-postgresql", "argus-jupyter", "argus-jupyter-tensorflow", "argus-jupyter-pyspark", "argus-mlflow", "argus-airflow"])
+const CONFIGURABLE_PLUGINS = new Set(["argus-mariadb", "argus-postgresql", "argus-jupyter", "argus-jupyter-tensorflow", "argus-jupyter-pyspark", "argus-mlflow", "argus-airflow", "argus-trino"])
 
 function ServiceConfigSheet({
   open,
@@ -421,6 +421,235 @@ function ServiceConfigSheet({
         )}
       </SheetContent>
     </Sheet>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Trino Configuration Dialog
+// ---------------------------------------------------------------------------
+
+const TRINO_TIERS = [
+  { tier: "development", label: "Development", coord: 1, workers: 0, coordCpu: "1", coordMem: "2Gi", workerCpu: "1", workerMem: "2Gi" },
+  { tier: "standard", label: "Standard", coord: 1, workers: 1, coordCpu: "1", coordMem: "2Gi", workerCpu: "2", workerMem: "4Gi" },
+  { tier: "performance", label: "Performance", coord: 2, workers: 3, coordCpu: "1", coordMem: "2Gi", workerCpu: "2", workerMem: "4Gi" },
+]
+
+function TrinoConfigDialog({
+  open, onOpenChange, workspaceId, service,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  workspaceId: number
+  service: WorkspaceService
+}) {
+  const meta = (service.metadata ?? {}) as Record<string, any>
+  const display = meta.display ?? {}
+  const resources = meta.resources ?? {}
+
+  const [tier, setTier] = useState(display.Tier?.toLowerCase() || "standard")
+  const [coordReplicas, setCoordReplicas] = useState(Number(display.Coordinators) || 1)
+  const [workerReplicas, setWorkerReplicas] = useState(Number(display.Workers) || 1)
+  const [coordCpu, setCoordCpu] = useState(resources.cpu_limit || "1")
+  const [coordMem, setCoordMem] = useState(resources.memory_limit || "2Gi")
+  const [workerCpu, setWorkerCpu] = useState(resources.worker_cpu_limit || "2")
+  const [workerMem, setWorkerMem] = useState(resources.worker_memory_limit || "4Gi")
+  const [queryMax, setQueryMax] = useState("1GB")
+  const [queryMaxNode, setQueryMaxNode] = useState("512MB")
+  const [refreshCatalogs, setRefreshCatalogs] = useState(false)
+
+  const [applying, setApplying] = useState(false)
+  const [validation, setValidation] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  // When tier changes, apply preset values
+  const handleTierChange = (t: string) => {
+    setTier(t)
+    const preset = TRINO_TIERS.find((p) => p.tier === t)
+    if (preset) {
+      setCoordReplicas(preset.coord)
+      setWorkerReplicas(preset.workers)
+      setCoordCpu(preset.coordCpu)
+      setCoordMem(preset.coordMem)
+      setWorkerCpu(preset.workerCpu)
+      setWorkerMem(preset.workerMem)
+    }
+  }
+
+  // Validate on any change
+  useEffect(() => {
+    if (!open) return
+    const timer = setTimeout(async () => {
+      try {
+        const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/trino/configure/validate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            coordinator_replicas: coordReplicas,
+            worker_replicas: workerReplicas,
+            coordinator_cpu_limit: coordCpu,
+            coordinator_memory_limit: coordMem,
+            worker_cpu_limit: workerCpu,
+            worker_memory_limit: workerMem,
+          }),
+        })
+        if (res.ok) setValidation(await res.json())
+      } catch { /* ignore */ }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [open, coordReplicas, workerReplicas, coordCpu, coordMem, workerCpu, workerMem, workspaceId])
+
+  const handleApply = async () => {
+    if (validation && !validation.allowed) return
+    setApplying(true)
+    setError(null)
+    setSuccess(false)
+    try {
+      const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/trino/configure`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tier,
+          coordinator_replicas: coordReplicas,
+          worker_replicas: workerReplicas,
+          coordinator_cpu_limit: coordCpu,
+          coordinator_memory_limit: coordMem,
+          worker_cpu_limit: workerCpu,
+          worker_memory_limit: workerMem,
+          query_max_memory: queryMax,
+          query_max_memory_per_node: queryMaxNode,
+          refresh_catalogs: refreshCatalogs,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.detail || `Failed: ${res.status}`)
+      }
+      setSuccess(true)
+      setTimeout(() => { setSuccess(false); onOpenChange(false) }, 2000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to apply")
+    }
+    setApplying(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Configure Trino</DialogTitle>
+          <DialogDescription>Adjust Trino cluster configuration. Changes trigger a pod restart.</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          {/* Tier */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Tier</Label>
+            <div className="grid grid-cols-4 gap-2">
+              {[...TRINO_TIERS, { tier: "custom", label: "Custom", coord: 0, workers: 0, coordCpu: "", coordMem: "", workerCpu: "", workerMem: "" }].map((t) => (
+                <button
+                  key={t.tier}
+                  onClick={() => handleTierChange(t.tier)}
+                  className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    tier === t.tier ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted/50"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Replicas */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Replicas</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">Coordinators</Label>
+                <Input type="number" min={1} max={3} value={coordReplicas}
+                  onChange={(e) => { setCoordReplicas(Number(e.target.value)); setTier("custom") }} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Workers</Label>
+                <Input type="number" min={0} max={10} value={workerReplicas}
+                  onChange={(e) => { setWorkerReplicas(Number(e.target.value)); setTier("custom") }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Resources */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Resources</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">Coordinator CPU Limit</Label>
+                <Input value={coordCpu} onChange={(e) => { setCoordCpu(e.target.value); setTier("custom") }} placeholder="e.g. 1, 2, 500m" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Coordinator Memory Limit</Label>
+                <Input value={coordMem} onChange={(e) => { setCoordMem(e.target.value); setTier("custom") }} placeholder="e.g. 2Gi, 4Gi" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Worker CPU Limit</Label>
+                <Input value={workerCpu} onChange={(e) => { setWorkerCpu(e.target.value); setTier("custom") }} placeholder="e.g. 2, 4" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Worker Memory Limit</Label>
+                <Input value={workerMem} onChange={(e) => { setWorkerMem(e.target.value); setTier("custom") }} placeholder="e.g. 4Gi, 8Gi" />
+              </div>
+            </div>
+          </div>
+
+          {/* Query Limits */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Query Limits</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">Max Memory</Label>
+                <Input value={queryMax} onChange={(e) => setQueryMax(e.target.value)} placeholder="e.g. 1GB, 4GB" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Max Memory Per Node</Label>
+                <Input value={queryMaxNode} onChange={(e) => setQueryMaxNode(e.target.value)} placeholder="e.g. 512MB, 2GB" />
+              </div>
+            </div>
+          </div>
+
+          {/* Catalogs */}
+          <div className="flex items-center gap-3">
+            <input type="checkbox" id="refresh-catalogs" checked={refreshCatalogs} onChange={(e) => setRefreshCatalogs(e.target.checked)} />
+            <Label htmlFor="refresh-catalogs" className="text-sm cursor-pointer">Refresh Catalogs (re-detect workspace DB services)</Label>
+          </div>
+
+          {/* Resource validation */}
+          {validation && (
+            <div className={`rounded-md border px-3 py-2 text-xs ${validation.allowed ? "bg-muted/30" : "bg-destructive/10 border-destructive/30 text-destructive"}`}>
+              <div className="flex justify-between">
+                <span>CPU: {validation.after.cpu_used} / {validation.limit.cpu} cores</span>
+                <span>Memory: {validation.after.memory_used_gb} / {validation.limit.memory_gb} GiB</span>
+              </div>
+              {validation.delta.cpu !== 0 && (
+                <div className="text-muted-foreground mt-1">
+                  Change: {validation.delta.cpu > 0 ? "+" : ""}{validation.delta.cpu} CPU, {validation.delta.memory_gb > 0 ? "+" : ""}{validation.delta.memory_gb} GiB
+                </div>
+              )}
+              {!validation.allowed && <div className="mt-1 font-medium">{validation.message}</div>}
+            </div>
+          )}
+
+          {error && <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive">{error}</div>}
+          {success && <div className="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700">Configuration applied. Pods are restarting.</div>}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button size="sm" onClick={handleApply} disabled={applying || (validation && !validation.allowed)}>
+            {applying ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+            Apply
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -697,7 +926,15 @@ function ServiceDataListItem({
         </DialogContent>
       </Dialog>
       {/* Service Config Sheet */}
-      {isConfigurable && workspaceId && (
+      {isConfigurable && workspaceId && service.plugin_name === "argus-trino" && (
+        <TrinoConfigDialog
+          open={configOpen}
+          onOpenChange={setConfigOpen}
+          workspaceId={workspaceId}
+          service={service}
+        />
+      )}
+      {isConfigurable && workspaceId && service.plugin_name !== "argus-trino" && (
         <ServiceConfigSheet
           open={configOpen}
           onOpenChange={setConfigOpen}
