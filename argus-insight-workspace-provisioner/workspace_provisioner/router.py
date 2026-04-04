@@ -1102,6 +1102,99 @@ async def deploy_pipeline_to_workspace(
     if ws.status == "deleting":
         raise HTTPException(status_code=400, detail="This workspace is being deleted.")
 
+    # Pre-deploy resource quota check
+    from workspace_provisioner.plugins.models import ArgusPluginConfig
+    from app.resource_profile.models import ArgusResourceProfile
+    from app.resource_profile.resource_utils import parse_cpu, parse_memory_to_mib
+    from workspace_provisioner.models import ArgusWorkspaceService
+    import json as json_mod
+
+    # Resolve plugin name from pipeline_id
+    plugin_cfgs = (await session.execute(
+        select(ArgusPluginConfig).where(ArgusPluginConfig.pipeline_id == req.pipeline_id)
+    )).scalars().all()
+    plugin_names = [c.plugin_name for c in plugin_cfgs]
+
+    # Estimate resource requirement for the new service
+    PLUGIN_RESOURCE_ESTIMATES: dict[str, tuple[str, str]] = {
+        # plugin_name: (cpu_limit, memory_limit) — sum of all components
+        "argus-postgresql": ("2", "2Gi"),
+        "argus-mariadb": ("2", "2Gi"),
+        "argus-trino": ("1", "2Gi"),        # Minimum (dev tier), actual from plugin_config
+        "argus-starrocks": ("3", "6Gi"),     # FE + 1 BE minimum
+        "argus-mlflow": ("1", "1Gi"),
+        "argus-jupyter": ("1", "2Gi"),
+        "argus-jupyter-tensorflow": ("2", "4Gi"),
+        "argus-jupyter-pyspark": ("2", "4Gi"),
+        "argus-vscode-server": ("1", "2Gi"),
+        "argus-ollama": ("4", "8Gi"),
+        "argus-rstudio": ("1", "2Gi"),
+        "argus-neo4j": ("1", "2Gi"),
+        "argus-labelstudio": ("1", "2Gi"),
+        "argus-redis": ("0.5", "1Gi"),
+        "argus-airflow": ("2", "4Gi"),
+    }
+
+    # Use tier-specific estimate if plugin_config provided
+    if req.plugin_config:
+        tier = req.plugin_config.get("argus_trino_tier")
+        if tier:
+            tier_resources = {"development": ("1", "2Gi"), "standard": ("3", "6Gi"), "performance": ("8", "16Gi")}
+            PLUGIN_RESOURCE_ESTIMATES["argus-trino"] = tier_resources.get(tier, ("1", "2Gi"))
+        sr_tier = req.plugin_config.get("argus_starrocks_tier")
+        if sr_tier:
+            sr_resources = {"development": ("3", "6Gi"), "standard": ("8", "16Gi"), "performance": ("22", "44Gi")}
+            PLUGIN_RESOURCE_ESTIMATES["argus-starrocks"] = sr_resources.get(sr_tier, ("3", "6Gi"))
+
+    # Calculate total new resource requirement
+    new_cpu = Decimal("0")
+    new_mem_mib = 0
+    for pn in plugin_names:
+        est = PLUGIN_RESOURCE_ESTIMATES.get(pn)
+        if est:
+            new_cpu += parse_cpu(est[0])
+            new_mem_mib += parse_memory_to_mib(est[1])
+
+    # Current usage
+    if ws.resource_profile_id and new_cpu > 0:
+        profile = (await session.execute(
+            select(ArgusResourceProfile).where(ArgusResourceProfile.id == ws.resource_profile_id)
+        )).scalars().first()
+
+        svcs = (await session.execute(
+            select(ArgusWorkspaceService).where(
+                ArgusWorkspaceService.workspace_id == workspace_id,
+                ArgusWorkspaceService.status == "running",
+            )
+        )).scalars().all()
+
+        current_cpu = Decimal("0")
+        current_mem_mib = 0
+        for s in svcs:
+            meta = s.metadata if isinstance(s.metadata, dict) else (json_mod.loads(s.metadata) if isinstance(s.metadata, str) else {})
+            res = meta.get("resources", {})
+            current_cpu += parse_cpu(res.get("cpu_limit", "0"))
+            current_mem_mib += parse_memory_to_mib(res.get("memory_limit", "0"))
+
+        if profile:
+            limit_cpu = Decimal(str(profile.cpu_cores))
+            limit_mem_mib = int(profile.memory_mb)
+            after_cpu = current_cpu + new_cpu
+            after_mem = current_mem_mib + new_mem_mib
+
+            if after_cpu > limit_cpu or after_mem > limit_mem_mib:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Not enough workspace resources. "
+                        f"Required: {float(new_cpu):.1f} CPU, {new_mem_mib/1024:.1f} GiB. "
+                        f"Available: {float(limit_cpu - current_cpu):.1f} CPU, {(limit_mem_mib - current_mem_mib)/1024:.1f} GiB. "
+                        f"Current usage: {float(current_cpu):.1f}/{float(limit_cpu)} CPU, "
+                        f"{current_mem_mib/1024:.1f}/{limit_mem_mib/1024:.0f} GiB."
+                    ),
+                )
+                logger.warning("Deploy rejected: insufficient resources for %s in workspace %d", plugin_names, workspace_id)
+
     # Add pipeline association
     ws_pipeline = ArgusWorkspacePipeline(
         workspace_id=workspace_id,
