@@ -90,7 +90,7 @@ async def save_tabs(
     req: TabSaveRequest,
     session: AsyncSession = Depends(get_session),
 ):
-    """Save all editor tabs (upsert + delete closed tabs)."""
+    """Save editor tabs (upsert only — does not delete other tabs)."""
     from app.sql.models import SqlEditorTab
 
     # Get existing tab IDs for this workspace-user
@@ -101,15 +101,6 @@ async def save_tabs(
         )
     )
     existing_ids = set(row[0] for row in existing.fetchall())
-    incoming_ids = set(t.id for t in req.tabs)
-
-    # Delete tabs that were closed (exist in DB but not in request)
-    to_delete = existing_ids - incoming_ids
-    if to_delete:
-        from sqlalchemy import delete
-        await session.execute(
-            delete(SqlEditorTab).where(SqlEditorTab.id.in_(to_delete))
-        )
 
     # Upsert each tab
     for tab in req.tabs:
@@ -137,9 +128,29 @@ async def save_tabs(
             ))
 
     await session.commit()
-    logger.info("Tabs saved: ws=%d user=%d saved=%d deleted=%d",
-                req.workspace_id, req.user_id, len(req.tabs), len(to_delete))
-    return {"saved": len(req.tabs), "deleted": len(to_delete)}
+    logger.info("Tabs saved: ws=%d user=%d saved=%d",
+                req.workspace_id, req.user_id, len(req.tabs))
+    return {"saved": len(req.tabs)}
+
+
+@router.delete("/tabs/{tab_id}", status_code=204)
+async def delete_tab(
+    tab_id: str,
+    workspace_id: int = Query(...),
+    user_id: int = Query(...),
+    session: AsyncSession = Depends(get_session),
+):
+    """Delete a single editor tab."""
+    from app.sql.models import SqlEditorTab
+    from sqlalchemy import delete
+    await session.execute(
+        delete(SqlEditorTab).where(
+            SqlEditorTab.id == tab_id,
+            SqlEditorTab.workspace_id == workspace_id,
+            SqlEditorTab.user_id == user_id,
+        )
+    )
+    await session.commit()
 
 
 # ---------------------------------------------------------------------------

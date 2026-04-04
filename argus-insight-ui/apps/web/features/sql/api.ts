@@ -38,6 +38,12 @@ export async function loadTabs(workspaceId: number, userId: number): Promise<Tab
   return data.tabs ?? []
 }
 
+export async function deleteTab(workspaceId: number, userId: number, tabId: string): Promise<void> {
+  await authFetch(`${BASE}/tabs/${tabId}?workspace_id=${workspaceId}&user_id=${userId}`, {
+    method: "DELETE",
+  })
+}
+
 export async function saveTabs(
   workspaceId: number,
   userId: number,

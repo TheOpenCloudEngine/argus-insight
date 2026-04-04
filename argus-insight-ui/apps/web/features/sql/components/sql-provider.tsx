@@ -157,6 +157,13 @@ export function SqlProvider({ children, workspaceId }: { children: React.ReactNo
 
   const closeTab = useCallback(
     (id: string) => {
+      // Delete from DB
+      if (workspaceId) {
+        const userId = getUserId()
+        if (userId) {
+          api.deleteTab(workspaceId, userId, id).catch(() => {})
+        }
+      }
       setTabs((prev) => {
         const next = prev.filter((t) => t.id !== id)
         if (next.length === 0) {
@@ -169,7 +176,7 @@ export function SqlProvider({ children, workspaceId }: { children: React.ReactNo
         return next
       })
     },
-    [activeTabId],
+    [activeTabId, workspaceId, getUserId],
   )
 
   const updateTabSql = useCallback((id: string, sql: string) => {
@@ -184,26 +191,29 @@ export function SqlProvider({ children, workspaceId }: { children: React.ReactNo
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, datasourceId: dsId } : t)))
   }, [])
 
-  // Save all tabs to DB
+  // Save current active tab to DB
   const saveTabs = useCallback(async () => {
     if (!workspaceId) return
     const userId = getUserId()
     if (!userId) return
+    const tab = tabs.find((t) => t.id === activeTabId)
+    if (!tab) return
+    const tabOrder = tabs.findIndex((t) => t.id === activeTabId)
     try {
-      await api.saveTabs(workspaceId, userId, tabs.map((t, i) => ({
-        id: t.id,
-        title: t.title,
-        sql_text: t.sql,
-        datasource_id: t.datasourceId,
-        tab_order: i,
-      })))
+      await api.saveTabs(workspaceId, userId, [{
+        id: tab.id,
+        title: tab.title,
+        sql_text: tab.sql,
+        datasource_id: tab.datasourceId,
+        tab_order: tabOrder,
+      }])
       setSaveToast("Saved")
       setTimeout(() => setSaveToast(null), 2000)
     } catch {
       setSaveToast("Failed to save")
       setTimeout(() => setSaveToast(null), 3000)
     }
-  }, [workspaceId, getUserId, tabs])
+  }, [workspaceId, getUserId, tabs, activeTabId])
 
   const updateTabResult = useCallback((id: string, result: QueryResult | null) => {
     setTabs((prev) =>
