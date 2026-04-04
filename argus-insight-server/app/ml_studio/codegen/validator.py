@@ -147,6 +147,11 @@ def validate_pipeline(
 ) -> ValidationResult:
     """Validate a pipeline DAG with data-aware schema propagation.
 
+    Walks the DAG in topological order, propagating schema changes
+    (column adds/drops, type casts, etc.) through each transform.
+    Validates downstream nodes against the *actual* schema they will
+    receive at runtime, not just the original source schema.
+
     Args:
         nodes: [{id, type, label, config}, ...]
         edges: [{from, to}, ...]
@@ -155,6 +160,8 @@ def validate_pipeline(
     Returns:
         ValidationResult with errors and warnings.
     """
+    logger.info("validate_pipeline: %d nodes, %d edges, minio=%s",
+                len(nodes), len(edges), "yes" if minio_client else "no")
     result = ValidationResult()
     node_map = {n["id"]: n for n in nodes}
 

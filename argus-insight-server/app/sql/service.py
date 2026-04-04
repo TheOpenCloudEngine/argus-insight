@@ -132,18 +132,27 @@ def _create_adapter(
     engine_type: str, host: str, port: int, database: str,
     username: str, password: str, extra: dict | None = None,
 ) -> BaseAdapter:
+    """Create a database adapter for the given engine type.
+
+    Supported engines: trino, starrocks, postgresql, mariadb.
+    MariaDB uses the StarRocks (MySQL-protocol) adapter.
+    """
     config = ConnectionConfig(
         host=host, port=port, database=database,
         username=username, password=password, extra=extra or {},
     )
     et = engine_type.lower()
     if et == EngineType.TRINO:
+        logger.debug("Creating Trino adapter: %s:%d/%s", host, port, database)
         return TrinoAdapter(config)
     elif et in (EngineType.STARROCKS, EngineType.MARIADB):
+        logger.debug("Creating MySQL-compat adapter (%s): %s:%d/%s", et, host, port, database)
         return StarRocksAdapter(config)
     elif et == EngineType.POSTGRESQL:
+        logger.debug("Creating PostgreSQL adapter: %s:%d/%s", host, port, database)
         return PostgreSQLAdapter(config)
     else:
+        logger.warning("Unsupported engine type requested: %s", engine_type)
         raise ValueError(f"Unsupported engine type: {engine_type}")
 
 
@@ -161,16 +170,23 @@ def _adapter_from_datasource(ds: SqlDatasource) -> BaseAdapter:
 
 
 async def _adapter_from_workspace_service(session: AsyncSession, svc_id: int) -> BaseAdapter:
-    """Create an adapter from a workspace service (argus_workspace_services) by ID."""
+    """Create an adapter from a workspace service (argus_workspace_services) by ID.
+
+    Reads connection info from the service metadata (display/internal fields)
+    and creates the appropriate adapter. Uses raw SQL to avoid ORM metadata
+    attribute name collision.
+    """
     from sqlalchemy import text
     import json as json_mod
 
+    logger.debug("Creating adapter from workspace service id=%d", svc_id)
     row = await session.execute(
         text("SELECT plugin_name, endpoint, username, metadata FROM argus_workspace_services WHERE id = :id"),
         {"id": svc_id},
     )
     svc = row.fetchone()
     if not svc:
+        logger.warning("Workspace service id=%d not found", svc_id)
         raise ValueError(f"Workspace service {svc_id} not found")
 
     plugin_name, endpoint, ws_username, meta_raw = svc
@@ -227,15 +243,23 @@ async def _adapter_from_workspace_service(session: AsyncSession, svc_id: int) ->
     db_user = display.get("DB User", ws_username or "")
     db_pass = display.get("DB Password", "")
 
+    logger.info("Workspace service id=%d resolved: engine=%s host=%s:%d db=%s user=%s",
+                svc_id, engine_type, host, port, db_name, db_user)
     return _create_adapter(engine_type, host, port, db_name, db_user, db_pass)
 
 
 async def _get_adapter(session: AsyncSession, ds_id: int) -> BaseAdapter:
-    """Get adapter for either custom datasource (positive ID) or workspace service (negative ID)."""
+    """Get adapter for either custom datasource (positive ID) or workspace service (negative ID).
+
+    Workspace services use negative IDs (e.g. -39 = workspace service id 39).
+    """
     if ds_id < 0:
+        logger.debug("Resolving workspace datasource: ds_id=%d → service_id=%d", ds_id, abs(ds_id))
         return await _adapter_from_workspace_service(session, abs(ds_id))
+    logger.debug("Resolving custom datasource: ds_id=%d", ds_id)
     ds = await session.get(SqlDatasource, ds_id)
     if not ds:
+        logger.warning("Custom datasource id=%d not found", ds_id)
         raise ValueError(f"Datasource {ds_id} not found")
     return _adapter_from_datasource(ds)
 
@@ -380,8 +404,10 @@ async def test_datasource_by_id(session: AsyncSession, ds_id: int) -> Datasource
 # ---------------------------------------------------------------------------
 
 async def get_catalogs(session: AsyncSession, ds_id: int) -> list[dict]:
+    """Fetch catalog list from datasource for schema browser."""
     adapter = await _get_adapter(session, ds_id)
     catalogs = await adapter.get_catalogs()
+    logger.debug("get_catalogs ds_id=%d → %d catalogs", ds_id, len(catalogs))
     return [{"name": c.name} for c in catalogs]
 
 
@@ -442,6 +468,7 @@ async def execute_query(
     username: str = "",
 ) -> QueryResultResponse:
     """Execute a query synchronously and return results immediately."""
+    logger.info("execute_query: ds_id=%d user=%s sql=%.80s", datasource_id, username, sql.strip())
     # Resolve adapter and datasource name/engine for history
     adapter = await _get_adapter(session, datasource_id)
     if datasource_id < 0:
@@ -555,6 +582,7 @@ async def submit_query(
     username: str = "",
 ) -> QuerySubmitResponse:
     """Submit a query for async execution. Returns immediately with execution_id."""
+    logger.info("submit_query: ds_id=%d user=%s sql=%.80s", datasource_id, username, sql.strip())
     adapter = await _get_adapter(session, datasource_id)
 
     # Resolve name/engine for history
@@ -608,8 +636,9 @@ async def _run_query_background(
     timeout_seconds: int,
     username: str,
 ) -> None:
-    """Background task that executes a query and stores results."""
+    """Background task that executes a query and stores results in paginated cache."""
     from app.core.database import async_session
+    logger.info("Background query started: execution_id=%s ds_name=%s", execution_id, ds_name)
 
     async with async_session() as session:
         await session.execute(
@@ -623,7 +652,10 @@ async def _run_query_background(
         result = await adapter.execute(sql, max_rows, timeout_seconds)
 
         # Store results in paginated cache
+        # Store results in paginated cache (500 rows/page, 5min TTL)
         _result_cache.put(execution_id, result.columns, result.rows, result.elapsed_ms)
+        logger.info("Background query completed: execution_id=%s rows=%d elapsed=%dms",
+                     execution_id, result.row_count, result.elapsed_ms)
 
         async with async_session() as session:
             await session.execute(
@@ -731,8 +763,11 @@ def get_execution_all_rows(execution_id: str) -> tuple[list[dict], list[list]] |
 async def cancel_query(
     session: AsyncSession, execution_id: str,
 ) -> QueryCancelResponse | None:
+    """Cancel a running query by sending pg_cancel_backend (or engine equivalent)."""
+    logger.info("cancel_query: execution_id=%s", execution_id)
     ex = await session.get(SqlQueryExecution, execution_id)
     if not ex:
+        logger.warning("cancel_query: execution_id=%s not found", execution_id)
         return None
 
     if ex.status not in (QueryStatus.QUEUED.value, QueryStatus.RUNNING.value):

@@ -103,17 +103,21 @@ export function SqlEditorPanel() {
     (editor, monaco) => {
       editorRef.current = editor
 
-      // Handle drag-and-drop from datasource sidebar
+      // Handle drag-and-drop from datasource sidebar tree nodes.
+      // Allows dragging schema/table/column names and dropping them
+      // into the editor at the cursor position.
       editor.getDomNode()?.addEventListener("dragover", (e) => {
         e.preventDefault()
         if (e.dataTransfer) e.dataTransfer.dropEffect = "copy"
       })
       editor.getDomNode()?.addEventListener("drop", (e) => {
         e.preventDefault()
+        // stopImmediatePropagation() prevents Monaco's internal drop handler
+        // from running, which would append a "$0" snippet marker to the text.
         e.stopImmediatePropagation()
         const text = e.dataTransfer?.getData("text/plain")
         if (!text) return
-        // Get drop position from mouse coordinates
+        // Resolve the editor position from mouse coordinates and insert text
         const target = editor.getTargetAtClientPoint(e.clientX, e.clientY)
         if (target?.position) {
           editor.executeEdits("drag-drop", [{

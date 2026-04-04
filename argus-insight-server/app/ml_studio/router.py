@@ -811,15 +811,21 @@ async def delete_pipeline(
 
 
 async def _check_workspace_namespace(session: AsyncSession, workspace_id: int) -> str:
-    """Validate workspace exists and K8s namespace is available. Returns namespace or raises."""
+    """Validate workspace exists and K8s namespace is available.
+
+    Called before pipeline/training execution to ensure the target
+    namespace exists. Returns namespace name or raises HTTPException.
+    """
     from workspace_provisioner.models import ArgusWorkspace
     from sqlalchemy import select
 
+    logger.debug("Checking workspace namespace: workspace_id=%d", workspace_id)
     ws_result = await session.execute(
         select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
     )
     workspace = ws_result.scalars().first()
     if not workspace:
+        logger.warning("Workspace id=%d not found", workspace_id)
         raise HTTPException(status_code=404, detail={
             "message": f"Workspace (id={workspace_id}) not found",
         })
@@ -833,7 +839,9 @@ async def _check_workspace_namespace(session: AsyncSession, workspace_id: int) -
             await k8s.get_resource("namespaces", namespace)
         finally:
             await k8s.close()
+        logger.info("Workspace namespace verified: %s", namespace)
     except Exception:
+        logger.warning("K8s namespace '%s' not found for workspace '%s'", namespace, workspace.name)
         raise HTTPException(status_code=422, detail={
             "message": f"Kubernetes namespace '{namespace}' does not exist. "
                        f"Please provision the workspace '{workspace.name}' first.",

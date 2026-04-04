@@ -100,10 +100,17 @@ async def list_workspace_datasources(
     workspace_id: int,
     session: AsyncSession = Depends(get_session),
 ):
-    """List DB services from a workspace as datasource-compatible entries."""
+    """List DB services from a workspace as datasource-compatible entries.
+
+    Queries argus_workspace_services for running DB plugins (trino, starrocks,
+    postgresql, mariadb) and returns them with negative IDs to distinguish
+    from custom datasources.
+    """
     from sqlalchemy import text
     import json as json_mod
     from urllib.parse import urlparse
+
+    logger.debug("list_workspace_datasources: workspace_id=%d", workspace_id)
 
     plugins = list(_WS_PLUGIN_ENGINE_MAP.keys())
     placeholders = ", ".join(f":p{i}" for i in range(len(plugins)))
@@ -161,6 +168,7 @@ async def list_workspace_datasources(
             "updated_at": updated_at.isoformat() if updated_at else "",
         })
 
+    logger.info("list_workspace_datasources: workspace_id=%d → %d datasources", workspace_id, len(datasources))
     return datasources
 
 
