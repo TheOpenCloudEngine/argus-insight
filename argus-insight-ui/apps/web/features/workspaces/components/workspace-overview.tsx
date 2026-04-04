@@ -266,7 +266,7 @@ function DetailRow({
 /* ------------------------------------------------------------------ */
 
 const CONFIGURABLE_PLUGINS = new Set([
-  "argus-mariadb", "argus-postgresql", "argus-trino", "argus-starrocks",
+  "argus-mariadb", "argus-postgresql", "argus-trino", "argus-starrocks", "argus-kafka",
   "argus-jupyter", "argus-jupyter-tensorflow", "argus-jupyter-pyspark",
   "argus-mlflow", "argus-airflow", "argus-ollama", "argus-vscode-server",
 ])
@@ -1749,6 +1749,7 @@ const SERVICE_KEY_TO_PLUGIN: Record<string, string> = {
   mindsdb: "argus-mindsdb",
   trino: "argus-trino",
   starrocks: "argus-starrocks",
+  kafka: "argus-kafka",
   postgresql: "argus-postgresql",
   mariadb: "argus-mariadb",
   // AutoML
@@ -1781,6 +1782,7 @@ function AddServiceButton({
   const [pendingItem, setPendingItem] = useState<DeployMappingEntry | null>(null)
   const [trinoTier, setTrinoTier] = useState<string>("development")
   const [starrocksTier, setStarrocksTier] = useState<string>("development")
+  const [kafkaTier, setKafkaTier] = useState<string>("development")
 
   // Deploy progress dialog state
   const [deployOpen, setDeployOpen] = useState(false)
@@ -1832,6 +1834,8 @@ function AddServiceButton({
       deployBody.plugin_config = { argus_trino_tier: trinoTier }
     } else if (item.service_key === "starrocks") {
       deployBody.plugin_config = { argus_starrocks_tier: starrocksTier }
+    } else if (item.service_key === "kafka") {
+      deployBody.plugin_config = { argus_kafka_tier: kafkaTier }
     }
 
     // Deploy
@@ -1942,7 +1946,7 @@ function AddServiceButton({
           <DialogHeader>
             <DialogTitle>Deploy {pendingItem?.service_label}</DialogTitle>
             <DialogDescription>
-              {pendingItem?.service_key === "trino" || pendingItem?.service_key === "starrocks"
+              {pendingItem?.service_key === "trino" || pendingItem?.service_key === "starrocks" || pendingItem?.service_key === "kafka"
                 ? `Select a deployment tier for ${pendingItem?.service_label} and deploy to this workspace.`
                 : `Would you like to deploy ${pendingItem?.service_label} to this workspace?`}
             </DialogDescription>
@@ -1999,6 +2003,37 @@ function AddServiceButton({
                     value={t.tier}
                     checked={starrocksTier === t.tier}
                     onChange={() => setStarrocksTier(t.tier)}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <div className="text-sm font-medium">{t.label}</div>
+                    <div className="text-xs text-muted-foreground">{t.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {/* Kafka Tier Selection */}
+          {pendingItem?.service_key === "kafka" && (
+            <div className="space-y-2 py-2">
+              {[
+                { tier: "development", label: "Development", desc: "1 Combined Node — 1 CPU, 2 GiB" },
+                { tier: "standard", label: "Standard", desc: "3 Combined Nodes — 3 CPU, 6 GiB" },
+                { tier: "performance", label: "Performance", desc: "3 Nodes (high resources) — 6 CPU, 12 GiB" },
+              ].map((t) => (
+                <label
+                  key={t.tier}
+                  className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                    kafkaTier === t.tier ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="kafka-tier"
+                    value={t.tier}
+                    checked={kafkaTier === t.tier}
+                    onChange={() => setKafkaTier(t.tier)}
                     className="mt-0.5"
                   />
                   <div>

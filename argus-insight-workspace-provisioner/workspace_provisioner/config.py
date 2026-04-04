@@ -630,6 +630,61 @@ class TrinoConfig(BaseModel):
         return presets.get(tier, presets["development"])
 
 
+class KafkaConfig(BaseModel):
+    """Apache Kafka (KRaft mode) deployment settings.
+
+    Tier presets:
+      - development: 1 combined node (controller + broker)
+      - standard: 3 combined nodes
+      - performance: 3 controllers + 3 brokers (separated)
+    """
+
+    tier: str = Field(default="development")
+    image: str = Field(default="apache/kafka:latest")
+    replicas: int = Field(default=1, description="Number of Kafka nodes")
+    process_roles: str = Field(default="controller,broker", description="controller,broker | controller | broker")
+    storage_size: str = Field(default="10Gi")
+    resources: ResourceConfig = Field(
+        default_factory=lambda: ResourceConfig(
+            cpu_request="500m", cpu_limit="1",
+            memory_request="1Gi", memory_limit="2Gi",
+        ),
+    )
+
+    @classmethod
+    def from_tier(cls, tier: str) -> "KafkaConfig":
+        presets = {
+            "development": cls(
+                tier="development",
+                replicas=1,
+                process_roles="controller,broker",
+                resources=ResourceConfig(
+                    cpu_request="500m", cpu_limit="1",
+                    memory_request="1Gi", memory_limit="2Gi",
+                ),
+            ),
+            "standard": cls(
+                tier="standard",
+                replicas=3,
+                process_roles="controller,broker",
+                resources=ResourceConfig(
+                    cpu_request="500m", cpu_limit="1",
+                    memory_request="1Gi", memory_limit="2Gi",
+                ),
+            ),
+            "performance": cls(
+                tier="performance",
+                replicas=3,
+                process_roles="controller,broker",
+                resources=ResourceConfig(
+                    cpu_request="1", cpu_limit="2",
+                    memory_request="2Gi", memory_limit="4Gi",
+                ),
+            ),
+        }
+        return presets.get(tier, presets["development"])
+
+
 class StarRocksConfig(BaseModel):
     """StarRocks MPP analytics database deployment settings.
 

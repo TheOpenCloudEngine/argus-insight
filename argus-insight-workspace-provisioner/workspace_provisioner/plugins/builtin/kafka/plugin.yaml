@@ -1,0 +1,18 @@
+name: argus-kafka
+display_name: Apache Kafka
+description: Deploy Apache Kafka message broker with KRaft consensus (no ZooKeeper)
+icon: kafka
+category: messaging
+depends_on: []
+provides:
+  - kafka_endpoint
+  - kafka_manifests
+requires: []
+tags:
+  - streaming
+  - messaging
+  - event-driven
+  - kafka
+versions:
+  - "1.0"
+default_version: "1.0"

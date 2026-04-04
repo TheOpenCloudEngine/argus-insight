@@ -1128,6 +1128,7 @@ async def deploy_pipeline_to_workspace(
         "argus-jupyter-pyspark": ("2", "4Gi"),
         "argus-vscode-server": ("1", "2Gi"),
         "argus-ollama": ("4", "8Gi"),
+        "argus-kafka": ("1", "2Gi"),
         "argus-rstudio": ("1", "2Gi"),
         "argus-neo4j": ("1", "2Gi"),
         "argus-labelstudio": ("1", "2Gi"),
@@ -1145,6 +1146,10 @@ async def deploy_pipeline_to_workspace(
         if sr_tier:
             sr_resources = {"development": ("3", "6Gi"), "standard": ("8", "16Gi"), "performance": ("22", "44Gi")}
             PLUGIN_RESOURCE_ESTIMATES["argus-starrocks"] = sr_resources.get(sr_tier, ("3", "6Gi"))
+        kafka_tier = req.plugin_config.get("argus_kafka_tier")
+        if kafka_tier:
+            kafka_resources = {"development": ("1", "2Gi"), "standard": ("3", "6Gi"), "performance": ("6", "12Gi")}
+            PLUGIN_RESOURCE_ESTIMATES["argus-kafka"] = kafka_resources.get(kafka_tier, ("1", "2Gi"))
 
     # Calculate total new resource requirement
     new_cpu = Decimal("0")
