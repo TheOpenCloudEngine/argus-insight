@@ -164,7 +164,9 @@ function CatalogTreeNode({ dsId, catalog }: { dsId: number; catalog: CatalogNode
     <div>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm hover:bg-muted/50"
+        draggable
+        onDragStart={(e) => { e.dataTransfer.setData("text/plain", catalog.name); e.dataTransfer.effectAllowed = "copy" }}
+        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm hover:bg-muted/50 cursor-grab active:cursor-grabbing"
       >
         <ChevronRight
           className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${
@@ -243,7 +245,9 @@ function SchemaTreeNode({
     <div>
       <button
         onClick={toggle}
-        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm hover:bg-muted/50"
+        draggable
+        onDragStart={(e) => { e.dataTransfer.setData("text/plain", schema.name); e.dataTransfer.effectAllowed = "copy" }}
+        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm hover:bg-muted/50 cursor-grab active:cursor-grabbing"
       >
         <ChevronRight
           className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${
@@ -314,7 +318,13 @@ function TableTreeNode({
     <div>
       <button
         onClick={toggle}
-        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm hover:bg-muted/50"
+        draggable
+        onDragStart={(e) => {
+          const text = schema ? `${schema}.${table.name}` : table.name
+          e.dataTransfer.setData("text/plain", text)
+          e.dataTransfer.effectAllowed = "copy"
+        }}
+        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm hover:bg-muted/50 cursor-grab active:cursor-grabbing"
       >
         <ChevronRight
           className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${
@@ -337,7 +347,9 @@ function TableTreeNode({
           {columns?.map((col) => (
             <div
               key={col.name}
-              className="flex items-center gap-1.5 px-2 py-0.5 text-sm text-muted-foreground"
+              draggable
+              onDragStart={(e) => { e.dataTransfer.setData("text/plain", col.name); e.dataTransfer.effectAllowed = "copy" }}
+              className="flex items-center gap-1.5 px-2 py-0.5 text-sm text-muted-foreground cursor-grab active:cursor-grabbing"
             >
               <Columns3 className="h-3 w-3 shrink-0" />
               <span className="truncate">{col.name}</span>

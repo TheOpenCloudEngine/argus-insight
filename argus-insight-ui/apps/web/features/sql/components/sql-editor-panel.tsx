@@ -102,6 +102,34 @@ export function SqlEditorPanel() {
   const handleEditorMount: OnMount = useCallback(
     (editor, monaco) => {
       editorRef.current = editor
+
+      // Handle drag-and-drop from datasource sidebar
+      editor.getDomNode()?.addEventListener("dragover", (e) => {
+        e.preventDefault()
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "copy"
+      })
+      editor.getDomNode()?.addEventListener("drop", (e) => {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        const text = e.dataTransfer?.getData("text/plain")
+        if (!text) return
+        // Get drop position from mouse coordinates
+        const target = editor.getTargetAtClientPoint(e.clientX, e.clientY)
+        if (target?.position) {
+          editor.executeEdits("drag-drop", [{
+            range: {
+              startLineNumber: target.position.lineNumber,
+              startColumn: target.position.column,
+              endLineNumber: target.position.lineNumber,
+              endColumn: target.position.column,
+            },
+            text,
+          }])
+          editor.setPosition(target.position)
+          editor.focus()
+        }
+      })
+
       editor.addAction({
         id: "execute-query",
         label: "Execute Query (Selection or All)",
