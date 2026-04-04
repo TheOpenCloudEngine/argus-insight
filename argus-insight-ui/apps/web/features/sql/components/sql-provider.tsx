@@ -55,8 +55,17 @@ const SqlContext = createContext<SqlContextType | null>(null)
 
 let tabCounter = 1
 
+function generateId(): string {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID()
+  // Fallback for SSR
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16)
+  })
+}
+
 function createTab(): EditorTab {
-  const id = crypto.randomUUID()
+  const id = generateId()
   const title = `Query ${tabCounter++}`
   return {
     id,
