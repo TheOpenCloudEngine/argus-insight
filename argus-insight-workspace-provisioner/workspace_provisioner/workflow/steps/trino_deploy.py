@@ -57,9 +57,9 @@ async def _build_catalog_configmap(workspace_id: int, workspace_name: str, names
                 SELECT plugin_name, metadata
                 FROM argus_workspace_services
                 WHERE workspace_id = :ws_id AND status = 'running'
-                  AND plugin_name IN :plugins
+                  AND plugin_name = ANY(:plugins)
             """),
-            {"ws_id": workspace_id, "plugins": tuple(_CATALOG_MAP.keys())},
+            {"ws_id": workspace_id, "plugins": list(_CATALOG_MAP.keys())},
         )
 
         for plugin_name, meta_raw in rows.fetchall():
