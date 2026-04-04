@@ -169,7 +169,6 @@ class StarRocksDeployStep(WorkflowStep):
         # Auto-refresh Trino catalogs if Trino is running in this workspace
         try:
             from workspace_provisioner.workflow.steps.trino_deploy import _build_catalog_configmap
-            from workspace_provisioner.kubernetes.client import kubectl_apply
             catalog_yaml = await _build_catalog_configmap(ctx.workspace_id, workspace_name, namespace)
             await kubectl_apply(catalog_yaml, kubeconfig=kubeconfig)
             # Restart Trino to pick up new catalog
