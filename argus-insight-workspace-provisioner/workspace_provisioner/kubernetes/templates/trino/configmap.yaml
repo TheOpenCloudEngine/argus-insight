@@ -13,12 +13,14 @@ data:
     coordinator=true
     node-scheduler.include-coordinator=${TRINO_INCLUDE_COORDINATOR}
     http-server.http.port=8080
+    http-server.process-forwarded=true
     discovery.uri=http://argus-trino-${WORKSPACE_NAME}:8080
     query.max-memory=1GB
     query.max-memory-per-node=512MB
   config-worker.properties: |
     coordinator=false
     http-server.http.port=8080
+    http-server.process-forwarded=true
     discovery.uri=http://argus-trino-${WORKSPACE_NAME}:8080
   jvm-coordinator.config: |
     -server
