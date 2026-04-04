@@ -15,6 +15,9 @@ data:
     http-server.http.port=8080
     http-server.process-forwarded=true
     http-server.authentication.type=PASSWORD
+    web-ui.enabled=true
+    web-ui.authentication.type=FIXED
+    web-ui.user=admin
     discovery.uri=http://argus-trino-${WORKSPACE_NAME}:8080
     query.max-memory=1GB
     query.max-memory-per-node=512MB

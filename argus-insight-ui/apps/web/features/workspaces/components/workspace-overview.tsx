@@ -487,10 +487,7 @@ function ServiceDataListItem({
   const svcAny = service as WorkspaceService & { _usernameLabel?: string; _passwordLabel?: string; _hideUrl?: boolean; _hideTimestamps?: boolean }
   const usernameLabel = svcAny._usernameLabel || "Username"
   const passwordLabel = svcAny._passwordLabel || "Password"
-  // Only hide URL for services that explicitly have no web UI
-  // (e.g. display metadata contains JDBC URL but no HTTP URL, and endpoint is internal-only)
-  const HIDE_URL_PLUGINS = new Set(["argus-minio-workspace"])
-  const hideUrl = svcAny._hideUrl || HIDE_URL_PLUGINS.has(service.plugin_name)
+  const hideUrl = svcAny._hideUrl || false
   const effectiveHideTimestamps = hideTimestamps || svcAny._hideTimestamps || false
 
   // Collect detail rows for expanded view
