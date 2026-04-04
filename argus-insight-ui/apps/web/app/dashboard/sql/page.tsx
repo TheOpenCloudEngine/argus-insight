@@ -70,7 +70,7 @@ export default function SqlPage() {
   return (
     <SqlProvider workspaceId={wsId}>
       <DashboardHeader title="SQL" />
-      <div className="flex-1" style={{ height: "calc(100vh - 57px)", overflow: "hidden" }}>
+      <div className="absolute inset-0 top-[57px] overflow-hidden">
         <SqlWorkspace />
       </div>
     </SqlProvider>
