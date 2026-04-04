@@ -68,7 +68,7 @@
           "id": "vscode",
           "title": "VS Code",
           "url": "/dashboard/vscode",
-          "icon": "Code"
+          "icon": "Code",
           "id": "voc",
           "title": "VOC",
           "url": "/dashboard/voc",
