@@ -73,7 +73,6 @@ import type { AuditLog, WorkspaceMember, WorkspaceResponse, WorkspaceService } f
 import { PluginIcon } from "@/features/software-deployment/components/plugin-icon"
 import { ServiceLogsPanel } from "@/features/workspaces/components/service-logs-panel"
 import { WorkspaceDashboardPanel } from "@/features/workspaces/components/workspace-dashboard"
-import { WorkspaceModels } from "@/features/workspaces/components/workspace-models"
 
 /* ------------------------------------------------------------------ */
 /*  Shared helpers                                                     */
@@ -1957,13 +1956,6 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
         <WorkspaceDashboardPanel workspaceId={workspace.id} />
       )}
 
-      {/* Models: MLflow model registry + one-click KServe deploy */}
-      {(workspace.status === "active" || workspace.status === "failed") && (
-        <WorkspaceModels
-          workspace={workspace}
-          onDeployService={() => handleDeployComplete()}
-        />
-      )}
 
       {(() => {
         // Categorize services
