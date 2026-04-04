@@ -305,6 +305,30 @@ async def delete_workspace_service_with_teardown(
     await session.delete(svc)
     await session.flush()
 
+    # 6.5. Refresh Trino catalogs if a DB service was deleted
+    _DB_PLUGINS = {"argus-postgresql", "argus-mariadb", "argus-starrocks"}
+    if svc.plugin_name in _DB_PLUGINS:
+        namespace = ws.k8s_namespace or f"argus-ws-{ws.name}"
+        try:
+            from workspace_provisioner.workflow.steps.trino_deploy import _build_catalog_configmap
+            from workspace_provisioner.kubernetes.client import kubectl_apply
+            import asyncio as _aio
+
+            catalog_yaml = await _build_catalog_configmap(workspace_id, ws.name, namespace)
+            await kubectl_apply(catalog_yaml)
+            proc = await _aio.create_subprocess_exec(
+                "kubectl", "rollout", "restart", f"deployment/argus-trino-{ws.name}",
+                "-n", namespace,
+                stdout=_aio.subprocess.PIPE, stderr=_aio.subprocess.PIPE,
+            )
+            await proc.communicate()
+            if proc.returncode == 0:
+                logger.info("Trino catalogs refreshed after %s deletion", svc.plugin_name)
+            else:
+                logger.debug("No Trino deployment found — skipping catalog refresh")
+        except Exception as e:
+            logger.debug("Trino catalog refresh skipped after service deletion: %s", e)
+
     # 7. Audit log
     await log_audit(
         session, workspace_id, ws.name,

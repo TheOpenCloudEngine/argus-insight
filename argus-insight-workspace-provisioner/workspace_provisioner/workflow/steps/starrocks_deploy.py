@@ -166,6 +166,25 @@ class StarRocksDeployStep(WorkflowStep):
             },
         )
 
+        # Auto-refresh Trino catalogs if Trino is running in this workspace
+        try:
+            from workspace_provisioner.workflow.steps.trino_deploy import _build_catalog_configmap
+            from workspace_provisioner.kubernetes.client import kubectl_apply
+            catalog_yaml = await _build_catalog_configmap(ctx.workspace_id, workspace_name, namespace)
+            await kubectl_apply(catalog_yaml, kubeconfig=kubeconfig)
+            # Restart Trino to pick up new catalog
+            restart_proc = await asyncio.create_subprocess_exec(
+                "kubectl", "rollout", "restart", f"deployment/argus-trino-{workspace_name}",
+                "-n", namespace, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            await restart_proc.communicate()
+            if restart_proc.returncode == 0:
+                logger.info("Trino catalogs refreshed with StarRocks")
+            else:
+                logger.debug("No Trino deployment found — skipping catalog refresh")
+        except Exception as e:
+            logger.debug("Trino catalog refresh skipped: %s", e)
+
         return {"endpoint": hostname, "service_id": svc_id}
 
     async def rollback(self, ctx: WorkflowContext) -> None:
