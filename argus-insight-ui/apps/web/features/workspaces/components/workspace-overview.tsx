@@ -1222,9 +1222,9 @@ function AddServiceButton({
           {pendingItem?.service_key === "trino" && (
             <div className="space-y-2 py-2">
               {[
-                { tier: "development", label: "Development", desc: "Single node — 1 CPU, 2 GiB", cpu: "1", mem: "2Gi" },
-                { tier: "standard", label: "Standard", desc: "Coordinator + 1 Worker — 3 CPU, 6 GiB", cpu: "3", mem: "6Gi" },
-                { tier: "performance", label: "Performance", desc: "Coordinator + 3 Workers — 7 CPU, 14 GiB", cpu: "7", mem: "14Gi" },
+                { tier: "development", label: "Development", desc: "1 Coordinator (single node) — 1 CPU, 2 GiB", cpu: "1", mem: "2Gi" },
+                { tier: "standard", label: "Standard", desc: "1 Coordinator + 1 Worker — 3 CPU, 6 GiB", cpu: "3", mem: "6Gi" },
+                { tier: "performance", label: "Performance", desc: "2 Coordinators + 3 Workers — 8 CPU, 16 GiB", cpu: "8", mem: "16Gi" },
               ].map((t) => (
                 <label
                   key={t.tier}

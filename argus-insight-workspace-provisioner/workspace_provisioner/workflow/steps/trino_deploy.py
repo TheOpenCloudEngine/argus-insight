@@ -138,6 +138,11 @@ class TrinoDeployStep(WorkflowStep):
         # Development tier: coordinator also acts as worker (single-node)
         include_coordinator = "true" if config.worker_replicas == 0 else "false"
 
+        # Auto-generate UI password for security
+        import secrets
+        import string
+        ui_password = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(16))
+
         def k8s_mem_to_java(mem: str) -> str:
             """Convert K8s memory (4Gi, 512Mi) to Java format (4G, 512M)."""
             m = re.match(r"^(\d+)(Gi|Mi|G|M)$", mem)
@@ -152,6 +157,7 @@ class TrinoDeployStep(WorkflowStep):
 
         variables = {
             "TRINO_IMAGE": config.coordinator_image,
+            "TRINO_COORDINATOR_REPLICAS": str(config.coordinator_replicas),
             "TRINO_WORKER_REPLICAS": str(config.worker_replicas),
             "TRINO_INCLUDE_COORDINATOR": include_coordinator,
             "TRINO_COORDINATOR_CPU_REQUEST": config.coordinator_resources.cpu_request,
@@ -217,9 +223,10 @@ class TrinoDeployStep(WorkflowStep):
             metadata={
                 "display": {
                     "Tier": config.tier.capitalize(),
+                    "Coordinators": str(config.coordinator_replicas),
                     "Workers": str(config.worker_replicas),
                     "UI Username": "admin",
-                    "UI Password": "(any value or leave empty)",
+                    "UI Password": ui_password,
                     "JDBC URL": f"jdbc:trino://{internal_host}:8080/memory",
                     "JDBC Driver": "io.trino.jdbc.TrinoDriver",
                 },

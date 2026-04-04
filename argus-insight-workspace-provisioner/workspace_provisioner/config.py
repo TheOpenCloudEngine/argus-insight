@@ -551,9 +551,9 @@ class TrinoConfig(BaseModel):
     """Trino distributed SQL query engine deployment settings.
 
     Tier presets:
-      - development: Single coordinator (include-coordinator=true), 0 workers
-      - standard: Coordinator + 1 worker
-      - performance: Coordinator + 3 workers
+      - development: 1 coordinator (include-coordinator=true), 0 workers
+      - standard: 1 coordinator + 1 worker
+      - performance: 2 coordinators + 3 workers
     """
 
     tier: str = Field(
@@ -564,6 +564,10 @@ class TrinoConfig(BaseModel):
         default="trinodb/trino:480",
         description="Trino coordinator/worker container image",
     )
+    coordinator_replicas: int = Field(
+        default=1,
+        description="Number of Trino coordinator replicas",
+    )
     worker_replicas: int = Field(
         default=0,
         description="Number of Trino worker replicas (0 = single-node)",
@@ -573,7 +577,7 @@ class TrinoConfig(BaseModel):
             cpu_request="500m", cpu_limit="1",
             memory_request="1Gi", memory_limit="2Gi",
         ),
-        description="CPU/Memory for the coordinator",
+        description="CPU/Memory for each coordinator",
     )
     worker_resources: ResourceConfig = Field(
         default_factory=lambda: ResourceConfig(
@@ -589,6 +593,7 @@ class TrinoConfig(BaseModel):
         presets = {
             "development": cls(
                 tier="development",
+                coordinator_replicas=1,
                 worker_replicas=0,
                 coordinator_resources=ResourceConfig(
                     cpu_request="500m", cpu_limit="1",
@@ -597,6 +602,7 @@ class TrinoConfig(BaseModel):
             ),
             "standard": cls(
                 tier="standard",
+                coordinator_replicas=1,
                 worker_replicas=1,
                 coordinator_resources=ResourceConfig(
                     cpu_request="500m", cpu_limit="1",
@@ -609,6 +615,7 @@ class TrinoConfig(BaseModel):
             ),
             "performance": cls(
                 tier="performance",
+                coordinator_replicas=2,
                 worker_replicas=3,
                 coordinator_resources=ResourceConfig(
                     cpu_request="500m", cpu_limit="1",

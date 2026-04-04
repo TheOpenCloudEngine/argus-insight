@@ -10,7 +10,7 @@ metadata:
     app.kubernetes.io/part-of: argus-insight
     argus-insight/workspace: ${WORKSPACE_NAME}
 spec:
-  replicas: 1
+  replicas: ${TRINO_COORDINATOR_REPLICAS}
   selector:
     matchLabels:
       app.kubernetes.io/name: trino
