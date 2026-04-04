@@ -37,6 +37,7 @@ from app.resource_profile.router import workspace_router as resource_workspace_r
 from workspace_provisioner.router import router as workspace_router
 from workspace_provisioner.router import init_gitlab_client
 from workspace_provisioner.plugins.router import router as plugins_router
+from app.sql.router import router as sql_router
 
 logger = logging.getLogger(__name__)
 _start_time: float = 0.0
@@ -79,6 +80,7 @@ async def lifespan(app: FastAPI):
     import app.ml_studio.models  # noqa: F401
     import workspace_provisioner.models  # noqa: F401
     import workspace_provisioner.plugins.models  # noqa: F401
+    import app.sql.models  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -179,6 +181,7 @@ app.include_router(resource_profile_router, prefix="/api/v1")
 app.include_router(resource_workspace_router, prefix="/api/v1")
 app.include_router(workspace_router, prefix="/api/v1")
 app.include_router(plugins_router, prefix="/api/v1")
+app.include_router(sql_router, prefix="/api/v1")
 app.include_router(voc_router, prefix="/api/v1")
 app.include_router(ml_studio_router, prefix="/api/v1")
 
