@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react"
 import Editor, { type OnMount } from "@monaco-editor/react"
+import { format as formatSql } from "sql-formatter"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -62,6 +63,17 @@ export function SqlEditorPanel() {
     trino: "sql",
   }
   const editorLanguage = activeDs ? (ENGINE_LANG[activeDs.engine_type] ?? "sql") : "sql"
+
+  // Map engine type → sql-formatter language for formatting
+  const FORMAT_LANG: Record<string, string> = {
+    postgresql: "postgresql",
+    mariadb: "mariadb",
+    starrocks: "mysql",
+    trino: "trino",
+  }
+  const formatLanguage = activeDs ? (FORMAT_LANG[activeDs.engine_type] ?? "sql") : "sql"
+  const formatLangRef = useRef(formatLanguage)
+  formatLangRef.current = formatLanguage
 
   // Execute selection or full SQL
   const executeSelectionOrAll = useCallback(() => {
@@ -139,6 +151,51 @@ export function SqlEditorPanel() {
         label: "Execute Query (Selection or All)",
         keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
         run: () => executeRef.current(),
+      })
+
+      // Format SQL — appears in right-click context menu
+      editor.addAction({
+        id: "format-sql",
+        label: "Format SQL",
+        keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF],
+        contextMenuGroupId: "1_modification",
+        contextMenuOrder: 1.5,
+        run: (ed) => {
+          const selection = ed.getSelection()
+          const model = ed.getModel()
+          if (!model) return
+
+          // Format selection or entire content
+          const hasSelection = selection && !selection.isEmpty()
+          const textToFormat = hasSelection
+            ? model.getValueInRange(selection)
+            : model.getValue()
+
+          try {
+            const formatted = formatSql(textToFormat, {
+              language: formatLangRef.current as any,
+              tabWidth: 2,
+              keywordCase: "upper",
+              linesBetweenQueries: 2,
+            })
+
+            if (hasSelection && selection) {
+              ed.executeEdits("format-sql", [{
+                range: selection,
+                text: formatted,
+              }])
+            } else {
+              // Replace entire content
+              const fullRange = model.getFullModelRange()
+              ed.executeEdits("format-sql", [{
+                range: fullRange,
+                text: formatted,
+              }])
+            }
+          } catch {
+            // Formatting failed (e.g. syntax error) — silently ignore
+          }
+        },
       })
 
       // Register completion provider for all SQL languages

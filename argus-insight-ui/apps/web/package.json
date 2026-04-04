@@ -44,6 +44,7 @@
     "recharts": "^3.8.1",
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
+    "sql-formatter": "^15.7.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {
