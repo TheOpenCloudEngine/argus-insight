@@ -706,6 +706,161 @@ async def configure_service(
 # StarRocks Configure
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Kafka Configure
+# ---------------------------------------------------------------------------
+
+class KafkaConfigureRequest(BaseModel):
+    """Request body for Kafka configuration changes."""
+    replicas: int | None = None
+    cpu_limit: str | None = None
+    memory_limit: str | None = None
+    # Broker
+    num_partitions: int | None = None
+    default_replication_factor: int | None = None
+    min_insync_replicas: int | None = None
+    auto_create_topics: bool | None = None
+    # Retention
+    log_retention_hours: int | None = None
+    log_retention_bytes: int | None = None  # -1 = unlimited
+    log_segment_bytes: int | None = None
+    # Performance
+    num_io_threads: int | None = None
+    num_network_threads: int | None = None
+    message_max_bytes: int | None = None
+    # Buffer
+    socket_send_buffer_bytes: int | None = None
+    socket_receive_buffer_bytes: int | None = None
+    socket_request_max_bytes: int | None = None
+
+
+@router.post("/workspaces/{workspace_id}/kafka/configure")
+async def configure_kafka(
+    workspace_id: int,
+    req: KafkaConfigureRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Apply Kafka configuration changes."""
+    import asyncio as aio
+    import json as json_mod
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+
+    ws = (await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )).scalars().first()
+    if not ws:
+        raise HTTPException(404, "Workspace not found")
+
+    svc = (await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+            ArgusWorkspaceService.plugin_name == "argus-kafka",
+            ArgusWorkspaceService.status == "running",
+        )
+    )).scalars().first()
+    if not svc:
+        raise HTTPException(404, "Kafka service not found")
+
+    namespace = ws.k8s_namespace or f"argus-ws-{ws.name}"
+    meta = svc.metadata if isinstance(svc.metadata, dict) else (json_mod.loads(svc.metadata) if isinstance(svc.metadata, str) else {})
+
+    # 1. Patch StatefulSet (replicas + resources)
+    patch_ops = []
+    if req.replicas is not None:
+        patch_ops.append({"op": "replace", "path": "/spec/replicas", "value": req.replicas})
+    if req.cpu_limit:
+        patch_ops.append({"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/cpu", "value": req.cpu_limit})
+    if req.memory_limit:
+        patch_ops.append({"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": req.memory_limit})
+
+    # Add Kafka config env vars
+    kafka_envs = {}
+    if req.num_partitions is not None:
+        kafka_envs["KAFKA_NUM_PARTITIONS"] = str(req.num_partitions)
+    if req.default_replication_factor is not None:
+        kafka_envs["KAFKA_DEFAULT_REPLICATION_FACTOR"] = str(req.default_replication_factor)
+    if req.min_insync_replicas is not None:
+        kafka_envs["KAFKA_MIN_INSYNC_REPLICAS"] = str(req.min_insync_replicas)
+    if req.auto_create_topics is not None:
+        kafka_envs["KAFKA_AUTO_CREATE_TOPICS_ENABLE"] = str(req.auto_create_topics).lower()
+    if req.log_retention_hours is not None:
+        kafka_envs["KAFKA_LOG_RETENTION_HOURS"] = str(req.log_retention_hours)
+    if req.log_retention_bytes is not None:
+        kafka_envs["KAFKA_LOG_RETENTION_BYTES"] = str(req.log_retention_bytes)
+    if req.log_segment_bytes is not None:
+        kafka_envs["KAFKA_LOG_SEGMENT_BYTES"] = str(req.log_segment_bytes)
+    if req.num_io_threads is not None:
+        kafka_envs["KAFKA_NUM_IO_THREADS"] = str(req.num_io_threads)
+    if req.num_network_threads is not None:
+        kafka_envs["KAFKA_NUM_NETWORK_THREADS"] = str(req.num_network_threads)
+    if req.message_max_bytes is not None:
+        kafka_envs["KAFKA_MESSAGE_MAX_BYTES"] = str(req.message_max_bytes)
+    if req.socket_send_buffer_bytes is not None:
+        kafka_envs["KAFKA_SOCKET_SEND_BUFFER_BYTES"] = str(req.socket_send_buffer_bytes)
+    if req.socket_receive_buffer_bytes is not None:
+        kafka_envs["KAFKA_SOCKET_RECEIVE_BUFFER_BYTES"] = str(req.socket_receive_buffer_bytes)
+    if req.socket_request_max_bytes is not None:
+        kafka_envs["KAFKA_SOCKET_REQUEST_MAX_BYTES"] = str(req.socket_request_max_bytes)
+
+    if patch_ops:
+        proc = await aio.create_subprocess_exec(
+            "kubectl", "patch", "statefulset", f"argus-kafka-{ws.name}",
+            "-n", namespace, "--type=json", "-p", json_mod.dumps(patch_ops),
+            stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+        )
+        await proc.communicate()
+
+    # Apply env changes by patching env vars on the container
+    if kafka_envs:
+        # Get current env, merge new values, apply
+        proc = await aio.create_subprocess_exec(
+            "kubectl", "get", "statefulset", f"argus-kafka-{ws.name}",
+            "-n", namespace, "-o", "json",
+            stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+        )
+        sts_out, _ = await proc.communicate()
+        sts = json_mod.loads(sts_out.decode())
+        container = sts["spec"]["template"]["spec"]["containers"][0]
+        existing_env = {e["name"]: e for e in container.get("env", [])}
+        for k, v in kafka_envs.items():
+            existing_env[k] = {"name": k, "value": v}
+        new_env = list(existing_env.values())
+
+        env_patch = [{"op": "replace", "path": "/spec/template/spec/containers/0/env", "value": new_env}]
+        proc = await aio.create_subprocess_exec(
+            "kubectl", "patch", "statefulset", f"argus-kafka-{ws.name}",
+            "-n", namespace, "--type=json", "-p", json_mod.dumps(env_patch),
+            stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+        )
+        await proc.communicate()
+
+    # Rollout restart
+    proc = await aio.create_subprocess_exec(
+        "kubectl", "rollout", "restart", f"statefulset/argus-kafka-{ws.name}",
+        "-n", namespace, stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+    )
+    await proc.communicate()
+
+    # Update metadata
+    meta["display"]["Brokers"] = str(req.replicas) if req.replicas else meta["display"].get("Brokers", "1")
+    if "resources" not in meta:
+        meta["resources"] = {}
+    if req.cpu_limit:
+        meta["resources"]["cpu_limit"] = req.cpu_limit
+    if req.memory_limit:
+        meta["resources"]["memory_limit"] = req.memory_limit
+
+    from sqlalchemy import text
+    await session.execute(
+        text("UPDATE argus_workspace_services SET metadata = :m WHERE id = :id"),
+        {"m": json_mod.dumps(meta), "id": svc.id},
+    )
+    await session.commit()
+
+    logger.info("Kafka configured: ws=%s replicas=%s", ws.name, req.replicas)
+    return {"status": "ok", "message": "Kafka configuration applied. Pods are restarting."}
+
+
 class StarRocksConfigureRequest(BaseModel):
     """Request body for StarRocks configuration changes."""
     tier: str | None = None

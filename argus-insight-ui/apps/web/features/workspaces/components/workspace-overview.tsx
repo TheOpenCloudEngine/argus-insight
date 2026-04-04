@@ -435,6 +435,248 @@ function ServiceConfigSheet({
 // StarRocks Configuration Dialog
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Kafka Configuration Dialog
+// ---------------------------------------------------------------------------
+
+function KafkaConfigDialog({
+  open, onOpenChange, workspaceId, service,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  workspaceId: number
+  service: WorkspaceService
+}) {
+  const meta = (service.metadata ?? {}) as Record<string, any>
+  const resources = meta.resources ?? {}
+
+  // Resources
+  const [replicas, setReplicas] = useState(Number(meta.display?.Brokers) || 1)
+  const [cpuLimit, setCpuLimit] = useState(resources.cpu_limit || "1")
+  const [memLimit, setMemLimit] = useState(resources.memory_limit || "2Gi")
+  // Broker
+  const [numPartitions, setNumPartitions] = useState("1")
+  const [defaultReplicationFactor, setDefaultReplicationFactor] = useState("1")
+  const [minInsyncReplicas, setMinInsyncReplicas] = useState("1")
+  const [autoCreateTopics, setAutoCreateTopics] = useState(true)
+  // Retention
+  const [logRetentionHours, setLogRetentionHours] = useState("168")
+  const [logRetentionBytes, setLogRetentionBytes] = useState("-1")
+  const [logSegmentBytes, setLogSegmentBytes] = useState("1073741824")
+  // Performance
+  const [numIoThreads, setNumIoThreads] = useState("8")
+  const [numNetworkThreads, setNumNetworkThreads] = useState("3")
+  const [messageMaxBytes, setMessageMaxBytes] = useState("1048588")
+  // Buffer
+  const [socketSendBuffer, setSocketSendBuffer] = useState("102400")
+  const [socketReceiveBuffer, setSocketReceiveBuffer] = useState("102400")
+  const [socketRequestMax, setSocketRequestMax] = useState("104857600")
+
+  const [applying, setApplying] = useState(false)
+  const [validation, setValidation] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  // Validate resources
+  useEffect(() => {
+    if (!open) return
+    const timer = setTimeout(async () => {
+      try {
+        const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/services/${service.id}/configure/validate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cpu_limit: cpuLimit, memory_limit: memLimit }),
+        })
+        if (res.ok) setValidation(await res.json())
+      } catch { /* ignore */ }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [open, cpuLimit, memLimit, workspaceId, service.id])
+
+  const handleApply = async () => {
+    if (validation && !validation.allowed) return
+    setApplying(true)
+    setError(null)
+    setSuccess(false)
+    try {
+      const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/kafka/configure`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          replicas,
+          cpu_limit: cpuLimit,
+          memory_limit: memLimit,
+          num_partitions: parseInt(numPartitions) || undefined,
+          default_replication_factor: parseInt(defaultReplicationFactor) || undefined,
+          min_insync_replicas: parseInt(minInsyncReplicas) || undefined,
+          auto_create_topics: autoCreateTopics,
+          log_retention_hours: parseInt(logRetentionHours) || undefined,
+          log_retention_bytes: parseInt(logRetentionBytes),
+          log_segment_bytes: parseInt(logSegmentBytes) || undefined,
+          num_io_threads: parseInt(numIoThreads) || undefined,
+          num_network_threads: parseInt(numNetworkThreads) || undefined,
+          message_max_bytes: parseInt(messageMaxBytes) || undefined,
+          socket_send_buffer_bytes: parseInt(socketSendBuffer) || undefined,
+          socket_receive_buffer_bytes: parseInt(socketReceiveBuffer) || undefined,
+          socket_request_max_bytes: parseInt(socketRequestMax) || undefined,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.detail || `Failed: ${res.status}`)
+      }
+      setSuccess(true)
+      setTimeout(() => { setSuccess(false); onOpenChange(false) }, 2000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to apply")
+    }
+    setApplying(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Configure Kafka</DialogTitle>
+          <DialogDescription>Adjust Kafka broker settings. Changes trigger a rolling restart.</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          {/* Resources */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Resources</Label>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">Brokers</Label>
+                <Input type="number" min={1} max={10} value={replicas} onChange={(e) => setReplicas(Number(e.target.value))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">CPU Limit</Label>
+                <Input value={cpuLimit} onChange={(e) => setCpuLimit(e.target.value)} placeholder="e.g. 1, 2" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Memory Limit</Label>
+                <Input value={memLimit} onChange={(e) => setMemLimit(e.target.value)} placeholder="e.g. 2Gi" />
+              </div>
+            </div>
+          </div>
+
+          {/* Broker Settings */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Broker</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">num.partitions</Label>
+                <Input type="number" min={1} value={numPartitions} onChange={(e) => setNumPartitions(e.target.value)} />
+                <span className="text-[10px] text-muted-foreground">Default partitions per new topic</span>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">default.replication.factor</Label>
+                <Input type="number" min={1} value={defaultReplicationFactor} onChange={(e) => setDefaultReplicationFactor(e.target.value)} />
+                <span className="text-[10px] text-muted-foreground">Default replication for new topics</span>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">min.insync.replicas</Label>
+                <Input type="number" min={1} value={minInsyncReplicas} onChange={(e) => setMinInsyncReplicas(e.target.value)} />
+                <span className="text-[10px] text-muted-foreground">Min replicas that must ack a write</span>
+              </div>
+              <div className="flex items-center gap-2 pt-4">
+                <input type="checkbox" id="kafka-auto-topics" checked={autoCreateTopics} onChange={(e) => setAutoCreateTopics(e.target.checked)} />
+                <Label htmlFor="kafka-auto-topics" className="text-xs cursor-pointer">auto.create.topics</Label>
+              </div>
+            </div>
+          </div>
+
+          {/* Retention */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Retention</Label>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">log.retention.hours</Label>
+                <Input type="number" value={logRetentionHours} onChange={(e) => setLogRetentionHours(e.target.value)} />
+                <span className="text-[10px] text-muted-foreground">Message retention (hours)</span>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">log.retention.bytes</Label>
+                <Input value={logRetentionBytes} onChange={(e) => setLogRetentionBytes(e.target.value)} />
+                <span className="text-[10px] text-muted-foreground">-1 = unlimited</span>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">log.segment.bytes</Label>
+                <Input value={logSegmentBytes} onChange={(e) => setLogSegmentBytes(e.target.value)} />
+                <span className="text-[10px] text-muted-foreground">Segment file size</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Performance */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Performance</Label>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">num.io.threads</Label>
+                <Input type="number" min={1} value={numIoThreads} onChange={(e) => setNumIoThreads(e.target.value)} />
+                <span className="text-[10px] text-muted-foreground">Disk I/O threads</span>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">num.network.threads</Label>
+                <Input type="number" min={1} value={numNetworkThreads} onChange={(e) => setNumNetworkThreads(e.target.value)} />
+                <span className="text-[10px] text-muted-foreground">Network handler threads</span>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">message.max.bytes</Label>
+                <Input value={messageMaxBytes} onChange={(e) => setMessageMaxBytes(e.target.value)} />
+                <span className="text-[10px] text-muted-foreground">Max message size</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Buffer / Socket */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Socket / Buffer</Label>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">socket.send.buffer</Label>
+                <Input value={socketSendBuffer} onChange={(e) => setSocketSendBuffer(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">socket.receive.buffer</Label>
+                <Input value={socketReceiveBuffer} onChange={(e) => setSocketReceiveBuffer(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">socket.request.max</Label>
+                <Input value={socketRequestMax} onChange={(e) => setSocketRequestMax(e.target.value)} />
+              </div>
+            </div>
+          </div>
+
+          {/* Validation */}
+          {validation && (
+            <div className={`rounded-md border px-3 py-2 text-xs ${validation.allowed ? "bg-muted/30" : "bg-destructive/10 border-destructive/30 text-destructive"}`}>
+              <div className="flex justify-between">
+                <span>CPU: {validation.after?.cpu_used} / {validation.limit?.cpu} cores</span>
+                <span>Memory: {validation.after?.memory_used_gb} / {validation.limit?.memory_gb} GiB</span>
+              </div>
+              {!validation.allowed && <div className="mt-1 font-medium">{validation.message}</div>}
+            </div>
+          )}
+
+          {error && <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive">{error}</div>}
+          {success && <div className="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700">Restarting the service with the requested resources.</div>}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button size="sm" onClick={handleApply} disabled={applying || (validation && !validation.allowed)}>
+            {applying ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+            Apply
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 const STARROCKS_TIERS = [
   { tier: "development", label: "Development", be: 1, feCpu: "1", feMem: "2Gi", beCpu: "2", beMem: "4Gi" },
   { tier: "standard", label: "Standard", be: 3, feCpu: "2", feMem: "4Gi", beCpu: "2", beMem: "4Gi" },
@@ -1429,7 +1671,15 @@ function ServiceDataListItem({
           service={service}
         />
       )}
-      {isConfigurable && workspaceId && service.plugin_name !== "argus-trino" && service.plugin_name !== "argus-starrocks" && (
+      {isConfigurable && workspaceId && service.plugin_name === "argus-kafka" && (
+        <KafkaConfigDialog
+          open={configOpen}
+          onOpenChange={setConfigOpen}
+          workspaceId={workspaceId}
+          service={service}
+        />
+      )}
+      {isConfigurable && workspaceId && service.plugin_name !== "argus-trino" && service.plugin_name !== "argus-starrocks" && service.plugin_name !== "argus-kafka" && (
         <ServiceConfigDialog
           open={configOpen}
           onOpenChange={setConfigOpen}
