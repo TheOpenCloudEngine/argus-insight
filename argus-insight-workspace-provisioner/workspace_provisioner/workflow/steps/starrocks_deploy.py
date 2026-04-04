@@ -106,6 +106,26 @@ class StarRocksDeployStep(WorkflowStep):
         else:
             logger.warning("StarRocks BE registration may have issues: %s", stderr.decode())
 
+        # Set root password for FE
+        import secrets
+        import string
+        root_password = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(16))
+        pw_cmd = [
+            "kubectl", "exec", f"argus-starrocks-{workspace_name}-fe-0", "-n", namespace,
+            "--", "mysql", "-h", "127.0.0.1", "-P", "9030", "-u", "root",
+            "-e", f"SET PASSWORD FOR 'root' = PASSWORD('{root_password}');",
+        ]
+        if kubeconfig:
+            pw_cmd.insert(1, f"--kubeconfig={kubeconfig}")
+        proc = await asyncio.create_subprocess_exec(
+            *pw_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        pw_out, pw_err = await proc.communicate()
+        if proc.returncode == 0:
+            logger.info("StarRocks root password set")
+        else:
+            logger.warning("StarRocks root password set may have failed: %s", pw_err.decode())
+
         ctx.set("starrocks_endpoint", hostname)
         ctx.set("starrocks_manifests", manifests)
 
@@ -125,8 +145,11 @@ class StarRocksDeployStep(WorkflowStep):
                 "display": {
                     "Tier": config.tier.capitalize(),
                     "Backend Nodes": str(config.be_replicas),
+                    "Username": "root",
+                    "Password": root_password,
                     "MySQL Port": "9030",
-                    "FE Web UI": f"http://{hostname}",
+                    "JDBC URL": f"jdbc:mysql://argus-starrocks-{workspace_name}-fe.{namespace}.svc.cluster.local:9030",
+                    "JDBC Driver": "com.mysql.cj.jdbc.Driver",
                 },
                 "internal": {
                     "endpoint": f"{internal_fe}:9030",
