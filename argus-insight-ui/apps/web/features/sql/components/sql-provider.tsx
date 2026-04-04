@@ -96,7 +96,7 @@ export function SqlProvider({ children, workspaceId }: { children: React.ReactNo
   // Get current user ID from sessionStorage token
   const getUserId = useCallback((): number => {
     try {
-      const tokens = localStorage.getItem("argus_tokens")
+      const tokens = sessionStorage.getItem("argus_tokens")
       if (tokens) {
         const parsed = JSON.parse(tokens)
         const payload = JSON.parse(atob(parsed.access_token.split(".")[1]))
