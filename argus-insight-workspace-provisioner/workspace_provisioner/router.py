@@ -369,6 +369,339 @@ class DeployPipelineRequest(BaseModel):
     plugin_config: dict | None = None  # Optional per-plugin config (e.g. {"tier": "standard"} for Trino)
 
 
+# ---------------------------------------------------------------------------
+# Generic Service Configure (PostgreSQL, MariaDB, Ollama, Jupyter, VS Code, MLflow)
+# ---------------------------------------------------------------------------
+
+_CPU_PATTERN = r"^(\d+(\.\d+)?|\d+m)$"
+_MEM_PATTERN = r"^\d+(Mi|Gi|M|G)$"
+_MEM_PG_PATTERN = r"^\d+(MB|GB|kB)$"
+
+
+def _validate_cpu(v: str) -> bool:
+    import re
+    return bool(re.match(_CPU_PATTERN, v))
+
+
+def _validate_mem(v: str) -> bool:
+    import re
+    return bool(re.match(_MEM_PATTERN, v))
+
+
+def _validate_pg_mem(v: str) -> bool:
+    import re
+    return bool(re.match(_MEM_PG_PATTERN, v))
+
+
+class ServiceConfigureRequest(BaseModel):
+    """Generic service configuration change request."""
+    cpu_limit: str | None = None
+    memory_limit: str | None = None
+    # PostgreSQL / MariaDB specific
+    max_connections: int | None = None
+    shared_buffers: str | None = None
+    work_mem: str | None = None
+    effective_cache_size: str | None = None
+    maintenance_work_mem: str | None = None
+    innodb_buffer_pool_size: str | None = None
+    log_min_duration_statement: int | None = None
+    log_statement: str | None = None
+    slow_query_log: bool | None = None
+    long_query_time: int | None = None
+    # Ollama
+    default_model: str | None = None
+    # Password
+    regenerate_password: bool = False
+
+
+@router.post("/workspaces/{workspace_id}/services/{service_id}/configure/validate")
+async def validate_service_configure(
+    workspace_id: int,
+    service_id: int,
+    req: ServiceConfigureRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Validate resource change against workspace quota."""
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+    from app.resource_profile.models import ArgusResourceProfile
+    from app.resource_profile.resource_utils import parse_cpu, parse_memory_to_mib
+
+    # Input validation
+    errors = []
+    if req.cpu_limit and not _validate_cpu(req.cpu_limit):
+        errors.append(f"Invalid CPU format: '{req.cpu_limit}'. Use e.g. '1', '2', '500m'")
+    if req.memory_limit and not _validate_mem(req.memory_limit):
+        errors.append(f"Invalid memory format: '{req.memory_limit}'. Use e.g. '2Gi', '512Mi'")
+    if req.shared_buffers and not _validate_pg_mem(req.shared_buffers):
+        errors.append(f"Invalid shared_buffers format: '{req.shared_buffers}'. Use e.g. '128MB', '1GB'")
+    if req.work_mem and not _validate_pg_mem(req.work_mem):
+        errors.append(f"Invalid work_mem format: '{req.work_mem}'. Use e.g. '4MB', '16MB'")
+    if req.effective_cache_size and not _validate_pg_mem(req.effective_cache_size):
+        errors.append(f"Invalid effective_cache_size format: '{req.effective_cache_size}'")
+    if req.maintenance_work_mem and not _validate_pg_mem(req.maintenance_work_mem):
+        errors.append(f"Invalid maintenance_work_mem format: '{req.maintenance_work_mem}'")
+    if req.innodb_buffer_pool_size and not _validate_pg_mem(req.innodb_buffer_pool_size):
+        errors.append(f"Invalid innodb_buffer_pool_size format: '{req.innodb_buffer_pool_size}'")
+    if req.log_statement and req.log_statement not in ("none", "ddl", "mod", "all"):
+        errors.append(f"Invalid log_statement: '{req.log_statement}'. Use none/ddl/mod/all")
+    if req.max_connections is not None and (req.max_connections < 1 or req.max_connections > 10000):
+        errors.append(f"max_connections must be 1-10000, got {req.max_connections}")
+    if errors:
+        return {"allowed": False, "message": "; ".join(errors), "validation_errors": errors}
+
+    ws = (await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )).scalars().first()
+    if not ws:
+        raise HTTPException(404, "Workspace not found")
+
+    svc = (await session.execute(
+        select(ArgusWorkspaceService).where(ArgusWorkspaceService.id == service_id)
+    )).scalars().first()
+    if not svc:
+        raise HTTPException(404, "Service not found")
+
+    profile = None
+    if ws.resource_profile_id:
+        profile = (await session.execute(
+            select(ArgusResourceProfile).where(ArgusResourceProfile.id == ws.resource_profile_id)
+        )).scalars().first()
+
+    # Current total usage
+    svcs = (await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+            ArgusWorkspaceService.status == "running",
+        )
+    )).scalars().all()
+
+    import json as json_mod
+    current_cpu = Decimal("0")
+    current_mem_mib = 0
+    this_cpu = Decimal("0")
+    this_mem_mib = 0
+    for s in svcs:
+        meta = s.metadata if isinstance(s.metadata, dict) else (json_mod.loads(s.metadata) if isinstance(s.metadata, str) else {})
+        res = meta.get("resources", {})
+        cpu = parse_cpu(res.get("cpu_limit", "0"))
+        mem = parse_memory_to_mib(res.get("memory_limit", "0"))
+        current_cpu += cpu
+        current_mem_mib += mem
+        if s.id == service_id:
+            this_cpu = cpu
+            this_mem_mib = mem
+
+    new_cpu = parse_cpu(req.cpu_limit) if req.cpu_limit else this_cpu
+    new_mem = parse_memory_to_mib(req.memory_limit) if req.memory_limit else this_mem_mib
+
+    delta_cpu = new_cpu - this_cpu
+    delta_mem = new_mem - this_mem_mib
+    after_cpu = float(current_cpu + delta_cpu)
+    after_mem = (current_mem_mib + delta_mem) / 1024
+
+    limit_cpu = float(profile.cpu_cores) if profile else 999
+    limit_mem = float(profile.memory_mb) / 1024 if profile else 999
+    allowed = after_cpu <= limit_cpu and after_mem <= limit_mem
+
+    return {
+        "allowed": allowed,
+        "current": {"cpu_used": float(current_cpu), "memory_used_gb": round(current_mem_mib / 1024, 1)},
+        "limit": {"cpu": limit_cpu, "memory_gb": round(limit_mem, 1)},
+        "delta": {"cpu": float(delta_cpu), "memory_gb": round(float(delta_mem) / 1024, 1)},
+        "after": {"cpu_used": round(after_cpu, 1), "memory_used_gb": round(after_mem, 1)},
+        "message": "" if allowed else "There are not enough workspace resources available for the requested resources.",
+    }
+
+
+@router.post("/workspaces/{workspace_id}/services/{service_id}/configure")
+async def configure_service(
+    workspace_id: int,
+    service_id: int,
+    req: ServiceConfigureRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Apply service configuration changes."""
+    import asyncio as aio
+    import json as json_mod
+    import secrets
+    import string
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+
+    ws = (await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )).scalars().first()
+    if not ws:
+        raise HTTPException(404, "Workspace not found")
+
+    svc = (await session.execute(
+        select(ArgusWorkspaceService).where(ArgusWorkspaceService.id == service_id)
+    )).scalars().first()
+    if not svc:
+        raise HTTPException(404, "Service not found")
+
+    namespace = ws.k8s_namespace or f"argus-ws-{ws.name}"
+    meta = svc.metadata if isinstance(svc.metadata, dict) else (json_mod.loads(svc.metadata) if isinstance(svc.metadata, str) else {})
+    plugin = svc.plugin_name
+
+    # --- Resource patch (common for all services) ---
+    if req.cpu_limit or req.memory_limit:
+        # Determine K8s resource type and name
+        if plugin in ("argus-postgresql", "argus-mariadb"):
+            resource_type = "statefulset"
+            resource_name = f"argus-{plugin.replace('argus-', '')}-{ws.name}"
+        elif plugin == "argus-ollama":
+            resource_type = "deployment"
+            resource_name = f"argus-ollama-{ws.name}"
+        else:
+            # VS Code, Jupyter, MLflow — use service_id based name
+            resource_type = "deployment"
+            svc_id_val = svc.service_id or ""
+            if plugin == "argus-mlflow":
+                resource_name = f"argus-mlflow-{ws.name}"
+                resource_type = "statefulset"
+            elif plugin.startswith("argus-jupyter"):
+                resource_name = f"argus-jupyter-{svc_id_val}"
+            elif plugin == "argus-vscode-server":
+                resource_name = f"argus-vscode-{svc_id_val}"
+            else:
+                resource_name = f"argus-{plugin.replace('argus-', '')}-{ws.name}"
+
+        patch_ops = []
+        if req.cpu_limit:
+            patch_ops.append({"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/cpu", "value": req.cpu_limit})
+        if req.memory_limit:
+            patch_ops.append({"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": req.memory_limit})
+
+        if patch_ops:
+            proc = await aio.create_subprocess_exec(
+                "kubectl", "patch", resource_type, resource_name,
+                "-n", namespace, "--type=json", "-p", json_mod.dumps(patch_ops),
+                stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+            )
+            out, err = await proc.communicate()
+            if proc.returncode != 0:
+                logger.warning("Resource patch failed for %s/%s: %s", resource_type, resource_name, err.decode())
+            else:
+                logger.info("Resource patched: %s/%s cpu=%s mem=%s", resource_type, resource_name, req.cpu_limit, req.memory_limit)
+
+        # Update metadata
+        if "resources" not in meta:
+            meta["resources"] = {}
+        if req.cpu_limit:
+            meta["resources"]["cpu_limit"] = req.cpu_limit
+        if req.memory_limit:
+            meta["resources"]["memory_limit"] = req.memory_limit
+
+    # --- PostgreSQL specific ---
+    if plugin == "argus-postgresql":
+        pg_params = {}
+        if req.max_connections is not None:
+            pg_params["max_connections"] = str(req.max_connections)
+        if req.shared_buffers:
+            pg_params["shared_buffers"] = req.shared_buffers
+        if req.work_mem:
+            pg_params["work_mem"] = req.work_mem
+        if req.effective_cache_size:
+            pg_params["effective_cache_size"] = req.effective_cache_size
+        if req.maintenance_work_mem:
+            pg_params["maintenance_work_mem"] = req.maintenance_work_mem
+        if req.log_min_duration_statement is not None:
+            pg_params["log_min_duration_statement"] = str(req.log_min_duration_statement)
+        if req.log_statement:
+            pg_params["log_statement"] = req.log_statement
+
+        if pg_params:
+            # Apply via ALTER SYSTEM
+            pod_name = f"argus-postgresql-{ws.name}-0"
+            for key, val in pg_params.items():
+                sql_cmd = f"ALTER SYSTEM SET {key} = '{val}';"
+                proc = await aio.create_subprocess_exec(
+                    "kubectl", "exec", "-n", namespace, pod_name, "-c", "postgresql",
+                    "--", "psql", "-U", "argus", "-c", sql_cmd,
+                    stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+                )
+                await proc.communicate()
+            # Reload config
+            proc = await aio.create_subprocess_exec(
+                "kubectl", "exec", "-n", namespace, pod_name, "-c", "postgresql",
+                "--", "psql", "-U", "argus", "-c", "SELECT pg_reload_conf();",
+                stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+            )
+            await proc.communicate()
+            logger.info("PostgreSQL params applied: %s", pg_params)
+
+    # --- MariaDB specific ---
+    if plugin == "argus-mariadb":
+        maria_params = {}
+        if req.max_connections is not None:
+            maria_params["max_connections"] = str(req.max_connections)
+        if req.innodb_buffer_pool_size:
+            maria_params["innodb_buffer_pool_size"] = req.innodb_buffer_pool_size
+        if req.slow_query_log is not None:
+            maria_params["slow_query_log"] = "ON" if req.slow_query_log else "OFF"
+        if req.long_query_time is not None:
+            maria_params["long_query_time"] = str(req.long_query_time)
+
+        if maria_params:
+            pod_name = f"argus-mariadb-{ws.name}-0"
+            display = meta.get("display", {})
+            pw = display.get("DB Password", display.get("Password", ""))
+            user = display.get("DB User", display.get("Username", "root"))
+            for key, val in maria_params.items():
+                sql_cmd = f"SET GLOBAL {key} = {val};"
+                proc = await aio.create_subprocess_exec(
+                    "kubectl", "exec", "-n", namespace, pod_name, "-c", "mariadb",
+                    "--", "mariadb", f"-u{user}", f"-p{pw}", "-e", sql_cmd,
+                    stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+                )
+                await proc.communicate()
+            logger.info("MariaDB params applied: %s", maria_params)
+
+    # --- Ollama specific ---
+    if plugin == "argus-ollama" and req.default_model:
+        meta.setdefault("display", {})["Default Model"] = req.default_model
+
+    # --- Password regeneration ---
+    if req.regenerate_password:
+        new_pw = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(24))
+        display = meta.setdefault("display", {})
+
+        if plugin == "argus-postgresql":
+            pod_name = f"argus-postgresql-{ws.name}-0"
+            proc = await aio.create_subprocess_exec(
+                "kubectl", "exec", "-n", namespace, pod_name, "-c", "postgresql",
+                "--", "psql", "-U", "argus", "-c", f"ALTER USER argus WITH PASSWORD '{new_pw}';",
+                stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+            )
+            await proc.communicate()
+            display["DB Password"] = new_pw
+            logger.info("PostgreSQL password regenerated")
+
+        elif plugin == "argus-mariadb":
+            pod_name = f"argus-mariadb-{ws.name}-0"
+            old_pw = display.get("DB Password", "")
+            proc = await aio.create_subprocess_exec(
+                "kubectl", "exec", "-n", namespace, pod_name, "-c", "mariadb",
+                "--", "mariadb", "-uroot", f"-p{old_pw}", "-e",
+                f"ALTER USER 'argus'@'%' IDENTIFIED BY '{new_pw}'; FLUSH PRIVILEGES;",
+                stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+            )
+            await proc.communicate()
+            display["DB Password"] = new_pw
+            logger.info("MariaDB password regenerated")
+
+    # --- Save metadata ---
+    from sqlalchemy import text
+    await session.execute(
+        text("UPDATE argus_workspace_services SET metadata = :m WHERE id = :id"),
+        {"m": json_mod.dumps(meta), "id": svc.id},
+    )
+    await session.commit()
+
+    logger.info("Service configured: ws=%s plugin=%s svc_id=%d", ws.name, plugin, svc.id)
+    return {"status": "ok", "message": "Restarting the service with the requested resources."}
+
+
 class TrinoConfigureRequest(BaseModel):
     """Request body for Trino runtime configuration changes."""
     tier: str | None = None  # development | standard | performance | custom

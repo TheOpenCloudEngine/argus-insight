@@ -266,7 +266,11 @@ function DetailRow({
 /*  Service Configuration Sheet (MariaDB, PostgreSQL)                  */
 /* ------------------------------------------------------------------ */
 
-const CONFIGURABLE_PLUGINS = new Set(["argus-mariadb", "argus-postgresql", "argus-jupyter", "argus-jupyter-tensorflow", "argus-jupyter-pyspark", "argus-mlflow", "argus-airflow", "argus-trino"])
+const CONFIGURABLE_PLUGINS = new Set([
+  "argus-mariadb", "argus-postgresql", "argus-trino",
+  "argus-jupyter", "argus-jupyter-tensorflow", "argus-jupyter-pyspark",
+  "argus-mlflow", "argus-airflow", "argus-ollama", "argus-vscode-server",
+])
 
 function ServiceConfigSheet({
   open,
@@ -655,6 +659,313 @@ function TrinoConfigDialog({
   )
 }
 
+// ---------------------------------------------------------------------------
+// Generic Service Configuration Dialog (PostgreSQL, MariaDB, Ollama, Jupyter, VS Code, MLflow)
+// ---------------------------------------------------------------------------
+
+function ServiceConfigDialog({
+  open, onOpenChange, workspaceId, service,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  workspaceId: number
+  service: WorkspaceService
+}) {
+  const meta = (service.metadata ?? {}) as Record<string, any>
+  const resources = meta.resources ?? {}
+  const plugin = service.plugin_name
+
+  const isPg = plugin === "argus-postgresql"
+  const isMaria = plugin === "argus-mariadb"
+  const isOllama = plugin === "argus-ollama"
+  const isDb = isPg || isMaria
+
+  // Resource fields
+  const [cpuLimit, setCpuLimit] = useState(resources.cpu_limit || "2")
+  const [memLimit, setMemLimit] = useState(resources.memory_limit || "2Gi")
+
+  // PostgreSQL fields
+  const [maxConnections, setMaxConnections] = useState("100")
+  const [sharedBuffers, setSharedBuffers] = useState("128MB")
+  const [workMem, setWorkMem] = useState("4MB")
+  const [effectiveCacheSize, setEffectiveCacheSize] = useState("512MB")
+  const [maintenanceWorkMem, setMaintenanceWorkMem] = useState("64MB")
+  const [logMinDuration, setLogMinDuration] = useState("-1")
+  const [logStatement, setLogStatement] = useState("none")
+
+  // MariaDB fields
+  const [innodbBufferPool, setInnodbBufferPool] = useState("128MB")
+  const [slowQueryLog, setSlowQueryLog] = useState(false)
+  const [longQueryTime, setLongQueryTime] = useState("10")
+
+  // Ollama
+  const [defaultModel, setDefaultModel] = useState(meta.display?.["Default Model"] || "")
+
+  // Common
+  const [regenPassword, setRegenPassword] = useState(false)
+  const [applying, setApplying] = useState(false)
+  const [validation, setValidation] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  // Validate on resource change
+  useEffect(() => {
+    if (!open) return
+    const timer = setTimeout(async () => {
+      try {
+        const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/services/${service.id}/configure/validate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cpu_limit: cpuLimit, memory_limit: memLimit }),
+        })
+        if (res.ok) setValidation(await res.json())
+      } catch { /* ignore */ }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [open, cpuLimit, memLimit, workspaceId, service.id])
+
+  const handleApply = async () => {
+    if (validation && !validation.allowed) return
+    setApplying(true)
+    setError(null)
+    setSuccess(false)
+    try {
+      // First validate with all fields
+      const validateRes = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/services/${service.id}/configure/validate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cpu_limit: cpuLimit,
+          memory_limit: memLimit,
+          ...(isPg ? {
+            max_connections: parseInt(maxConnections) || undefined,
+            shared_buffers: sharedBuffers || undefined,
+            work_mem: workMem || undefined,
+            effective_cache_size: effectiveCacheSize || undefined,
+            maintenance_work_mem: maintenanceWorkMem || undefined,
+            log_min_duration_statement: parseInt(logMinDuration),
+            log_statement: logStatement,
+          } : {}),
+          ...(isMaria ? {
+            max_connections: parseInt(maxConnections) || undefined,
+            innodb_buffer_pool_size: innodbBufferPool || undefined,
+            slow_query_log: slowQueryLog,
+            long_query_time: parseInt(longQueryTime) || undefined,
+          } : {}),
+        }),
+      })
+      const valData = await validateRes.json()
+      if (!valData.allowed) {
+        setError(valData.message || "Validation failed")
+        setApplying(false)
+        return
+      }
+
+      // Apply
+      const body: Record<string, any> = {
+        cpu_limit: cpuLimit,
+        memory_limit: memLimit,
+        regenerate_password: regenPassword,
+      }
+      if (isPg) {
+        body.max_connections = parseInt(maxConnections) || undefined
+        body.shared_buffers = sharedBuffers || undefined
+        body.work_mem = workMem || undefined
+        body.effective_cache_size = effectiveCacheSize || undefined
+        body.maintenance_work_mem = maintenanceWorkMem || undefined
+        body.log_min_duration_statement = parseInt(logMinDuration)
+        body.log_statement = logStatement
+      }
+      if (isMaria) {
+        body.max_connections = parseInt(maxConnections) || undefined
+        body.innodb_buffer_pool_size = innodbBufferPool || undefined
+        body.slow_query_log = slowQueryLog
+        body.long_query_time = parseInt(longQueryTime) || undefined
+      }
+      if (isOllama && defaultModel) {
+        body.default_model = defaultModel
+      }
+
+      const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/services/${service.id}/configure`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.detail || `Failed: ${res.status}`)
+      }
+      setSuccess(true)
+      setTimeout(() => { setSuccess(false); onOpenChange(false) }, 2500)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to apply")
+    }
+    setApplying(false)
+  }
+
+  const pluginLabel = {
+    "argus-postgresql": "PostgreSQL",
+    "argus-mariadb": "MariaDB",
+    "argus-ollama": "Ollama",
+    "argus-jupyter": "JupyterLab",
+    "argus-jupyter-tensorflow": "JupyterLab (TensorFlow)",
+    "argus-jupyter-pyspark": "JupyterLab (PySpark)",
+    "argus-mlflow": "MLflow",
+    "argus-airflow": "Airflow",
+    "argus-vscode-server": "VS Code Server",
+  }[plugin] || service.display_name || plugin
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Configure {pluginLabel}</DialogTitle>
+          <DialogDescription>Adjust resources and settings. Changes are applied immediately.</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          {/* Resources — common for all */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Resources</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">CPU Limit</Label>
+                <Input value={cpuLimit} onChange={(e) => setCpuLimit(e.target.value)} placeholder="e.g. 2, 500m" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Memory Limit</Label>
+                <Input value={memLimit} onChange={(e) => setMemLimit(e.target.value)} placeholder="e.g. 2Gi, 512Mi" />
+              </div>
+            </div>
+          </div>
+
+          {/* PostgreSQL specific */}
+          {isPg && (
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold uppercase text-muted-foreground">Performance</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs">max_connections</Label>
+                  <Input type="number" value={maxConnections} onChange={(e) => setMaxConnections(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">shared_buffers</Label>
+                  <Input value={sharedBuffers} onChange={(e) => setSharedBuffers(e.target.value)} placeholder="128MB" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">work_mem</Label>
+                  <Input value={workMem} onChange={(e) => setWorkMem(e.target.value)} placeholder="4MB" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">effective_cache_size</Label>
+                  <Input value={effectiveCacheSize} onChange={(e) => setEffectiveCacheSize(e.target.value)} placeholder="512MB" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">maintenance_work_mem</Label>
+                  <Input value={maintenanceWorkMem} onChange={(e) => setMaintenanceWorkMem(e.target.value)} placeholder="64MB" />
+                </div>
+              </div>
+              <Label className="text-xs font-semibold uppercase text-muted-foreground mt-3">Logging</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs">log_min_duration_statement (ms)</Label>
+                  <Input type="number" value={logMinDuration} onChange={(e) => setLogMinDuration(e.target.value)} placeholder="-1 = off" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">log_statement</Label>
+                  <select className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={logStatement} onChange={(e) => setLogStatement(e.target.value)}>
+                    <option value="none">none</option>
+                    <option value="ddl">ddl</option>
+                    <option value="mod">mod</option>
+                    <option value="all">all</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MariaDB specific */}
+          {isMaria && (
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold uppercase text-muted-foreground">Performance</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs">max_connections</Label>
+                  <Input type="number" value={maxConnections} onChange={(e) => setMaxConnections(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">innodb_buffer_pool_size</Label>
+                  <Input value={innodbBufferPool} onChange={(e) => setInnodbBufferPool(e.target.value)} placeholder="128MB" />
+                </div>
+              </div>
+              <Label className="text-xs font-semibold uppercase text-muted-foreground mt-3">Logging</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="slow-query" checked={slowQueryLog} onChange={(e) => setSlowQueryLog(e.target.checked)} />
+                  <Label htmlFor="slow-query" className="text-xs cursor-pointer">slow_query_log</Label>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">long_query_time (sec)</Label>
+                  <Input type="number" value={longQueryTime} onChange={(e) => setLongQueryTime(e.target.value)} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Ollama specific */}
+          {isOllama && (
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold uppercase text-muted-foreground">Model</Label>
+              <div className="space-y-1">
+                <Label className="text-xs">Default Model</Label>
+                <Input value={defaultModel} onChange={(e) => setDefaultModel(e.target.value)} placeholder="e.g. llama3.2:1b" />
+              </div>
+            </div>
+          )}
+
+          {/* Password regeneration — DB services only */}
+          {isDb && (
+            <div className="flex items-center gap-3">
+              <input type="checkbox" id="regen-pw" checked={regenPassword} onChange={(e) => setRegenPassword(e.target.checked)} />
+              <Label htmlFor="regen-pw" className="text-sm cursor-pointer">Regenerate password</Label>
+            </div>
+          )}
+
+          {/* Validation display */}
+          {validation && (
+            <div className={`rounded-md border px-3 py-2 text-xs ${validation.allowed ? "bg-muted/30" : "bg-destructive/10 border-destructive/30 text-destructive"}`}>
+              {validation.validation_errors ? (
+                <ul className="list-disc pl-4 space-y-0.5">
+                  {validation.validation_errors.map((e: string, i: number) => <li key={i}>{e}</li>)}
+                </ul>
+              ) : (
+                <>
+                  <div className="flex justify-between">
+                    <span>CPU: {validation.after?.cpu_used} / {validation.limit?.cpu} cores</span>
+                    <span>Memory: {validation.after?.memory_used_gb} / {validation.limit?.memory_gb} GiB</span>
+                  </div>
+                  {!validation.allowed && <div className="mt-1 font-medium">{validation.message}</div>}
+                </>
+              )}
+            </div>
+          )}
+
+          {error && <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive">{error}</div>}
+          {success && <div className="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700">Restarting the service with the requested resources.</div>}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button size="sm" onClick={handleApply} disabled={applying || (validation && !validation.allowed && !validation.validation_errors)}>
+            {applying ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+            Apply
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function ServiceDataListItem({
   service,
   hideTimestamps,
@@ -927,7 +1238,7 @@ function ServiceDataListItem({
           </div>
         </DialogContent>
       </Dialog>
-      {/* Service Config Sheet */}
+      {/* Service Config Dialog */}
       {isConfigurable && workspaceId && service.plugin_name === "argus-trino" && (
         <TrinoConfigDialog
           open={configOpen}
@@ -937,7 +1248,7 @@ function ServiceDataListItem({
         />
       )}
       {isConfigurable && workspaceId && service.plugin_name !== "argus-trino" && (
-        <ServiceConfigSheet
+        <ServiceConfigDialog
           open={configOpen}
           onOpenChange={setConfigOpen}
           workspaceId={workspaceId}
