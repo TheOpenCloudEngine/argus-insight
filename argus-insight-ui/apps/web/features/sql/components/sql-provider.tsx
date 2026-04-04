@@ -1,6 +1,6 @@
 "use client"
 
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react"
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import * as api from "../api"
 import type { Datasource, EditorTab, QueryResult } from "../types"
 
@@ -31,8 +31,13 @@ interface SqlContextType {
   addTab: () => void
   closeTab: (id: string) => void
   updateTabSql: (id: string, sql: string) => void
+  updateTabTitle: (id: string, title: string) => void
   updateTabDatasource: (id: string, dsId: number | null) => void
   updateTabResult: (id: string, result: QueryResult | null) => void
+
+  // Save
+  saveTabs: () => Promise<void>
+  saveToast: string | null
 
   // Dialogs
   dialog: SqlDialogType
@@ -51,10 +56,11 @@ const SqlContext = createContext<SqlContextType | null>(null)
 let tabCounter = 1
 
 function createTab(): EditorTab {
-  const id = `tab-${tabCounter++}`
+  const id = crypto.randomUUID()
+  const title = `Query ${tabCounter++}`
   return {
     id,
-    title: `Query ${tabCounter - 1}`,
+    title,
     sql: "",
     datasourceId: null,
     result: null,
@@ -75,6 +81,21 @@ export function SqlProvider({ children, workspaceId }: { children: React.ReactNo
   const [activeTabId, setActiveTabId] = useState(tabs[0]!.id)
   const [dialog, setDialog] = useState<SqlDialogType>(null)
   const [isExecuting, setIsExecuting] = useState(false)
+  const [saveToast, setSaveToast] = useState<string | null>(null)
+  const tabsLoadedRef = useRef(false)
+
+  // Get current user ID from sessionStorage token
+  const getUserId = useCallback((): number => {
+    try {
+      const tokens = localStorage.getItem("argus_tokens")
+      if (tokens) {
+        const parsed = JSON.parse(tokens)
+        const payload = JSON.parse(atob(parsed.access_token.split(".")[1]))
+        return parseInt(payload.sub, 10) || 0
+      }
+    } catch { /* ignore */ }
+    return 0
+  }, [])
 
   const refreshDatasources = useCallback(async () => {
     try {
@@ -85,7 +106,6 @@ export function SqlProvider({ children, workspaceId }: { children: React.ReactNo
     }
   }, [])
 
-  // Fetch workspace DB services as datasources
   const refreshWorkspaceDatasources = useCallback(async () => {
     if (!workspaceId) { setWorkspaceDatasources([]); return }
     try {
@@ -96,10 +116,33 @@ export function SqlProvider({ children, workspaceId }: { children: React.ReactNo
     }
   }, [workspaceId])
 
+  // Load tabs from DB on mount
   useEffect(() => {
     refreshDatasources()
     refreshWorkspaceDatasources()
-  }, [refreshDatasources, refreshWorkspaceDatasources])
+
+    if (!workspaceId || tabsLoadedRef.current) return
+    const userId = getUserId()
+    if (!userId) return
+
+    api.loadTabs(workspaceId, userId).then((saved) => {
+      if (saved.length > 0) {
+        tabCounter = saved.length + 1
+        const loaded: EditorTab[] = saved.map((t) => ({
+          id: t.id,
+          title: t.title,
+          sql: t.sql_text,
+          datasourceId: t.datasource_id,
+          result: null,
+          status: null,
+          executionId: null,
+        }))
+        setTabs(loaded)
+        setActiveTabId(loaded[0]!.id)
+      }
+      tabsLoadedRef.current = true
+    }).catch(() => { tabsLoadedRef.current = true })
+  }, [refreshDatasources, refreshWorkspaceDatasources, workspaceId, getUserId])
 
   const addTab = useCallback(() => {
     const tab = createTab()
@@ -133,9 +176,34 @@ export function SqlProvider({ children, workspaceId }: { children: React.ReactNo
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, sql } : t)))
   }, [])
 
+  const updateTabTitle = useCallback((id: string, title: string) => {
+    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, title } : t)))
+  }, [])
+
   const updateTabDatasource = useCallback((id: string, dsId: number | null) => {
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, datasourceId: dsId } : t)))
   }, [])
+
+  // Save all tabs to DB
+  const saveTabs = useCallback(async () => {
+    if (!workspaceId) return
+    const userId = getUserId()
+    if (!userId) return
+    try {
+      await api.saveTabs(workspaceId, userId, tabs.map((t, i) => ({
+        id: t.id,
+        title: t.title,
+        sql_text: t.sql,
+        datasource_id: t.datasourceId,
+        tab_order: i,
+      })))
+      setSaveToast("Saved")
+      setTimeout(() => setSaveToast(null), 2000)
+    } catch {
+      setSaveToast("Failed to save")
+      setTimeout(() => setSaveToast(null), 3000)
+    }
+  }, [workspaceId, getUserId, tabs])
 
   const updateTabResult = useCallback((id: string, result: QueryResult | null) => {
     setTabs((prev) =>
@@ -257,6 +325,9 @@ export function SqlProvider({ children, workspaceId }: { children: React.ReactNo
         addTab,
         closeTab,
         updateTabSql,
+        updateTabTitle,
+        saveTabs,
+        saveToast,
         updateTabDatasource,
         updateTabResult,
         dialog,

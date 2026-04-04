@@ -20,6 +20,39 @@ import type {
 const BASE = "/api/v1/sql"
 
 // ---------------------------------------------------------------------------
+// Editor Tabs
+// ---------------------------------------------------------------------------
+
+export interface TabData {
+  id: string
+  title: string
+  sql_text: string
+  datasource_id: number | null
+  tab_order: number
+}
+
+export async function loadTabs(workspaceId: number, userId: number): Promise<TabData[]> {
+  const res = await authFetch(`${BASE}/tabs?workspace_id=${workspaceId}&user_id=${userId}`)
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.tabs ?? []
+}
+
+export async function saveTabs(
+  workspaceId: number,
+  userId: number,
+  tabs: TabData[],
+): Promise<{ saved: number; deleted: number }> {
+  const res = await authFetch(`${BASE}/tabs/save`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workspace_id: workspaceId, user_id: userId, tabs }),
+  })
+  if (!res.ok) throw new Error(`Failed to save tabs: ${res.status}`)
+  return res.json()
+}
+
+// ---------------------------------------------------------------------------
 // Datasources
 // ---------------------------------------------------------------------------
 

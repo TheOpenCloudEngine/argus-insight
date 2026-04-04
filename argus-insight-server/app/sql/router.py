@@ -6,6 +6,8 @@ Prefix: /api/v1/sql
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
@@ -34,6 +36,110 @@ from app.sql.schemas import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/sql", tags=["sql"])
+
+
+# ---------------------------------------------------------------------------
+# Editor Tabs (persistent per workspace-user)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/tabs")
+async def load_tabs(
+    workspace_id: int = Query(...),
+    user_id: int = Query(...),
+    session: AsyncSession = Depends(get_session),
+):
+    """Load saved editor tabs for a workspace-user pair."""
+    from app.sql.models import SqlEditorTab
+    result = await session.execute(
+        select(SqlEditorTab)
+        .where(SqlEditorTab.workspace_id == workspace_id, SqlEditorTab.user_id == user_id)
+        .order_by(SqlEditorTab.tab_order)
+    )
+    tabs = result.scalars().all()
+    return {
+        "tabs": [
+            {
+                "id": t.id,
+                "title": t.title,
+                "sql_text": t.sql_text,
+                "datasource_id": t.datasource_id,
+                "tab_order": t.tab_order,
+            }
+            for t in tabs
+        ]
+    }
+
+
+class TabSaveItem(BaseModel):
+    id: str
+    title: str = "Query"
+    sql_text: str = ""
+    datasource_id: int | None = None
+    tab_order: int = 0
+
+
+class TabSaveRequest(BaseModel):
+    workspace_id: int
+    user_id: int
+    tabs: list[TabSaveItem]
+
+
+@router.post("/tabs/save")
+async def save_tabs(
+    req: TabSaveRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Save all editor tabs (upsert + delete closed tabs)."""
+    from app.sql.models import SqlEditorTab
+
+    # Get existing tab IDs for this workspace-user
+    existing = await session.execute(
+        select(SqlEditorTab.id).where(
+            SqlEditorTab.workspace_id == req.workspace_id,
+            SqlEditorTab.user_id == req.user_id,
+        )
+    )
+    existing_ids = set(row[0] for row in existing.fetchall())
+    incoming_ids = set(t.id for t in req.tabs)
+
+    # Delete tabs that were closed (exist in DB but not in request)
+    to_delete = existing_ids - incoming_ids
+    if to_delete:
+        from sqlalchemy import delete
+        await session.execute(
+            delete(SqlEditorTab).where(SqlEditorTab.id.in_(to_delete))
+        )
+
+    # Upsert each tab
+    for tab in req.tabs:
+        if tab.id in existing_ids:
+            # Update
+            from sqlalchemy import update
+            await session.execute(
+                update(SqlEditorTab).where(SqlEditorTab.id == tab.id).values(
+                    title=tab.title,
+                    sql_text=tab.sql_text,
+                    datasource_id=tab.datasource_id,
+                    tab_order=tab.tab_order,
+                )
+            )
+        else:
+            # Insert
+            session.add(SqlEditorTab(
+                id=tab.id,
+                workspace_id=req.workspace_id,
+                user_id=req.user_id,
+                title=tab.title,
+                sql_text=tab.sql_text,
+                datasource_id=tab.datasource_id,
+                tab_order=tab.tab_order,
+            ))
+
+    await session.commit()
+    logger.info("Tabs saved: ws=%d user=%d saved=%d deleted=%d",
+                req.workspace_id, req.user_id, len(req.tabs), len(to_delete))
+    return {"saved": len(req.tabs), "deleted": len(to_delete)}
 
 
 # ---------------------------------------------------------------------------

@@ -37,6 +37,9 @@ export function SqlEditorPanel() {
     addTab,
     closeTab,
     updateTabSql,
+    updateTabTitle,
+    saveTabs,
+    saveToast,
     executeCurrentTab,
     executeSql,
     isExecuting,
@@ -48,7 +51,13 @@ export function SqlEditorPanel() {
   const activeTab = tabs.find((t) => t.id === activeTabId)
   const editorRef = useRef<any>(null)
   const executeRef = useRef<() => void>(() => {})
+  const saveRef = useRef<() => void>(() => {})
   const [alertMsg, setAlertMsg] = useState("")
+  const [editingTabId, setEditingTabId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState("")
+
+  // Keep save ref always current
+  saveRef.current = saveTabs
 
   // Determine engine type for syntax hints
   const activeDsId = activeTab?.datasourceId
@@ -151,6 +160,14 @@ export function SqlEditorPanel() {
         label: "Execute Query (Selection or All)",
         keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
         run: () => executeRef.current(),
+      })
+
+      // Ctrl+S → Save all tabs
+      editor.addAction({
+        id: "save-tabs",
+        label: "Save Tabs",
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
+        run: () => saveRef.current(),
       })
 
       // Format SQL — appears in right-click context menu
@@ -296,7 +313,38 @@ export function SqlEditorPanel() {
               }`}
               onClick={() => setActiveTabId(tab.id)}
             >
-              <span className="truncate max-w-[120px]">{tab.title}</span>
+              {/* Inline editable title — double-click to edit */}
+              {editingTabId === tab.id ? (
+                <input
+                  autoFocus
+                  className="w-24 bg-transparent border-b border-primary outline-none text-xs"
+                  value={editingTitle}
+                  onChange={(e) => setEditingTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      updateTabTitle(tab.id, editingTitle || tab.title)
+                      setEditingTabId(null)
+                    }
+                    if (e.key === "Escape") setEditingTabId(null)
+                  }}
+                  onBlur={() => {
+                    updateTabTitle(tab.id, editingTitle || tab.title)
+                    setEditingTabId(null)
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <span
+                  className="truncate max-w-[120px]"
+                  onDoubleClick={(e) => {
+                    e.stopPropagation()
+                    setEditingTabId(tab.id)
+                    setEditingTitle(tab.title)
+                  }}
+                >
+                  {tab.title}
+                </span>
+              )}
               {tabs.length > 1 && (
                 <button
                   onClick={(e) => {
@@ -376,8 +424,7 @@ export function SqlEditorPanel() {
               variant="outline"
               size="sm"
               className="h-7 gap-1 text-xs"
-              onClick={() => setDialog("save-query")}
-              disabled={!activeTab?.sql.trim()}
+              onClick={saveTabs}
             >
               <Save className="h-3.5 w-3.5" />
               Save
@@ -415,6 +462,15 @@ export function SqlEditorPanel() {
           theme="light"
         />
       </div>
+
+      {/* Save Toast */}
+      {saveToast && (
+        <div className={`fixed bottom-4 right-4 z-50 rounded-md px-4 py-2 text-sm font-medium shadow-lg transition-all ${
+          saveToast === "Saved" ? "bg-emerald-600 text-white" : "bg-destructive text-white"
+        }`}>
+          {saveToast}
+        </div>
+      )}
 
       <AlertDialog open={!!alertMsg} onOpenChange={(open) => { if (!open) setAlertMsg("") }}>
         <AlertDialogContent>

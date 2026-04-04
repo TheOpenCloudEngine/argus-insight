@@ -833,6 +833,23 @@ CREATE TABLE IF NOT EXISTS sql_datasources (
 COMMENT ON TABLE sql_datasources IS 'Registered SQL datasource connections';
 COMMENT ON COLUMN sql_datasources.engine_type IS 'trino | starrocks | postgresql | mariadb';
 
+CREATE TABLE IF NOT EXISTS sql_editor_tabs (
+    id                  VARCHAR(36)     PRIMARY KEY,
+    workspace_id        INTEGER         NOT NULL,
+    user_id             INTEGER         NOT NULL,
+    title               VARCHAR(200)    NOT NULL DEFAULT 'Query 1',
+    sql_text            TEXT            NOT NULL DEFAULT '',
+    datasource_id       INTEGER,
+    tab_order           INTEGER         NOT NULL DEFAULT 0,
+    created_at          TIMESTAMPTZ     DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_sql_editor_tabs_ws_user
+    ON sql_editor_tabs (workspace_id, user_id, tab_order);
+
+COMMENT ON TABLE sql_editor_tabs IS 'Persistent SQL editor tab state per workspace-user';
+
 CREATE TABLE IF NOT EXISTS sql_query_history (
     id                  SERIAL          PRIMARY KEY,
     datasource_id       INTEGER         NOT NULL,

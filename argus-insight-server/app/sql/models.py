@@ -67,6 +67,22 @@ class SqlQueryHistory(Base):
     executed_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class SqlEditorTab(Base):
+    """Persistent SQL editor tab state per workspace-user."""
+
+    __tablename__ = "sql_editor_tabs"
+
+    id = Column(String(36), primary_key=True)  # UUID from client
+    workspace_id = Column(Integer, nullable=False)
+    user_id = Column(Integer, nullable=False)
+    title = Column(String(200), nullable=False, default="Query 1")
+    sql_text = Column(Text, nullable=False, default="")
+    datasource_id = Column(Integer)  # Negative = workspace service
+    tab_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class SqlQueryExecution(Base):
     """Active query execution state for long-running query tracking.
 
