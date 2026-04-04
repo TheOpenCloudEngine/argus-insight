@@ -1,0 +1,14 @@
+version: "1.0"
+display_name: "v1.0 (Kafka KRaft)"
+description: Apache Kafka with KRaft consensus, no ZooKeeper dependency
+status: stable
+step_class: workspace_provisioner.workflow.steps.kafka_deploy.KafkaDeployStep
+config_class: workspace_provisioner.config.KafkaConfig
+template_dir: kafka
+changelog: |
+  - KRaft mode (ZooKeeper-free)
+  - Combined controller+broker nodes
+  - Auto-format storage on first boot
+  - Dynamic quorum voter configuration
+upgradeable_from: []
+software_version: "3.9"
