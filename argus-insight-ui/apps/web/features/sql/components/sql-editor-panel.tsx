@@ -1,20 +1,31 @@
 "use client"
 
-import React, { useCallback, useRef } from "react"
+import React, { useCallback, useEffect, useRef, useState } from "react"
 import {
   Loader2,
   Play,
   Plus,
   Save,
-  Square,
   X,
 } from "lucide-react"
+import Editor, { type OnMount } from "@monaco-editor/react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@workspace/ui/components/alert-dialog"
 import { Button } from "@workspace/ui/components/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@workspace/ui/components/tooltip"
+import * as api from "../api"
+import type { AutocompleteData } from "../types"
 import { useSql } from "./sql-provider"
 
 // ---------------------------------------------------------------------------
-// SQL Editor Panel (tabs + textarea + toolbar + results)
+// SQL Editor Panel (tabs + Monaco editor + toolbar)
 // ---------------------------------------------------------------------------
 
 export function SqlEditorPanel() {
@@ -26,38 +37,159 @@ export function SqlEditorPanel() {
     closeTab,
     updateTabSql,
     executeCurrentTab,
+    executeSql,
     isExecuting,
     setDialog,
-    datasources,
+    workspaceDatasources,
     updateTabDatasource,
   } = useSql()
 
   const activeTab = tabs.find((t) => t.id === activeTabId)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const editorRef = useRef<any>(null)
+  const executeRef = useRef<() => void>(() => {})
+  const [alertMsg, setAlertMsg] = useState("")
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      // Ctrl+Enter or Cmd+Enter to execute
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-        e.preventDefault()
-        executeCurrentTab()
+  // Determine engine type for syntax hints
+  const activeDsId = activeTab?.datasourceId
+  const allDatasources = workspaceDatasources
+  const activeDs = allDatasources.find((ds) => ds.id === activeDsId)
+
+  // Map engine type → Monaco language for syntax highlighting
+  const ENGINE_LANG: Record<string, string> = {
+    postgresql: "pgsql",
+    mariadb: "mysql",
+    starrocks: "mysql",
+    trino: "sql",
+  }
+  const editorLanguage = activeDs ? (ENGINE_LANG[activeDs.engine_type] ?? "sql") : "sql"
+
+  // Execute selection or full SQL
+  const executeSelectionOrAll = useCallback(() => {
+    if (!activeTab?.datasourceId) {
+      setAlertMsg("Please select a DataSource first.")
+      return
+    }
+    const editor = editorRef.current
+    if (!editor) { executeSql(); return }
+    const selection = editor.getSelection()
+    if (selection && !selection.isEmpty()) {
+      const selectedText = editor.getModel()?.getValueInRange(selection) ?? ""
+      if (selectedText.trim()) {
+        executeSql(selectedText)
+        return
       }
-      // Tab key → insert 2 spaces
-      if (e.key === "Tab") {
-        e.preventDefault()
-        const ta = e.currentTarget
-        const start = ta.selectionStart
-        const end = ta.selectionEnd
-        const value = ta.value
-        const newVal = value.substring(0, start) + "  " + value.substring(end)
-        updateTabSql(activeTabId, newVal)
-        // Restore cursor position
-        requestAnimationFrame(() => {
-          ta.selectionStart = ta.selectionEnd = start + 2
+    }
+    executeSql()
+  }, [executeSql, activeTab?.datasourceId])
+
+  // Keep ref always pointing to latest function (avoids stale closure in Monaco action)
+  executeRef.current = executeSelectionOrAll
+
+  // Autocomplete: fetch metadata when datasource changes
+  const autocompleteRef = useRef<AutocompleteData | null>(null)
+  const completionDisposableRef = useRef<any>(null)
+
+  useEffect(() => {
+    if (!activeDsId) { autocompleteRef.current = null; return }
+    let cancelled = false
+    api.fetchAutocomplete(activeDsId).then((data) => {
+      if (!cancelled) autocompleteRef.current = data
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [activeDsId])
+
+  // Monaco mount handler — register Ctrl+Enter shortcut + completion provider
+  const handleEditorMount: OnMount = useCallback(
+    (editor, monaco) => {
+      editorRef.current = editor
+      editor.addAction({
+        id: "execute-query",
+        label: "Execute Query (Selection or All)",
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+        run: () => executeRef.current(),
+      })
+
+      // Register completion provider for all SQL languages
+      const languages = ["sql", "pgsql", "mysql"]
+      for (const lang of languages) {
+        const disposable = monaco.languages.registerCompletionItemProvider(lang, {
+          triggerCharacters: [".", " "],
+          provideCompletionItems: (model, position) => {
+            const ac = autocompleteRef.current
+            if (!ac) return { suggestions: [] }
+
+            const word = model.getWordUntilPosition(position)
+            const range = {
+              startLineNumber: position.lineNumber,
+              endLineNumber: position.lineNumber,
+              startColumn: word.startColumn,
+              endColumn: word.endColumn,
+            }
+
+            const suggestions: any[] = []
+
+            // Schemas
+            for (const s of ac.schemas) {
+              suggestions.push({
+                label: s,
+                kind: monaco.languages.CompletionItemKind.Module,
+                insertText: s,
+                detail: "schema",
+                range,
+              })
+            }
+
+            // Tables
+            for (const t of ac.tables) {
+              suggestions.push({
+                label: t,
+                kind: monaco.languages.CompletionItemKind.Struct,
+                insertText: t,
+                detail: "table",
+                range,
+              })
+            }
+
+            // Columns
+            for (const c of ac.columns) {
+              suggestions.push({
+                label: c,
+                kind: monaco.languages.CompletionItemKind.Field,
+                insertText: c,
+                detail: "column",
+                range,
+              })
+            }
+
+            // Keywords
+            for (const k of ac.keywords) {
+              suggestions.push({
+                label: k,
+                kind: monaco.languages.CompletionItemKind.Keyword,
+                insertText: k,
+                range,
+              })
+            }
+
+            // Functions
+            for (const f of ac.functions) {
+              suggestions.push({
+                label: f,
+                kind: monaco.languages.CompletionItemKind.Function,
+                insertText: f + "()",
+                detail: "function",
+                range,
+              })
+            }
+
+            return { suggestions }
+          },
         })
+        if (!completionDisposableRef.current) completionDisposableRef.current = []
+        completionDisposableRef.current.push(disposable)
       }
     },
-    [activeTabId, executeCurrentTab, updateTabSql],
+    [],
   )
 
   return (
@@ -102,9 +234,9 @@ export function SqlEditorPanel() {
 
       {/* Toolbar */}
       <div className="flex items-center gap-2 border-b px-3 py-1.5">
-        {/* Datasource selector */}
+        {/* Datasource selector — grouped */}
         <select
-          className="h-7 rounded-md border bg-background px-2 text-xs"
+          className="h-7 rounded-md border bg-background px-2 text-sm"
           value={activeTab?.datasourceId ?? ""}
           onChange={(e) => {
             const val = e.target.value ? Number(e.target.value) : null
@@ -112,12 +244,18 @@ export function SqlEditorPanel() {
           }}
         >
           <option value="">Select Datasource...</option>
-          {datasources.map((ds) => (
-            <option key={ds.id} value={ds.id}>
+          {workspaceDatasources.map((ds) => (
+            <option key={`ws-${ds.id}`} value={ds.id}>
               {ds.name} ({ds.engine_type})
             </option>
           ))}
         </select>
+
+        {activeDs && (
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground uppercase">
+            {activeDs.engine_type}
+          </span>
+        )}
 
         <div className="flex-1" />
 
@@ -128,7 +266,7 @@ export function SqlEditorPanel() {
               variant="default"
               size="sm"
               className="h-7 gap-1 text-xs"
-              onClick={executeCurrentTab}
+              onClick={executeSelectionOrAll}
               disabled={isExecuting || !activeTab?.datasourceId || !activeTab?.sql.trim()}
             >
               {isExecuting ? (
@@ -160,18 +298,46 @@ export function SqlEditorPanel() {
         </Tooltip>
       </div>
 
-      {/* Editor area */}
-      <div className="flex-1 min-h-0">
-        <textarea
-          ref={textareaRef}
-          className="h-full w-full resize-none bg-background p-3 font-mono text-sm leading-relaxed outline-none"
-          placeholder="-- Write your SQL query here..."
+      {/* Monaco Editor */}
+      <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+        <Editor
+          height="100%"
+          language={editorLanguage}
           value={activeTab?.sql ?? ""}
-          onChange={(e) => updateTabSql(activeTabId, e.target.value)}
-          onKeyDown={handleKeyDown}
-          spellCheck={false}
+          onChange={(value) => updateTabSql(activeTabId, value ?? "")}
+          onMount={handleEditorMount}
+          options={{
+            fontFamily: "'D2Coding', 'D2 Coding', monospace",
+            fontSize: 14,
+            lineNumbers: "on",
+            minimap: { enabled: false },
+            scrollBeyondLastLine: false,
+            automaticLayout: true,
+            tabSize: 2,
+            wordWrap: "on",
+            suggestOnTriggerCharacters: true,
+            quickSuggestions: true,
+            padding: { top: 8 },
+            renderWhitespace: "none",
+            overviewRulerLanes: 0,
+            hideCursorInOverviewRuler: true,
+            scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
+          }}
+          theme="light"
         />
       </div>
+
+      <AlertDialog open={!!alertMsg} onOpenChange={(open) => { if (!open) setAlertMsg("") }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Notice</AlertDialogTitle>
+            <AlertDialogDescription>{alertMsg}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setAlertMsg("")}>OK</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

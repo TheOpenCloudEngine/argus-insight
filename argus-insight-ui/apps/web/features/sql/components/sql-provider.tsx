@@ -18,9 +18,11 @@ type SqlDialogType =
 interface SqlContextType {
   // Datasources
   datasources: Datasource[]
+  workspaceDatasources: Datasource[]
   activeDatasource: Datasource | null
   setActiveDatasource: (ds: Datasource | null) => void
   refreshDatasources: () => Promise<void>
+  refreshWorkspaceDatasources: () => Promise<void>
 
   // Tabs
   tabs: EditorTab[]
@@ -38,6 +40,9 @@ interface SqlContextType {
 
   // Execution
   executeCurrentTab: () => Promise<void>
+  executeSql: (sql?: string) => Promise<void>
+  cancelExecution: () => Promise<void>
+  fetchResultPage: (page: number) => Promise<void>
   isExecuting: boolean
 }
 
@@ -62,8 +67,9 @@ function createTab(): EditorTab {
 // Provider
 // ---------------------------------------------------------------------------
 
-export function SqlProvider({ children }: { children: React.ReactNode }) {
+export function SqlProvider({ children, workspaceId }: { children: React.ReactNode; workspaceId?: number }) {
   const [datasources, setDatasources] = useState<Datasource[]>([])
+  const [workspaceDatasources, setWorkspaceDatasources] = useState<Datasource[]>([])
   const [activeDatasource, setActiveDatasource] = useState<Datasource | null>(null)
   const [tabs, setTabs] = useState<EditorTab[]>([createTab()])
   const [activeTabId, setActiveTabId] = useState(tabs[0]!.id)
@@ -79,9 +85,21 @@ export function SqlProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  // Fetch workspace DB services as datasources
+  const refreshWorkspaceDatasources = useCallback(async () => {
+    if (!workspaceId) { setWorkspaceDatasources([]); return }
+    try {
+      const res = await api.fetchWorkspaceDatasources(workspaceId)
+      setWorkspaceDatasources(res)
+    } catch {
+      setWorkspaceDatasources([])
+    }
+  }, [workspaceId])
+
   useEffect(() => {
     refreshDatasources()
-  }, [refreshDatasources])
+    refreshWorkspaceDatasources()
+  }, [refreshDatasources, refreshWorkspaceDatasources])
 
   const addTab = useCallback(() => {
     const tab = createTab()
@@ -129,37 +147,110 @@ export function SqlProvider({ children }: { children: React.ReactNode }) {
     )
   }, [])
 
-  const executeCurrentTab = useCallback(async () => {
+  const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(null)
+
+  const executeSql = useCallback(async (sqlOverride?: string) => {
     const tab = tabs.find((t) => t.id === activeTabId)
-    if (!tab || !tab.datasourceId || !tab.sql.trim()) return
+    if (!tab || !tab.datasourceId) return
+    const sql = (sqlOverride ?? tab.sql).trim()
+    if (!sql) return
 
     setIsExecuting(true)
+    setCurrentExecutionId(null)
     try {
-      const result = await api.executeQuery(tab.datasourceId, tab.sql.trim())
-      updateTabResult(tab.id, result)
+      // Submit query (returns immediately)
+      const submitted = await api.submitQuery(tab.datasourceId, sql)
+      setCurrentExecutionId(submitted.execution_id)
+
+      // Poll for completion
+      const pollInterval = 500
+      const maxPolls = 1200 // 10 minutes at 500ms
+      for (let i = 0; i < maxPolls; i++) {
+        await new Promise((r) => setTimeout(r, pollInterval))
+        const status = await api.fetchExecutionStatus(submitted.execution_id)
+
+        if (status.status === "FINISHED") {
+          const result = await api.fetchExecutionResult(submitted.execution_id)
+          updateTabResult(tab.id, result)
+          return
+        }
+        if (status.status === "FAILED") {
+          updateTabResult(tab.id, {
+            execution_id: submitted.execution_id,
+            status: "FAILED",
+            columns: [],
+            rows: [],
+            row_count: 0,
+            elapsed_ms: status.elapsed_ms ?? 0,
+            error_message: status.error_message || "Query failed",
+            has_more: false,
+          })
+          return
+        }
+        if (status.status === "CANCELLED") {
+          updateTabResult(tab.id, {
+            execution_id: submitted.execution_id,
+            status: "CANCELLED",
+            columns: [],
+            rows: [],
+            row_count: 0,
+            elapsed_ms: status.elapsed_ms ?? 0,
+            error_message: "Query cancelled by user",
+            has_more: false,
+          })
+          return
+        }
+      }
+      // Timeout
+      updateTabResult(tab.id, {
+        execution_id: submitted.execution_id,
+        status: "FAILED",
+        columns: [], rows: [], row_count: 0, elapsed_ms: 0,
+        error_message: "Polling timeout — query may still be running on the server",
+        has_more: false,
+      })
     } catch (e) {
       updateTabResult(tab.id, {
         execution_id: "",
         status: "FAILED",
-        columns: [],
-        rows: [],
-        row_count: 0,
-        elapsed_ms: 0,
+        columns: [], rows: [], row_count: 0, elapsed_ms: 0,
         error_message: e instanceof Error ? e.message : String(e),
         has_more: false,
       })
     } finally {
       setIsExecuting(false)
+      setCurrentExecutionId(null)
     }
   }, [tabs, activeTabId, updateTabResult])
+
+  const cancelExecution = useCallback(async () => {
+    if (!currentExecutionId) return
+    try {
+      await api.cancelExecution(currentExecutionId)
+    } catch { /* ignore */ }
+  }, [currentExecutionId])
+
+  const fetchResultPage = useCallback(async (page: number) => {
+    const tab = tabs.find((t) => t.id === activeTabId)
+    if (!tab?.result?.execution_id) return
+    try {
+      const result = await api.fetchExecutionResult(tab.result.execution_id, page)
+      updateTabResult(tab.id, result)
+    } catch { /* ignore */ }
+  }, [tabs, activeTabId, updateTabResult])
+
+  // Keep backward compat
+  const executeCurrentTab = useCallback(async () => executeSql(), [executeSql])
 
   return (
     <SqlContext.Provider
       value={{
         datasources,
+        workspaceDatasources,
         activeDatasource,
         setActiveDatasource,
         refreshDatasources,
+        refreshWorkspaceDatasources,
         tabs,
         activeTabId,
         setActiveTabId,
@@ -171,6 +262,9 @@ export function SqlProvider({ children }: { children: React.ReactNode }) {
         dialog,
         setDialog,
         executeCurrentTab,
+        executeSql,
+        cancelExecution,
+        fetchResultPage,
         isExecuting,
       }}
     >

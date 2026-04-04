@@ -29,6 +29,12 @@ export async function fetchDatasources(): Promise<Datasource[]> {
   return res.json()
 }
 
+export async function fetchWorkspaceDatasources(workspaceId: number): Promise<Datasource[]> {
+  const res = await authFetch(`${BASE}/datasources/workspace/${workspaceId}`)
+  if (!res.ok) return []
+  return res.json()
+}
+
 export async function createDatasource(data: DatasourceCreate): Promise<Datasource> {
   const res = await authFetch(`${BASE}/datasources`, {
     method: "POST",
@@ -216,10 +222,14 @@ export async function fetchExecutionStatus(executionId: string): Promise<QuerySt
   return res.json()
 }
 
-export async function fetchExecutionResult(executionId: string): Promise<QueryResult> {
-  const res = await authFetch(`${BASE}/executions/${executionId}/result`)
+export async function fetchExecutionResult(executionId: string, page = 1): Promise<QueryResult> {
+  const res = await authFetch(`${BASE}/executions/${executionId}/result?page=${page}`)
   if (!res.ok) throw new Error(`Failed to fetch result: ${res.status}`)
   return res.json()
+}
+
+export function getExportUrl(executionId: string): string {
+  return `${BASE}/executions/${executionId}/export`
 }
 
 export async function cancelExecution(executionId: string): Promise<QueryCancelResult> {

@@ -167,6 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await apiLogout(stored.refresh_token).catch(() => {})
     }
     clearTokens()
+    sessionStorage.removeItem("argus_last_workspace_id")
     setUser(null)
     setAccessToken(null)
     if (refreshTimerRef.current) {

@@ -1,10 +1,17 @@
-"""Code generators for Model nodes."""
+"""Code generators for Model nodes (with defensive guards).
+
+Each model registers itself into a global `_models` list so that
+the Evaluate node can compare all models and build a leaderboard.
+"""
+
+import time as _time
 
 
 def gen_model(var: str, node_type: str, cfg: dict, parent_type: str | None, parent_var: str | None) -> list[str]:
     """Generate model training code.
 
     If the parent is not a Split node, auto-split is injected.
+    Each trained model is appended to `_models` list for multi-model support.
     """
     lines = []
     has_split = parent_type == "transform_split"
@@ -12,10 +19,17 @@ def gen_model(var: str, node_type: str, cfg: dict, parent_type: str | None, pare
     # Auto-split if no explicit Split upstream
     if not has_split and parent_var:
         lines.append("# Auto-split: no Train/Test Split node — using last column as target")
-        lines.append(f"X, y = _prepare_for_model({parent_var}, {parent_var}.columns[-1])")
+        lines.append(f"_target_col = {parent_var}.columns[-1]")
+        lines.append(f'print(f"  ⚠ Auto-split: using \'{{_target_col}}\' as target (last column)")')
+        lines.append(f"X, y = _prepare_for_model({parent_var}, _target_col)")
         lines.append("X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)")
         lines.append(f'print(f"[Auto-Split] Train: {{X_train.shape}}, Test: {{X_test.shape}}")')
         lines.append("")
+
+    # Guard: check training data is not empty
+    lines.append("if X_train.empty or len(y_train) == 0:")
+    lines.append('    raise RuntimeError("Training data is empty — cannot fit model")')
+    lines.append("")
 
     # Model instantiation
     if node_type == "model_xgboost":
@@ -47,8 +61,19 @@ def gen_model(var: str, node_type: str, cfg: dict, parent_type: str | None, pare
         lines.append("model = RandomForestClassifier(n_estimators=100, random_state=42)")
 
     lines.append("")
+    lines.append("import time as _time")
+    lines.append("_t0 = _time.time()")
     lines.append("model.fit(X_train, y_train)")
+    lines.append("_train_time = _time.time() - _t0")
     lines.append("y_pred = model.predict(X_test)")
-    lines.append('print(f"[Model] {type(model).__name__} trained")')
+    lines.append('print(f"[Model] {type(model).__name__} trained ({_train_time:.1f}s)")')
+    lines.append("")
+    # Register model for multi-model evaluation
+    lines.append("_models.append({")
+    lines.append('    "name": type(model).__name__,')
+    lines.append('    "model": model,')
+    lines.append('    "y_pred": y_pred,')
+    lines.append('    "train_time": _train_time,')
+    lines.append("})")
     lines.append("")
     return lines

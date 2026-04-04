@@ -15,6 +15,7 @@ class EngineType(str, Enum):
     TRINO = "trino"
     STARROCKS = "starrocks"
     POSTGRESQL = "postgresql"
+    MARIADB = "mariadb"
 
 
 class QueryStatus(str, Enum):
@@ -173,6 +174,9 @@ class QueryResultResponse(BaseModel):
     elapsed_ms: int = 0
     error_message: str | None = None
     has_more: bool = False
+    page: int = 1
+    page_size: int = 500
+    total_pages: int = 1
 
 
 class QueryCancelResponse(BaseModel):
@@ -269,5 +273,6 @@ class AutocompleteResponse(BaseModel):
     keywords: list[str] = []
     functions: list[str] = []
     data_types: list[str] = []
+    schemas: list[str] = []
     tables: list[str] = []
     columns: list[str] = []

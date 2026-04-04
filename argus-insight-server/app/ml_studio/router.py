@@ -192,6 +192,9 @@ async def start_training(
     session: AsyncSession = Depends(get_session),
 ):
     """Start an ML training job."""
+    # Pre-check: workspace namespace must exist
+    await _check_workspace_namespace(session, req.workspace_id)
+
     job = await service.create_job(
         session, req,
         author_user_id=int(user.sub),
@@ -807,6 +810,38 @@ async def delete_pipeline(
     return {"ok": True}
 
 
+async def _check_workspace_namespace(session: AsyncSession, workspace_id: int) -> str:
+    """Validate workspace exists and K8s namespace is available. Returns namespace or raises."""
+    from workspace_provisioner.models import ArgusWorkspace
+    from sqlalchemy import select
+
+    ws_result = await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )
+    workspace = ws_result.scalars().first()
+    if not workspace:
+        raise HTTPException(status_code=404, detail={
+            "message": f"Workspace (id={workspace_id}) not found",
+        })
+
+    namespace = workspace.k8s_namespace or f"argus-ws-{workspace.name}"
+
+    try:
+        from app.k8s.service import _make_client
+        k8s = await _make_client(session)
+        try:
+            await k8s.get_resource("namespaces", namespace)
+        finally:
+            await k8s.close()
+    except Exception:
+        raise HTTPException(status_code=422, detail={
+            "message": f"Kubernetes namespace '{namespace}' does not exist. "
+                       f"Please provision the workspace '{workspace.name}' first.",
+        })
+
+    return namespace
+
+
 async def _get_s3_config(session: AsyncSession) -> tuple[str, str, str, "Minio | None"]:
     """Return (endpoint, access_key, secret_key, minio_client) from settings."""
     from app.settings.service import get_config_by_category
@@ -866,6 +901,9 @@ async def execute_pipeline(
 ):
     """Validate, generate code, and execute pipeline as a K8s Job."""
     from app.ml_studio.codegen import validate_pipeline, generate_pipeline_code
+
+    # Pre-check: workspace namespace must exist
+    await _check_workspace_namespace(session, req.workspace_id)
 
     pj = req.pipeline_json
     nodes = pj.get("nodes", [])
@@ -939,8 +977,15 @@ async def _launch_pipeline_k8s_job(
 
     namespace = workspace.k8s_namespace or f"argus-ws-{workspace.name}"
 
-    # Wrap user code with result reporting
-    wrapped_code = req.generated_code + r'''
+    # Wrap user code with result reporting (skip if Evaluate node already emits RESULT_JSON)
+    has_evaluate = any(
+        n.get("type") == "output_evaluate"
+        for n in req.pipeline_json.get("nodes", [])
+    )
+    if has_evaluate:
+        wrapped_code = req.generated_code
+    else:
+        wrapped_code = req.generated_code + r'''
 
 # Signal completion
 import json as _json
@@ -969,7 +1014,9 @@ print(f"RESULT_JSON:{_json.dumps({'status': 'completed', 'message': 'Pipeline ex
                         "name": "pipeline",
                         "image": "python:3.11-slim",
                         "command": ["bash", "-c",
-                            "pip install -q pandas numpy scikit-learn xgboost lightgbm minio pyarrow openpyxl 2>/dev/null && python -c \"$PIPELINE_CODE\""
+                            "apt-get update -qq && apt-get install -y -qq libgomp1 >/dev/null 2>&1; "
+                            "pip install -q pandas numpy scikit-learn xgboost lightgbm minio pyarrow openpyxl 2>/dev/null && "
+                            "python -c \"$PIPELINE_CODE\""
                         ],
                         "env": [{
                             "name": "PIPELINE_CODE",

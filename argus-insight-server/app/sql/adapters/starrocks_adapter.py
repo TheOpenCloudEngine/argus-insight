@@ -157,7 +157,7 @@ class StarRocksAdapter(BaseAdapter):
         import aiomysql  # type: ignore[import-untyped]
 
         start = time.monotonic()
-        conn = await aiomysql.connect(**self._conn_kwargs(), read_timeout=timeout_seconds)
+        conn = await aiomysql.connect(**self._conn_kwargs(), connect_timeout=timeout_seconds)
         try:
             async with conn.cursor() as cur:
                 await cur.execute(sql)
@@ -206,22 +206,8 @@ class StarRocksAdapter(BaseAdapter):
             conn.close()
 
     async def get_catalogs(self) -> list[MetadataCatalog]:
-        import aiomysql  # type: ignore[import-untyped]
-
-        conn = await aiomysql.connect(**self._conn_kwargs())
-        try:
-            async with conn.cursor() as cur:
-                await cur.execute("SHOW CATALOGS")
-                rows = await cur.fetchall()
-                return [MetadataCatalog(name=row[0]) for row in rows]
-        except Exception:
-            # Older StarRocks may not support SHOW CATALOGS
-            async with conn.cursor() as cur:
-                await cur.execute("SHOW DATABASES")
-                rows = await cur.fetchall()
-                return [MetadataCatalog(name=row[0]) for row in rows]
-        finally:
-            conn.close()
+        """MariaDB/MySQL has no catalog concept. Return empty so UI skips to schemas."""
+        return []
 
     async def get_schemas(self, catalog: str = "") -> list[MetadataSchema]:
         import aiomysql  # type: ignore[import-untyped]

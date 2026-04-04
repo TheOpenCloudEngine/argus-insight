@@ -83,14 +83,35 @@ export function WorkspaceSwitcher() {
 
   useEffect(() => { fetchWorkspaces() }, [])
 
-  // Sync selected state from URL ?ws= param
+  // Sync selected state from URL ?ws= param or sessionStorage
   useEffect(() => {
+    if (workspaces.length === 0) return
     const wsId = searchParams.get("ws")
-    if (wsId && workspaces.length > 0) {
+    if (wsId) {
       const ws = workspaces.find((w) => w.id === Number(wsId))
       if (ws) setSelected(ws)
+    } else {
+      // Fallback: sync from sessionStorage (e.g. set by ML Studio)
+      const stored = sessionStorage.getItem("argus_last_workspace_id")
+      if (stored) {
+        const ws = workspaces.find((w) => w.id === Number(stored))
+        if (ws && (!selected || selected.id !== ws.id)) setSelected(ws)
+      }
     }
   }, [searchParams, workspaces])
+
+  // Listen for workspace changes from other components (e.g. ML Studio page)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const wsId = (e as CustomEvent).detail?.workspaceId
+      if (wsId && workspaces.length > 0) {
+        const ws = workspaces.find((w) => w.id === wsId)
+        if (ws) setSelected(ws)
+      }
+    }
+    window.addEventListener("argus:workspace-changed", handler)
+    return () => window.removeEventListener("argus:workspace-changed", handler)
+  }, [workspaces])
 
   const handleSelect = (ws: MyWorkspace) => {
     setSelected(ws)

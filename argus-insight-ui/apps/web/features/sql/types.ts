@@ -2,7 +2,7 @@
 // Datasource
 // ---------------------------------------------------------------------------
 
-export type EngineType = "trino" | "starrocks" | "postgresql"
+export type EngineType = "trino" | "starrocks" | "postgresql" | "mariadb"
 
 export interface Datasource {
   id: number
@@ -14,6 +14,7 @@ export interface Datasource {
   username: string
   extra_params: Record<string, string>
   description: string
+  source?: "custom" | "workspace"  // workspace = auto-discovered from workspace services
   created_by: string
   created_at: string
   updated_at: string
@@ -85,6 +86,9 @@ export interface QueryResult {
   elapsed_ms: number
   error_message: string | null
   has_more: boolean
+  page: number
+  page_size: number
+  total_pages: number
 }
 
 export interface QuerySubmitResult {
@@ -155,6 +159,7 @@ export interface AutocompleteData {
   keywords: string[]
   functions: string[]
   data_types: string[]
+  schemas: string[]
   tables: string[]
   columns: string[]
 }

@@ -141,21 +141,11 @@ export function MLStudioWizard() {
   const [results, setResults] = useState<JobResult | null>(null)
   const [errorMsg, setErrorMsg] = useState("")
 
-  // Load workspace ID
+  // Load workspace ID from sessionStorage (page-level guarantees it exists)
   useEffect(() => {
     const stored = sessionStorage.getItem("argus_last_workspace_id")
     if (stored) {
       setWorkspaceId(Number(stored))
-    } else {
-      authFetch("/api/v1/workspace/workspaces/my")
-        .then((r) => (r.ok ? r.json() : []))
-        .then((ws: { id: number }[]) => {
-          if (ws.length > 0) {
-            setWorkspaceId(ws[0]!.id)
-            sessionStorage.setItem("argus_last_workspace_id", String(ws[0]!.id))
-          }
-        })
-        .catch(() => {})
     }
   }, [])
 
@@ -214,7 +204,10 @@ export function MLStudioWizard() {
           test_split: 0.2,
         }),
       })
-      if (!res.ok) throw new Error("Failed to start training")
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.detail?.message || err.detail || "Failed to start training")
+      }
       const job = await res.json()
       setJobId(job.id)
       setJobStatus("running")
