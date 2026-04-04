@@ -313,7 +313,7 @@ export function SqlEditorPanel() {
               }`}
               onClick={() => setActiveTabId(tab.id)}
             >
-              {/* Inline editable title — double-click to edit */}
+              {/* Inline editable title — double-click to edit, Enter to confirm */}
               {editingTabId === tab.id ? (
                 <input
                   autoFocus
@@ -321,17 +321,23 @@ export function SqlEditorPanel() {
                   value={editingTitle}
                   onChange={(e) => setEditingTitle(e.target.value)}
                   onKeyDown={(e) => {
+                    e.stopPropagation()
                     if (e.key === "Enter") {
-                      updateTabTitle(tab.id, editingTitle || tab.title)
+                      const newTitle = editingTitle.trim() || tab.title
+                      updateTabTitle(tab.id, newTitle)
                       setEditingTabId(null)
                     }
-                    if (e.key === "Escape") setEditingTabId(null)
+                    if (e.key === "Escape") {
+                      setEditingTabId(null)
+                    }
                   }}
                   onBlur={() => {
-                    updateTabTitle(tab.id, editingTitle || tab.title)
+                    const newTitle = editingTitle.trim() || tab.title
+                    updateTabTitle(tab.id, newTitle)
                     setEditingTabId(null)
                   }}
                   onClick={(e) => e.stopPropagation()}
+                  onFocus={(e) => e.target.select()}
                 />
               ) : (
                 <span
