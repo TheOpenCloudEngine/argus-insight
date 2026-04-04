@@ -240,8 +240,8 @@ async def _adapter_from_workspace_service(session: AsyncSession, svc_id: int) ->
         port = default_ports.get(engine_type, 5432)
 
     db_name = display.get("DB Name", display.get("Database", ""))
-    db_user = display.get("DB User", ws_username or "")
-    db_pass = display.get("DB Password", "")
+    db_user = display.get("DB User", display.get("Username", ws_username or ""))
+    db_pass = display.get("DB Password", display.get("Password", ""))
 
     logger.info("Workspace service id=%d resolved: engine=%s host=%s:%d db=%s user=%s",
                 svc_id, engine_type, host, port, db_name, db_user)
