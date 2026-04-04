@@ -543,6 +543,7 @@ DEPLOY_MAPPING_SERVICES = [
     {"service_key": "starrocks", "service_label": "StarRocks", "icon": "starrocks", "default_constraint": "per_workspace"},
     {"service_key": "postgresql", "service_label": "PostgreSQL", "icon": "postgresql", "default_constraint": "per_workspace"},
     {"service_key": "mariadb", "service_label": "MariaDB", "icon": "mariadb", "default_constraint": "per_workspace"},
+    {"service_key": "kafka", "service_label": "Apache Kafka", "icon": "kafka", "default_constraint": "per_workspace"},
     # AutoML
     {"service_key": "h2o", "service_label": "H2O AutoML", "icon": "h2o", "default_constraint": "per_workspace"},
     {"service_key": "labelstudio", "service_label": "Label Studio", "icon": "labelstudio", "default_constraint": "per_workspace"},
