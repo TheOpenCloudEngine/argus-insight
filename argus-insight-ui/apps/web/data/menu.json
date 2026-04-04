@@ -47,6 +47,12 @@
           "icon": "Library"
         },
         {
+          "id": "sql-editor",
+          "title": "SQL",
+          "url": "/dashboard/sql",
+          "icon": "SquareTerminal"
+        },
+        {
           "id": "vscode",
           "title": "VS Code",
           "url": "/dashboard/vscode",

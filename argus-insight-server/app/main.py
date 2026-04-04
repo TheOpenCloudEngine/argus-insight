@@ -33,6 +33,7 @@ from app.k8s.router import router as k8s_router
 from workspace_provisioner.router import router as workspace_router
 from workspace_provisioner.router import init_gitlab_client
 from workspace_provisioner.plugins.router import router as plugins_router
+from app.sql.router import router as sql_router
 
 logger = logging.getLogger(__name__)
 _start_time: float = 0.0
@@ -72,6 +73,7 @@ async def lifespan(app: FastAPI):
     import app.apps.models  # noqa: F401
     import workspace_provisioner.models  # noqa: F401
     import workspace_provisioner.plugins.models  # noqa: F401
+    import app.sql.models  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -170,6 +172,7 @@ app.include_router(app_instance_router, prefix="/api/v1")
 app.include_router(k8s_router, prefix="/api/v1")
 app.include_router(workspace_router, prefix="/api/v1")
 app.include_router(plugins_router, prefix="/api/v1")
+app.include_router(sql_router, prefix="/api/v1")
 
 
 @app.get("/health")
