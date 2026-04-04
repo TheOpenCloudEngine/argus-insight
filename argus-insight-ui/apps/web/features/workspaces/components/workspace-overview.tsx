@@ -544,7 +544,9 @@ function TrinoConfigDialog({
         <div className="space-y-5 py-2">
           {/* Tier */}
           <div className="space-y-2">
-            <Label className="text-xs font-semibold uppercase text-muted-foreground">Tier</Label>
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">
+              Tier <span className="normal-case font-normal">(Current: {display.Tier || "Unknown"})</span>
+            </Label>
             <div className="grid grid-cols-4 gap-2">
               {[...TRINO_TIERS, { tier: "custom", label: "Custom", coord: 0, workers: 0, coordCpu: "", coordMem: "", workerCpu: "", workerMem: "" }].map((t) => (
                 <button
