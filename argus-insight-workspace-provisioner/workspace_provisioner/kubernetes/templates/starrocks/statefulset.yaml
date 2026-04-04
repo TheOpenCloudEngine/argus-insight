@@ -29,6 +29,7 @@ spec:
       containers:
         - name: fe
           image: ${STARROCKS_FE_IMAGE}
+          command: ["/opt/starrocks/fe/bin/start_fe.sh"]
           ports:
             - name: http
               containerPort: 8030
@@ -107,6 +108,7 @@ spec:
       containers:
         - name: be
           image: ${STARROCKS_BE_IMAGE}
+          command: ["/opt/starrocks/be/bin/start_be.sh"]
           ports:
             - name: http
               containerPort: 8040
