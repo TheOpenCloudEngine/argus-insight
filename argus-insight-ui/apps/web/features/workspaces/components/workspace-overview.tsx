@@ -266,7 +266,7 @@ function DetailRow({
 /* ------------------------------------------------------------------ */
 
 const CONFIGURABLE_PLUGINS = new Set([
-  "argus-mariadb", "argus-postgresql", "argus-trino",
+  "argus-mariadb", "argus-postgresql", "argus-trino", "argus-starrocks",
   "argus-jupyter", "argus-jupyter-tensorflow", "argus-jupyter-pyspark",
   "argus-mlflow", "argus-airflow", "argus-ollama", "argus-vscode-server",
 ])
@@ -430,6 +430,181 @@ function ServiceConfigSheet({
 // ---------------------------------------------------------------------------
 // Trino Configuration Dialog
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// StarRocks Configuration Dialog
+// ---------------------------------------------------------------------------
+
+const STARROCKS_TIERS = [
+  { tier: "development", label: "Development", be: 1, feCpu: "1", feMem: "2Gi", beCpu: "2", beMem: "4Gi" },
+  { tier: "standard", label: "Standard", be: 3, feCpu: "2", feMem: "4Gi", beCpu: "2", beMem: "4Gi" },
+  { tier: "performance", label: "Performance", be: 5, feCpu: "2", feMem: "4Gi", beCpu: "4", beMem: "8Gi" },
+]
+
+function StarRocksConfigDialog({
+  open, onOpenChange, workspaceId, service,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  workspaceId: number
+  service: WorkspaceService
+}) {
+  const meta = (service.metadata ?? {}) as Record<string, any>
+  const display = meta.display ?? {}
+  const resources = meta.resources ?? {}
+
+  const [tier, setTier] = useState(display.Tier?.toLowerCase() || "development")
+  const [beReplicas, setBeReplicas] = useState(Number(display["Backend Nodes"]) || 1)
+  const [feCpu, setFeCpu] = useState(resources.cpu_limit || "2")
+  const [feMem, setFeMem] = useState(resources.memory_limit || "4Gi")
+  const [beCpu, setBeCpu] = useState(resources.be_cpu_limit || "2")
+  const [beMem, setBeMem] = useState(resources.be_memory_limit || "4Gi")
+
+  const [applying, setApplying] = useState(false)
+  const [validation, setValidation] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  const handleTierChange = (t: string) => {
+    setTier(t)
+    const preset = STARROCKS_TIERS.find((p) => p.tier === t)
+    if (preset) {
+      setBeReplicas(preset.be)
+      setFeCpu(preset.feCpu)
+      setFeMem(preset.feMem)
+      setBeCpu(preset.beCpu)
+      setBeMem(preset.beMem)
+    }
+  }
+
+  // Validate
+  useEffect(() => {
+    if (!open) return
+    const timer = setTimeout(async () => {
+      try {
+        const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/services/${service.id}/configure/validate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cpu_limit: feCpu, memory_limit: feMem }),
+        })
+        if (res.ok) setValidation(await res.json())
+      } catch { /* ignore */ }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [open, feCpu, feMem, beCpu, beMem, beReplicas, workspaceId, service.id])
+
+  const handleApply = async () => {
+    if (validation && !validation.allowed) return
+    setApplying(true)
+    setError(null)
+    setSuccess(false)
+    try {
+      const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/starrocks/configure`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tier, be_replicas: beReplicas,
+          fe_cpu_limit: feCpu, fe_memory_limit: feMem,
+          be_cpu_limit: beCpu, be_memory_limit: beMem,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.detail || `Failed: ${res.status}`)
+      }
+      setSuccess(true)
+      setTimeout(() => { setSuccess(false); onOpenChange(false) }, 2000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to apply")
+    }
+    setApplying(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Configure StarRocks</DialogTitle>
+          <DialogDescription>
+            Adjust StarRocks cluster. <span className="normal-case font-normal">(Current: {display.Tier || "Unknown"})</span>
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          {/* Tier */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Tier</Label>
+            <div className="grid grid-cols-4 gap-2">
+              {[...STARROCKS_TIERS, { tier: "custom", label: "Custom", be: 0, feCpu: "", feMem: "", beCpu: "", beMem: "" }].map((t) => (
+                <button
+                  key={t.tier}
+                  onClick={() => handleTierChange(t.tier)}
+                  className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    tier === t.tier ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted/50"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* BE Replicas */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Backend Nodes</Label>
+            <Input type="number" min={1} max={10} value={beReplicas}
+              onChange={(e) => { setBeReplicas(Number(e.target.value)); setTier("custom") }} />
+          </div>
+
+          {/* Resources */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Resources</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">FE CPU Limit</Label>
+                <Input value={feCpu} onChange={(e) => { setFeCpu(e.target.value); setTier("custom") }} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">FE Memory Limit</Label>
+                <Input value={feMem} onChange={(e) => { setFeMem(e.target.value); setTier("custom") }} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">BE CPU Limit</Label>
+                <Input value={beCpu} onChange={(e) => { setBeCpu(e.target.value); setTier("custom") }} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">BE Memory Limit</Label>
+                <Input value={beMem} onChange={(e) => { setBeMem(e.target.value); setTier("custom") }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Validation */}
+          {validation && (
+            <div className={`rounded-md border px-3 py-2 text-xs ${validation.allowed ? "bg-muted/30" : "bg-destructive/10 border-destructive/30 text-destructive"}`}>
+              <div className="flex justify-between">
+                <span>CPU: {validation.after?.cpu_used} / {validation.limit?.cpu} cores</span>
+                <span>Memory: {validation.after?.memory_used_gb} / {validation.limit?.memory_gb} GiB</span>
+              </div>
+              {!validation.allowed && <div className="mt-1 font-medium">{validation.message}</div>}
+            </div>
+          )}
+
+          {error && <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive">{error}</div>}
+          {success && <div className="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700">Restarting the service with the requested resources.</div>}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button size="sm" onClick={handleApply} disabled={applying || (validation && !validation.allowed)}>
+            {applying ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+            Apply
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 const TRINO_TIERS = [
   { tier: "development", label: "Development", coord: 1, workers: 0, coordCpu: "1", coordMem: "2Gi", workerCpu: "1", workerMem: "2Gi" },
@@ -1246,7 +1421,15 @@ function ServiceDataListItem({
           service={service}
         />
       )}
-      {isConfigurable && workspaceId && service.plugin_name !== "argus-trino" && (
+      {isConfigurable && workspaceId && service.plugin_name === "argus-starrocks" && (
+        <StarRocksConfigDialog
+          open={configOpen}
+          onOpenChange={setConfigOpen}
+          workspaceId={workspaceId}
+          service={service}
+        />
+      )}
+      {isConfigurable && workspaceId && service.plugin_name !== "argus-trino" && service.plugin_name !== "argus-starrocks" && (
         <ServiceConfigDialog
           open={configOpen}
           onOpenChange={setConfigOpen}
@@ -1597,6 +1780,7 @@ function AddServiceButton({
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pendingItem, setPendingItem] = useState<DeployMappingEntry | null>(null)
   const [trinoTier, setTrinoTier] = useState<string>("development")
+  const [starrocksTier, setStarrocksTier] = useState<string>("development")
 
   // Deploy progress dialog state
   const [deployOpen, setDeployOpen] = useState(false)
@@ -1642,11 +1826,12 @@ function AddServiceButton({
       return
     }
 
-    // Build deploy payload — include plugin_config for Trino tier
-    const isTrino = item.service_key === "trino"
+    // Build deploy payload — include plugin_config for tier selection
     const deployBody: Record<string, unknown> = { pipeline_id: pipelineId }
-    if (isTrino) {
+    if (item.service_key === "trino") {
       deployBody.plugin_config = { argus_trino_tier: trinoTier }
+    } else if (item.service_key === "starrocks") {
+      deployBody.plugin_config = { argus_starrocks_tier: starrocksTier }
     }
 
     // Deploy
@@ -1757,8 +1942,8 @@ function AddServiceButton({
           <DialogHeader>
             <DialogTitle>Deploy {pendingItem?.service_label}</DialogTitle>
             <DialogDescription>
-              {pendingItem?.service_key === "trino"
-                ? "Select a deployment tier for Trino and deploy to this workspace."
+              {pendingItem?.service_key === "trino" || pendingItem?.service_key === "starrocks"
+                ? `Select a deployment tier for ${pendingItem?.service_label} and deploy to this workspace.`
                 : `Would you like to deploy ${pendingItem?.service_label} to this workspace?`}
             </DialogDescription>
           </DialogHeader>
@@ -1783,6 +1968,37 @@ function AddServiceButton({
                     value={t.tier}
                     checked={trinoTier === t.tier}
                     onChange={() => setTrinoTier(t.tier)}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <div className="text-sm font-medium">{t.label}</div>
+                    <div className="text-xs text-muted-foreground">{t.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {/* StarRocks Tier Selection */}
+          {pendingItem?.service_key === "starrocks" && (
+            <div className="space-y-2 py-2">
+              {[
+                { tier: "development", label: "Development", desc: "1 FE + 1 BE — 3 CPU, 6 GiB" },
+                { tier: "standard", label: "Standard", desc: "1 FE + 3 BE — 8 CPU, 16 GiB" },
+                { tier: "performance", label: "Performance", desc: "1 FE + 5 BE — 12 CPU, 44 GiB" },
+              ].map((t) => (
+                <label
+                  key={t.tier}
+                  className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                    starrocksTier === t.tier ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="starrocks-tier"
+                    value={t.tier}
+                    checked={starrocksTier === t.tier}
+                    onChange={() => setStarrocksTier(t.tier)}
                     className="mt-0.5"
                   />
                   <div>

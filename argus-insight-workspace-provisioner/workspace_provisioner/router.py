@@ -702,6 +702,111 @@ async def configure_service(
     return {"status": "ok", "message": "Restarting the service with the requested resources."}
 
 
+# ---------------------------------------------------------------------------
+# StarRocks Configure
+# ---------------------------------------------------------------------------
+
+class StarRocksConfigureRequest(BaseModel):
+    """Request body for StarRocks configuration changes."""
+    tier: str | None = None
+    be_replicas: int | None = None
+    fe_cpu_limit: str | None = None
+    fe_memory_limit: str | None = None
+    be_cpu_limit: str | None = None
+    be_memory_limit: str | None = None
+
+
+@router.post("/workspaces/{workspace_id}/starrocks/configure")
+async def configure_starrocks(
+    workspace_id: int,
+    req: StarRocksConfigureRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Apply StarRocks configuration changes (BE replicas, FE/BE resources)."""
+    import asyncio as aio
+    import json as json_mod
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+
+    ws = (await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )).scalars().first()
+    if not ws:
+        raise HTTPException(404, "Workspace not found")
+
+    svc = (await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+            ArgusWorkspaceService.plugin_name == "argus-starrocks",
+            ArgusWorkspaceService.status == "running",
+        )
+    )).scalars().first()
+    if not svc:
+        raise HTTPException(404, "StarRocks service not found")
+
+    namespace = ws.k8s_namespace or f"argus-ws-{ws.name}"
+    meta = svc.metadata if isinstance(svc.metadata, dict) else (json_mod.loads(svc.metadata) if isinstance(svc.metadata, str) else {})
+
+    be_replicas = req.be_replicas or 1
+    fe_cpu = req.fe_cpu_limit or "2"
+    fe_mem = req.fe_memory_limit or "4Gi"
+    be_cpu = req.be_cpu_limit or "2"
+    be_mem = req.be_memory_limit or "4Gi"
+
+    # 1. Patch FE StatefulSet resources
+    patch_cmd = [
+        "kubectl", "patch", "statefulset", f"argus-starrocks-{ws.name}-fe",
+        "-n", namespace, "--type=json", "-p", json_mod.dumps([
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/cpu", "value": fe_cpu},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": fe_mem},
+        ]),
+    ]
+    proc = await aio.create_subprocess_exec(*patch_cmd, stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE)
+    await proc.communicate()
+
+    # 2. Patch BE StatefulSet replicas + resources
+    patch_cmd = [
+        "kubectl", "patch", "statefulset", f"argus-starrocks-{ws.name}-be",
+        "-n", namespace, "--type=json", "-p", json_mod.dumps([
+            {"op": "replace", "path": "/spec/replicas", "value": be_replicas},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/cpu", "value": be_cpu},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": be_mem},
+        ]),
+    ]
+    proc = await aio.create_subprocess_exec(*patch_cmd, stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE)
+    await proc.communicate()
+
+    # 3. Register new BE nodes with FE
+    import asyncio
+    for i in range(be_replicas):
+        be_host = f"argus-starrocks-{ws.name}-be-{i}.argus-starrocks-{ws.name}-be.{namespace}.svc.cluster.local"
+        reg_cmd = [
+            "kubectl", "exec", f"argus-starrocks-{ws.name}-fe-0", "-n", namespace,
+            "--", "mysql", "-h", "127.0.0.1", "-P", "9030", "-u", "root",
+            "-e", f"ALTER SYSTEM ADD BACKEND '{be_host}:9050';",
+        ]
+        proc = await asyncio.create_subprocess_exec(*reg_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        await proc.communicate()
+
+    # 4. Update metadata
+    meta["display"]["Tier"] = (req.tier or "custom").capitalize()
+    meta["display"]["Backend Nodes"] = str(be_replicas)
+    meta["resources"] = {
+        "cpu_limit": fe_cpu,
+        "memory_limit": fe_mem,
+        "be_cpu_limit": be_cpu,
+        "be_memory_limit": be_mem,
+    }
+    from sqlalchemy import text
+    await session.execute(
+        text("UPDATE argus_workspace_services SET metadata = :m WHERE id = :id"),
+        {"m": json_mod.dumps(meta), "id": svc.id},
+    )
+    await session.commit()
+
+    logger.info("StarRocks configured: ws=%s tier=%s be_replicas=%d", ws.name, req.tier, be_replicas)
+    return {"status": "ok", "message": "StarRocks configuration applied."}
+
+
 class TrinoConfigureRequest(BaseModel):
     """Request body for Trino runtime configuration changes."""
     tier: str | None = None  # development | standard | performance | custom

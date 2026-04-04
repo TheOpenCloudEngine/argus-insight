@@ -631,8 +631,18 @@ class TrinoConfig(BaseModel):
 
 
 class StarRocksConfig(BaseModel):
-    """StarRocks MPP analytics database deployment settings."""
+    """StarRocks MPP analytics database deployment settings.
 
+    Tier presets:
+      - development: 1 FE + 1 BE (lightweight)
+      - standard: 1 FE + 3 BE
+      - performance: 1 FE + 5 BE
+    """
+
+    tier: str = Field(
+        default="development",
+        description="Deployment tier: development | standard | performance",
+    )
     fe_image: str = Field(
         default="starrocks/fe-ubuntu:latest",
         description="StarRocks Frontend container image",
@@ -662,11 +672,54 @@ class StarRocksConfig(BaseModel):
     )
     be_resources: ResourceConfig = Field(
         default_factory=lambda: ResourceConfig(
-            cpu_request="1", cpu_limit="4",
-            memory_request="4Gi", memory_limit="8Gi",
+            cpu_request="500m", cpu_limit="2",
+            memory_request="2Gi", memory_limit="4Gi",
         ),
         description="CPU/Memory for each Backend",
     )
+
+    @classmethod
+    def from_tier(cls, tier: str) -> "StarRocksConfig":
+        """Create a StarRocksConfig from a tier preset."""
+        presets = {
+            "development": cls(
+                tier="development",
+                be_replicas=1,
+                fe_resources=ResourceConfig(
+                    cpu_request="500m", cpu_limit="1",
+                    memory_request="1Gi", memory_limit="2Gi",
+                ),
+                be_resources=ResourceConfig(
+                    cpu_request="500m", cpu_limit="2",
+                    memory_request="2Gi", memory_limit="4Gi",
+                ),
+            ),
+            "standard": cls(
+                tier="standard",
+                be_replicas=3,
+                fe_resources=ResourceConfig(
+                    cpu_request="500m", cpu_limit="2",
+                    memory_request="2Gi", memory_limit="4Gi",
+                ),
+                be_resources=ResourceConfig(
+                    cpu_request="1", cpu_limit="2",
+                    memory_request="2Gi", memory_limit="4Gi",
+                ),
+            ),
+            "performance": cls(
+                tier="performance",
+                be_replicas=5,
+                fe_resources=ResourceConfig(
+                    cpu_request="1", cpu_limit="2",
+                    memory_request="2Gi", memory_limit="4Gi",
+                ),
+                be_resources=ResourceConfig(
+                    cpu_request="1", cpu_limit="4",
+                    memory_request="4Gi", memory_limit="8Gi",
+                ),
+            ),
+        }
+        return presets.get(tier, presets["development"])
 
 
 class PostgresqlConfig(BaseModel):

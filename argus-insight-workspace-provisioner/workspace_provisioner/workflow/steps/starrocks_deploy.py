@@ -30,7 +30,8 @@ class StarRocksDeployStep(WorkflowStep):
 
         await ensure_namespace(namespace)
 
-        config: StarRocksConfig = ctx.get("argus_starrocks_config", StarRocksConfig())
+        tier = ctx.get("argus_starrocks_tier", "development")
+        config: StarRocksConfig = ctx.get("argus_starrocks_config", StarRocksConfig.from_tier(tier))
 
         from workspace_provisioner.service import generate_service_id
         svc_id = generate_service_id()
@@ -122,10 +123,13 @@ class StarRocksDeployStep(WorkflowStep):
             service_id=svc_id,
             metadata={
                 "display": {
-                    "MySQL Port": "9030",
+                    "Tier": config.tier.capitalize(),
                     "Backend Nodes": str(config.be_replicas),
+                    "MySQL Port": "9030",
+                    "FE Web UI": f"http://{hostname}",
                 },
                 "internal": {
+                    "endpoint": f"{internal_fe}:9030",
                     "fe_http": f"{internal_fe}:8030",
                     "fe_mysql": f"{internal_fe}:9030",
                     "namespace": namespace,
@@ -133,6 +137,8 @@ class StarRocksDeployStep(WorkflowStep):
                 "resources": {
                     "cpu_limit": config.fe_resources.cpu_limit,
                     "memory_limit": config.fe_resources.memory_limit,
+                    "be_cpu_limit": config.be_resources.cpu_limit,
+                    "be_memory_limit": config.be_resources.memory_limit,
                 },
             },
         )
