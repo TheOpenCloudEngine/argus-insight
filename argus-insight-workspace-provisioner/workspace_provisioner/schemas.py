@@ -113,6 +113,11 @@ class WorkspaceCreateRequest(BaseModel):
         "Steps not in this list are skipped. Pass null or omit to run all steps. "
         "Works with both legacy and plugin-based provisioning.",
     )
+    plugin_config: dict | None = Field(
+        default=None,
+        description="Per-plugin runtime config passed to workflow context. "
+        "E.g. {'tier': 'standard'} for Trino tier selection.",
+    )
 
 
 class WorkspaceDeleteRequest(BaseModel):

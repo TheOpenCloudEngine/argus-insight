@@ -16,6 +16,7 @@ Endpoint summary:
 
 import asyncio
 import logging
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -365,6 +366,609 @@ async def get_workspace(
 
 class DeployPipelineRequest(BaseModel):
     pipeline_id: int
+    plugin_config: dict | None = None  # Optional per-plugin config (e.g. {"tier": "standard"} for Trino)
+
+
+# ---------------------------------------------------------------------------
+# Generic Service Configure (PostgreSQL, MariaDB, Ollama, Jupyter, VS Code, MLflow)
+# ---------------------------------------------------------------------------
+
+_CPU_PATTERN = r"^(\d+(\.\d+)?|\d+m)$"
+_MEM_PATTERN = r"^\d+(Mi|Gi|M|G)$"
+_MEM_PG_PATTERN = r"^\d+(MB|GB|kB)$"
+
+
+def _validate_cpu(v: str) -> bool:
+    import re
+    return bool(re.match(_CPU_PATTERN, v))
+
+
+def _validate_mem(v: str) -> bool:
+    import re
+    return bool(re.match(_MEM_PATTERN, v))
+
+
+def _validate_pg_mem(v: str) -> bool:
+    import re
+    return bool(re.match(_MEM_PG_PATTERN, v))
+
+
+class ServiceConfigureRequest(BaseModel):
+    """Generic service configuration change request."""
+    cpu_limit: str | None = None
+    memory_limit: str | None = None
+    # PostgreSQL / MariaDB specific
+    max_connections: int | None = None
+    shared_buffers: str | None = None
+    work_mem: str | None = None
+    effective_cache_size: str | None = None
+    maintenance_work_mem: str | None = None
+    innodb_buffer_pool_size: str | None = None
+    log_min_duration_statement: int | None = None
+    log_statement: str | None = None
+    slow_query_log: bool | None = None
+    long_query_time: int | None = None
+    # Ollama
+    default_model: str | None = None
+    # Password
+    regenerate_password: bool = False
+
+
+@router.post("/workspaces/{workspace_id}/services/{service_id}/configure/validate")
+async def validate_service_configure(
+    workspace_id: int,
+    service_id: int,
+    req: ServiceConfigureRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Validate resource change against workspace quota."""
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+    from app.resource_profile.models import ArgusResourceProfile
+    from app.resource_profile.resource_utils import parse_cpu, parse_memory_to_mib
+
+    # Input validation
+    errors = []
+    if req.cpu_limit and not _validate_cpu(req.cpu_limit):
+        errors.append(f"Invalid CPU format: '{req.cpu_limit}'. Use e.g. '1', '2', '500m'")
+    if req.memory_limit and not _validate_mem(req.memory_limit):
+        errors.append(f"Invalid memory format: '{req.memory_limit}'. Use e.g. '2Gi', '512Mi'")
+    if req.shared_buffers and not _validate_pg_mem(req.shared_buffers):
+        errors.append(f"Invalid shared_buffers format: '{req.shared_buffers}'. Use e.g. '128MB', '1GB'")
+    if req.work_mem and not _validate_pg_mem(req.work_mem):
+        errors.append(f"Invalid work_mem format: '{req.work_mem}'. Use e.g. '4MB', '16MB'")
+    if req.effective_cache_size and not _validate_pg_mem(req.effective_cache_size):
+        errors.append(f"Invalid effective_cache_size format: '{req.effective_cache_size}'")
+    if req.maintenance_work_mem and not _validate_pg_mem(req.maintenance_work_mem):
+        errors.append(f"Invalid maintenance_work_mem format: '{req.maintenance_work_mem}'")
+    if req.innodb_buffer_pool_size and not _validate_pg_mem(req.innodb_buffer_pool_size):
+        errors.append(f"Invalid innodb_buffer_pool_size format: '{req.innodb_buffer_pool_size}'")
+    if req.log_statement and req.log_statement not in ("none", "ddl", "mod", "all"):
+        errors.append(f"Invalid log_statement: '{req.log_statement}'. Use none/ddl/mod/all")
+    if req.max_connections is not None and (req.max_connections < 1 or req.max_connections > 10000):
+        errors.append(f"max_connections must be 1-10000, got {req.max_connections}")
+    if errors:
+        return {"allowed": False, "message": "; ".join(errors), "validation_errors": errors}
+
+    ws = (await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )).scalars().first()
+    if not ws:
+        raise HTTPException(404, "Workspace not found")
+
+    svc = (await session.execute(
+        select(ArgusWorkspaceService).where(ArgusWorkspaceService.id == service_id)
+    )).scalars().first()
+    if not svc:
+        raise HTTPException(404, "Service not found")
+
+    profile = None
+    if ws.resource_profile_id:
+        profile = (await session.execute(
+            select(ArgusResourceProfile).where(ArgusResourceProfile.id == ws.resource_profile_id)
+        )).scalars().first()
+
+    # Current total usage
+    svcs = (await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+            ArgusWorkspaceService.status == "running",
+        )
+    )).scalars().all()
+
+    import json as json_mod
+    current_cpu = Decimal("0")
+    current_mem_mib = 0
+    this_cpu = Decimal("0")
+    this_mem_mib = 0
+    for s in svcs:
+        meta = s.metadata if isinstance(s.metadata, dict) else (json_mod.loads(s.metadata) if isinstance(s.metadata, str) else {})
+        res = meta.get("resources", {})
+        cpu = parse_cpu(res.get("cpu_limit", "0"))
+        mem = parse_memory_to_mib(res.get("memory_limit", "0"))
+        current_cpu += cpu
+        current_mem_mib += mem
+        if s.id == service_id:
+            this_cpu = cpu
+            this_mem_mib = mem
+
+    new_cpu = parse_cpu(req.cpu_limit) if req.cpu_limit else this_cpu
+    new_mem = parse_memory_to_mib(req.memory_limit) if req.memory_limit else this_mem_mib
+
+    delta_cpu = new_cpu - this_cpu
+    delta_mem = new_mem - this_mem_mib
+    after_cpu = float(current_cpu + delta_cpu)
+    after_mem = (current_mem_mib + delta_mem) / 1024
+
+    limit_cpu = float(profile.cpu_cores) if profile else 999
+    limit_mem = float(profile.memory_mb) / 1024 if profile else 999
+    allowed = after_cpu <= limit_cpu and after_mem <= limit_mem
+
+    return {
+        "allowed": allowed,
+        "current": {"cpu_used": float(current_cpu), "memory_used_gb": round(current_mem_mib / 1024, 1)},
+        "limit": {"cpu": limit_cpu, "memory_gb": round(limit_mem, 1)},
+        "delta": {"cpu": float(delta_cpu), "memory_gb": round(float(delta_mem) / 1024, 1)},
+        "after": {"cpu_used": round(after_cpu, 1), "memory_used_gb": round(after_mem, 1)},
+        "message": "" if allowed else "There are not enough workspace resources available for the requested resources.",
+    }
+
+
+@router.post("/workspaces/{workspace_id}/services/{service_id}/configure")
+async def configure_service(
+    workspace_id: int,
+    service_id: int,
+    req: ServiceConfigureRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Apply service configuration changes."""
+    import asyncio as aio
+    import json as json_mod
+    import secrets
+    import string
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+
+    ws = (await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )).scalars().first()
+    if not ws:
+        raise HTTPException(404, "Workspace not found")
+
+    svc = (await session.execute(
+        select(ArgusWorkspaceService).where(ArgusWorkspaceService.id == service_id)
+    )).scalars().first()
+    if not svc:
+        raise HTTPException(404, "Service not found")
+
+    namespace = ws.k8s_namespace or f"argus-ws-{ws.name}"
+    meta = svc.metadata if isinstance(svc.metadata, dict) else (json_mod.loads(svc.metadata) if isinstance(svc.metadata, str) else {})
+    plugin = svc.plugin_name
+
+    # --- Resource patch (common for all services) ---
+    if req.cpu_limit or req.memory_limit:
+        # Determine K8s resource type and name
+        if plugin in ("argus-postgresql", "argus-mariadb"):
+            resource_type = "statefulset"
+            resource_name = f"argus-{plugin.replace('argus-', '')}-{ws.name}"
+        elif plugin == "argus-ollama":
+            resource_type = "deployment"
+            resource_name = f"argus-ollama-{ws.name}"
+        else:
+            # VS Code, Jupyter, MLflow — use service_id based name
+            resource_type = "deployment"
+            svc_id_val = svc.service_id or ""
+            if plugin == "argus-mlflow":
+                resource_name = f"argus-mlflow-{ws.name}"
+                resource_type = "statefulset"
+            elif plugin.startswith("argus-jupyter"):
+                resource_name = f"argus-jupyter-{svc_id_val}"
+            elif plugin == "argus-vscode-server":
+                resource_name = f"argus-vscode-{svc_id_val}"
+            else:
+                resource_name = f"argus-{plugin.replace('argus-', '')}-{ws.name}"
+
+        patch_ops = []
+        if req.cpu_limit:
+            patch_ops.append({"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/cpu", "value": req.cpu_limit})
+        if req.memory_limit:
+            patch_ops.append({"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": req.memory_limit})
+
+        if patch_ops:
+            proc = await aio.create_subprocess_exec(
+                "kubectl", "patch", resource_type, resource_name,
+                "-n", namespace, "--type=json", "-p", json_mod.dumps(patch_ops),
+                stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+            )
+            out, err = await proc.communicate()
+            if proc.returncode != 0:
+                logger.warning("Resource patch failed for %s/%s: %s", resource_type, resource_name, err.decode())
+            else:
+                logger.info("Resource patched: %s/%s cpu=%s mem=%s", resource_type, resource_name, req.cpu_limit, req.memory_limit)
+
+        # Update metadata
+        if "resources" not in meta:
+            meta["resources"] = {}
+        if req.cpu_limit:
+            meta["resources"]["cpu_limit"] = req.cpu_limit
+        if req.memory_limit:
+            meta["resources"]["memory_limit"] = req.memory_limit
+
+    # --- PostgreSQL specific ---
+    if plugin == "argus-postgresql":
+        pg_params = {}
+        if req.max_connections is not None:
+            pg_params["max_connections"] = str(req.max_connections)
+        if req.shared_buffers:
+            pg_params["shared_buffers"] = req.shared_buffers
+        if req.work_mem:
+            pg_params["work_mem"] = req.work_mem
+        if req.effective_cache_size:
+            pg_params["effective_cache_size"] = req.effective_cache_size
+        if req.maintenance_work_mem:
+            pg_params["maintenance_work_mem"] = req.maintenance_work_mem
+        if req.log_min_duration_statement is not None:
+            pg_params["log_min_duration_statement"] = str(req.log_min_duration_statement)
+        if req.log_statement:
+            pg_params["log_statement"] = req.log_statement
+
+        if pg_params:
+            # Apply via ALTER SYSTEM
+            pod_name = f"argus-postgresql-{ws.name}-0"
+            for key, val in pg_params.items():
+                sql_cmd = f"ALTER SYSTEM SET {key} = '{val}';"
+                proc = await aio.create_subprocess_exec(
+                    "kubectl", "exec", "-n", namespace, pod_name, "-c", "postgresql",
+                    "--", "psql", "-U", "argus", "-c", sql_cmd,
+                    stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+                )
+                await proc.communicate()
+            # Reload config
+            proc = await aio.create_subprocess_exec(
+                "kubectl", "exec", "-n", namespace, pod_name, "-c", "postgresql",
+                "--", "psql", "-U", "argus", "-c", "SELECT pg_reload_conf();",
+                stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+            )
+            await proc.communicate()
+            logger.info("PostgreSQL params applied: %s", pg_params)
+
+    # --- MariaDB specific ---
+    if plugin == "argus-mariadb":
+        maria_params = {}
+        if req.max_connections is not None:
+            maria_params["max_connections"] = str(req.max_connections)
+        if req.innodb_buffer_pool_size:
+            maria_params["innodb_buffer_pool_size"] = req.innodb_buffer_pool_size
+        if req.slow_query_log is not None:
+            maria_params["slow_query_log"] = "ON" if req.slow_query_log else "OFF"
+        if req.long_query_time is not None:
+            maria_params["long_query_time"] = str(req.long_query_time)
+
+        if maria_params:
+            pod_name = f"argus-mariadb-{ws.name}-0"
+            display = meta.get("display", {})
+            pw = display.get("DB Password", display.get("Password", ""))
+            user = display.get("DB User", display.get("Username", "root"))
+            for key, val in maria_params.items():
+                sql_cmd = f"SET GLOBAL {key} = {val};"
+                proc = await aio.create_subprocess_exec(
+                    "kubectl", "exec", "-n", namespace, pod_name, "-c", "mariadb",
+                    "--", "mariadb", f"-u{user}", f"-p{pw}", "-e", sql_cmd,
+                    stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+                )
+                await proc.communicate()
+            logger.info("MariaDB params applied: %s", maria_params)
+
+    # --- Ollama specific ---
+    if plugin == "argus-ollama" and req.default_model:
+        meta.setdefault("display", {})["Default Model"] = req.default_model
+
+    # --- Password regeneration ---
+    if req.regenerate_password:
+        new_pw = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(24))
+        display = meta.setdefault("display", {})
+
+        if plugin == "argus-postgresql":
+            pod_name = f"argus-postgresql-{ws.name}-0"
+            proc = await aio.create_subprocess_exec(
+                "kubectl", "exec", "-n", namespace, pod_name, "-c", "postgresql",
+                "--", "psql", "-U", "argus", "-c", f"ALTER USER argus WITH PASSWORD '{new_pw}';",
+                stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+            )
+            await proc.communicate()
+            display["DB Password"] = new_pw
+            logger.info("PostgreSQL password regenerated")
+
+        elif plugin == "argus-mariadb":
+            pod_name = f"argus-mariadb-{ws.name}-0"
+            old_pw = display.get("DB Password", "")
+            proc = await aio.create_subprocess_exec(
+                "kubectl", "exec", "-n", namespace, pod_name, "-c", "mariadb",
+                "--", "mariadb", "-uroot", f"-p{old_pw}", "-e",
+                f"ALTER USER 'argus'@'%' IDENTIFIED BY '{new_pw}'; FLUSH PRIVILEGES;",
+                stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+            )
+            await proc.communicate()
+            display["DB Password"] = new_pw
+            logger.info("MariaDB password regenerated")
+
+    # --- Save metadata ---
+    from sqlalchemy import text
+    await session.execute(
+        text("UPDATE argus_workspace_services SET metadata = :m WHERE id = :id"),
+        {"m": json_mod.dumps(meta), "id": svc.id},
+    )
+    await session.commit()
+
+    logger.info("Service configured: ws=%s plugin=%s svc_id=%d", ws.name, plugin, svc.id)
+    return {"status": "ok", "message": "Restarting the service with the requested resources."}
+
+
+class TrinoConfigureRequest(BaseModel):
+    """Request body for Trino runtime configuration changes."""
+    tier: str | None = None  # development | standard | performance | custom
+    coordinator_replicas: int | None = None
+    worker_replicas: int | None = None
+    coordinator_cpu_limit: str | None = None
+    coordinator_memory_limit: str | None = None
+    worker_cpu_limit: str | None = None
+    worker_memory_limit: str | None = None
+    query_max_memory: str | None = None
+    query_max_memory_per_node: str | None = None
+    refresh_catalogs: bool = False
+
+
+@router.post("/workspaces/{workspace_id}/trino/configure/validate")
+async def validate_trino_configure(
+    workspace_id: int,
+    req: TrinoConfigureRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Check if Trino configuration change fits within workspace resource quota."""
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+    from app.resource_profile.models import ArgusResourceProfile
+    from app.resource_profile.resource_utils import parse_cpu, parse_memory_to_mib
+
+    ws = (await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )).scalars().first()
+    if not ws:
+        raise HTTPException(404, "Workspace not found")
+
+    # Get profile limits
+    profile = None
+    if ws.resource_profile_id:
+        profile = (await session.execute(
+            select(ArgusResourceProfile).where(ArgusResourceProfile.id == ws.resource_profile_id)
+        )).scalars().first()
+
+    # Current total usage from all running services
+    svcs = (await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+            ArgusWorkspaceService.status == "running",
+        )
+    )).scalars().all()
+
+    current_cpu = Decimal("0")
+    current_mem_mib = 0
+    trino_cpu = Decimal("0")
+    trino_mem_mib = 0
+    for svc in svcs:
+        meta = svc.metadata_json if hasattr(svc, 'metadata_json') else (svc.metadata if isinstance(svc.metadata, dict) else {})
+        res = meta.get("resources", {})
+        cpu = parse_cpu(res.get("cpu_limit", "0"))
+        mem = parse_memory_to_mib(res.get("memory_limit", "0"))
+        current_cpu += cpu
+        current_mem_mib += mem
+        if svc.plugin_name == "argus-trino":
+            trino_cpu = cpu
+            trino_mem_mib = mem
+
+    # Calculate new Trino resource
+    coord_replicas = req.coordinator_replicas or 1
+    worker_replicas = req.worker_replicas or 0
+    coord_cpu = parse_cpu(req.coordinator_cpu_limit or "1")
+    coord_mem = parse_memory_to_mib(req.coordinator_memory_limit or "2Gi")
+    worker_cpu = parse_cpu(req.worker_cpu_limit or "2")
+    worker_mem = parse_memory_to_mib(req.worker_memory_limit or "4Gi")
+
+    new_trino_cpu = coord_cpu * coord_replicas + worker_cpu * worker_replicas
+    new_trino_mem = coord_mem * coord_replicas + worker_mem * worker_replicas
+
+    # Delta
+    delta_cpu = new_trino_cpu - trino_cpu
+    delta_mem = new_trino_mem - trino_mem_mib
+
+    after_cpu = float(current_cpu + delta_cpu)
+    after_mem = (current_mem_mib + delta_mem) / 1024  # GiB
+
+    limit_cpu = float(profile.cpu_cores) if profile else 999
+    limit_mem = float(profile.memory_mb) / 1024 if profile else 999
+
+    allowed = after_cpu <= limit_cpu and after_mem <= limit_mem
+
+    return {
+        "allowed": allowed,
+        "current": {"cpu_used": float(current_cpu), "memory_used_gb": round(current_mem_mib / 1024, 1)},
+        "limit": {"cpu": limit_cpu, "memory_gb": round(limit_mem, 1)},
+        "delta": {"cpu": float(delta_cpu), "memory_gb": round(float(delta_mem) / 1024, 1)},
+        "after": {"cpu_used": round(after_cpu, 1), "memory_used_gb": round(after_mem, 1)},
+        "message": "" if allowed else f"Exceeds workspace limit ({limit_cpu} CPU, {limit_mem:.0f}Gi). Upgrade the resource profile.",
+    }
+
+
+@router.post("/workspaces/{workspace_id}/trino/configure")
+async def configure_trino(
+    workspace_id: int,
+    req: TrinoConfigureRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Apply Trino configuration changes (replicas, resources, query limits, catalogs)."""
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+
+    ws = (await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )).scalars().first()
+    if not ws:
+        raise HTTPException(404, "Workspace not found")
+
+    namespace = ws.k8s_namespace or f"argus-ws-{ws.name}"
+
+    # Find Trino service
+    svc = (await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+            ArgusWorkspaceService.plugin_name == "argus-trino",
+            ArgusWorkspaceService.status == "running",
+        )
+    )).scalars().first()
+    if not svc:
+        raise HTTPException(404, "Trino service not found in this workspace")
+
+    import asyncio as aio
+    import json as json_mod
+    import re
+
+    def k8s_mem_to_java(mem: str) -> str:
+        m = re.match(r"^(\d+)(Gi|Mi|G|M)$", mem)
+        if not m:
+            return mem
+        val, unit = m.group(1), m.group(2)
+        return f"{val}{'G' if unit.startswith('G') else 'M'}"
+
+    coord_replicas = req.coordinator_replicas or 1
+    worker_replicas = req.worker_replicas or 0
+    coord_cpu = req.coordinator_cpu_limit or "1"
+    coord_mem = req.coordinator_memory_limit or "2Gi"
+    worker_cpu = req.worker_cpu_limit or "2"
+    worker_mem = req.worker_memory_limit or "4Gi"
+    include_coord = "true" if worker_replicas == 0 else "false"
+    query_max = req.query_max_memory or "1GB"
+    query_max_node = req.query_max_memory_per_node or "512MB"
+
+    # 1. Update ConfigMap (coordinator config with query limits)
+    from workspace_provisioner.kubernetes.client import kubectl_apply
+
+    meta = svc.metadata if isinstance(svc.metadata, dict) else (json_mod.loads(svc.metadata) if isinstance(svc.metadata, str) else {})
+    shared_secret = ""
+    # Extract shared secret from current configmap
+    proc = await aio.create_subprocess_exec(
+        "kubectl", "get", "configmap", f"argus-trino-{ws.name}-config",
+        "-n", namespace, "-o", "jsonpath={.data.config-coordinator\\.properties}",
+        stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+    )
+    out, _ = await proc.communicate()
+    for line in out.decode().split("\n"):
+        if "shared-secret=" in line:
+            shared_secret = line.split("=", 1)[1].strip()
+            break
+
+    coord_config = f"""coordinator=true
+node-scheduler.include-coordinator={include_coord}
+http-server.http.port=8080
+http-server.process-forwarded=true
+http-server.authentication.type=PASSWORD
+http-server.authentication.allow-insecure-over-http=true
+web-ui.enabled=true
+web-ui.authentication.type=FIXED
+web-ui.user=admin
+discovery.uri=http://argus-trino-{ws.name}:8080
+query.max-memory={query_max}
+query.max-memory-per-node={query_max_node}
+internal-communication.shared-secret={shared_secret}
+"""
+
+    # Patch configmap coordinator config
+    proc = await aio.create_subprocess_exec(
+        "kubectl", "get", "configmap", f"argus-trino-{ws.name}-config",
+        "-n", namespace, "-o", "json",
+        stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+    )
+    cm_out, _ = await proc.communicate()
+    cm = json_mod.loads(cm_out.decode())
+    cm["data"]["config-coordinator.properties"] = coord_config
+    cm["data"]["jvm-coordinator.config"] = f"""-server
+-Xmx{k8s_mem_to_java(coord_mem)}
+-XX:+UseG1GC
+-XX:G1HeapRegionSize=32M
+-XX:+ExplicitGCInvokesConcurrent
+-XX:+HeapDumpOnOutOfMemoryError
+-Djdk.attach.allowAttachSelf=true
+"""
+    cm["data"]["jvm-worker.config"] = f"""-server
+-Xmx{k8s_mem_to_java(worker_mem)}
+-XX:+UseG1GC
+-XX:G1HeapRegionSize=32M
+-XX:+ExplicitGCInvokesConcurrent
+-XX:+HeapDumpOnOutOfMemoryError
+-Djdk.attach.allowAttachSelf=true
+"""
+    await kubectl_apply(json_mod.dumps(cm))
+    logger.info("Trino ConfigMap updated: query_max=%s, include_coord=%s", query_max, include_coord)
+
+    # 2. Refresh catalogs if requested
+    if req.refresh_catalogs:
+        from workspace_provisioner.workflow.steps.trino_deploy import _build_catalog_configmap
+        catalog_yaml = await _build_catalog_configmap(workspace_id, ws.name, namespace)
+        await kubectl_apply(catalog_yaml)
+        logger.info("Trino catalogs refreshed for workspace %s", ws.name)
+
+    # 3. Patch Coordinator Deployment (replicas + resources)
+    patch_cmd = [
+        "kubectl", "patch", "deployment", f"argus-trino-{ws.name}",
+        "-n", namespace, "--type=json", "-p", json_mod.dumps([
+            {"op": "replace", "path": "/spec/replicas", "value": coord_replicas},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/cpu", "value": coord_cpu},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": coord_mem},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/cpu", "value": f"{int(float(coord_cpu.rstrip('m')) * 500)}m" if not coord_cpu.endswith("m") else coord_cpu},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/memory", "value": coord_mem},
+        ]),
+    ]
+    proc = await aio.create_subprocess_exec(*patch_cmd, stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE)
+    await proc.communicate()
+
+    # 4. Patch Worker Deployment (replicas + resources)
+    patch_cmd = [
+        "kubectl", "patch", "deployment", f"argus-trino-{ws.name}-worker",
+        "-n", namespace, "--type=json", "-p", json_mod.dumps([
+            {"op": "replace", "path": "/spec/replicas", "value": worker_replicas},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/cpu", "value": worker_cpu},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": worker_mem},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/cpu", "value": f"{int(float(worker_cpu.rstrip('m')) * 500)}m" if not worker_cpu.endswith("m") else worker_cpu},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/memory", "value": worker_mem},
+        ]),
+    ]
+    proc = await aio.create_subprocess_exec(*patch_cmd, stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE)
+    await proc.communicate()
+
+    # 5. Rollout restart to pick up ConfigMap changes
+    proc = await aio.create_subprocess_exec(
+        "kubectl", "rollout", "restart", f"deployment/argus-trino-{ws.name}",
+        "-n", namespace, stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+    )
+    await proc.communicate()
+
+    # 6. Update service metadata
+    meta["display"]["Tier"] = (req.tier or "custom").capitalize()
+    meta["display"]["Coordinators"] = str(coord_replicas)
+    meta["display"]["Workers"] = str(worker_replicas)
+    meta["resources"] = {
+        "cpu_limit": coord_cpu,
+        "memory_limit": coord_mem,
+        "worker_cpu_limit": worker_cpu,
+        "worker_memory_limit": worker_mem,
+    }
+    from sqlalchemy import text
+    await session.execute(
+        text("UPDATE argus_workspace_services SET metadata = :m WHERE id = :id"),
+        {"m": json_mod.dumps(meta), "id": svc.id},
+    )
+    await session.commit()
+
+    logger.info("Trino configured: ws=%s tier=%s coord=%d×%s/%s worker=%d×%s/%s",
+                ws.name, req.tier, coord_replicas, coord_cpu, coord_mem,
+                worker_replicas, worker_cpu, worker_mem)
+
+    return {"status": "ok", "message": "Trino configuration applied. Pods are restarting."}
 
 
 @router.post("/workspaces/{workspace_id}/deploy")
@@ -410,6 +1014,7 @@ async def deploy_pipeline_to_workspace(
         domain=ws.domain,
         admin_user_id=ws.created_by,
         pipeline_ids=[req.pipeline_id],
+        plugin_config=req.plugin_config,
     )
 
     # Update workspace status

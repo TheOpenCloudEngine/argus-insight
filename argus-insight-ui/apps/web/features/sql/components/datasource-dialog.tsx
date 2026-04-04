@@ -21,6 +21,7 @@ const ENGINE_DEFAULTS: Record<EngineType, { port: number; database: string }> = 
   trino: { port: 8080, database: "" },
   starrocks: { port: 9030, database: "" },
   postgresql: { port: 5432, database: "postgres" },
+  mariadb: { port: 3306, database: "" },
 }
 
 export function DatasourceDialog() {
@@ -126,21 +127,20 @@ export function DatasourceDialog() {
           <div className="grid gap-1.5">
             <Label>Engine</Label>
             <div className="flex gap-2">
-              {(["trino", "starrocks", "postgresql"] as EngineType[]).map((engine) => (
-                <Button
-                  key={engine}
-                  variant={form.engine_type === engine ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1 text-xs"
-                  onClick={() => handleEngineChange(engine)}
-                >
-                  {engine === "trino"
-                    ? "Trino"
-                    : engine === "starrocks"
-                      ? "StarRocks"
-                      : "PostgreSQL"}
-                </Button>
-              ))}
+              {(["trino", "starrocks", "postgresql", "mariadb"] as EngineType[]).map((engine) => {
+                const labels: Record<string, string> = { trino: "Trino", starrocks: "StarRocks", postgresql: "PostgreSQL", mariadb: "MariaDB" }
+                return (
+                  <Button
+                    key={engine}
+                    variant={form.engine_type === engine ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1 text-xs"
+                    onClick={() => handleEngineChange(engine)}
+                  >
+                    {labels[engine]}
+                  </Button>
+                )
+              })}
             </div>
           </div>
 

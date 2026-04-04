@@ -43,6 +43,67 @@ async def ensure_namespace(namespace: str) -> None:
         raise RuntimeError(f"Failed to ensure namespace '{namespace}': {err.decode().strip()}")
 
 
+async def apply_resource_quota(
+    namespace: str, cpu_cores: float, memory_mb: int,
+) -> None:
+    """Apply a K8s ResourceQuota to a workspace namespace.
+
+    This enforces the resource profile limits at the K8s level,
+    preventing any Pod (plugin, ML Job, user Pod, etc.) from
+    collectively exceeding the workspace's allocated resources.
+
+    Args:
+        namespace: K8s namespace (e.g. argus-ws-mlops7)
+        cpu_cores: CPU limit in cores (e.g. 8.0)
+        memory_mb: Memory limit in MiB (e.g. 8192)
+    """
+    import json
+
+    memory_gi = f"{memory_mb / 1024:.0f}Gi"
+    cpu_str = str(int(cpu_cores)) if cpu_cores == int(cpu_cores) else f"{cpu_cores:.1f}"
+
+    quota_manifest = json.dumps({
+        "apiVersion": "v1",
+        "kind": "ResourceQuota",
+        "metadata": {
+            "name": "workspace-quota",
+            "namespace": namespace,
+        },
+        "spec": {
+            "hard": {
+                "requests.cpu": cpu_str,
+                "requests.memory": memory_gi,
+                "limits.cpu": cpu_str,
+                "limits.memory": memory_gi,
+            },
+        },
+    })
+
+    logger.info("[quota] Applying ResourceQuota to '%s': cpu=%s, memory=%s",
+                namespace, cpu_str, memory_gi)
+
+    proc = await asyncio.create_subprocess_exec(
+        "kubectl", "apply", "-f", "-",
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    out, err = await proc.communicate(quota_manifest.encode())
+    if proc.returncode == 0:
+        logger.info("[quota] ResourceQuota applied to '%s' — %s", namespace, out.decode().strip())
+    else:
+        logger.warning("[quota] Failed to apply ResourceQuota to '%s' — %s",
+                       namespace, err.decode().strip())
+
+
+async def update_resource_quota(namespace: str, cpu_cores: float, memory_mb: int) -> None:
+    """Update an existing ResourceQuota when the profile is changed.
+
+    Same as apply_resource_quota (kubectl apply is idempotent).
+    """
+    await apply_resource_quota(namespace, cpu_cores, memory_mb)
+
+
 async def prepare_s3(username: str, user_id: int) -> dict[str, str]:
     """Prepare S3 bucket, create per-user credentials, and store in user table.
 

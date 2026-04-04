@@ -17,34 +17,10 @@
           "icon": "LayoutDashboard"
         },
         {
-          "id": "monitoring",
-          "title": "Monitoring",
-          "url": "/dashboard/monitoring",
-          "icon": "Monitor"
-        },
-        {
           "id": "alerts",
           "title": "Alerts",
           "url": "/dashboard/alerts",
           "icon": "Bell"
-        },
-        {
-          "id": "terminal",
-          "title": "Terminal",
-          "url": "/dashboard/terminal",
-          "icon": "Terminal"
-        },
-        {
-          "id": "ml-studio",
-          "title": "ML Studio",
-          "url": "/dashboard/ml-studio",
-          "icon": "FlaskConical"
-        },
-        {
-          "id": "ai-playground",
-          "title": "AI Playground",
-          "url": "/dashboard/ai-playground",
-          "icon": "Sparkles"
         },
         {
           "id": "file-browser",
@@ -147,26 +123,20 @@
       ]
     },
     {
-      "id": "analysis",
-      "label": "Analysis",
+      "id": "ai",
+      "label": "AI",
       "items": [
         {
-          "id": "performance",
-          "title": "Performance",
-          "url": "/dashboard/performance",
-          "icon": "BarChart3"
+          "id": "ai-playground",
+          "title": "AI Playground",
+          "url": "/dashboard/ai-playground",
+          "icon": "Sparkles"
         },
         {
-          "id": "security",
-          "title": "Security",
-          "url": "/dashboard/security",
-          "icon": "Shield"
-        },
-        {
-          "id": "events",
-          "title": "Event Logs",
-          "url": "/dashboard/events",
-          "icon": "Zap"
+          "id": "ml-studio",
+          "title": "ML Studio",
+          "url": "/dashboard/ml-studio",
+          "icon": "FlaskConical"
         }
       ]
     },

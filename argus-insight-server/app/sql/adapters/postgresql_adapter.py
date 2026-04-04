@@ -132,8 +132,8 @@ def _serialize_value(val: Any) -> Any:
 class PostgreSQLAdapter(BaseAdapter):
     """Adapter for PostgreSQL."""
 
-    def _dsn(self) -> str:
-        db = self.config.database or "postgres"
+    def _dsn(self, database: str = "") -> str:
+        db = database or self.config.database or "postgres"
         return (
             f"postgresql://{self.config.username}:{self.config.password}"
             f"@{self.config.host}:{self.config.port}/{db}"
@@ -166,7 +166,7 @@ class PostgreSQLAdapter(BaseAdapter):
         try:
             pid = conn.get_server_pid()
             stmt = await conn.prepare(sql)
-            records = await stmt.fetch(max_rows, timeout=timeout_seconds)
+            records = await stmt.fetch(timeout=timeout_seconds)
             columns = [
                 {"name": attr.name, "type": attr.type.name if hasattr(attr.type, "name") else str(attr.type)}
                 for attr in stmt.get_attributes()
@@ -223,7 +223,7 @@ class PostgreSQLAdapter(BaseAdapter):
     async def get_schemas(self, catalog: str = "") -> list[MetadataSchema]:
         import asyncpg  # type: ignore[import-untyped]
 
-        conn = await asyncpg.connect(dsn=self._dsn())
+        conn = await asyncpg.connect(dsn=self._dsn(database=catalog))
         try:
             rows = await conn.fetch(
                 "SELECT schema_name FROM information_schema.schemata "
@@ -238,7 +238,7 @@ class PostgreSQLAdapter(BaseAdapter):
         import asyncpg  # type: ignore[import-untyped]
 
         schema = schema or "public"
-        conn = await asyncpg.connect(dsn=self._dsn())
+        conn = await asyncpg.connect(dsn=self._dsn(database=catalog))
         try:
             rows = await conn.fetch(
                 "SELECT table_name, table_type FROM information_schema.tables "
@@ -263,7 +263,7 @@ class PostgreSQLAdapter(BaseAdapter):
         import asyncpg  # type: ignore[import-untyped]
 
         schema = schema or "public"
-        conn = await asyncpg.connect(dsn=self._dsn())
+        conn = await asyncpg.connect(dsn=self._dsn(database=catalog))
         try:
             rows = await conn.fetch(
                 "SELECT column_name, data_type, is_nullable, ordinal_position, "

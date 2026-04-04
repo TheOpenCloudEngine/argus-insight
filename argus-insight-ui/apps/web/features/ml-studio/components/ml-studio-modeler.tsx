@@ -24,6 +24,7 @@ import {
   Code,
   Database,
   Eye,
+  FilePlus2,
   Filter,
   FlaskConical,
   FolderOpen,
@@ -35,6 +36,16 @@ import {
   Upload,
   X,
 } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@workspace/ui/components/alert-dialog"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
@@ -57,8 +68,8 @@ const NODE_CATALOG = [
     color: "#3b82f6",
     nodes: [
       { type: "source_csv", label: "CSV / TSV File", tooltip: "Load CSV or TSV file from MinIO storage", defaults: { path: "", bucket: "", delimiter: "auto", encoding: "utf-8", has_header: true, columns: [] } },
-      { type: "source_parquet", label: "Parquet File", tooltip: "Load Apache Parquet columnar data from MinIO", defaults: { path: "", bucket: "", columns: [] } },
       { type: "source_database", label: "Database Query", tooltip: "Load data from PostgreSQL, MariaDB, or Trino via SQL query", defaults: { db_type: "postgresql", connection: "", mode: "sql", schema: "", table: "", query: "", username: "", password: "", columns: [] } },
+      { type: "source_parquet", label: "Parquet File", tooltip: "Load Apache Parquet columnar data from MinIO", defaults: { path: "", bucket: "", columns: [] } },
     ],
   },
   {
@@ -66,20 +77,20 @@ const NODE_CATALOG = [
     icon: Filter,
     color: "#f59e0b",
     nodes: [
-      { type: "transform_fillnull", label: "Fill Null", tooltip: "Handle missing values using mean, median, mode, constant, or drop rows", defaults: { strategy: "median", constant_value: "0", apply_to: "all" } },
+      { type: "transform_binning", label: "Binning", tooltip: "Convert continuous values to discrete bins (e.g., age → 10s, 20s, 30s)", defaults: { column: "", bins: 5, strategy: "uniform", labels: "" } },
+      { type: "transform_datetime", label: "Datetime Extract", tooltip: "Extract year, month, day, dayofweek, hour from datetime columns", defaults: { column: "", extract: ["year", "month", "day", "dayofweek"] } },
       { type: "transform_drop_cols", label: "Drop Columns", tooltip: "Remove unwanted columns (ID, name, etc.) that should not be used for training", defaults: { columns: "" } },
       { type: "transform_drop_dup", label: "Drop Duplicates", tooltip: "Remove duplicate rows to prevent bias in training", defaults: { subset: "", keep: "first" } },
-      { type: "transform_typecast", label: "Type Cast", tooltip: "Change column data types (e.g., string→integer, integer→category)", defaults: { casts: [{ column: "", to_type: "int" }] } },
-      { type: "transform_outlier", label: "Outlier Remove", tooltip: "Detect and remove outliers using IQR or Z-score method", defaults: { method: "iqr", threshold: 1.5, columns: "" } },
-      { type: "transform_datetime", label: "Datetime Extract", tooltip: "Extract year, month, day, dayofweek, hour from datetime columns", defaults: { column: "", extract: ["year", "month", "day", "dayofweek"] } },
-      { type: "transform_binning", label: "Binning", tooltip: "Convert continuous values to discrete bins (e.g., age → 10s, 20s, 30s)", defaults: { column: "", bins: 5, strategy: "uniform", labels: "" } },
-      { type: "transform_sample", label: "Sample", tooltip: "Take a random sample of rows for faster experimentation on large datasets", defaults: { n_rows: 10000, random_seed: 42 } },
-      { type: "transform_sort", label: "Sort", tooltip: "Sort rows by column values (essential for time-series data)", defaults: { column: "", ascending: true } },
       { type: "transform_encode", label: "Encode", tooltip: "Convert categorical columns to numbers using Label, One-Hot, or Ordinal encoding", defaults: { method: "label", drop_first: false, ordinal_order: "", apply_to: "all" } },
-      { type: "transform_scale", label: "Scale", tooltip: "Normalize numeric features using Standard, MinMax, or Robust scaling", defaults: { method: "standard", range_min: 0, range_max: 1, apply_to: "all" } },
-      { type: "transform_filter", label: "Filter Rows", tooltip: "Remove rows based on conditions", defaults: { conditions: [{ column: "", operator: ">", value: "" }], logic: "AND" } },
       { type: "transform_feature", label: "Feature Engineering", tooltip: "Create new features from existing columns using expressions", defaults: { features: [{ name: "", expression: "" }] } },
+      { type: "transform_fillnull", label: "Fill Null", tooltip: "Handle missing values using mean, median, mode, constant, or drop rows", defaults: { strategy: "median", constant_value: "0", apply_to: "all" } },
+      { type: "transform_filter", label: "Filter Rows", tooltip: "Remove rows based on conditions", defaults: { conditions: [{ column: "", operator: ">", value: "" }], logic: "AND" } },
+      { type: "transform_outlier", label: "Outlier Remove", tooltip: "Detect and remove outliers using IQR or Z-score method", defaults: { method: "iqr", threshold: 1.5, columns: "" } },
+      { type: "transform_sample", label: "Sample", tooltip: "Take a random sample of rows for faster experimentation on large datasets", defaults: { n_rows: 10000, random_seed: 42 } },
+      { type: "transform_scale", label: "Scale", tooltip: "Normalize numeric features using Standard, MinMax, or Robust scaling", defaults: { method: "standard", range_min: 0, range_max: 1, apply_to: "all" } },
+      { type: "transform_sort", label: "Sort", tooltip: "Sort rows by column values (essential for time-series data)", defaults: { column: "", ascending: true } },
       { type: "transform_split", label: "Train/Test Split", tooltip: "Split data into training and test sets with configurable ratio and stratification", defaults: { test_size: 0.2, target_column: "", stratify: true, random_seed: 42 } },
+      { type: "transform_typecast", label: "Type Cast", tooltip: "Change column data types (e.g., string→integer, integer→category)", defaults: { casts: [{ column: "", to_type: "int" }] } },
     ],
   },
   {
@@ -87,11 +98,11 @@ const NODE_CATALOG = [
     icon: FlaskConical,
     color: "#22c55e",
     nodes: [
-      { type: "model_xgboost", label: "XGBoost", tooltip: "Gradient boosted trees — high accuracy, handles missing values, fast training", defaults: { n_estimators: 100, max_depth: 6, learning_rate: 0.1 } },
-      { type: "model_lightgbm", label: "LightGBM", tooltip: "Light gradient boosting — faster than XGBoost for large datasets, lower memory", defaults: { n_estimators: 100, max_depth: -1, learning_rate: 0.1 } },
-      { type: "model_rf", label: "Random Forest", tooltip: "Ensemble of decision trees — robust, less overfitting, good baseline model", defaults: { n_estimators: 100, max_depth: null } },
-      { type: "model_linear", label: "Linear / Logistic", tooltip: "Simple linear model — fast, interpretable, good for linearly separable data", defaults: { max_iter: 500 } },
       { type: "model_automl", label: "AutoML", tooltip: "Automatically try multiple algorithms and select the best model within time limit", defaults: { time_limit: 300, metric: "auto" } },
+      { type: "model_lightgbm", label: "LightGBM", tooltip: "Light gradient boosting — faster than XGBoost for large datasets, lower memory", defaults: { n_estimators: 100, max_depth: -1, learning_rate: 0.1 } },
+      { type: "model_linear", label: "Linear / Logistic", tooltip: "Simple linear model — fast, interpretable, good for linearly separable data", defaults: { max_iter: 500 } },
+      { type: "model_rf", label: "Random Forest", tooltip: "Ensemble of decision trees — robust, less overfitting, good baseline model", defaults: { n_estimators: 100, max_depth: null } },
+      { type: "model_xgboost", label: "XGBoost", tooltip: "Gradient boosted trees — high accuracy, handles missing values, fast training", defaults: { n_estimators: 100, max_depth: 6, learning_rate: 0.1 } },
     ],
   },
   {
@@ -99,10 +110,10 @@ const NODE_CATALOG = [
     icon: Upload,
     color: "#8b5cf6",
     nodes: [
-      { type: "output_mlflow", label: "MLflow Log", tooltip: "Log model, metrics, and parameters to MLflow experiment tracking", defaults: { experiment_name: "default" } },
+      { type: "output_csv", label: "CSV Export", tooltip: "Export predictions or processed data to CSV file in MinIO", defaults: { bucket: "", path: "", filename: "" } },
       { type: "output_evaluate", label: "Evaluate", tooltip: "Calculate performance metrics (F1, accuracy, AUC, RMSE) and feature importance", defaults: { metrics: ["f1", "accuracy", "auc"] } },
       { type: "output_kserve", label: "KServe Deploy", tooltip: "Deploy the trained model as a REST API endpoint via KServe", defaults: { cpu: "1", memory: "2Gi" } },
-      { type: "output_csv", label: "CSV Export", tooltip: "Export predictions or processed data to CSV file in MinIO", defaults: { bucket: "", path: "", filename: "" } },
+      { type: "output_mlflow", label: "MLflow Log", tooltip: "Log model, metrics, and parameters to MLflow experiment tracking", defaults: { experiment_name: "default" } },
     ],
   },
 ]
@@ -526,29 +537,31 @@ function NodePalette({
   onDragStart: (event: React.DragEvent, nodeType: string, label: string, defaults: Record<string, any>) => void
 }) {
   return (
-    <div className="w-[180px] shrink-0 space-y-3 overflow-y-auto pr-2">
-      {NODE_CATALOG.map((cat) => (
-        <div key={cat.category}>
-          <div className="flex items-center gap-1.5 mb-1.5">
-            <cat.icon className="h-3.5 w-3.5" style={{ color: cat.color }} />
-            <span className="text-sm font-semibold">{cat.category}</span>
+    <div className="w-[180px] shrink-0 overflow-y-auto pr-2">
+      <div className="space-y-3">
+        {NODE_CATALOG.map((cat) => (
+          <div key={cat.category}>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <cat.icon className="h-3.5 w-3.5" style={{ color: cat.color }} />
+              <span className="text-sm font-semibold">{cat.category}</span>
+            </div>
+            <div className="space-y-1">
+              {cat.nodes.map((n) => (
+                <div
+                  key={n.type}
+                  draggable
+                  onDragStart={(e) => onDragStart(e, n.type, n.label, n.defaults)}
+                  className="cursor-grab rounded border px-2 py-1.5 text-sm hover:bg-muted/50 active:cursor-grabbing transition-colors"
+                  style={{ borderLeftWidth: 3, borderLeftColor: cat.color }}
+                  title={n.tooltip}
+                >
+                  {n.label}
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="space-y-1">
-            {cat.nodes.map((n) => (
-              <div
-                key={n.type}
-                draggable
-                onDragStart={(e) => onDragStart(e, n.type, n.label, n.defaults)}
-                className="cursor-grab rounded border px-2 py-1.5 text-sm hover:bg-muted/50 active:cursor-grabbing transition-colors"
-                style={{ borderLeftWidth: 3, borderLeftColor: cat.color }}
-                title={n.tooltip}
-              >
-                {n.label}
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   )
 }
@@ -578,6 +591,19 @@ export function MLStudioModeler({ onExecuted }: { onExecuted?: () => void } = {}
   // Validation
   const [pipelineErrors, setPipelineErrors] = useState<PipelineError[]>([])
   const [errorNodeIds, setErrorNodeIds] = useState<Set<string>>(new Set())
+
+  // Alert / Confirm dialogs (replaces native alert/confirm)
+  const [alertMsg, setAlertMsg] = useState("")
+  const [confirmMsg, setConfirmMsg] = useState("")
+  const confirmResolveRef = useRef<((ok: boolean) => void) | null>(null)
+
+  const showAlert = useCallback((msg: string) => setAlertMsg(msg), [])
+  const showConfirm = useCallback((msg: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      confirmResolveRef.current = resolve
+      setConfirmMsg(msg)
+    })
+  }, [])
 
   // ── Workspace ID ───────────────────────────────────────
   const getWorkspaceId = useCallback((): number => {
@@ -788,10 +814,27 @@ export function MLStudioModeler({ onExecuted }: { onExecuted?: () => void } = {}
       setPreviewOpen(true)
     } else {
       const err = await res.json().catch(() => ({}))
-      alert(`Code generation failed: ${err.detail || res.statusText}`)
+      showAlert(`Code generation failed: ${err.detail || res.statusText}`)
     }
   }, [validateAndGetPipeline, getWorkspaceId, buildPipelinePayload])
 
+  // ── New pipeline ──────────────────────────────────────────
+  const handleNew = useCallback(async () => {
+    if (nodes.length > 0) {
+      const ok = await showConfirm("Do you want to initialize the model?")
+      if (!ok) return
+    }
+    setNodes([])
+    setEdges([])
+    setPipelineId(null)
+    setPipelineName("")
+    setSelectedNode(null)
+    setPipelineErrors([])
+    setErrorNodeIds(new Set())
+    idCounter.current = 0
+  }, [nodes.length, setNodes, setEdges, showConfirm])
+
+  // ── Execute ─────────────────────────────────────────────
   const [executing, setExecuting] = useState(false)
 
   const handleExecute = useCallback(async () => {
@@ -800,7 +843,7 @@ export function MLStudioModeler({ onExecuted }: { onExecuted?: () => void } = {}
 
     const wsId = getWorkspaceId()
     if (!wsId) {
-      alert("No workspace selected. Visit the Workspaces page first.")
+      showAlert("No workspace selected.\n\nPlease select a workspace from the Workspaces page first.")
       return
     }
 
@@ -829,13 +872,13 @@ export function MLStudioModeler({ onExecuted }: { onExecuted?: () => void } = {}
             nodeId: e.nodeId, message: e.message, messageKo: e.message,
           })))
         } else {
-          alert(`Execute failed: ${err.detail?.message || err.detail || res.statusText}`)
+          showAlert(err.detail?.message || err.detail || `Execute failed: ${res.statusText}`)
         }
       }
     } finally {
       setExecuting(false)
     }
-  }, [validateAndGetPipeline, getWorkspaceId, buildPipelinePayload, pipelineId, pipelineName, onExecuted])
+  }, [validateAndGetPipeline, getWorkspaceId, buildPipelinePayload, pipelineId, pipelineName, onExecuted, showAlert])
 
   const handleSaved = useCallback((id: number, name: string) => {
     setPipelineId(id)
@@ -898,10 +941,13 @@ export function MLStudioModeler({ onExecuted }: { onExecuted?: () => void } = {}
 
         {/* Toolbar */}
         <div className="absolute top-3 right-3 flex gap-1.5 z-10">
+          <Button size="sm" variant="outline" className="h-8 text-sm bg-background/80 backdrop-blur-sm" onClick={handleNew}>
+            <FilePlus2 className="mr-1.5 h-3.5 w-3.5" /> New
+          </Button>
           <Button size="sm" variant="outline" className="h-8 text-sm bg-background/80 backdrop-blur-sm" onClick={() => setLoadOpen(true)}>
             <FolderOpen className="mr-1.5 h-3.5 w-3.5" /> Load
           </Button>
-          <Button size="sm" variant="outline" className="h-8 text-sm bg-background/80 backdrop-blur-sm" onClick={() => setSaveOpen(true)} disabled={nodes.length === 0}>
+          <Button size="sm" variant="outline" className="h-8 text-sm bg-background/80 backdrop-blur-sm" onClick={() => { if (!getWorkspaceId()) { showAlert("No workspace selected.\n\nPlease select a workspace from the Workspaces page first."); return } setSaveOpen(true) }} disabled={nodes.length === 0}>
             <Save className="mr-1.5 h-3.5 w-3.5" /> Save
           </Button>
           <div className="w-px bg-border mx-0.5" />
@@ -973,6 +1019,35 @@ export function MLStudioModeler({ onExecuted }: { onExecuted?: () => void } = {}
         onOpenChange={setPreviewOpen}
         code={previewCode}
       />
+
+      {/* Alert Dialog (replaces native alert) */}
+      <AlertDialog open={!!alertMsg} onOpenChange={(open) => { if (!open) setAlertMsg("") }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Notice</AlertDialogTitle>
+            <AlertDialogDescription className="whitespace-pre-wrap">{alertMsg}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setAlertMsg("")}>OK</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirm Dialog (replaces native confirm) */}
+      <AlertDialog open={!!confirmMsg} onOpenChange={(open) => {
+        if (!open) { confirmResolveRef.current?.(false); setConfirmMsg("") }
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm</AlertDialogTitle>
+            <AlertDialogDescription className="whitespace-pre-wrap">{confirmMsg}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { confirmResolveRef.current?.(false); setConfirmMsg("") }}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { confirmResolveRef.current?.(true); setConfirmMsg("") }}>OK</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

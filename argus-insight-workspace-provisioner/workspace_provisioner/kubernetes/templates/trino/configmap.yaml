@@ -11,13 +11,29 @@ metadata:
 data:
   config-coordinator.properties: |
     coordinator=true
-    node-scheduler.include-coordinator=false
+    node-scheduler.include-coordinator=${TRINO_INCLUDE_COORDINATOR}
     http-server.http.port=8080
+    http-server.process-forwarded=true
+    http-server.authentication.type=PASSWORD
+    http-server.authentication.allow-insecure-over-http=true
+    web-ui.enabled=true
+    web-ui.authentication.type=FIXED
+    web-ui.user=admin
     discovery.uri=http://argus-trino-${WORKSPACE_NAME}:8080
+    query.max-memory=1GB
+    query.max-memory-per-node=512MB
+    internal-communication.shared-secret=${TRINO_SHARED_SECRET}
   config-worker.properties: |
     coordinator=false
     http-server.http.port=8080
+    http-server.process-forwarded=true
     discovery.uri=http://argus-trino-${WORKSPACE_NAME}:8080
+    internal-communication.shared-secret=${TRINO_SHARED_SECRET}
+  password-authenticator.properties: |
+    password-authenticator.name=file
+    file.password-file=/etc/trino/auth/password.db
+  password.db: |
+    ${TRINO_PASSWORD_DB}
   jvm-coordinator.config: |
     -server
     -Xmx${TRINO_COORDINATOR_JVM_XMX}

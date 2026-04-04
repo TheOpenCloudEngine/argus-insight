@@ -46,7 +46,81 @@ from app.sql.schemas import (
 
 logger = logging.getLogger(__name__)
 
-# In-memory cache for active query results (execution_id → QueryResult)
+# ---------------------------------------------------------------------------
+# Paginated result cache with TTL
+# ---------------------------------------------------------------------------
+
+DEFAULT_PAGE_SIZE = 500
+CACHE_TTL_SECONDS = 300  # 5 minutes
+
+
+class _PagedResultCache:
+    """In-memory cache for query results with page-based access and TTL."""
+
+    def __init__(self):
+        self._store: dict[str, dict] = {}  # execution_id → {columns, pages, total_rows, ...}
+
+    def put(self, execution_id: str, columns: list[dict], rows: list[list],
+            elapsed_ms: int, page_size: int = DEFAULT_PAGE_SIZE):
+        """Store result, split into pages."""
+        total_rows = len(rows)
+        pages: list[list[list]] = []
+        for i in range(0, total_rows, page_size):
+            pages.append(rows[i:i + page_size])
+        self._store[execution_id] = {
+            "columns": columns,
+            "pages": pages,
+            "total_rows": total_rows,
+            "page_size": page_size,
+            "total_pages": len(pages) if pages else 1,
+            "elapsed_ms": elapsed_ms,
+            "created_at": time.time(),
+        }
+
+    def get_page(self, execution_id: str, page: int = 1) -> dict | None:
+        """Get a specific page. Returns None if not cached."""
+        entry = self._store.get(execution_id)
+        if not entry:
+            return None
+        # TTL check
+        if time.time() - entry["created_at"] > CACHE_TTL_SECONDS:
+            self._store.pop(execution_id, None)
+            return None
+        page_idx = max(0, page - 1)
+        page_rows = entry["pages"][page_idx] if page_idx < len(entry["pages"]) else []
+        return {
+            "columns": entry["columns"],
+            "rows": page_rows,
+            "total_rows": entry["total_rows"],
+            "page": page,
+            "page_size": entry["page_size"],
+            "total_pages": entry["total_pages"],
+            "elapsed_ms": entry["elapsed_ms"],
+        }
+
+    def get_all_rows(self, execution_id: str) -> tuple[list[dict], list[list]] | None:
+        """Get all rows for CSV export. Returns (columns, all_rows) or None."""
+        entry = self._store.get(execution_id)
+        if not entry:
+            return None
+        all_rows = []
+        for page in entry["pages"]:
+            all_rows.extend(page)
+        return entry["columns"], all_rows
+
+    def remove(self, execution_id: str):
+        self._store.pop(execution_id, None)
+
+    def cleanup_expired(self):
+        now = time.time()
+        expired = [k for k, v in self._store.items() if now - v["created_at"] > CACHE_TTL_SECONDS]
+        for k in expired:
+            del self._store[k]
+
+
+_result_cache = _PagedResultCache()
+
+# Legacy compat
 _execution_results: dict[str, dict] = {}
 
 
@@ -58,18 +132,27 @@ def _create_adapter(
     engine_type: str, host: str, port: int, database: str,
     username: str, password: str, extra: dict | None = None,
 ) -> BaseAdapter:
+    """Create a database adapter for the given engine type.
+
+    Supported engines: trino, starrocks, postgresql, mariadb.
+    MariaDB uses the StarRocks (MySQL-protocol) adapter.
+    """
     config = ConnectionConfig(
         host=host, port=port, database=database,
         username=username, password=password, extra=extra or {},
     )
     et = engine_type.lower()
     if et == EngineType.TRINO:
+        logger.debug("Creating Trino adapter: %s:%d/%s", host, port, database)
         return TrinoAdapter(config)
-    elif et == EngineType.STARROCKS:
+    elif et in (EngineType.STARROCKS, EngineType.MARIADB):
+        logger.debug("Creating MySQL-compat adapter (%s): %s:%d/%s", et, host, port, database)
         return StarRocksAdapter(config)
     elif et == EngineType.POSTGRESQL:
+        logger.debug("Creating PostgreSQL adapter: %s:%d/%s", host, port, database)
         return PostgreSQLAdapter(config)
     else:
+        logger.warning("Unsupported engine type requested: %s", engine_type)
         raise ValueError(f"Unsupported engine type: {engine_type}")
 
 
@@ -84,6 +167,101 @@ def _adapter_from_datasource(ds: SqlDatasource) -> BaseAdapter:
         password=_decrypt_password(ds.password_encrypted),
         extra=extra,
     )
+
+
+async def _adapter_from_workspace_service(session: AsyncSession, svc_id: int) -> BaseAdapter:
+    """Create an adapter from a workspace service (argus_workspace_services) by ID.
+
+    Reads connection info from the service metadata (display/internal fields)
+    and creates the appropriate adapter. Uses raw SQL to avoid ORM metadata
+    attribute name collision.
+    """
+    from sqlalchemy import text
+    import json as json_mod
+
+    logger.debug("Creating adapter from workspace service id=%d", svc_id)
+    row = await session.execute(
+        text("SELECT plugin_name, endpoint, username, metadata FROM argus_workspace_services WHERE id = :id"),
+        {"id": svc_id},
+    )
+    svc = row.fetchone()
+    if not svc:
+        logger.warning("Workspace service id=%d not found", svc_id)
+        raise ValueError(f"Workspace service {svc_id} not found")
+
+    plugin_name, endpoint, ws_username, meta_raw = svc
+    meta = meta_raw if isinstance(meta_raw, dict) else (
+        json_mod.loads(meta_raw) if isinstance(meta_raw, str) else {}
+    )
+    display = meta.get("display", {})
+    internal = meta.get("internal", {})
+
+    engine_map = {
+        "argus-trino": "trino",
+        "argus-starrocks": "starrocks",
+        "argus-postgresql": "postgresql",
+        "argus-mariadb": "mariadb",
+    }
+    engine_type = engine_map.get(plugin_name, "postgresql")
+
+    # Default ports per engine
+    default_ports = {"trino": 8080, "starrocks": 9030, "postgresql": 5432, "mariadb": 3306}
+
+    # Try to get host:port from display address field (e.g. "host:5432")
+    address_keys = ["PostgreSQL Address", "MariaDB Address", "StarRocks Address", "Trino Address", "Address"]
+    host, port = "", 0
+    for ak in address_keys:
+        addr = display.get(ak, "")
+        if addr:
+            if ":" in addr:
+                parts = addr.rsplit(":", 1)
+                host = parts[0]
+                try:
+                    port = int(parts[1])
+                except ValueError:
+                    port = default_ports.get(engine_type, 0)
+            else:
+                host = addr
+            break
+
+    # Fallback: use internal.host
+    if not host:
+        host = internal.get("host", "")
+
+    # Fallback: parse from endpoint URL
+    if not host:
+        from urllib.parse import urlparse
+        parsed = urlparse(internal.get("endpoint", endpoint or ""))
+        host = parsed.hostname or ""
+        port = parsed.port or 0
+
+    # Ensure port
+    if not port:
+        port = default_ports.get(engine_type, 5432)
+
+    db_name = display.get("DB Name", display.get("Database", ""))
+    db_user = display.get("DB User", display.get("Username", ws_username or ""))
+    db_pass = display.get("DB Password", display.get("Password", ""))
+
+    logger.info("Workspace service id=%d resolved: engine=%s host=%s:%d db=%s user=%s",
+                svc_id, engine_type, host, port, db_name, db_user)
+    return _create_adapter(engine_type, host, port, db_name, db_user, db_pass)
+
+
+async def _get_adapter(session: AsyncSession, ds_id: int) -> BaseAdapter:
+    """Get adapter for either custom datasource (positive ID) or workspace service (negative ID).
+
+    Workspace services use negative IDs (e.g. -39 = workspace service id 39).
+    """
+    if ds_id < 0:
+        logger.debug("Resolving workspace datasource: ds_id=%d → service_id=%d", ds_id, abs(ds_id))
+        return await _adapter_from_workspace_service(session, abs(ds_id))
+    logger.debug("Resolving custom datasource: ds_id=%d", ds_id)
+    ds = await session.get(SqlDatasource, ds_id)
+    if not ds:
+        logger.warning("Custom datasource id=%d not found", ds_id)
+        raise ValueError(f"Datasource {ds_id} not found")
+    return _adapter_from_datasource(ds)
 
 
 def _encrypt_password(plain: str) -> str:
@@ -226,19 +404,15 @@ async def test_datasource_by_id(session: AsyncSession, ds_id: int) -> Datasource
 # ---------------------------------------------------------------------------
 
 async def get_catalogs(session: AsyncSession, ds_id: int) -> list[dict]:
-    ds = await session.get(SqlDatasource, ds_id)
-    if not ds:
-        return []
-    adapter = _adapter_from_datasource(ds)
+    """Fetch catalog list from datasource for schema browser."""
+    adapter = await _get_adapter(session, ds_id)
     catalogs = await adapter.get_catalogs()
+    logger.debug("get_catalogs ds_id=%d → %d catalogs", ds_id, len(catalogs))
     return [{"name": c.name} for c in catalogs]
 
 
 async def get_schemas(session: AsyncSession, ds_id: int, catalog: str = "") -> list[dict]:
-    ds = await session.get(SqlDatasource, ds_id)
-    if not ds:
-        return []
-    adapter = _adapter_from_datasource(ds)
+    adapter = await _get_adapter(session, ds_id)
     schemas = await adapter.get_schemas(catalog)
     return [{"name": s.name, "catalog": s.catalog} for s in schemas]
 
@@ -246,10 +420,7 @@ async def get_schemas(session: AsyncSession, ds_id: int, catalog: str = "") -> l
 async def get_tables(
     session: AsyncSession, ds_id: int, catalog: str = "", schema: str = "",
 ) -> list[dict]:
-    ds = await session.get(SqlDatasource, ds_id)
-    if not ds:
-        return []
-    adapter = _adapter_from_datasource(ds)
+    adapter = await _get_adapter(session, ds_id)
     tables = await adapter.get_tables(catalog, schema)
     return [
         {"name": t.name, "table_type": t.table_type,
@@ -262,10 +433,7 @@ async def get_columns(
     session: AsyncSession, ds_id: int, table: str,
     catalog: str = "", schema: str = "",
 ) -> list[dict]:
-    ds = await session.get(SqlDatasource, ds_id)
-    if not ds:
-        return []
-    adapter = _adapter_from_datasource(ds)
+    adapter = await _get_adapter(session, ds_id)
     columns = await adapter.get_columns(table, catalog, schema)
     return [
         {"name": c.name, "data_type": c.data_type, "nullable": c.nullable,
@@ -278,10 +446,7 @@ async def get_table_preview(
     session: AsyncSession, ds_id: int, table: str,
     catalog: str = "", schema: str = "", limit: int = 100,
 ) -> dict:
-    ds = await session.get(SqlDatasource, ds_id)
-    if not ds:
-        return {"columns": [], "rows": [], "total_rows": 0}
-    adapter = _adapter_from_datasource(ds)
+    adapter = await _get_adapter(session, ds_id)
     result = await adapter.get_table_preview(table, catalog, schema, limit)
     return {
         "columns": result.columns,
@@ -303,17 +468,34 @@ async def execute_query(
     username: str = "",
 ) -> QueryResultResponse:
     """Execute a query synchronously and return results immediately."""
-    ds = await session.get(SqlDatasource, datasource_id)
-    if not ds:
-        raise ValueError(f"Datasource not found: {datasource_id}")
+    logger.info("execute_query: ds_id=%d user=%s sql=%.80s", datasource_id, username, sql.strip())
+    # Resolve adapter and datasource name/engine for history
+    adapter = await _get_adapter(session, datasource_id)
+    if datasource_id < 0:
+        # Workspace datasource — get name/engine from service table
+        from sqlalchemy import text as sa_text
+        _svc = await session.execute(
+            sa_text("SELECT display_name, plugin_name FROM argus_workspace_services WHERE id = :id"),
+            {"id": abs(datasource_id)},
+        )
+        _row = _svc.fetchone()
+        ds_name = _row[0] if _row else "Workspace"
+        _engine_map = {"argus-trino": "trino", "argus-starrocks": "starrocks",
+                       "argus-postgresql": "postgresql", "argus-mariadb": "mariadb"}
+        ds_engine = _engine_map.get(_row[1], "postgresql") if _row else "postgresql"
+    else:
+        ds = await session.get(SqlDatasource, datasource_id)
+        if not ds:
+            raise ValueError(f"Datasource not found: {datasource_id}")
+        ds_name = ds.name
+        ds_engine = ds.engine_type
 
     execution_id = str(uuid.uuid4())
-    adapter = _adapter_from_datasource(ds)
 
     # Record execution start
     execution = SqlQueryExecution(
         id=execution_id,
-        datasource_id=datasource_id,
+        datasource_id=abs(datasource_id),
         sql_text=sql,
         status=QueryStatus.RUNNING.value,
         executed_by=username,
@@ -338,9 +520,9 @@ async def execute_query(
 
         # Record history
         history = SqlQueryHistory(
-            datasource_id=datasource_id,
-            datasource_name=ds.name,
-            engine_type=ds.engine_type,
+            datasource_id=abs(datasource_id),
+            datasource_name=ds_name,
+            engine_type=ds_engine,
             sql_text=sql,
             status=QueryStatus.FINISHED.value,
             row_count=result.row_count,
@@ -373,9 +555,9 @@ async def execute_query(
             .values(status=QueryStatus.FAILED.value, error_message=error_msg)
         )
         history = SqlQueryHistory(
-            datasource_id=datasource_id,
-            datasource_name=ds.name,
-            engine_type=ds.engine_type,
+            datasource_id=abs(datasource_id),
+            datasource_name=ds_name,
+            engine_type=ds_engine,
             sql_text=sql,
             status=QueryStatus.FAILED.value,
             error_message=error_msg,
@@ -400,14 +582,32 @@ async def submit_query(
     username: str = "",
 ) -> QuerySubmitResponse:
     """Submit a query for async execution. Returns immediately with execution_id."""
-    ds = await session.get(SqlDatasource, datasource_id)
-    if not ds:
-        raise ValueError(f"Datasource not found: {datasource_id}")
+    logger.info("submit_query: ds_id=%d user=%s sql=%.80s", datasource_id, username, sql.strip())
+    adapter = await _get_adapter(session, datasource_id)
+
+    # Resolve name/engine for history
+    if datasource_id < 0:
+        from sqlalchemy import text as sa_text
+        _svc = await session.execute(
+            sa_text("SELECT display_name, plugin_name FROM argus_workspace_services WHERE id = :id"),
+            {"id": abs(datasource_id)},
+        )
+        _row = _svc.fetchone()
+        ds_name = _row[0] if _row else "Workspace"
+        _engine_map = {"argus-trino": "trino", "argus-starrocks": "starrocks",
+                       "argus-postgresql": "postgresql", "argus-mariadb": "mariadb"}
+        ds_engine = _engine_map.get(_row[1], "postgresql") if _row else "postgresql"
+    else:
+        ds = await session.get(SqlDatasource, datasource_id)
+        if not ds:
+            raise ValueError(f"Datasource not found: {datasource_id}")
+        ds_name = ds.name
+        ds_engine = ds.engine_type
 
     execution_id = str(uuid.uuid4())
     execution = SqlQueryExecution(
         id=execution_id,
-        datasource_id=datasource_id,
+        datasource_id=abs(datasource_id),
         sql_text=sql,
         status=QueryStatus.QUEUED.value,
         executed_by=username,
@@ -418,7 +618,8 @@ async def submit_query(
     # Launch background execution
     import asyncio
     asyncio.create_task(
-        _run_query_background(execution_id, ds, sql, max_rows, timeout_seconds, username)
+        _run_query_background(execution_id, adapter, datasource_id,
+                              ds_name, ds_engine, sql, max_rows, timeout_seconds, username)
     )
 
     return QuerySubmitResponse(execution_id=execution_id, status=QueryStatus.QUEUED)
@@ -426,16 +627,18 @@ async def submit_query(
 
 async def _run_query_background(
     execution_id: str,
-    ds: SqlDatasource,
+    adapter: BaseAdapter,
+    datasource_id: int,
+    ds_name: str,
+    ds_engine: str,
     sql: str,
     max_rows: int,
     timeout_seconds: int,
     username: str,
 ) -> None:
-    """Background task that executes a query and stores results."""
+    """Background task that executes a query and stores results in paginated cache."""
     from app.core.database import async_session
-
-    adapter = _adapter_from_datasource(ds)
+    logger.info("Background query started: execution_id=%s ds_name=%s", execution_id, ds_name)
 
     async with async_session() as session:
         await session.execute(
@@ -448,14 +651,11 @@ async def _run_query_background(
     try:
         result = await adapter.execute(sql, max_rows, timeout_seconds)
 
-        # Store results in memory for later retrieval
-        _execution_results[execution_id] = {
-            "columns": result.columns,
-            "rows": result.rows,
-            "row_count": result.row_count,
-            "elapsed_ms": result.elapsed_ms,
-            "has_more": result.row_count >= max_rows,
-        }
+        # Store results in paginated cache
+        # Store results in paginated cache (500 rows/page, 5min TTL)
+        _result_cache.put(execution_id, result.columns, result.rows, result.elapsed_ms)
+        logger.info("Background query completed: execution_id=%s rows=%d elapsed=%dms",
+                     execution_id, result.row_count, result.elapsed_ms)
 
         async with async_session() as session:
             await session.execute(
@@ -469,9 +669,9 @@ async def _run_query_background(
                 )
             )
             history = SqlQueryHistory(
-                datasource_id=ds.id,
-                datasource_name=ds.name,
-                engine_type=ds.engine_type,
+                datasource_id=abs(datasource_id),
+                datasource_name=ds_name,
+                engine_type=ds_engine,
                 sql_text=sql,
                 status=QueryStatus.FINISHED.value,
                 row_count=result.row_count,
@@ -492,9 +692,9 @@ async def _run_query_background(
                 .values(status=QueryStatus.FAILED.value, error_message=error_msg)
             )
             history = SqlQueryHistory(
-                datasource_id=ds.id,
-                datasource_name=ds.name,
-                engine_type=ds.engine_type,
+                datasource_id=abs(datasource_id),
+                datasource_name=ds_name,
+                engine_type=ds_engine,
                 sql_text=sql,
                 status=QueryStatus.FAILED.value,
                 error_message=error_msg,
@@ -521,13 +721,13 @@ async def get_execution_status(
 
 
 async def get_execution_result(
-    session: AsyncSession, execution_id: str,
+    session: AsyncSession, execution_id: str, page: int = 1,
 ) -> QueryResultResponse | None:
     ex = await session.get(SqlQueryExecution, execution_id)
     if not ex:
         return None
 
-    cached = _execution_results.pop(execution_id, None)
+    cached = _result_cache.get_page(execution_id, page)
     if cached:
         columns = [
             QueryResultColumn(name=c["name"], data_type=c.get("type", "VARCHAR"))
@@ -538,9 +738,12 @@ async def get_execution_result(
             status=QueryStatus(ex.status),
             columns=columns,
             rows=cached["rows"],
-            row_count=cached["row_count"],
+            row_count=cached["total_rows"],
             elapsed_ms=cached["elapsed_ms"],
-            has_more=cached["has_more"],
+            has_more=page < cached["total_pages"],
+            page=cached["page"],
+            page_size=cached["page_size"],
+            total_pages=cached["total_pages"],
         )
 
     return QueryResultResponse(
@@ -552,11 +755,19 @@ async def get_execution_result(
     )
 
 
+def get_execution_all_rows(execution_id: str) -> tuple[list[dict], list[list]] | None:
+    """Get all rows for CSV export."""
+    return _result_cache.get_all_rows(execution_id)
+
+
 async def cancel_query(
     session: AsyncSession, execution_id: str,
 ) -> QueryCancelResponse | None:
+    """Cancel a running query by sending pg_cancel_backend (or engine equivalent)."""
+    logger.info("cancel_query: execution_id=%s", execution_id)
     ex = await session.get(SqlQueryExecution, execution_id)
     if not ex:
+        logger.warning("cancel_query: execution_id=%s not found", execution_id)
         return None
 
     if ex.status not in (QueryStatus.QUEUED.value, QueryStatus.RUNNING.value):
@@ -568,10 +779,11 @@ async def cancel_query(
 
     cancelled = False
     if ex.engine_query_id:
-        ds = await session.get(SqlDatasource, ex.datasource_id)
-        if ds:
-            adapter = _adapter_from_datasource(ds)
+        try:
+            adapter = await _get_adapter(session, ex.datasource_id)
             cancelled = await adapter.cancel(ex.engine_query_id)
+        except Exception as e:
+            logger.warning("Cancel adapter creation failed: %s", e)
 
     await session.execute(
         update(SqlQueryExecution)
@@ -779,20 +991,32 @@ async def get_autocomplete(
     session: AsyncSession, ds_id: int,
     catalog: str = "", schema: str = "",
 ) -> AutocompleteResponse:
-    ds = await session.get(SqlDatasource, ds_id)
-    if not ds:
+    try:
+        adapter = await _get_adapter(session, ds_id)
+    except ValueError:
         return AutocompleteResponse()
 
-    adapter = _adapter_from_datasource(ds)
-
+    schemas_list: list[str] = []
     tables_list: list[str] = []
     columns_list: list[str] = []
     try:
-        tables = await adapter.get_tables(catalog, schema)
-        tables_list = [t.name for t in tables]
-        # Collect columns from all tables (limit to avoid excessive queries)
+        # Fetch schemas
+        schemas = await adapter.get_schemas(catalog)
+        schemas_list = [s.name for s in schemas]
+
+        # Fetch tables from all schemas (or specified one)
+        if schema:
+            tables = await adapter.get_tables(catalog, schema)
+        else:
+            tables = []
+            for s in schemas:
+                tables.extend(await adapter.get_tables(catalog, s.name))
+
+        tables_list = sorted(set(t.name for t in tables))
+
+        # Collect columns from tables (limit to avoid excessive queries)
         for t in tables[:50]:
-            cols = await adapter.get_columns(t.name, catalog, schema)
+            cols = await adapter.get_columns(t.name, catalog, t.schema_name or schema)
             columns_list.extend(c.name for c in cols)
         columns_list = sorted(set(columns_list))
     except Exception as e:
@@ -802,6 +1026,7 @@ async def get_autocomplete(
         keywords=adapter.get_keywords(),
         functions=adapter.get_functions(),
         data_types=adapter.get_data_types(),
+        schemas=schemas_list,
         tables=tables_list,
         columns=columns_list,
     )

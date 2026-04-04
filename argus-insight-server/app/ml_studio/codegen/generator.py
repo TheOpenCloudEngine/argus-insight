@@ -43,10 +43,22 @@ def generate_pipeline_code(
     node_map = {n["id"]: n for n in nodes}
     order = _topo_sort(nodes, edges)
 
-    has_minio_src = any(node_map[nid]["type"] in ("source_csv", "source_parquet") for nid in order if nid in node_map)
-    has_minio_out = any(node_map[nid]["type"] == "output_csv" for nid in order if nid in node_map)
+    all_types = {node_map[nid]["type"] for nid in order if nid in node_map}
+    has_minio_src = bool(all_types & {"source_csv", "source_parquet"})
+    has_minio_out = "output_csv" in all_types
     needs_minio = has_minio_src or has_minio_out
-    has_model = any(node_map[nid]["type"].startswith("model_") for nid in order if nid in node_map)
+    has_model = any(t.startswith("model_") for t in all_types)
+
+    # Detect which safety helpers are needed
+    needs_check_empty = bool(all_types & {
+        "transform_filter", "transform_outlier", "transform_split",
+    }) or any(
+        node_map[nid].get("config", {}).get("strategy") == "drop"
+        for nid in order if nid in node_map and node_map[nid]["type"] == "transform_fillnull"
+    )
+    needs_safe_astype = "transform_typecast" in all_types
+    needs_safe_outlier = "transform_outlier" in all_types
+    needs_safe_scale = "transform_scale" in all_types
 
     lines: list[str] = []
 
@@ -130,6 +142,66 @@ def generate_pipeline_code(
         lines.append("        y = pd.Series(_le.fit_transform(y.astype(str)), name=target_col)")
         lines.append('        print(f"  Label mapping: {dict(zip(_le.classes_, _le.transform(_le.classes_)))}")')
         lines.append("    return X, y")
+        lines.append("")
+        lines.append("_models = []  # Registry for multi-model evaluation")
+        lines.append("")
+
+    # ── Safety helpers ───────────────────────────────────────
+    if needs_check_empty:
+        lines.append("")
+        lines.append("def _check_not_empty(df, step_name):")
+        lines.append('    """Abort pipeline if DataFrame is empty after a transform."""')
+        lines.append("    if df.empty:")
+        lines.append('        raise RuntimeError(f"Pipeline aborted: DataFrame is empty after [{step_name}]")')
+        lines.append("    return df")
+        lines.append("")
+
+    if needs_safe_astype:
+        lines.append("")
+        lines.append("def _safe_astype(series, target_dtype):")
+        lines.append('    """Safe type cast with coerce fallback for numeric types."""')
+        lines.append("    try:")
+        lines.append('        if target_dtype in ("int64", "float64"):')
+        lines.append('            result = pd.to_numeric(series, errors="coerce")')
+        lines.append('            if target_dtype == "int64":')
+        lines.append("                result = result.fillna(0).astype(int)")
+        lines.append("            return result")
+        lines.append("        return series.astype(target_dtype)")
+        lines.append("    except (ValueError, TypeError) as e:")
+        lines.append('        print(f"  ⚠ Could not cast {series.name} to {target_dtype}: {e}")')
+        lines.append('        return pd.to_numeric(series, errors="coerce")')
+        lines.append("")
+
+    if needs_safe_outlier:
+        lines.append("")
+        lines.append("def _safe_iqr_mask(series, threshold=1.5):")
+        lines.append('    """IQR outlier mask — returns all-True for constant columns (IQR=0)."""')
+        lines.append("    q1, q3 = series.quantile(0.25), series.quantile(0.75)")
+        lines.append("    iqr = q3 - q1")
+        lines.append("    if iqr == 0:")
+        lines.append("        print(f\"  ⚠ Column '{series.name}': IQR=0 (constant), skipping\")")
+        lines.append("        return pd.Series(True, index=series.index)")
+        lines.append("    return (series >= q1 - threshold * iqr) & (series <= q3 + threshold * iqr)")
+        lines.append("")
+        lines.append("def _safe_zscore_mask(df_cols, threshold=3.0):")
+        lines.append('    """Z-score outlier mask — handles constant columns (NaN z-score -> 0)."""')
+        lines.append("    from scipy import stats")
+        lines.append('    z = np.abs(stats.zscore(df_cols, nan_policy="omit"))')
+        lines.append("    z = np.nan_to_num(z, nan=0.0)")
+        lines.append("    return (z < threshold).all(axis=1)")
+        lines.append("")
+
+    if needs_safe_scale:
+        lines.append("")
+        lines.append("def _safe_scale(df, columns, scaler):")
+        lines.append('    """Scale numeric columns, skipping constant columns that produce NaN."""')
+        lines.append("    varying = [c for c in columns if df[c].nunique() > 1]")
+        lines.append("    if varying:")
+        lines.append("        df[varying] = scaler.fit_transform(df[varying])")
+        lines.append("    constant = [c for c in columns if c not in varying]")
+        lines.append("    if constant:")
+        lines.append('        print(f"  ⚠ Skipped scaling for constant column(s): {constant}")')
+        lines.append("    return df")
         lines.append("")
 
     # ── Pipeline body ─────────────────────────────────────

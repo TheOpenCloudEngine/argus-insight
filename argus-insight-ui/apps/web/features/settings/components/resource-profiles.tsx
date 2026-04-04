@@ -42,7 +42,6 @@ import {
 
 interface ProfileFormData {
   name: string
-  display_name: string
   description: string
   cpu_cores: string
   memory_gb: string
@@ -51,7 +50,6 @@ interface ProfileFormData {
 
 const emptyForm: ProfileFormData = {
   name: "",
-  display_name: "",
   description: "",
   cpu_cores: "",
   memory_gb: "",
@@ -92,8 +90,7 @@ export function ResourceProfiles() {
   const openEdit = (p: ResourceProfile) => {
     setEditingId(p.id)
     setForm({
-      name: p.name,
-      display_name: p.display_name,
+      name: p.display_name || p.name,
       description: p.description || "",
       cpu_cores: String(p.cpu_cores),
       memory_gb: String(p.memory_gb),
@@ -115,7 +112,7 @@ export function ResourceProfiles() {
 
       if (editingId) {
         await updateResourceProfile(editingId, {
-          display_name: form.display_name,
+          name: form.name,
           description: form.description || undefined,
           cpu_cores: cpu,
           memory_gb: mem,
@@ -124,7 +121,6 @@ export function ResourceProfiles() {
       } else {
         await createResourceProfile({
           name: form.name,
-          display_name: form.display_name,
           description: form.description || undefined,
           cpu_cores: cpu,
           memory_gb: mem,
@@ -197,7 +193,7 @@ export function ResourceProfiles() {
               <TableBody>
                 {profiles.map((p) => (
                   <TableRow key={p.id}>
-                    <TableCell className="font-medium">{p.display_name}</TableCell>
+                    <TableCell className="font-medium">{p.display_name || p.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {p.description || "-"}
                     </TableCell>
@@ -258,24 +254,13 @@ export function ResourceProfiles() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-2">
-              {!editingId && (
-                <div className="space-y-1.5">
-                  <Label htmlFor="profile-name">Name (slug)</Label>
-                  <Input
-                    id="profile-name"
-                    placeholder="e.g. small, medium, large"
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  />
-                </div>
-              )}
               <div className="space-y-1.5">
-                <Label htmlFor="profile-display">Display Name</Label>
+                <Label htmlFor="profile-name">Name</Label>
                 <Input
-                  id="profile-display"
+                  id="profile-name"
                   placeholder="e.g. Small, Medium, Large"
-                  value={form.display_name}
-                  onChange={(e) => setForm({ ...form, display_name: e.target.value })}
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
                 />
               </div>
               <div className="space-y-1.5">

@@ -8,8 +8,7 @@ from pydantic import BaseModel, Field
 class ResourceProfileCreateRequest(BaseModel):
     """Request body for creating a resource profile."""
 
-    name: str = Field(..., max_length=100, pattern=r"^[a-z0-9][a-z0-9-]*$")
-    display_name: str = Field(..., max_length=255)
+    name: str = Field(..., max_length=100)
     description: str | None = None
     cpu_cores: float = Field(..., gt=0, description="Total CPU cores (e.g. 8.0)")
     memory_gb: float = Field(..., gt=0, description="Total memory in GB (e.g. 16.0)")
@@ -19,7 +18,7 @@ class ResourceProfileCreateRequest(BaseModel):
 class ResourceProfileUpdateRequest(BaseModel):
     """Request body for updating a resource profile."""
 
-    display_name: str | None = Field(None, max_length=255)
+    name: str | None = Field(None, max_length=100)
     description: str | None = None
     cpu_cores: float | None = Field(None, gt=0)
     memory_gb: float | None = Field(None, gt=0)
@@ -31,7 +30,7 @@ class ResourceProfileResponse(BaseModel):
 
     id: int
     name: str
-    display_name: str
+    display_name: str | None = None
     description: str | None
     cpu_cores: float
     memory_gb: float

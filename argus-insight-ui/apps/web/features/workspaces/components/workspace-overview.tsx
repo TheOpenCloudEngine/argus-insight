@@ -73,7 +73,6 @@ import type { AuditLog, WorkspaceMember, WorkspaceResponse, WorkspaceService } f
 import { PluginIcon } from "@/features/software-deployment/components/plugin-icon"
 import { ServiceLogsPanel } from "@/features/workspaces/components/service-logs-panel"
 import { WorkspaceDashboardPanel } from "@/features/workspaces/components/workspace-dashboard"
-import { WorkspaceModels } from "@/features/workspaces/components/workspace-models"
 
 /* ------------------------------------------------------------------ */
 /*  Shared helpers                                                     */
@@ -266,7 +265,11 @@ function DetailRow({
 /*  Service Configuration Sheet (MariaDB, PostgreSQL)                  */
 /* ------------------------------------------------------------------ */
 
-const CONFIGURABLE_PLUGINS = new Set(["argus-mariadb", "argus-postgresql", "argus-jupyter", "argus-jupyter-tensorflow", "argus-jupyter-pyspark", "argus-mlflow", "argus-airflow"])
+const CONFIGURABLE_PLUGINS = new Set([
+  "argus-mariadb", "argus-postgresql", "argus-trino",
+  "argus-jupyter", "argus-jupyter-tensorflow", "argus-jupyter-pyspark",
+  "argus-mlflow", "argus-airflow", "argus-ollama", "argus-vscode-server",
+])
 
 function ServiceConfigSheet({
   open,
@@ -424,6 +427,544 @@ function ServiceConfigSheet({
   )
 }
 
+// ---------------------------------------------------------------------------
+// Trino Configuration Dialog
+// ---------------------------------------------------------------------------
+
+const TRINO_TIERS = [
+  { tier: "development", label: "Development", coord: 1, workers: 0, coordCpu: "1", coordMem: "2Gi", workerCpu: "1", workerMem: "2Gi" },
+  { tier: "standard", label: "Standard", coord: 1, workers: 1, coordCpu: "1", coordMem: "2Gi", workerCpu: "2", workerMem: "4Gi" },
+  { tier: "performance", label: "Performance", coord: 2, workers: 3, coordCpu: "1", coordMem: "2Gi", workerCpu: "2", workerMem: "4Gi" },
+]
+
+function TrinoConfigDialog({
+  open, onOpenChange, workspaceId, service,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  workspaceId: number
+  service: WorkspaceService
+}) {
+  const meta = (service.metadata ?? {}) as Record<string, any>
+  const display = meta.display ?? {}
+  const resources = meta.resources ?? {}
+
+  const [tier, setTier] = useState(display.Tier?.toLowerCase() || "standard")
+  const [coordReplicas, setCoordReplicas] = useState(Number(display.Coordinators) || 1)
+  const [workerReplicas, setWorkerReplicas] = useState(Number(display.Workers) || 1)
+  const [coordCpu, setCoordCpu] = useState(resources.cpu_limit || "1")
+  const [coordMem, setCoordMem] = useState(resources.memory_limit || "2Gi")
+  const [workerCpu, setWorkerCpu] = useState(resources.worker_cpu_limit || "2")
+  const [workerMem, setWorkerMem] = useState(resources.worker_memory_limit || "4Gi")
+  const [queryMax, setQueryMax] = useState("1GB")
+  const [queryMaxNode, setQueryMaxNode] = useState("512MB")
+  const [refreshCatalogs, setRefreshCatalogs] = useState(false)
+
+  const [applying, setApplying] = useState(false)
+  const [validation, setValidation] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  // When tier changes, apply preset values
+  const handleTierChange = (t: string) => {
+    setTier(t)
+    const preset = TRINO_TIERS.find((p) => p.tier === t)
+    if (preset) {
+      setCoordReplicas(preset.coord)
+      setWorkerReplicas(preset.workers)
+      setCoordCpu(preset.coordCpu)
+      setCoordMem(preset.coordMem)
+      setWorkerCpu(preset.workerCpu)
+      setWorkerMem(preset.workerMem)
+    }
+  }
+
+  // Validate on any change
+  useEffect(() => {
+    if (!open) return
+    const timer = setTimeout(async () => {
+      try {
+        const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/trino/configure/validate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            coordinator_replicas: coordReplicas,
+            worker_replicas: workerReplicas,
+            coordinator_cpu_limit: coordCpu,
+            coordinator_memory_limit: coordMem,
+            worker_cpu_limit: workerCpu,
+            worker_memory_limit: workerMem,
+          }),
+        })
+        if (res.ok) setValidation(await res.json())
+      } catch { /* ignore */ }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [open, coordReplicas, workerReplicas, coordCpu, coordMem, workerCpu, workerMem, workspaceId])
+
+  const handleApply = async () => {
+    if (validation && !validation.allowed) return
+    setApplying(true)
+    setError(null)
+    setSuccess(false)
+    try {
+      const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/trino/configure`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tier,
+          coordinator_replicas: coordReplicas,
+          worker_replicas: workerReplicas,
+          coordinator_cpu_limit: coordCpu,
+          coordinator_memory_limit: coordMem,
+          worker_cpu_limit: workerCpu,
+          worker_memory_limit: workerMem,
+          query_max_memory: queryMax,
+          query_max_memory_per_node: queryMaxNode,
+          refresh_catalogs: refreshCatalogs,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.detail || `Failed: ${res.status}`)
+      }
+      setSuccess(true)
+      setTimeout(() => { setSuccess(false); onOpenChange(false) }, 2000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to apply")
+    }
+    setApplying(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Configure Trino</DialogTitle>
+          <DialogDescription>Adjust Trino cluster configuration. Changes trigger a pod restart.</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          {/* Tier */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">
+              Tier <span className="normal-case font-normal">(Current: {display.Tier || "Unknown"})</span>
+            </Label>
+            <div className="grid grid-cols-4 gap-2">
+              {[...TRINO_TIERS, { tier: "custom", label: "Custom", coord: 0, workers: 0, coordCpu: "", coordMem: "", workerCpu: "", workerMem: "" }].map((t) => (
+                <button
+                  key={t.tier}
+                  onClick={() => handleTierChange(t.tier)}
+                  className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    tier === t.tier ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted/50"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Replicas */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Replicas</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">Coordinators</Label>
+                <Input type="number" min={1} max={3} value={coordReplicas}
+                  onChange={(e) => { setCoordReplicas(Number(e.target.value)); setTier("custom") }} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Workers</Label>
+                <Input type="number" min={0} max={10} value={workerReplicas}
+                  onChange={(e) => { setWorkerReplicas(Number(e.target.value)); setTier("custom") }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Resources */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Resources</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">Coordinator CPU Limit</Label>
+                <Input value={coordCpu} onChange={(e) => { setCoordCpu(e.target.value); setTier("custom") }} placeholder="e.g. 1, 2, 500m" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Coordinator Memory Limit</Label>
+                <Input value={coordMem} onChange={(e) => { setCoordMem(e.target.value); setTier("custom") }} placeholder="e.g. 2Gi, 4Gi" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Worker CPU Limit</Label>
+                <Input value={workerCpu} onChange={(e) => { setWorkerCpu(e.target.value); setTier("custom") }} placeholder="e.g. 2, 4" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Worker Memory Limit</Label>
+                <Input value={workerMem} onChange={(e) => { setWorkerMem(e.target.value); setTier("custom") }} placeholder="e.g. 4Gi, 8Gi" />
+              </div>
+            </div>
+          </div>
+
+          {/* Query Limits */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Query Limits</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">Max Memory</Label>
+                <Input value={queryMax} onChange={(e) => setQueryMax(e.target.value)} placeholder="e.g. 1GB, 4GB" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Max Memory Per Node</Label>
+                <Input value={queryMaxNode} onChange={(e) => setQueryMaxNode(e.target.value)} placeholder="e.g. 512MB, 2GB" />
+              </div>
+            </div>
+          </div>
+
+          {/* Catalogs */}
+          <div className="flex items-center gap-3">
+            <input type="checkbox" id="refresh-catalogs" checked={refreshCatalogs} onChange={(e) => setRefreshCatalogs(e.target.checked)} />
+            <Label htmlFor="refresh-catalogs" className="text-sm cursor-pointer">Refresh Catalogs (re-detect workspace DB services)</Label>
+          </div>
+
+          {/* Resource validation */}
+          {validation && (
+            <div className={`rounded-md border px-3 py-2 text-xs ${validation.allowed ? "bg-muted/30" : "bg-destructive/10 border-destructive/30 text-destructive"}`}>
+              <div className="flex justify-between">
+                <span>CPU: {validation.after.cpu_used} / {validation.limit.cpu} cores</span>
+                <span>Memory: {validation.after.memory_used_gb} / {validation.limit.memory_gb} GiB</span>
+              </div>
+              {validation.delta.cpu !== 0 && (
+                <div className="text-muted-foreground mt-1">
+                  Change: {validation.delta.cpu > 0 ? "+" : ""}{validation.delta.cpu} CPU, {validation.delta.memory_gb > 0 ? "+" : ""}{validation.delta.memory_gb} GiB
+                </div>
+              )}
+              {!validation.allowed && <div className="mt-1 font-medium">{validation.message}</div>}
+            </div>
+          )}
+
+          {error && <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive">{error}</div>}
+          {success && <div className="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700">Configuration applied. Pods are restarting.</div>}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button size="sm" onClick={handleApply} disabled={applying || (validation && !validation.allowed)}>
+            {applying ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+            Apply
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Generic Service Configuration Dialog (PostgreSQL, MariaDB, Ollama, Jupyter, VS Code, MLflow)
+// ---------------------------------------------------------------------------
+
+function ServiceConfigDialog({
+  open, onOpenChange, workspaceId, service,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  workspaceId: number
+  service: WorkspaceService
+}) {
+  const meta = (service.metadata ?? {}) as Record<string, any>
+  const resources = meta.resources ?? {}
+  const plugin = service.plugin_name
+
+  const isPg = plugin === "argus-postgresql"
+  const isMaria = plugin === "argus-mariadb"
+  const isOllama = plugin === "argus-ollama"
+  const isDb = isPg || isMaria
+
+  // Resource fields
+  const [cpuLimit, setCpuLimit] = useState(resources.cpu_limit || "2")
+  const [memLimit, setMemLimit] = useState(resources.memory_limit || "2Gi")
+
+  // PostgreSQL fields
+  const [maxConnections, setMaxConnections] = useState("100")
+  const [sharedBuffers, setSharedBuffers] = useState("128MB")
+  const [workMem, setWorkMem] = useState("4MB")
+  const [effectiveCacheSize, setEffectiveCacheSize] = useState("512MB")
+  const [maintenanceWorkMem, setMaintenanceWorkMem] = useState("64MB")
+  const [logMinDuration, setLogMinDuration] = useState("-1")
+  const [logStatement, setLogStatement] = useState("none")
+
+  // MariaDB fields
+  const [innodbBufferPool, setInnodbBufferPool] = useState("128MB")
+  const [slowQueryLog, setSlowQueryLog] = useState(false)
+  const [longQueryTime, setLongQueryTime] = useState("10")
+
+  // Ollama
+  const [defaultModel, setDefaultModel] = useState(meta.display?.["Default Model"] || "")
+
+  // Common
+  const [regenPassword, setRegenPassword] = useState(false)
+  const [applying, setApplying] = useState(false)
+  const [validation, setValidation] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  // Validate on resource change
+  useEffect(() => {
+    if (!open) return
+    const timer = setTimeout(async () => {
+      try {
+        const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/services/${service.id}/configure/validate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cpu_limit: cpuLimit, memory_limit: memLimit }),
+        })
+        if (res.ok) setValidation(await res.json())
+      } catch { /* ignore */ }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [open, cpuLimit, memLimit, workspaceId, service.id])
+
+  const handleApply = async () => {
+    if (validation && !validation.allowed) return
+    setApplying(true)
+    setError(null)
+    setSuccess(false)
+    try {
+      // First validate with all fields
+      const validateRes = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/services/${service.id}/configure/validate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cpu_limit: cpuLimit,
+          memory_limit: memLimit,
+          ...(isPg ? {
+            max_connections: parseInt(maxConnections) || undefined,
+            shared_buffers: sharedBuffers || undefined,
+            work_mem: workMem || undefined,
+            effective_cache_size: effectiveCacheSize || undefined,
+            maintenance_work_mem: maintenanceWorkMem || undefined,
+            log_min_duration_statement: parseInt(logMinDuration),
+            log_statement: logStatement,
+          } : {}),
+          ...(isMaria ? {
+            max_connections: parseInt(maxConnections) || undefined,
+            innodb_buffer_pool_size: innodbBufferPool || undefined,
+            slow_query_log: slowQueryLog,
+            long_query_time: parseInt(longQueryTime) || undefined,
+          } : {}),
+        }),
+      })
+      const valData = await validateRes.json()
+      if (!valData.allowed) {
+        setError(valData.message || "Validation failed")
+        setApplying(false)
+        return
+      }
+
+      // Apply
+      const body: Record<string, any> = {
+        cpu_limit: cpuLimit,
+        memory_limit: memLimit,
+        regenerate_password: regenPassword,
+      }
+      if (isPg) {
+        body.max_connections = parseInt(maxConnections) || undefined
+        body.shared_buffers = sharedBuffers || undefined
+        body.work_mem = workMem || undefined
+        body.effective_cache_size = effectiveCacheSize || undefined
+        body.maintenance_work_mem = maintenanceWorkMem || undefined
+        body.log_min_duration_statement = parseInt(logMinDuration)
+        body.log_statement = logStatement
+      }
+      if (isMaria) {
+        body.max_connections = parseInt(maxConnections) || undefined
+        body.innodb_buffer_pool_size = innodbBufferPool || undefined
+        body.slow_query_log = slowQueryLog
+        body.long_query_time = parseInt(longQueryTime) || undefined
+      }
+      if (isOllama && defaultModel) {
+        body.default_model = defaultModel
+      }
+
+      const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/services/${service.id}/configure`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.detail || `Failed: ${res.status}`)
+      }
+      setSuccess(true)
+      setTimeout(() => { setSuccess(false); onOpenChange(false) }, 2500)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to apply")
+    }
+    setApplying(false)
+  }
+
+  const pluginLabel = {
+    "argus-postgresql": "PostgreSQL",
+    "argus-mariadb": "MariaDB",
+    "argus-ollama": "Ollama",
+    "argus-jupyter": "JupyterLab",
+    "argus-jupyter-tensorflow": "JupyterLab (TensorFlow)",
+    "argus-jupyter-pyspark": "JupyterLab (PySpark)",
+    "argus-mlflow": "MLflow",
+    "argus-airflow": "Airflow",
+    "argus-vscode-server": "VS Code Server",
+  }[plugin] || service.display_name || plugin
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Configure {pluginLabel}</DialogTitle>
+          <DialogDescription>Adjust resources and settings. Changes are applied immediately.</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          {/* Resources — common for all */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Resources</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">CPU Limit</Label>
+                <Input value={cpuLimit} onChange={(e) => setCpuLimit(e.target.value)} placeholder="e.g. 2, 500m" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Memory Limit</Label>
+                <Input value={memLimit} onChange={(e) => setMemLimit(e.target.value)} placeholder="e.g. 2Gi, 512Mi" />
+              </div>
+            </div>
+          </div>
+
+          {/* PostgreSQL specific */}
+          {isPg && (
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold uppercase text-muted-foreground">Performance</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs">max_connections</Label>
+                  <Input type="number" value={maxConnections} onChange={(e) => setMaxConnections(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">shared_buffers</Label>
+                  <Input value={sharedBuffers} onChange={(e) => setSharedBuffers(e.target.value)} placeholder="128MB" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">work_mem</Label>
+                  <Input value={workMem} onChange={(e) => setWorkMem(e.target.value)} placeholder="4MB" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">effective_cache_size</Label>
+                  <Input value={effectiveCacheSize} onChange={(e) => setEffectiveCacheSize(e.target.value)} placeholder="512MB" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">maintenance_work_mem</Label>
+                  <Input value={maintenanceWorkMem} onChange={(e) => setMaintenanceWorkMem(e.target.value)} placeholder="64MB" />
+                </div>
+              </div>
+              <Label className="text-xs font-semibold uppercase text-muted-foreground mt-3">Logging</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs">log_min_duration_statement (ms)</Label>
+                  <Input type="number" value={logMinDuration} onChange={(e) => setLogMinDuration(e.target.value)} placeholder="-1 = off" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">log_statement</Label>
+                  <select className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={logStatement} onChange={(e) => setLogStatement(e.target.value)}>
+                    <option value="none">none</option>
+                    <option value="ddl">ddl</option>
+                    <option value="mod">mod</option>
+                    <option value="all">all</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MariaDB specific */}
+          {isMaria && (
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold uppercase text-muted-foreground">Performance</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs">max_connections</Label>
+                  <Input type="number" value={maxConnections} onChange={(e) => setMaxConnections(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">innodb_buffer_pool_size</Label>
+                  <Input value={innodbBufferPool} onChange={(e) => setInnodbBufferPool(e.target.value)} placeholder="128MB" />
+                </div>
+              </div>
+              <Label className="text-xs font-semibold uppercase text-muted-foreground mt-3">Logging</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="slow-query" checked={slowQueryLog} onChange={(e) => setSlowQueryLog(e.target.checked)} />
+                  <Label htmlFor="slow-query" className="text-xs cursor-pointer">slow_query_log</Label>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">long_query_time (sec)</Label>
+                  <Input type="number" value={longQueryTime} onChange={(e) => setLongQueryTime(e.target.value)} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Ollama specific */}
+          {isOllama && (
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold uppercase text-muted-foreground">Model</Label>
+              <div className="space-y-1">
+                <Label className="text-xs">Default Model</Label>
+                <Input value={defaultModel} onChange={(e) => setDefaultModel(e.target.value)} placeholder="e.g. llama3.2:1b" />
+              </div>
+            </div>
+          )}
+
+          {/* Password regeneration — DB services only */}
+          {isDb && (
+            <div className="flex items-center gap-3">
+              <input type="checkbox" id="regen-pw" checked={regenPassword} onChange={(e) => setRegenPassword(e.target.checked)} />
+              <Label htmlFor="regen-pw" className="text-sm cursor-pointer">Regenerate password</Label>
+            </div>
+          )}
+
+          {/* Validation display */}
+          {validation && (
+            <div className={`rounded-md border px-3 py-2 text-xs ${validation.allowed ? "bg-muted/30" : "bg-destructive/10 border-destructive/30 text-destructive"}`}>
+              {validation.validation_errors ? (
+                <ul className="list-disc pl-4 space-y-0.5">
+                  {validation.validation_errors.map((e: string, i: number) => <li key={i}>{e}</li>)}
+                </ul>
+              ) : (
+                <>
+                  <div className="flex justify-between">
+                    <span>CPU: {validation.after?.cpu_used} / {validation.limit?.cpu} cores</span>
+                    <span>Memory: {validation.after?.memory_used_gb} / {validation.limit?.memory_gb} GiB</span>
+                  </div>
+                  {!validation.allowed && <div className="mt-1 font-medium">{validation.message}</div>}
+                </>
+              )}
+            </div>
+          )}
+
+          {error && <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive">{error}</div>}
+          {success && <div className="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700">Restarting the service with the requested resources.</div>}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button size="sm" onClick={handleApply} disabled={applying || (validation && !validation.allowed && !validation.validation_errors)}>
+            {applying ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+            Apply
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function ServiceDataListItem({
   service,
   hideTimestamps,
@@ -555,7 +1096,7 @@ function ServiceDataListItem({
         {/* Status badge + Open Service */}
         <div className="flex items-center gap-2 shrink-0">
           {statusBadge(service.status)}
-          {openUrl && (
+          {openUrl && !hideUrl && (
             <Button
               variant="outline"
               size="sm"
@@ -696,9 +1237,17 @@ function ServiceDataListItem({
           </div>
         </DialogContent>
       </Dialog>
-      {/* Service Config Sheet */}
-      {isConfigurable && workspaceId && (
-        <ServiceConfigSheet
+      {/* Service Config Dialog */}
+      {isConfigurable && workspaceId && service.plugin_name === "argus-trino" && (
+        <TrinoConfigDialog
+          open={configOpen}
+          onOpenChange={setConfigOpen}
+          workspaceId={workspaceId}
+          service={service}
+        />
+      )}
+      {isConfigurable && workspaceId && service.plugin_name !== "argus-trino" && (
+        <ServiceConfigDialog
           open={configOpen}
           onOpenChange={setConfigOpen}
           workspaceId={workspaceId}
@@ -1047,6 +1596,7 @@ function AddServiceButton({
   // Confirm dialog state
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pendingItem, setPendingItem] = useState<DeployMappingEntry | null>(null)
+  const [trinoTier, setTrinoTier] = useState<string>("development")
 
   // Deploy progress dialog state
   const [deployOpen, setDeployOpen] = useState(false)
@@ -1092,12 +1642,19 @@ function AddServiceButton({
       return
     }
 
+    // Build deploy payload — include plugin_config for Trino tier
+    const isTrino = item.service_key === "trino"
+    const deployBody: Record<string, unknown> = { pipeline_id: pipelineId }
+    if (isTrino) {
+      deployBody.plugin_config = { argus_trino_tier: trinoTier }
+    }
+
     // Deploy
     try {
       const res = await authFetch(`/api/v1/workspace/workspaces/${workspace.id}/deploy`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pipeline_id: pipelineId }),
+        body: JSON.stringify(deployBody),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
@@ -1196,19 +1753,53 @@ function AddServiceButton({
 
       {/* Confirm Deploy Dialog */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Deploy Service</DialogTitle>
+            <DialogTitle>Deploy {pendingItem?.service_label}</DialogTitle>
             <DialogDescription>
-              Would you like to deploy {pendingItem?.service_label} to this workspace?
+              {pendingItem?.service_key === "trino"
+                ? "Select a deployment tier for Trino and deploy to this workspace."
+                : `Would you like to deploy ${pendingItem?.service_label} to this workspace?`}
             </DialogDescription>
           </DialogHeader>
+
+          {/* Trino Tier Selection */}
+          {pendingItem?.service_key === "trino" && (
+            <div className="space-y-2 py-2">
+              {[
+                { tier: "development", label: "Development", desc: "1 Coordinator (single node) — 1 CPU, 2 GiB", cpu: "1", mem: "2Gi" },
+                { tier: "standard", label: "Standard", desc: "1 Coordinator + 1 Worker — 3 CPU, 6 GiB", cpu: "3", mem: "6Gi" },
+                { tier: "performance", label: "Performance", desc: "2 Coordinators + 3 Workers — 8 CPU, 16 GiB", cpu: "8", mem: "16Gi" },
+              ].map((t) => (
+                <label
+                  key={t.tier}
+                  className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                    trinoTier === t.tier ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="trino-tier"
+                    value={t.tier}
+                    checked={trinoTier === t.tier}
+                    onChange={() => setTrinoTier(t.tier)}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <div className="text-sm font-medium">{t.label}</div>
+                    <div className="text-xs text-muted-foreground">{t.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" size="sm" onClick={() => setConfirmOpen(false)}>
               Cancel
             </Button>
             <Button size="sm" onClick={handleConfirmDeploy}>
-              OK
+              Deploy
             </Button>
           </div>
         </DialogContent>
@@ -1365,13 +1956,6 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
         <WorkspaceDashboardPanel workspaceId={workspace.id} />
       )}
 
-      {/* Models: MLflow model registry + one-click KServe deploy */}
-      {(workspace.status === "active" || workspace.status === "failed") && (
-        <WorkspaceModels
-          workspace={workspace}
-          onDeployService={() => handleDeployComplete()}
-        />
-      )}
 
       {(() => {
         // Categorize services
@@ -1424,7 +2008,6 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
                 ...svc,
                 username: null,
                 password: null,
-                _hideUrl: true,
                 _hideTimestamps: true,
               } as WorkspaceService & { _hideUrl?: boolean; _hideTimestamps?: boolean }
             }
@@ -1433,7 +2016,6 @@ function WorkspaceResourceView({ workspaceId }: { workspaceId: number }) {
                 ...svc,
                 username: svc.plugin_name === "argus-mlflow" ? null : svc.username,
                 metadata: { ...svc.metadata, display: {} },
-                _hideUrl: true,
                 _hideTimestamps: true,
               } as WorkspaceService & { _hideUrl?: boolean; _hideTimestamps?: boolean }
             }

@@ -198,6 +198,59 @@ async def health():
     }
 
 
+@app.get("/api/v1/system/network-info")
+async def network_info():
+    """Return server IP addresses for DB provisioning access control.
+
+    Provisioners should use these IPs to grant DB access when deploying
+    PostgreSQL, MariaDB, etc. in workspace namespaces.
+    """
+    import socket
+    import subprocess
+
+    ips = set()
+    # Method 1: hostname resolution
+    try:
+        hostname = socket.gethostname()
+        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+            ips.add(info[4][0])
+    except Exception:
+        pass
+
+    # Method 2: parse 'ip addr' for all interface IPs
+    try:
+        result = subprocess.run(
+            ["ip", "-4", "-o", "addr", "show"],
+            capture_output=True, text=True, timeout=5,
+        )
+        for line in result.stdout.strip().split("\n"):
+            parts = line.split()
+            for i, p in enumerate(parts):
+                if p == "inet" and i + 1 < len(parts):
+                    ip = parts[i + 1].split("/")[0]
+                    if ip != "127.0.0.1":
+                        ips.add(ip)
+        # Also add CIDR ranges for CNI bridge (pod network)
+        cni_ranges = []
+        for line in result.stdout.strip().split("\n"):
+            if "cni" in line or "flannel" in line:
+                parts = line.split()
+                for i, p in enumerate(parts):
+                    if p == "inet" and i + 1 < len(parts):
+                        cni_ranges.append(parts[i + 1])  # e.g. 10.42.0.1/24
+    except Exception:
+        cni_ranges = []
+
+    return {
+        "ips": sorted(ips),
+        "cni_ranges": cni_ranges,
+        "grant_hosts": {
+            "postgresql_pg_hba": [f"host all all {ip}/32 scram-sha-256" for ip in sorted(ips)],
+            "mariadb_grant": [f"'argus'@'{ip}'" for ip in sorted(ips)],
+        },
+    }
+
+
 def run() -> None:
     """CLI entry point with config file argument support."""
     parser = argparse.ArgumentParser(

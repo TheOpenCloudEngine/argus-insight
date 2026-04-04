@@ -20,12 +20,57 @@ import type {
 const BASE = "/api/v1/sql"
 
 // ---------------------------------------------------------------------------
+// Editor Tabs
+// ---------------------------------------------------------------------------
+
+export interface TabData {
+  id: string
+  title: string
+  sql_text: string
+  datasource_id: number | null
+  tab_order: number
+}
+
+export async function loadTabs(workspaceId: number, userId: number): Promise<TabData[]> {
+  const res = await authFetch(`${BASE}/tabs?workspace_id=${workspaceId}&user_id=${userId}`)
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.tabs ?? []
+}
+
+export async function deleteTab(workspaceId: number, userId: number, tabId: string): Promise<void> {
+  await authFetch(`${BASE}/tabs/${tabId}?workspace_id=${workspaceId}&user_id=${userId}`, {
+    method: "DELETE",
+  })
+}
+
+export async function saveTabs(
+  workspaceId: number,
+  userId: number,
+  tabs: TabData[],
+): Promise<{ saved: number; deleted: number }> {
+  const res = await authFetch(`${BASE}/tabs/save`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workspace_id: workspaceId, user_id: userId, tabs }),
+  })
+  if (!res.ok) throw new Error(`Failed to save tabs: ${res.status}`)
+  return res.json()
+}
+
+// ---------------------------------------------------------------------------
 // Datasources
 // ---------------------------------------------------------------------------
 
 export async function fetchDatasources(): Promise<Datasource[]> {
   const res = await authFetch(`${BASE}/datasources`)
   if (!res.ok) throw new Error(`Failed to fetch datasources: ${res.status}`)
+  return res.json()
+}
+
+export async function fetchWorkspaceDatasources(workspaceId: number): Promise<Datasource[]> {
+  const res = await authFetch(`${BASE}/datasources/workspace/${workspaceId}`)
+  if (!res.ok) return []
   return res.json()
 }
 
@@ -216,10 +261,14 @@ export async function fetchExecutionStatus(executionId: string): Promise<QuerySt
   return res.json()
 }
 
-export async function fetchExecutionResult(executionId: string): Promise<QueryResult> {
-  const res = await authFetch(`${BASE}/executions/${executionId}/result`)
+export async function fetchExecutionResult(executionId: string, page = 1): Promise<QueryResult> {
+  const res = await authFetch(`${BASE}/executions/${executionId}/result?page=${page}`)
   if (!res.ok) throw new Error(`Failed to fetch result: ${res.status}`)
   return res.json()
+}
+
+export function getExportUrl(executionId: string): string {
+  return `${BASE}/executions/${executionId}/export`
 }
 
 export async function cancelExecution(executionId: string): Promise<QueryCancelResult> {

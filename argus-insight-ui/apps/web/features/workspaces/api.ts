@@ -160,7 +160,6 @@ export async function fetchResourceProfiles(): Promise<ResourceProfile[]> {
 
 export async function createResourceProfile(data: {
   name: string
-  display_name: string
   description?: string
   cpu_cores: number
   memory_gb: number
@@ -178,7 +177,7 @@ export async function createResourceProfile(data: {
 export async function updateResourceProfile(
   id: number,
   data: {
-    display_name?: string
+    name?: string
     description?: string
     cpu_cores?: number
     memory_gb?: number

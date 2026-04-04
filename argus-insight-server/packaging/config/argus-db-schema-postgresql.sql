@@ -645,3 +645,256 @@ COMMENT ON COLUMN argus_ml_jobs.source IS 'wizard | modeler';
 COMMENT ON COLUMN argus_ml_jobs.status IS 'pending | running | completed | failed | cancelled';
 COMMENT ON COLUMN argus_ml_jobs.pipeline_id IS 'Linked pipeline ID (modeler only)';
 COMMENT ON COLUMN argus_ml_jobs.generated_code IS 'Generated Python code (modeler only)';
+
+-- =============================================================================
+-- Workspaces
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS argus_workspaces (
+    id                  SERIAL          PRIMARY KEY,
+    name                VARCHAR(100)    NOT NULL,
+    display_name        VARCHAR(255)    NOT NULL,
+    description         TEXT,
+    domain              VARCHAR(255)    NOT NULL,
+    k8s_cluster         VARCHAR(255),
+    k8s_namespace       VARCHAR(255),
+    gitlab_project_id   INTEGER,
+    gitlab_project_url  VARCHAR(500),
+    minio_endpoint      VARCHAR(500),
+    minio_console_endpoint VARCHAR(500),
+    minio_default_bucket VARCHAR(255),
+    airflow_endpoint    VARCHAR(500),
+    mlflow_endpoint     VARCHAR(500),
+    kserve_endpoint     VARCHAR(500),
+    status              VARCHAR(20)     NOT NULL,
+    created_by          INTEGER         NOT NULL,
+    resource_profile_id INTEGER,
+    created_at          TIMESTAMPTZ     DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
+COMMENT ON TABLE argus_workspaces IS 'Workspace definitions with K8s namespace and service endpoints';
+
+CREATE TABLE IF NOT EXISTS argus_workspace_members (
+    id                  SERIAL          PRIMARY KEY,
+    workspace_id        INTEGER         NOT NULL REFERENCES argus_workspaces(id),
+    user_id             INTEGER         NOT NULL,
+    role                VARCHAR(50)     NOT NULL,
+    gitlab_access_token VARCHAR(255),
+    gitlab_token_name   VARCHAR(100),
+    created_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS argus_workspace_credentials (
+    workspace_id        INTEGER         PRIMARY KEY REFERENCES argus_workspaces(id),
+    gitlab_http_url     VARCHAR(500),
+    gitlab_ssh_url      VARCHAR(500),
+    minio_endpoint      VARCHAR(500),
+    minio_root_user     VARCHAR(255),
+    minio_root_password VARCHAR(500),
+    minio_access_key    VARCHAR(255),
+    minio_secret_key    VARCHAR(500),
+    airflow_url         VARCHAR(500),
+    airflow_admin_username VARCHAR(255),
+    airflow_admin_password VARCHAR(500),
+    mlflow_artifact_bucket VARCHAR(255),
+    kserve_endpoint     VARCHAR(500),
+    created_at          TIMESTAMPTZ     DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
+COMMENT ON TABLE argus_workspace_credentials IS 'Sensitive credentials for workspace infrastructure services';
+
+-- =============================================================================
+-- Configuration (Infrastructure)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS argus_configuration_infra (
+    id                  SERIAL          PRIMARY KEY,
+    category            VARCHAR(50)     NOT NULL,
+    config_key          VARCHAR(100)    NOT NULL,
+    config_value        VARCHAR(500)    NOT NULL,
+    description         VARCHAR(255),
+    created_at          TIMESTAMPTZ     DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
+-- =============================================================================
+-- Notebooks
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS argus_notebooks (
+    id                  SERIAL          PRIMARY KEY,
+    user_id             INTEGER         NOT NULL,
+    title               VARCHAR(255)    NOT NULL,
+    description         VARCHAR(500),
+    color               VARCHAR(20)     NOT NULL,
+    is_pinned           BOOLEAN         NOT NULL DEFAULT FALSE,
+    created_at          TIMESTAMPTZ     DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS argus_notebook_sections (
+    id                  SERIAL          PRIMARY KEY,
+    notebook_id         INTEGER         NOT NULL REFERENCES argus_notebooks(id) ON DELETE CASCADE,
+    title               VARCHAR(255)    NOT NULL,
+    color               VARCHAR(20)     NOT NULL,
+    display_order       INTEGER         NOT NULL,
+    created_at          TIMESTAMPTZ     DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS argus_notebook_pages (
+    id                  SERIAL          PRIMARY KEY,
+    section_id          INTEGER         NOT NULL REFERENCES argus_notebook_sections(id) ON DELETE CASCADE,
+    title               VARCHAR(255)    NOT NULL,
+    content             TEXT            NOT NULL,
+    display_order       INTEGER         NOT NULL,
+    is_pinned           BOOLEAN         NOT NULL DEFAULT FALSE,
+    created_at          TIMESTAMPTZ     DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS argus_notebook_page_versions (
+    id                  SERIAL          PRIMARY KEY,
+    page_id             INTEGER         NOT NULL REFERENCES argus_notebook_pages(id) ON DELETE CASCADE,
+    version             INTEGER         NOT NULL,
+    title               VARCHAR(255)    NOT NULL,
+    content             TEXT            NOT NULL,
+    change_summary      VARCHAR(255),
+    created_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
+-- =============================================================================
+-- VS Code Instances
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS argus_vscode_instances (
+    id                  SERIAL          PRIMARY KEY,
+    user_id             INTEGER         NOT NULL,
+    username            VARCHAR(100)    NOT NULL,
+    domain              VARCHAR(255)    NOT NULL,
+    k8s_namespace       VARCHAR(255)    NOT NULL,
+    hostname            VARCHAR(500)    NOT NULL,
+    status              VARCHAR(20)     NOT NULL,
+    created_at          TIMESTAMPTZ     DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
+COMMENT ON TABLE argus_vscode_instances IS 'VS Code Server instances per user';
+
+-- =============================================================================
+-- Workflow Executions
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS argus_workflow_executions (
+    id                  SERIAL          PRIMARY KEY,
+    workspace_id        INTEGER         NOT NULL,
+    workflow_name       VARCHAR(100)    NOT NULL,
+    status              VARCHAR(20)     NOT NULL,
+    started_at          TIMESTAMPTZ,
+    finished_at         TIMESTAMPTZ,
+    error_message       TEXT,
+    created_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS argus_workflow_step_executions (
+    id                  SERIAL          PRIMARY KEY,
+    execution_id        INTEGER         NOT NULL REFERENCES argus_workflow_executions(id) ON DELETE CASCADE,
+    step_name           VARCHAR(100)    NOT NULL,
+    step_order          INTEGER         NOT NULL,
+    status              VARCHAR(20)     NOT NULL,
+    started_at          TIMESTAMPTZ,
+    finished_at         TIMESTAMPTZ,
+    error_message       TEXT,
+    result_data         TEXT
+);
+
+-- =============================================================================
+-- SQL Editor
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS sql_datasources (
+    id                  SERIAL          PRIMARY KEY,
+    name                VARCHAR(100)    NOT NULL,
+    engine_type         VARCHAR(20)     NOT NULL,
+    host                VARCHAR(255)    NOT NULL,
+    port                INTEGER         NOT NULL,
+    database_name       VARCHAR(100)    NOT NULL DEFAULT '',
+    username            VARCHAR(100)    NOT NULL DEFAULT '',
+    password_encrypted  VARCHAR(500)    NOT NULL DEFAULT '',
+    extra_params        TEXT            NOT NULL DEFAULT '{}',
+    description         VARCHAR(255)    NOT NULL DEFAULT '',
+    created_by          VARCHAR(100)    NOT NULL DEFAULT '',
+    created_at          TIMESTAMPTZ     DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
+COMMENT ON TABLE sql_datasources IS 'Registered SQL datasource connections';
+COMMENT ON COLUMN sql_datasources.engine_type IS 'trino | starrocks | postgresql | mariadb';
+
+CREATE TABLE IF NOT EXISTS sql_editor_tabs (
+    id                  VARCHAR(36)     PRIMARY KEY,
+    workspace_id        INTEGER         NOT NULL,
+    user_id             INTEGER         NOT NULL,
+    title               VARCHAR(200)    NOT NULL DEFAULT 'Query 1',
+    sql_text            TEXT            NOT NULL DEFAULT '',
+    datasource_id       INTEGER,
+    tab_order           INTEGER         NOT NULL DEFAULT 0,
+    created_at          TIMESTAMPTZ     DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_sql_editor_tabs_ws_user
+    ON sql_editor_tabs (workspace_id, user_id, tab_order);
+
+COMMENT ON TABLE sql_editor_tabs IS 'Persistent SQL editor tab state per workspace-user';
+
+CREATE TABLE IF NOT EXISTS sql_query_history (
+    id                  SERIAL          PRIMARY KEY,
+    datasource_id       INTEGER         NOT NULL,
+    datasource_name     VARCHAR(100)    NOT NULL,
+    engine_type         VARCHAR(20)     NOT NULL,
+    sql_text            TEXT            NOT NULL,
+    status              VARCHAR(20)     NOT NULL,
+    row_count           INTEGER,
+    elapsed_ms          INTEGER,
+    error_message       TEXT,
+    executed_by         VARCHAR(100)    NOT NULL DEFAULT '',
+    executed_at         TIMESTAMPTZ     DEFAULT NOW()
+);
+
+COMMENT ON TABLE sql_query_history IS 'SQL query execution history log';
+
+CREATE TABLE IF NOT EXISTS sql_query_executions (
+    id                  VARCHAR(36)     PRIMARY KEY,
+    datasource_id       INTEGER         NOT NULL,
+    sql_text            TEXT            NOT NULL,
+    status              VARCHAR(20)     NOT NULL,
+    row_count           INTEGER,
+    elapsed_ms          INTEGER,
+    error_message       TEXT,
+    engine_query_id     VARCHAR(255),
+    executed_by         VARCHAR(100)    NOT NULL DEFAULT '',
+    created_at          TIMESTAMPTZ     DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
+COMMENT ON TABLE sql_query_executions IS 'Active/completed async query executions (UUID-based)';
+COMMENT ON COLUMN sql_query_executions.status IS 'QUEUED | RUNNING | FINISHED | FAILED | CANCELLED';
+
+CREATE TABLE IF NOT EXISTS sql_saved_queries (
+    id                  SERIAL          PRIMARY KEY,
+    name                VARCHAR(200)    NOT NULL,
+    folder              VARCHAR(200)    NOT NULL DEFAULT '',
+    datasource_id       INTEGER         NOT NULL,
+    sql_text            TEXT            NOT NULL,
+    description         VARCHAR(500)    NOT NULL DEFAULT '',
+    created_by          VARCHAR(100)    NOT NULL DEFAULT '',
+    shared              VARCHAR(10)     NOT NULL DEFAULT 'private',
+    created_at          TIMESTAMPTZ     DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
+COMMENT ON TABLE sql_saved_queries IS 'User-saved SQL queries';
+COMMENT ON COLUMN sql_saved_queries.shared IS 'private | public';

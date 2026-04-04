@@ -691,6 +691,12 @@ async def _run_provisioning_workflow(
 
             ctx.workspace_id = workspace_id
 
+            # Pass per-plugin config to context (e.g. Trino tier)
+            if req.plugin_config:
+                for key, val in req.plugin_config.items():
+                    ctx.set(key, val)
+                logger.info("Plugin config injected into context: %s", list(req.plugin_config.keys()))
+
             execution = await executor.run(
                 workspace_id=workspace_id,
                 workflow_name="workspace-provision",
@@ -706,6 +712,23 @@ async def _run_provisioning_workflow(
             if workspace:
                 if execution.status == "completed":
                     workspace.status = WorkspaceStatus.ACTIVE.value
+
+                    # Apply K8s ResourceQuota from resource profile
+                    if workspace.resource_profile_id:
+                        from app.resource_profile.models import ArgusResourceProfile
+                        profile_result = await session.execute(
+                            select(ArgusResourceProfile).where(
+                                ArgusResourceProfile.id == workspace.resource_profile_id
+                            )
+                        )
+                        profile = profile_result.scalars().first()
+                        if profile:
+                            from workspace_provisioner.workflow.steps.app_deploy import apply_resource_quota
+                            ns = workspace.k8s_namespace or f"argus-ws-{workspace.name}"
+                            await apply_resource_quota(ns, float(profile.cpu_cores), int(profile.memory_mb))
+                            logger.info("ResourceQuota applied: workspace=%s profile=%s cpu=%s mem=%sMi",
+                                        workspace.name, profile.name, profile.cpu_cores, profile.memory_mb)
+
                     workspace.gitlab_project_id = ctx.get("gitlab_project_id")
                     workspace.gitlab_project_url = ctx.get("gitlab_project_url")
                     workspace.minio_endpoint = ctx.get("minio_external_endpoint")

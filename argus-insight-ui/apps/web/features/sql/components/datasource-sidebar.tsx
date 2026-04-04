@@ -7,7 +7,7 @@ import {
   Database,
   FolderOpen,
   Loader2,
-  Plus,
+
   RefreshCw,
   Table2,
 } from "lucide-react"
@@ -35,52 +35,32 @@ interface TreeNodeState {
 // ---------------------------------------------------------------------------
 
 export function DatasourceSidebar() {
-  const { datasources, activeDatasource, setActiveDatasource, setDialog, refreshDatasources } =
+  const { workspaceDatasources, activeDatasource, setActiveDatasource, refreshWorkspaceDatasources } =
     useSql()
 
   return (
-    <div className="flex h-full flex-col border-r">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b px-3 py-2">
+    <div className="flex h-full min-h-0 flex-col border-r overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 border-b shrink-0">
         <span className="text-xs font-semibold uppercase text-muted-foreground">Datasources</span>
-        <div className="flex gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={refreshDatasources}>
-                <RefreshCw className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Refresh</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => setDialog("add-datasource")}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Add Datasource</TooltipContent>
-          </Tooltip>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={refreshWorkspaceDatasources}>
+              <RefreshCw className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Refresh</TooltipContent>
+        </Tooltip>
       </div>
-
-      {/* Tree */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="p-1">
-          {datasources.length === 0 && (
-            <p className="px-3 py-4 text-center text-xs text-muted-foreground">
-              No datasources registered.
-              <br />
-              Click + to add one.
+          {workspaceDatasources.length === 0 && (
+            <p className="px-3 py-4 text-center text-sm text-muted-foreground">
+              No datasources in this workspace.
             </p>
           )}
-          {datasources.map((ds) => (
+          {workspaceDatasources.map((ds) => (
             <DatasourceTreeNode
-              key={ds.id}
+              key={`ws-${ds.id}`}
               datasource={ds}
               isActive={activeDatasource?.id === ds.id}
               onSelect={() => setActiveDatasource(ds)}
@@ -133,6 +113,7 @@ function DatasourceTreeNode({
     trino: "T",
     starrocks: "SR",
     postgresql: "PG",
+    mariadb: "MY",
   }
 
   return (
@@ -158,7 +139,7 @@ function DatasourceTreeNode({
       {expanded && (
         <div className="ml-4">
           {loading && (
-            <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" /> Loading...
             </div>
           )}
@@ -183,7 +164,9 @@ function CatalogTreeNode({ dsId, catalog }: { dsId: number; catalog: CatalogNode
     <div>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs hover:bg-muted/50"
+        draggable
+        onDragStart={(e) => { e.dataTransfer.setData("text/plain", catalog.name); e.dataTransfer.effectAllowed = "copy" }}
+        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm hover:bg-muted/50 cursor-grab active:cursor-grabbing"
       >
         <ChevronRight
           className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${
@@ -213,7 +196,7 @@ function SchemaList({ dsId, catalog }: { dsId: number; catalog: string }) {
 
   if (loading)
     return (
-      <div className="ml-4 flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground">
+      <div className="ml-4 flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground">
         <Loader2 className="h-3 w-3 animate-spin" /> Loading schemas...
       </div>
     )
@@ -262,7 +245,9 @@ function SchemaTreeNode({
     <div>
       <button
         onClick={toggle}
-        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs hover:bg-muted/50"
+        draggable
+        onDragStart={(e) => { e.dataTransfer.setData("text/plain", schema.name); e.dataTransfer.effectAllowed = "copy" }}
+        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm hover:bg-muted/50 cursor-grab active:cursor-grabbing"
       >
         <ChevronRight
           className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${
@@ -275,7 +260,7 @@ function SchemaTreeNode({
       {expanded && (
         <div className="ml-3">
           {loading && (
-            <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
             </div>
           )}
@@ -333,7 +318,13 @@ function TableTreeNode({
     <div>
       <button
         onClick={toggle}
-        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs hover:bg-muted/50"
+        draggable
+        onDragStart={(e) => {
+          const text = schema ? `${schema}.${table.name}` : table.name
+          e.dataTransfer.setData("text/plain", text)
+          e.dataTransfer.effectAllowed = "copy"
+        }}
+        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm hover:bg-muted/50 cursor-grab active:cursor-grabbing"
       >
         <ChevronRight
           className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform ${
@@ -349,14 +340,16 @@ function TableTreeNode({
       {expanded && (
         <div className="ml-3">
           {loading && (
-            <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5 px-2 py-1 text-sm text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
             </div>
           )}
           {columns?.map((col) => (
             <div
               key={col.name}
-              className="flex items-center gap-1.5 px-2 py-0.5 text-xs text-muted-foreground"
+              draggable
+              onDragStart={(e) => { e.dataTransfer.setData("text/plain", col.name); e.dataTransfer.effectAllowed = "copy" }}
+              className="flex items-center gap-1.5 px-2 py-0.5 text-sm text-muted-foreground cursor-grab active:cursor-grabbing"
             >
               <Columns3 className="h-3 w-3 shrink-0" />
               <span className="truncate">{col.name}</span>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   BarChart3,
   CheckCircle2,
@@ -65,6 +65,7 @@ interface TrainJob {
     leaderboard?: { rank: number; model_name: string; metrics: Record<string, number>; training_time_seconds: number }[]
     best_model?: { model_name: string; metrics: Record<string, number> } | null
     feature_importance?: Record<string, number>
+    classification_report?: { class: string; precision: number; recall: number; f1_score: number; support: number }[]
     metric_key?: string
     status?: string
     message?: string
@@ -175,6 +176,7 @@ function WizardJobDetail({ job }: { job: TrainJob }) {
 // ── Modeler Detail (3 tabs) ───────────────────────────────
 
 function ModelerJobDetail({ job }: { job: TrainJob }) {
+  const [activeTab, setActiveTab] = useState("results")
   const [logs, setLogs] = useState<string>("")
   const [logsLoading, setLogsLoading] = useState(false)
 
@@ -199,12 +201,28 @@ function ModelerJobDetail({ job }: { job: TrainJob }) {
     }
   }
 
+  // Auto-fetch logs when switching to logs tab
+  useEffect(() => {
+    if (activeTab === "logs" && !logs) {
+      fetchLogs()
+    }
+  }, [activeTab])
+
+  // Auto-refresh logs while job is running and logs tab is active
+  useEffect(() => {
+    if (activeTab !== "logs") return
+    const isActive = job.status === "running" || job.status === "pending"
+    if (!isActive) return
+    const interval = setInterval(fetchLogs, 3000)
+    return () => clearInterval(interval)
+  }, [activeTab, job.status])
+
   return (
     <div className="space-y-3 text-sm">
       <JobProgress job={job} />
       <JobError job={job} />
 
-      <Tabs defaultValue="results" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="h-8">
           <TabsTrigger value="results" className="text-sm h-7 gap-1.5">
             <BarChart3 className="h-3.5 w-3.5" /> Results
@@ -212,112 +230,192 @@ function ModelerJobDetail({ job }: { job: TrainJob }) {
           <TabsTrigger value="code" className="text-sm h-7 gap-1.5">
             <Code className="h-3.5 w-3.5" /> Code
           </TabsTrigger>
-          <TabsTrigger value="logs" className="text-sm h-7 gap-1.5" onClick={fetchLogs}>
+          <TabsTrigger value="logs" className="text-sm h-7 gap-1.5">
             <ScrollText className="h-3.5 w-3.5" /> Logs
           </TabsTrigger>
         </TabsList>
 
-        {/* Results tab */}
-        <TabsContent value="results" className="mt-3 space-y-4">
-          {job.results ? (
-            <>
-              {job.results.message && (
-                <p className="text-sm text-muted-foreground">{job.results.message}</p>
-              )}
-              {job.results.best_model && (
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <Card>
-                    <CardContent className="pt-4">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Trophy className="h-5 w-5 text-yellow-500" />
-                        <span className="font-semibold">{job.results.best_model.model_name}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        {Object.entries(job.results.best_model.metrics).map(([k, v]) => (
-                          <div key={k} className="flex justify-between">
-                            <span className="text-muted-foreground">{k}</span>
-                            <span className="font-mono font-medium">{v.toFixed(4)}</span>
+        {/* Fixed-height content area — consistent across all tabs */}
+        <div style={{ height: "45vh", marginTop: 12 }}>
+          {/* Results tab */}
+          <TabsContent value="results" className="mt-0 h-full overflow-y-auto space-y-4">
+            {job.results ? (
+              <>
+                {job.results.message && (
+                  <p className="text-sm text-muted-foreground">{job.results.message}</p>
+                )}
+                {job.results.best_model && (
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <Card>
+                      <CardContent className="pt-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Trophy className="h-5 w-5 text-yellow-500" />
+                          <span className="font-semibold">{job.results.best_model.model_name}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          {Object.entries(job.results.best_model.metrics).map(([k, v]) => (
+                            <div key={k} className="flex justify-between">
+                              <span className="text-muted-foreground">{k}</span>
+                              <span className="font-mono font-medium">{v.toFixed(4)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                    <FeatureImportanceCard importance={job.results.feature_importance} />
+                  </div>
+                )}
+                {/* Per-class Performance */}
+                {job.results.classification_report && job.results.classification_report.length > 0 && (() => {
+                  const classes = job.results.classification_report!.filter((r) => !r.class.includes("avg") && r.class !== "accuracy")
+                  const averages = job.results.classification_report!.filter((r) => r.class.includes("avg"))
+                  if (classes.length === 0) return null
+                  return (
+                    <Card>
+                      <CardContent className="pt-4">
+                        <p className="font-semibold mb-3 flex items-center gap-2">
+                          <BarChart3 className="h-4 w-4" /> Per-class Performance
+                        </p>
+                        <div className="space-y-3">
+                          {classes.map((row) => (
+                            <div key={row.class}>
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-sm font-medium">{row.class}</span>
+                                <span className="text-xs text-muted-foreground">{row.support} samples</span>
+                              </div>
+                              <div className="grid grid-cols-3 gap-2">
+                                <div>
+                                  <div className="flex justify-between text-xs text-muted-foreground mb-0.5">
+                                    <span>Precision</span>
+                                    <span className="font-mono">{(row.precision * 100).toFixed(1)}%</span>
+                                  </div>
+                                  <div className="h-2 rounded-full bg-muted">
+                                    <div className="h-full rounded-full bg-blue-500" style={{ width: `${row.precision * 100}%` }} />
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="flex justify-between text-xs text-muted-foreground mb-0.5">
+                                    <span>Recall</span>
+                                    <span className="font-mono">{(row.recall * 100).toFixed(1)}%</span>
+                                  </div>
+                                  <div className="h-2 rounded-full bg-muted">
+                                    <div className="h-full rounded-full bg-emerald-500" style={{ width: `${row.recall * 100}%` }} />
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="flex justify-between text-xs text-muted-foreground mb-0.5">
+                                    <span>F1</span>
+                                    <span className="font-mono">{(row.f1_score * 100).toFixed(1)}%</span>
+                                  </div>
+                                  <div className="h-2 rounded-full bg-muted">
+                                    <div className="h-full rounded-full bg-violet-500" style={{ width: `${row.f1_score * 100}%` }} />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {averages.length > 0 && (
+                          <div className="mt-3 pt-3 border-t flex gap-6 text-xs text-muted-foreground">
+                            {averages.map((avg) => (
+                              <span key={avg.class} className="font-mono">
+                                {avg.class}: F1={<span className="font-semibold text-foreground">{(avg.f1_score * 100).toFixed(1)}%</span>}
+                              </span>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <FeatureImportanceCard importance={job.results.feature_importance} />
-                </div>
-              )}
-              <LeaderboardTable leaderboard={job.results.leaderboard} />
-              {!job.results.best_model && !job.results.leaderboard?.length && (
-                <div className="text-center py-8 text-muted-foreground">
-                  <CheckCircle2 className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">Pipeline executed successfully</p>
-                </div>
-              )}
-            </>
-          ) : job.status === "completed" ? (
-            <p className="text-sm text-muted-foreground py-4">No structured results</p>
-          ) : (
-            <p className="text-sm text-muted-foreground py-4">Results will appear after execution completes</p>
-          )}
-        </TabsContent>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )
+                })()}
+                <LeaderboardTable leaderboard={job.results.leaderboard} />
+                {!job.results.best_model && !job.results.leaderboard?.length && !job.results.classification_report?.length && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <CheckCircle2 className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">Pipeline executed successfully</p>
+                  </div>
+                )}
+              </>
+            ) : job.status === "completed" ? (
+              <p className="text-sm text-muted-foreground py-4">No structured results</p>
+            ) : (
+              <p className="text-sm text-muted-foreground py-4">Results will appear after execution completes</p>
+            )}
+          </TabsContent>
 
-        {/* Code tab */}
-        <TabsContent value="code" className="mt-3">
-          {job.generated_code ? (
-            <div className="rounded border overflow-hidden" style={{ height: "45vh" }}>
-              <Editor
-                height="100%"
-                language="python"
-                value={job.generated_code}
-                options={{
-                  readOnly: true,
-                  minimap: { enabled: false },
-                  fontFamily: "'D2Coding', 'D2 Coding', monospace",
-                  fontSize: 13,
-                  lineNumbers: "on",
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  domReadOnly: true,
-                  padding: { top: 8 },
-                }}
-                theme="vs-dark"
-              />
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground py-4">No code available</p>
-          )}
-        </TabsContent>
+          {/* Code tab */}
+          <TabsContent value="code" className="mt-0 h-full">
+            {job.generated_code ? (
+              <div className="rounded border overflow-hidden h-full">
+                <Editor
+                  height="100%"
+                  language="python"
+                  value={job.generated_code}
+                  options={{
+                    readOnly: true,
+                    minimap: { enabled: false },
+                    fontFamily: "'D2Coding', 'D2 Coding', monospace",
+                    fontSize: 13,
+                    lineNumbers: "on",
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true,
+                    domReadOnly: true,
+                    padding: { top: 8 },
+                  }}
+                  theme="vs-dark"
+                />
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground py-4">No code available</p>
+            )}
+          </TabsContent>
 
-        {/* Logs tab */}
-        <TabsContent value="logs" className="mt-3">
-          {logsLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          {/* Logs tab */}
+          <TabsContent value="logs" className="mt-0 h-full flex flex-col">
+            <div className="flex justify-end mb-2">
+              <button
+                type="button"
+                onClick={fetchLogs}
+                disabled={logsLoading}
+                className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded border border-input bg-background hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+              >
+                <Loader2 className={`h-3 w-3 ${logsLoading ? "animate-spin" : "hidden"}`} />
+                <ScrollText className={`h-3 w-3 ${logsLoading ? "hidden" : ""}`} />
+                Refresh
+              </button>
             </div>
-          ) : logs ? (
-            <div className="rounded border overflow-hidden" style={{ height: "45vh" }}>
-              <Editor
-                height="100%"
-                language="plaintext"
-                value={logs}
-                options={{
-                  readOnly: true,
-                  minimap: { enabled: false },
-                  fontFamily: "'D2Coding', 'D2 Coding', monospace",
-                  fontSize: 12,
-                  lineNumbers: "off",
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  domReadOnly: true,
-                  wordWrap: "on",
-                  padding: { top: 8 },
-                }}
-                theme="vs-dark"
-              />
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground py-4">Click the Logs tab to fetch execution logs</p>
-          )}
-        </TabsContent>
+            {logsLoading && !logs ? (
+              <div className="flex items-center justify-center flex-1">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : logs ? (
+              <div className="rounded border overflow-hidden flex-1">
+                <Editor
+                  height="100%"
+                  language="plaintext"
+                  value={logs}
+                  options={{
+                    readOnly: true,
+                    minimap: { enabled: false },
+                    fontFamily: "'D2Coding', 'D2 Coding', monospace",
+                    fontSize: 12,
+                    lineNumbers: "off",
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true,
+                    domReadOnly: true,
+                    wordWrap: "on",
+                    padding: { top: 8 },
+                  }}
+                  theme="vs-dark"
+                />
+              </div>
+            ) : (
+              <div className="flex items-center justify-center flex-1 text-muted-foreground">
+                <p className="text-sm">Loading logs...</p>
+              </div>
+            )}
+          </TabsContent>
+        </div>
       </Tabs>
 
       <JobFooter job={job} />
@@ -428,18 +526,12 @@ export function MLStudioExperiments() {
   const [selectedJob, setSelectedJob] = useState<TrainJob | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
 
+  const selectedJobRef = useRef(selectedJob)
+  selectedJobRef.current = selectedJob
+
   useEffect(() => {
     async function load() {
-      let wsId = sessionStorage.getItem("argus_last_workspace_id")
-      if (!wsId) {
-        try {
-          const myRes = await authFetch("/api/v1/workspace/workspaces/my")
-          if (myRes.ok) {
-            const ws = await myRes.json()
-            if (ws.length > 0) { wsId = String(ws[0].id); sessionStorage.setItem("argus_last_workspace_id", wsId) }
-          }
-        } catch { /* ignore */ }
-      }
+      const wsId = sessionStorage.getItem("argus_last_workspace_id")
       if (!wsId) { setLoading(false); return }
       try {
         const res = await authFetch(
@@ -447,7 +539,14 @@ export function MLStudioExperiments() {
         )
         if (res.ok) {
           const data = await res.json()
-          setJobs(data.jobs ?? [])
+          const newJobs: TrainJob[] = data.jobs ?? []
+          setJobs(newJobs)
+          // Sync selectedJob with latest data so progress/results update in dialog
+          const cur = selectedJobRef.current
+          if (cur) {
+            const updated = newJobs.find((j) => j.id === cur.id)
+            if (updated) setSelectedJob(updated)
+          }
         }
       } catch { /* ignore */ }
       finally { setLoading(false) }
@@ -556,18 +655,19 @@ export function MLStudioExperiments() {
       },
       {
         headerName: "",
-        width: 70,
+        width: 80,
         sortable: false,
         filter: false,
-        valueGetter: (params: any) => {
+        cellRenderer: (params: any) => {
           if (!params.data) return ""
-          return (params.data.status === "running" || params.data.status === "pending") ? "Kill" : ""
-        },
-        cellStyle: (params: any) => {
-          if (params.data?.status === "running" || params.data?.status === "pending") {
-            return { color: "#dc2626", cursor: "pointer", fontWeight: 500 }
-          }
-          return {}
+          const isActive = params.data.status === "running" || params.data.status === "pending"
+          if (!isActive) return ""
+          return `<button style="
+            display:inline-flex;align-items:center;gap:4px;
+            padding:2px 10px;border-radius:4px;font-size:12px;font-weight:600;
+            background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;
+            cursor:pointer;line-height:20px;
+          "><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>Kill</button>`
         },
       },
     ],
@@ -635,7 +735,7 @@ export function MLStudioExperiments() {
 
       {/* Detail Dialog — switches between Wizard and Modeler */}
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className={`max-h-[80vh] overflow-y-auto ${isModeler ? "sm:max-w-[70vw]" : "sm:max-w-[65vw]"}`}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-[70vw]">
           {selectedJob && (
             <>
               <DialogHeader>
