@@ -117,7 +117,7 @@ class NiFiDeployStep(WorkflowStep):
 
         # Auto-register NiFi Registry Client via NiFi REST API
         registry_internal = f"http://argus-nifi-registry-{workspace_name}.{namespace}.svc.cluster.local:18080"
-        nifi_api = f"https://argus-nifi-{workspace_name}.{namespace}.svc.cluster.local:8443/nifi-api"
+        nifi_api = f"http://argus-nifi-{workspace_name}.{namespace}.svc.cluster.local:8080/nifi-api"
 
         # Wait a bit for NiFi API to be fully ready
         await asyncio.sleep(10)
@@ -128,21 +128,19 @@ class NiFiDeployStep(WorkflowStep):
                 "revision": {"version": 0},
                 "component": {
                     "name": "Workspace Registry",
-                    "uri": registry_internal,
                     "type": "org.apache.nifi.registry.flow.NifiRegistryFlowRegistryClient",
+                    "properties": {
+                        "url": f"{registry_internal}/nifi-registry",
+                    },
                 },
             }).encode()
-            import ssl
-            ssl_ctx = ssl.create_default_context()
-            ssl_ctx.check_hostname = False
-            ssl_ctx.verify_mode = ssl.CERT_NONE
             req = urllib.request.Request(
                 f"{nifi_api}/controller/registry-clients",
                 data=payload,
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            urllib.request.urlopen(req, timeout=10, context=ssl_ctx)
+            urllib.request.urlopen(req, timeout=10)
             logger.info("NiFi Registry Client registered: %s", registry_internal)
         except Exception as e:
             logger.warning("Failed to auto-register NiFi Registry Client (can be done manually): %s", e)
@@ -165,11 +163,13 @@ class NiFiDeployStep(WorkflowStep):
                     "Nodes": str(config.replicas),
                     "Cluster Mode": "Kubernetes Lease" if config.replicas > 1 else "Standalone",
                     "Session": "Sticky (cookie-based)",
+                    "NiFi (Internal)": f"http://argus-nifi-{workspace_name}.{namespace}.svc.cluster.local:8080/nifi",
                     "NiFi Registry": f"http://{registry_hostname}/nifi-registry",
+                    "NiFi Registry (Internal)": registry_internal,
                     "Storage": f"Content {config.content_storage}, Provenance {config.provenance_storage}, FlowFile {config.flowfile_storage}",
                 },
                 "internal": {
-                    "endpoint": f"http://argus-nifi-{workspace_name}.{namespace}.svc.cluster.local:8443",
+                    "endpoint": f"http://argus-nifi-{workspace_name}.{namespace}.svc.cluster.local:8080",
                     "registry_endpoint": registry_internal,
                     "namespace": namespace,
                 },

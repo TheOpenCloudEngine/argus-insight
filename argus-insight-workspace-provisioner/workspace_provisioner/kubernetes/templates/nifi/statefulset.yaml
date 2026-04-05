@@ -29,8 +29,8 @@ spec:
         - name: nifi
           image: ${NIFI_IMAGE}
           ports:
-            - name: https
-              containerPort: 8443
+            - name: http
+              containerPort: 8080
             - name: cluster
               containerPort: 11443
             - name: load-balance
@@ -71,15 +71,19 @@ spec:
             - name: SINGLE_USER_CREDENTIALS_PASSWORD
               value: ""
           command:
-            - bash
+            - sh
             - -c
             - |
-              # Set cluster node address from pod FQDN
-              FQDN="$${HOSTNAME}.argus-nifi-${WORKSPACE_NAME}-headless.${K8S_NAMESPACE}.svc.cluster.local"
-              export NIFI_CLUSTER_ADDRESS="$${FQDN}"
-              # Disable HTTPS/auth for HTTP-only mode behind Ingress
-              prop_replace () { sed -i "s|^$1=.*|$1=$2|" "$${NIFI_HOME}/conf/nifi.properties"; }
-              # Start NiFi
+              export NIFI_CLUSTER_ADDRESS="$${HOSTNAME}.argus-nifi-${WORKSPACE_NAME}-headless.${K8S_NAMESPACE}.svc.cluster.local"
+              cat > /tmp/nifi-http-patch.sh << 'PEOF'
+              #!/bin/sh
+              P="${NIFI_HOME}/conf/nifi.properties"
+              [ ! -f "$P" ] && exit 0
+              sed -i 's|^nifi.web.https.host=.*|nifi.web.https.host=|;s|^nifi.web.https.port=.*|nifi.web.https.port=|;s|^nifi.web.http.host=.*|nifi.web.http.host=0.0.0.0|;s|^nifi.web.http.port=.*|nifi.web.http.port=8080|;s|^nifi.remote.input.secure=.*|nifi.remote.input.secure=false|;s|^nifi.cluster.protocol.is.secure=.*|nifi.cluster.protocol.is.secure=false|;s|^nifi.security.keystore=.*|nifi.security.keystore=|;s|^nifi.security.keystoreType=.*|nifi.security.keystoreType=|;s|^nifi.security.keystorePasswd=.*|nifi.security.keystorePasswd=|;s|^nifi.security.keyPasswd=.*|nifi.security.keyPasswd=|;s|^nifi.security.truststore=.*|nifi.security.truststore=|;s|^nifi.security.truststoreType=.*|nifi.security.truststoreType=|;s|^nifi.security.truststorePasswd=.*|nifi.security.truststorePasswd=|;s|^nifi.security.user.login.identity.provider=.*|nifi.security.user.login.identity.provider=|;s|^nifi.security.user.authorizer=.*|nifi.security.user.authorizer=|' "$P"
+              echo "=== HTTP mode: nifi.properties patched ==="
+              PEOF
+              chmod +x /tmp/nifi-http-patch.sh
+              sed -i '/nifi.sh.*run/i\/tmp/nifi-http-patch.sh' ../scripts/start.sh
               exec ../scripts/start.sh
           resources:
             requests:
@@ -89,13 +93,14 @@ spec:
               cpu: "${NIFI_CPU_LIMIT}"
               memory: "${NIFI_MEMORY_LIMIT}"
           readinessProbe:
-            tcpSocket:
-              port: https
+            httpGet:
+              path: /nifi
+              port: http
             initialDelaySeconds: 60
             periodSeconds: 10
           livenessProbe:
             tcpSocket:
-              port: https
+              port: http
             initialDelaySeconds: 120
             periodSeconds: 30
           volumeMounts:
