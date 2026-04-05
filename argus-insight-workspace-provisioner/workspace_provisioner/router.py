@@ -710,6 +710,140 @@ async def configure_service(
 # Kafka Configure
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# NiFi Configure
+# ---------------------------------------------------------------------------
+
+class NiFiConfigureRequest(BaseModel):
+    """Request body for NiFi configuration changes."""
+    replicas: int | None = None
+    cpu_limit: str | None = None
+    memory_limit: str | None = None
+    jvm_xmx: str | None = None
+    # Heartbeat
+    heartbeat_interval: str | None = None  # e.g. "10 sec"
+    heartbeat_missable_max: int | None = None
+    connection_timeout: str | None = None  # e.g. "30 sec"
+    read_timeout: str | None = None
+    max_concurrent_requests: int | None = None
+    # Queue
+    backpressure_count: int | None = None
+    backpressure_size: str | None = None  # e.g. "5 GB"
+    # Repository
+    provenance_max_storage_time: str | None = None  # e.g. "24 hours"
+    provenance_max_storage_size: str | None = None  # e.g. "1 GB"
+    content_archive_max_usage: str | None = None  # e.g. "50%"
+
+
+@router.post("/workspaces/{workspace_id}/nifi/configure")
+async def configure_nifi(
+    workspace_id: int,
+    req: NiFiConfigureRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Apply NiFi configuration changes."""
+    import asyncio as aio
+    import json as json_mod
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+
+    ws = (await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )).scalars().first()
+    if not ws:
+        raise HTTPException(404, "Workspace not found")
+
+    svc = (await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+            ArgusWorkspaceService.plugin_name == "argus-nifi",
+            ArgusWorkspaceService.status == "running",
+        )
+    )).scalars().first()
+    if not svc:
+        raise HTTPException(404, "NiFi service not found")
+
+    namespace = ws.k8s_namespace or f"argus-ws-{ws.name}"
+    meta = svc.metadata if isinstance(svc.metadata, dict) else (json_mod.loads(svc.metadata) if isinstance(svc.metadata, str) else {})
+
+    # 1. Patch StatefulSet (replicas + resources)
+    patch_ops = []
+    if req.replicas is not None:
+        patch_ops.append({"op": "replace", "path": "/spec/replicas", "value": req.replicas})
+    if req.cpu_limit:
+        patch_ops.append({"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/cpu", "value": req.cpu_limit})
+    if req.memory_limit:
+        patch_ops.append({"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": req.memory_limit})
+
+    if patch_ops:
+        proc = await aio.create_subprocess_exec(
+            "kubectl", "patch", "statefulset", f"argus-nifi-{ws.name}",
+            "-n", namespace, "--type=json", "-p", json_mod.dumps(patch_ops),
+            stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+        )
+        await proc.communicate()
+
+    # 2. Update env vars on StatefulSet for NiFi settings
+    nifi_envs = {}
+    if req.jvm_xmx:
+        nifi_envs["NIFI_JVM_HEAP_MAX"] = req.jvm_xmx
+    if req.heartbeat_interval:
+        nifi_envs["NIFI_CLUSTER_PROTOCOL_HEARTBEAT_INTERVAL"] = req.heartbeat_interval
+    if req.heartbeat_missable_max is not None:
+        nifi_envs["NIFI_CLUSTER_PROTOCOL_HEARTBEAT_MISSABLE_MAX"] = str(req.heartbeat_missable_max)
+    if req.connection_timeout:
+        nifi_envs["NIFI_CLUSTER_NODE_CONNECTION_TIMEOUT"] = req.connection_timeout
+    if req.read_timeout:
+        nifi_envs["NIFI_CLUSTER_NODE_READ_TIMEOUT"] = req.read_timeout
+    if req.max_concurrent_requests is not None:
+        nifi_envs["NIFI_CLUSTER_NODE_MAX_CONCURRENT_REQUESTS"] = str(req.max_concurrent_requests)
+
+    if nifi_envs:
+        proc = await aio.create_subprocess_exec(
+            "kubectl", "get", "statefulset", f"argus-nifi-{ws.name}",
+            "-n", namespace, "-o", "json",
+            stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+        )
+        sts_out, _ = await proc.communicate()
+        sts = json_mod.loads(sts_out.decode())
+        container = sts["spec"]["template"]["spec"]["containers"][0]
+        existing_env = {e["name"]: e for e in container.get("env", [])}
+        for k, v in nifi_envs.items():
+            existing_env[k] = {"name": k, "value": v}
+        env_patch = [{"op": "replace", "path": "/spec/template/spec/containers/0/env", "value": list(existing_env.values())}]
+        proc = await aio.create_subprocess_exec(
+            "kubectl", "patch", "statefulset", f"argus-nifi-{ws.name}",
+            "-n", namespace, "--type=json", "-p", json_mod.dumps(env_patch),
+            stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+        )
+        await proc.communicate()
+
+    # 3. Rollout restart
+    proc = await aio.create_subprocess_exec(
+        "kubectl", "rollout", "restart", f"statefulset/argus-nifi-{ws.name}",
+        "-n", namespace, stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+    )
+    await proc.communicate()
+
+    # 4. Update metadata
+    meta["display"]["Nodes"] = str(req.replicas) if req.replicas else meta["display"].get("Nodes", "1")
+    if "resources" not in meta:
+        meta["resources"] = {}
+    if req.cpu_limit:
+        meta["resources"]["cpu_limit"] = req.cpu_limit
+    if req.memory_limit:
+        meta["resources"]["memory_limit"] = req.memory_limit
+
+    from sqlalchemy import text
+    await session.execute(
+        text("UPDATE argus_workspace_services SET metadata = :m WHERE id = :id"),
+        {"m": json_mod.dumps(meta), "id": svc.id},
+    )
+    await session.commit()
+
+    logger.info("NiFi configured: ws=%s replicas=%s", ws.name, req.replicas)
+    return {"status": "ok", "message": "NiFi configuration applied. Pods are restarting."}
+
+
 class KafkaConfigureRequest(BaseModel):
     """Request body for Kafka configuration changes."""
     replicas: int | None = None

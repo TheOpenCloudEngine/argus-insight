@@ -439,6 +439,229 @@ function ServiceConfigSheet({
 // Kafka Configuration Dialog
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// NiFi Configuration Dialog
+// ---------------------------------------------------------------------------
+
+function NiFiConfigDialog({
+  open, onOpenChange, workspaceId, service,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  workspaceId: number
+  service: WorkspaceService
+}) {
+  const meta = (service.metadata ?? {}) as Record<string, any>
+  const resources = meta.resources ?? {}
+
+  // Resources
+  const [replicas, setReplicas] = useState(Number(meta.display?.Nodes) || 1)
+  const [cpuLimit, setCpuLimit] = useState(resources.cpu_limit || "2")
+  const [memLimit, setMemLimit] = useState(resources.memory_limit || "2Gi")
+  const [jvmXmx, setJvmXmx] = useState("")
+  // Heartbeat
+  const [heartbeatInterval, setHeartbeatInterval] = useState("10 sec")
+  const [heartbeatMissMax, setHeartbeatMissMax] = useState("8")
+  const [connectionTimeout, setConnectionTimeout] = useState("30 sec")
+  const [readTimeout, setReadTimeout] = useState("30 sec")
+  const [maxConcurrentReq, setMaxConcurrentReq] = useState("100")
+  // Queue
+  const [backpressureCount, setBackpressureCount] = useState("10000")
+  const [backpressureSize, setBackpressureSize] = useState("5 GB")
+  // Repository
+  const [provenanceMaxTime, setProvenanceMaxTime] = useState("24 hours")
+  const [provenanceMaxSize, setProvenanceMaxSize] = useState("1 GB")
+  const [contentArchiveMax, setContentArchiveMax] = useState("50%")
+
+  const [applying, setApplying] = useState(false)
+  const [validation, setValidation] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  // Validate resources
+  useEffect(() => {
+    if (!open) return
+    const timer = setTimeout(async () => {
+      try {
+        const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/services/${service.id}/configure/validate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cpu_limit: cpuLimit, memory_limit: memLimit }),
+        })
+        if (res.ok) setValidation(await res.json())
+      } catch { /* ignore */ }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [open, cpuLimit, memLimit, workspaceId, service.id])
+
+  const handleApply = async () => {
+    if (validation && !validation.allowed) return
+    setApplying(true)
+    setError(null)
+    setSuccess(false)
+    try {
+      const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/nifi/configure`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          replicas,
+          cpu_limit: cpuLimit,
+          memory_limit: memLimit,
+          jvm_xmx: jvmXmx || undefined,
+          heartbeat_interval: heartbeatInterval,
+          heartbeat_missable_max: parseInt(heartbeatMissMax) || undefined,
+          connection_timeout: connectionTimeout,
+          read_timeout: readTimeout,
+          max_concurrent_requests: parseInt(maxConcurrentReq) || undefined,
+          backpressure_count: parseInt(backpressureCount) || undefined,
+          backpressure_size: backpressureSize,
+          provenance_max_storage_time: provenanceMaxTime,
+          provenance_max_storage_size: provenanceMaxSize,
+          content_archive_max_usage: contentArchiveMax,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.detail || `Failed: ${res.status}`)
+      }
+      setSuccess(true)
+      setTimeout(() => { setSuccess(false); onOpenChange(false) }, 2000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to apply")
+    }
+    setApplying(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Configure NiFi</DialogTitle>
+          <DialogDescription>Adjust NiFi cluster settings. Changes trigger a rolling restart.</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          {/* Resources */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Resources</Label>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">Nodes</Label>
+                <Input type="number" min={1} max={5} value={replicas} onChange={(e) => setReplicas(Number(e.target.value))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">CPU Limit</Label>
+                <Input value={cpuLimit} onChange={(e) => setCpuLimit(e.target.value)} placeholder="e.g. 4" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Memory Limit</Label>
+                <Input value={memLimit} onChange={(e) => setMemLimit(e.target.value)} placeholder="e.g. 4Gi" />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">JVM -Xmx <span className="text-muted-foreground">(leave empty for auto 80%)</span></Label>
+              <Input value={jvmXmx} onChange={(e) => setJvmXmx(e.target.value)} placeholder="e.g. 3072m (auto if empty)" />
+            </div>
+          </div>
+
+          {/* Heartbeat */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Heartbeat & Cluster</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">heartbeat.interval</Label>
+                <Input value={heartbeatInterval} onChange={(e) => setHeartbeatInterval(e.target.value)} />
+                <span className="text-[10px] text-muted-foreground">Heartbeat send interval</span>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">heartbeat.missable.max</Label>
+                <Input type="number" min={1} value={heartbeatMissMax} onChange={(e) => setHeartbeatMissMax(e.target.value)} />
+                <span className="text-[10px] text-muted-foreground">Max missed before node removal</span>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">connection.timeout</Label>
+                <Input value={connectionTimeout} onChange={(e) => setConnectionTimeout(e.target.value)} />
+                <span className="text-[10px] text-muted-foreground">Node connection timeout</span>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">read.timeout</Label>
+                <Input value={readTimeout} onChange={(e) => setReadTimeout(e.target.value)} />
+                <span className="text-[10px] text-muted-foreground">Node read timeout</span>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">max.concurrent.requests</Label>
+                <Input type="number" min={1} value={maxConcurrentReq} onChange={(e) => setMaxConcurrentReq(e.target.value)} />
+                <span className="text-[10px] text-muted-foreground">Max concurrent per node</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Queue */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Queue Backpressure</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">backpressure.count</Label>
+                <Input type="number" value={backpressureCount} onChange={(e) => setBackpressureCount(e.target.value)} />
+                <span className="text-[10px] text-muted-foreground">FlowFile count threshold</span>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">backpressure.size</Label>
+                <Input value={backpressureSize} onChange={(e) => setBackpressureSize(e.target.value)} />
+                <span className="text-[10px] text-muted-foreground">Data size threshold</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Repository */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Repository</Label>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">provenance.max.time</Label>
+                <Input value={provenanceMaxTime} onChange={(e) => setProvenanceMaxTime(e.target.value)} />
+                <span className="text-[10px] text-muted-foreground">Retention period</span>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">provenance.max.size</Label>
+                <Input value={provenanceMaxSize} onChange={(e) => setProvenanceMaxSize(e.target.value)} />
+                <span className="text-[10px] text-muted-foreground">Max storage</span>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">content.archive.max</Label>
+                <Input value={contentArchiveMax} onChange={(e) => setContentArchiveMax(e.target.value)} />
+                <span className="text-[10px] text-muted-foreground">Archive usage %</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Validation */}
+          {validation && (
+            <div className={`rounded-md border px-3 py-2 text-xs ${validation.allowed ? "bg-muted/30" : "bg-destructive/10 border-destructive/30 text-destructive"}`}>
+              <div className="flex justify-between">
+                <span>CPU: {validation.after?.cpu_used} / {validation.limit?.cpu} cores</span>
+                <span>Memory: {validation.after?.memory_used_gb} / {validation.limit?.memory_gb} GiB</span>
+              </div>
+              {!validation.allowed && <div className="mt-1 font-medium">{validation.message}</div>}
+            </div>
+          )}
+
+          {error && <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive">{error}</div>}
+          {success && <div className="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700">Restarting the service with the requested resources.</div>}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button size="sm" onClick={handleApply} disabled={applying || (validation && !validation.allowed)}>
+            {applying ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+            Apply
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function KafkaConfigDialog({
   open, onOpenChange, workspaceId, service,
 }: {
@@ -1681,7 +1904,15 @@ function ServiceDataListItem({
           service={service}
         />
       )}
-      {isConfigurable && workspaceId && service.plugin_name !== "argus-trino" && service.plugin_name !== "argus-starrocks" && service.plugin_name !== "argus-kafka" && (
+      {isConfigurable && workspaceId && service.plugin_name === "argus-nifi" && (
+        <NiFiConfigDialog
+          open={configOpen}
+          onOpenChange={setConfigOpen}
+          workspaceId={workspaceId}
+          service={service}
+        />
+      )}
+      {isConfigurable && workspaceId && !["argus-trino", "argus-starrocks", "argus-kafka", "argus-nifi"].includes(service.plugin_name) && (
         <ServiceConfigDialog
           open={configOpen}
           onOpenChange={setConfigOpen}
