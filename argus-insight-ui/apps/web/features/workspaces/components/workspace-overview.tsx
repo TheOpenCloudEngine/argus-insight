@@ -443,6 +443,56 @@ function ServiceConfigSheet({
 // NiFi Configuration Dialog
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Shared validation helpers for configure dialogs
+// ---------------------------------------------------------------------------
+const RE_CPU = /^(\d+(\.\d+)?)(m?)$/
+const RE_MEM = /^\d+(Gi|Mi|G|M)$/
+const RE_NIFI_DURATION = /^\d+\s*(sec|min|hour|hours|day|days)$/
+const RE_NIFI_SIZE = /^\d+(\.\d+)?\s*(B|KB|MB|GB|TB|%)$/i
+const RE_JVM_HEAP = /^\d+(m|g)$/i
+
+function validateCpuLimit(v: string): string | null {
+  if (!v.trim()) return "CPU limit is required"
+  if (!RE_CPU.test(v.trim())) return "Invalid format (e.g. 2, 4, 500m)"
+  const m = v.trim().match(RE_CPU)
+  if (!m) return "Invalid format (e.g. 2, 4, 500m)"
+  const cores = m[3] === "m" ? parseFloat(m[1] ?? "0") / 1000 : parseFloat(m[1] ?? "0")
+  if (cores <= 0) return "Must be greater than 0"
+  if (cores > 64) return "Exceeds maximum (64 cores)"
+  return null
+}
+
+function validateMemLimit(v: string): string | null {
+  if (!v.trim()) return "Memory limit is required"
+  if (!RE_MEM.test(v.trim())) return "Invalid format (e.g. 2Gi, 4Gi, 512Mi)"
+  return null
+}
+
+function validatePositiveInt(v: string, label: string, max?: number): string | null {
+  const n = parseInt(v)
+  if (isNaN(n) || n < 1) return `${label} must be >= 1`
+  if (max && n > max) return `${label} must be <= ${max}`
+  return null
+}
+
+function validateNifiDuration(v: string, label: string): string | null {
+  if (!v.trim()) return `${label} is required`
+  if (!RE_NIFI_DURATION.test(v.trim())) return `${label}: use format like "10 sec", "1 min"`
+  return null
+}
+
+function validateNifiSize(v: string, label: string): string | null {
+  if (!v.trim()) return `${label} is required`
+  if (!RE_NIFI_SIZE.test(v.trim())) return `${label}: use format like "1 GB", "50%"`
+  return null
+}
+
+function FieldError({ msg }: { msg: string | null }) {
+  if (!msg) return null
+  return <span className="text-[10px] text-destructive">{msg}</span>
+}
+
 function NiFiConfigDialog({
   open, onOpenChange, workspaceId, service,
 }: {
@@ -478,6 +528,25 @@ function NiFiConfigDialog({
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
+  // Field-level validation
+  const fieldErrors = {
+    cpu: validateCpuLimit(cpuLimit),
+    mem: validateMemLimit(memLimit),
+    replicas: replicas < 1 || replicas > 5 ? "Nodes must be 1-5" : null,
+    jvmXmx: jvmXmx && !RE_JVM_HEAP.test(jvmXmx.trim()) ? "Format: e.g. 3072m, 3g" : null,
+    heartbeatInterval: validateNifiDuration(heartbeatInterval, "Interval"),
+    heartbeatMissMax: validatePositiveInt(heartbeatMissMax, "Missable max"),
+    connectionTimeout: validateNifiDuration(connectionTimeout, "Timeout"),
+    readTimeout: validateNifiDuration(readTimeout, "Timeout"),
+    maxConcurrentReq: validatePositiveInt(maxConcurrentReq, "Max requests", 500),
+    backpressureCount: validatePositiveInt(backpressureCount, "Count"),
+    backpressureSize: validateNifiSize(backpressureSize, "Size"),
+    provenanceMaxTime: validateNifiDuration(provenanceMaxTime, "Time"),
+    provenanceMaxSize: validateNifiSize(provenanceMaxSize, "Size"),
+    contentArchiveMax: validateNifiSize(contentArchiveMax, "Usage"),
+  }
+  const hasFieldErrors = Object.values(fieldErrors).some(Boolean)
+
   // Validate resources
   useEffect(() => {
     if (!open) return
@@ -495,6 +564,7 @@ function NiFiConfigDialog({
   }, [open, cpuLimit, memLimit, workspaceId, service.id])
 
   const handleApply = async () => {
+    if (hasFieldErrors) return
     if (validation && !validation.allowed) return
     setApplying(true)
     setError(null)
@@ -548,19 +618,23 @@ function NiFiConfigDialog({
               <div className="space-y-1">
                 <Label className="text-xs">Nodes</Label>
                 <Input type="number" min={1} max={5} value={replicas} onChange={(e) => setReplicas(Number(e.target.value))} />
+                <FieldError msg={fieldErrors.replicas} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">CPU Limit</Label>
                 <Input value={cpuLimit} onChange={(e) => setCpuLimit(e.target.value)} placeholder="e.g. 4" />
+                <FieldError msg={fieldErrors.cpu} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Memory Limit</Label>
                 <Input value={memLimit} onChange={(e) => setMemLimit(e.target.value)} placeholder="e.g. 4Gi" />
+                <FieldError msg={fieldErrors.mem} />
               </div>
             </div>
             <div className="space-y-1">
               <Label className="text-xs">JVM -Xmx <span className="text-muted-foreground">(leave empty for auto 80%)</span></Label>
               <Input value={jvmXmx} onChange={(e) => setJvmXmx(e.target.value)} placeholder="e.g. 3072m (auto if empty)" />
+              <FieldError msg={fieldErrors.jvmXmx} />
             </div>
           </div>
 
@@ -571,27 +645,27 @@ function NiFiConfigDialog({
               <div className="space-y-1">
                 <Label className="text-xs">heartbeat.interval</Label>
                 <Input value={heartbeatInterval} onChange={(e) => setHeartbeatInterval(e.target.value)} />
-                <span className="text-[10px] text-muted-foreground">Heartbeat send interval</span>
+                {fieldErrors.heartbeatInterval ? <FieldError msg={fieldErrors.heartbeatInterval} /> : <span className="text-[10px] text-muted-foreground">e.g. 10 sec, 1 min</span>}
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">heartbeat.missable.max</Label>
                 <Input type="number" min={1} value={heartbeatMissMax} onChange={(e) => setHeartbeatMissMax(e.target.value)} />
-                <span className="text-[10px] text-muted-foreground">Max missed before node removal</span>
+                {fieldErrors.heartbeatMissMax ? <FieldError msg={fieldErrors.heartbeatMissMax} /> : <span className="text-[10px] text-muted-foreground">Max missed before node removal</span>}
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">connection.timeout</Label>
                 <Input value={connectionTimeout} onChange={(e) => setConnectionTimeout(e.target.value)} />
-                <span className="text-[10px] text-muted-foreground">Node connection timeout</span>
+                {fieldErrors.connectionTimeout ? <FieldError msg={fieldErrors.connectionTimeout} /> : <span className="text-[10px] text-muted-foreground">e.g. 30 sec, 1 min</span>}
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">read.timeout</Label>
                 <Input value={readTimeout} onChange={(e) => setReadTimeout(e.target.value)} />
-                <span className="text-[10px] text-muted-foreground">Node read timeout</span>
+                {fieldErrors.readTimeout ? <FieldError msg={fieldErrors.readTimeout} /> : <span className="text-[10px] text-muted-foreground">e.g. 30 sec, 1 min</span>}
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">max.concurrent.requests</Label>
                 <Input type="number" min={1} value={maxConcurrentReq} onChange={(e) => setMaxConcurrentReq(e.target.value)} />
-                <span className="text-[10px] text-muted-foreground">Max concurrent per node</span>
+                {fieldErrors.maxConcurrentReq ? <FieldError msg={fieldErrors.maxConcurrentReq} /> : <span className="text-[10px] text-muted-foreground">Max concurrent per node</span>}
               </div>
             </div>
           </div>
@@ -603,12 +677,12 @@ function NiFiConfigDialog({
               <div className="space-y-1">
                 <Label className="text-xs">backpressure.count</Label>
                 <Input type="number" value={backpressureCount} onChange={(e) => setBackpressureCount(e.target.value)} />
-                <span className="text-[10px] text-muted-foreground">FlowFile count threshold</span>
+                {fieldErrors.backpressureCount ? <FieldError msg={fieldErrors.backpressureCount} /> : <span className="text-[10px] text-muted-foreground">FlowFile count threshold</span>}
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">backpressure.size</Label>
                 <Input value={backpressureSize} onChange={(e) => setBackpressureSize(e.target.value)} />
-                <span className="text-[10px] text-muted-foreground">Data size threshold</span>
+                {fieldErrors.backpressureSize ? <FieldError msg={fieldErrors.backpressureSize} /> : <span className="text-[10px] text-muted-foreground">e.g. 5 GB, 1 TB</span>}
               </div>
             </div>
           </div>
@@ -620,17 +694,17 @@ function NiFiConfigDialog({
               <div className="space-y-1">
                 <Label className="text-xs">provenance.max.time</Label>
                 <Input value={provenanceMaxTime} onChange={(e) => setProvenanceMaxTime(e.target.value)} />
-                <span className="text-[10px] text-muted-foreground">Retention period</span>
+                {fieldErrors.provenanceMaxTime ? <FieldError msg={fieldErrors.provenanceMaxTime} /> : <span className="text-[10px] text-muted-foreground">e.g. 24 hours, 7 day</span>}
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">provenance.max.size</Label>
                 <Input value={provenanceMaxSize} onChange={(e) => setProvenanceMaxSize(e.target.value)} />
-                <span className="text-[10px] text-muted-foreground">Max storage</span>
+                {fieldErrors.provenanceMaxSize ? <FieldError msg={fieldErrors.provenanceMaxSize} /> : <span className="text-[10px] text-muted-foreground">e.g. 1 GB, 500 MB</span>}
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">content.archive.max</Label>
                 <Input value={contentArchiveMax} onChange={(e) => setContentArchiveMax(e.target.value)} />
-                <span className="text-[10px] text-muted-foreground">Archive usage %</span>
+                {fieldErrors.contentArchiveMax ? <FieldError msg={fieldErrors.contentArchiveMax} /> : <span className="text-[10px] text-muted-foreground">e.g. 50%, 1 GB</span>}
               </div>
             </div>
           </div>
@@ -652,7 +726,7 @@ function NiFiConfigDialog({
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button size="sm" onClick={handleApply} disabled={applying || (validation && !validation.allowed)}>
+          <Button size="sm" onClick={handleApply} disabled={applying || hasFieldErrors || (validation && !validation.allowed)}>
             {applying ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
             Apply
           </Button>
@@ -700,6 +774,46 @@ function KafkaConfigDialog({
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
+  // Field-level validation
+  const kFieldErrors = {
+    cpu: validateCpuLimit(cpuLimit),
+    mem: validateMemLimit(memLimit),
+    replicas: replicas < 1 || replicas > 10 ? "Brokers must be 1-10" : null,
+    numPartitions: validatePositiveInt(numPartitions, "Partitions"),
+    replicationFactor: (() => {
+      const rf = parseInt(defaultReplicationFactor)
+      if (isNaN(rf) || rf < 1) return "Must be >= 1"
+      if (rf > replicas) return `Cannot exceed broker count (${replicas})`
+      return null
+    })(),
+    minInsyncReplicas: (() => {
+      const isr = parseInt(minInsyncReplicas)
+      const rf = parseInt(defaultReplicationFactor)
+      if (isNaN(isr) || isr < 1) return "Must be >= 1"
+      if (!isNaN(rf) && isr > rf) return `Cannot exceed replication factor (${rf})`
+      return null
+    })(),
+    logRetentionHours: (() => {
+      const h = parseInt(logRetentionHours)
+      if (isNaN(h) || h < -1) return "Must be >= -1 (-1 = unlimited)"
+      return null
+    })(),
+    logRetentionBytes: (() => {
+      const b = parseInt(logRetentionBytes)
+      if (isNaN(b)) return "Must be a number (-1 = unlimited)"
+      if (b < -1) return "Must be >= -1"
+      return null
+    })(),
+    logSegmentBytes: validatePositiveInt(logSegmentBytes, "Segment bytes"),
+    numIoThreads: validatePositiveInt(numIoThreads, "I/O threads", 64),
+    numNetworkThreads: validatePositiveInt(numNetworkThreads, "Network threads", 64),
+    messageMaxBytes: validatePositiveInt(messageMaxBytes, "Max bytes"),
+    socketSendBuffer: validatePositiveInt(socketSendBuffer, "Send buffer"),
+    socketReceiveBuffer: validatePositiveInt(socketReceiveBuffer, "Receive buffer"),
+    socketRequestMax: validatePositiveInt(socketRequestMax, "Request max"),
+  }
+  const hasKafkaFieldErrors = Object.values(kFieldErrors).some(Boolean)
+
   // Validate resources
   useEffect(() => {
     if (!open) return
@@ -717,6 +831,7 @@ function KafkaConfigDialog({
   }, [open, cpuLimit, memLimit, workspaceId, service.id])
 
   const handleApply = async () => {
+    if (hasKafkaFieldErrors) return
     if (validation && !validation.allowed) return
     setApplying(true)
     setError(null)
@@ -772,14 +887,17 @@ function KafkaConfigDialog({
               <div className="space-y-1">
                 <Label className="text-xs">Brokers</Label>
                 <Input type="number" min={1} max={10} value={replicas} onChange={(e) => setReplicas(Number(e.target.value))} />
+                <FieldError msg={kFieldErrors.replicas} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">CPU Limit</Label>
                 <Input value={cpuLimit} onChange={(e) => setCpuLimit(e.target.value)} placeholder="e.g. 1, 2" />
+                <FieldError msg={kFieldErrors.cpu} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Memory Limit</Label>
                 <Input value={memLimit} onChange={(e) => setMemLimit(e.target.value)} placeholder="e.g. 2Gi" />
+                <FieldError msg={kFieldErrors.mem} />
               </div>
             </div>
           </div>
@@ -791,17 +909,17 @@ function KafkaConfigDialog({
               <div className="space-y-1">
                 <Label className="text-xs">num.partitions</Label>
                 <Input type="number" min={1} value={numPartitions} onChange={(e) => setNumPartitions(e.target.value)} />
-                <span className="text-[10px] text-muted-foreground">Default partitions per new topic</span>
+                {kFieldErrors.numPartitions ? <FieldError msg={kFieldErrors.numPartitions} /> : <span className="text-[10px] text-muted-foreground">Default partitions per new topic</span>}
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">default.replication.factor</Label>
                 <Input type="number" min={1} value={defaultReplicationFactor} onChange={(e) => setDefaultReplicationFactor(e.target.value)} />
-                <span className="text-[10px] text-muted-foreground">Default replication for new topics</span>
+                {kFieldErrors.replicationFactor ? <FieldError msg={kFieldErrors.replicationFactor} /> : <span className="text-[10px] text-muted-foreground">Default replication for new topics</span>}
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">min.insync.replicas</Label>
                 <Input type="number" min={1} value={minInsyncReplicas} onChange={(e) => setMinInsyncReplicas(e.target.value)} />
-                <span className="text-[10px] text-muted-foreground">Min replicas that must ack a write</span>
+                {kFieldErrors.minInsyncReplicas ? <FieldError msg={kFieldErrors.minInsyncReplicas} /> : <span className="text-[10px] text-muted-foreground">Min replicas that must ack a write</span>}
               </div>
               <div className="flex items-center gap-2 pt-4">
                 <input type="checkbox" id="kafka-auto-topics" checked={autoCreateTopics} onChange={(e) => setAutoCreateTopics(e.target.checked)} />
@@ -817,17 +935,17 @@ function KafkaConfigDialog({
               <div className="space-y-1">
                 <Label className="text-xs">log.retention.hours</Label>
                 <Input type="number" value={logRetentionHours} onChange={(e) => setLogRetentionHours(e.target.value)} />
-                <span className="text-[10px] text-muted-foreground">Message retention (hours)</span>
+                {kFieldErrors.logRetentionHours ? <FieldError msg={kFieldErrors.logRetentionHours} /> : <span className="text-[10px] text-muted-foreground">-1 = unlimited</span>}
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">log.retention.bytes</Label>
                 <Input value={logRetentionBytes} onChange={(e) => setLogRetentionBytes(e.target.value)} />
-                <span className="text-[10px] text-muted-foreground">-1 = unlimited</span>
+                {kFieldErrors.logRetentionBytes ? <FieldError msg={kFieldErrors.logRetentionBytes} /> : <span className="text-[10px] text-muted-foreground">-1 = unlimited</span>}
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">log.segment.bytes</Label>
                 <Input value={logSegmentBytes} onChange={(e) => setLogSegmentBytes(e.target.value)} />
-                <span className="text-[10px] text-muted-foreground">Segment file size</span>
+                {kFieldErrors.logSegmentBytes ? <FieldError msg={kFieldErrors.logSegmentBytes} /> : <span className="text-[10px] text-muted-foreground">Segment file size</span>}
               </div>
             </div>
           </div>
@@ -839,17 +957,17 @@ function KafkaConfigDialog({
               <div className="space-y-1">
                 <Label className="text-xs">num.io.threads</Label>
                 <Input type="number" min={1} value={numIoThreads} onChange={(e) => setNumIoThreads(e.target.value)} />
-                <span className="text-[10px] text-muted-foreground">Disk I/O threads</span>
+                {kFieldErrors.numIoThreads ? <FieldError msg={kFieldErrors.numIoThreads} /> : <span className="text-[10px] text-muted-foreground">Disk I/O threads</span>}
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">num.network.threads</Label>
                 <Input type="number" min={1} value={numNetworkThreads} onChange={(e) => setNumNetworkThreads(e.target.value)} />
-                <span className="text-[10px] text-muted-foreground">Network handler threads</span>
+                {kFieldErrors.numNetworkThreads ? <FieldError msg={kFieldErrors.numNetworkThreads} /> : <span className="text-[10px] text-muted-foreground">Network handler threads</span>}
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">message.max.bytes</Label>
                 <Input value={messageMaxBytes} onChange={(e) => setMessageMaxBytes(e.target.value)} />
-                <span className="text-[10px] text-muted-foreground">Max message size</span>
+                {kFieldErrors.messageMaxBytes ? <FieldError msg={kFieldErrors.messageMaxBytes} /> : <span className="text-[10px] text-muted-foreground">Max message size</span>}
               </div>
             </div>
           </div>
@@ -861,14 +979,17 @@ function KafkaConfigDialog({
               <div className="space-y-1">
                 <Label className="text-xs">socket.send.buffer</Label>
                 <Input value={socketSendBuffer} onChange={(e) => setSocketSendBuffer(e.target.value)} />
+                <FieldError msg={kFieldErrors.socketSendBuffer} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">socket.receive.buffer</Label>
                 <Input value={socketReceiveBuffer} onChange={(e) => setSocketReceiveBuffer(e.target.value)} />
+                <FieldError msg={kFieldErrors.socketReceiveBuffer} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">socket.request.max</Label>
                 <Input value={socketRequestMax} onChange={(e) => setSocketRequestMax(e.target.value)} />
+                <FieldError msg={kFieldErrors.socketRequestMax} />
               </div>
             </div>
           </div>
@@ -890,7 +1011,7 @@ function KafkaConfigDialog({
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button size="sm" onClick={handleApply} disabled={applying || (validation && !validation.allowed)}>
+          <Button size="sm" onClick={handleApply} disabled={applying || hasKafkaFieldErrors || (validation && !validation.allowed)}>
             {applying ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
             Apply
           </Button>
