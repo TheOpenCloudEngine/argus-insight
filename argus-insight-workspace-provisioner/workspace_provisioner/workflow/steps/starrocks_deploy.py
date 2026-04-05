@@ -30,7 +30,8 @@ class StarRocksDeployStep(WorkflowStep):
 
         await ensure_namespace(namespace)
 
-        config: StarRocksConfig = ctx.get("argus_starrocks_config", StarRocksConfig())
+        tier = ctx.get("argus_starrocks_tier", "development")
+        config: StarRocksConfig = ctx.get("argus_starrocks_config", StarRocksConfig.from_tier(tier))
 
         from workspace_provisioner.service import generate_service_id
         svc_id = generate_service_id()
@@ -105,6 +106,26 @@ class StarRocksDeployStep(WorkflowStep):
         else:
             logger.warning("StarRocks BE registration may have issues: %s", stderr.decode())
 
+        # Set root password for FE
+        import secrets
+        import string
+        root_password = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(16))
+        pw_cmd = [
+            "kubectl", "exec", f"argus-starrocks-{workspace_name}-fe-0", "-n", namespace,
+            "--", "mysql", "-h", "127.0.0.1", "-P", "9030", "-u", "root",
+            "-e", f"SET PASSWORD FOR 'root' = PASSWORD('{root_password}');",
+        ]
+        if kubeconfig:
+            pw_cmd.insert(1, f"--kubeconfig={kubeconfig}")
+        proc = await asyncio.create_subprocess_exec(
+            *pw_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        pw_out, pw_err = await proc.communicate()
+        if proc.returncode == 0:
+            logger.info("StarRocks root password set")
+        else:
+            logger.warning("StarRocks root password set may have failed: %s", pw_err.decode())
+
         ctx.set("starrocks_endpoint", hostname)
         ctx.set("starrocks_manifests", manifests)
 
@@ -122,10 +143,16 @@ class StarRocksDeployStep(WorkflowStep):
             service_id=svc_id,
             metadata={
                 "display": {
-                    "MySQL Port": "9030",
+                    "Tier": config.tier.capitalize(),
                     "Backend Nodes": str(config.be_replicas),
+                    "Username": "root",
+                    "Password": root_password,
+                    "MySQL Port": "9030",
+                    "JDBC URL": f"jdbc:mysql://argus-starrocks-{workspace_name}-fe.{namespace}.svc.cluster.local:9030",
+                    "JDBC Driver": "com.mysql.cj.jdbc.Driver",
                 },
                 "internal": {
+                    "endpoint": f"{internal_fe}:9030",
                     "fe_http": f"{internal_fe}:8030",
                     "fe_mysql": f"{internal_fe}:9030",
                     "namespace": namespace,
@@ -133,9 +160,29 @@ class StarRocksDeployStep(WorkflowStep):
                 "resources": {
                     "cpu_limit": config.fe_resources.cpu_limit,
                     "memory_limit": config.fe_resources.memory_limit,
+                    "be_cpu_limit": config.be_resources.cpu_limit,
+                    "be_memory_limit": config.be_resources.memory_limit,
                 },
             },
         )
+
+        # Auto-refresh Trino catalogs if Trino is running in this workspace
+        try:
+            from workspace_provisioner.workflow.steps.trino_deploy import _build_catalog_configmap
+            catalog_yaml = await _build_catalog_configmap(ctx.workspace_id, workspace_name, namespace)
+            await kubectl_apply(catalog_yaml, kubeconfig=kubeconfig)
+            # Restart Trino to pick up new catalog
+            restart_proc = await asyncio.create_subprocess_exec(
+                "kubectl", "rollout", "restart", f"deployment/argus-trino-{workspace_name}",
+                "-n", namespace, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            await restart_proc.communicate()
+            if restart_proc.returncode == 0:
+                logger.info("Trino catalogs refreshed with StarRocks")
+            else:
+                logger.debug("No Trino deployment found — skipping catalog refresh")
+        except Exception as e:
+            logger.debug("Trino catalog refresh skipped: %s", e)
 
         return {"endpoint": hostname, "service_id": svc_id}
 

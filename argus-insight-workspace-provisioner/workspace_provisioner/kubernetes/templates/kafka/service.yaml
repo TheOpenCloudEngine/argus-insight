@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: argus-kafka-${WORKSPACE_NAME}-headless
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: client
+      port: 9092
+      targetPort: client
+    - name: controller
+      port: 9093
+      targetPort: controller
+  selector:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: argus-kafka-${WORKSPACE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+spec:
+  type: ClusterIP
+  ports:
+    - name: client
+      port: 9092
+      targetPort: client
+  selector:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}

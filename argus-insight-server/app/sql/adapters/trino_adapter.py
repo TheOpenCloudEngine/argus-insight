@@ -113,9 +113,8 @@ class TrinoAdapter(BaseAdapter):
             "port": self.config.port,
             "user": self.config.username or "argus",
         }
-        catalog = self.config.extra.get("catalog") or self.config.database
-        if catalog:
-            kwargs["catalog"] = catalog
+        catalog = self.config.extra.get("catalog") or self.config.database or "system"
+        kwargs["catalog"] = catalog
         schema = self.config.extra.get("schema")
         if schema:
             kwargs["schema"] = schema

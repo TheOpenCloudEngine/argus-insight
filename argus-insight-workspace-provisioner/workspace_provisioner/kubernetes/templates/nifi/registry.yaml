@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argus-nifi-registry-${WORKSPACE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: nifi-registry
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nifi-registry
+      app.kubernetes.io/instance: ${WORKSPACE_NAME}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nifi-registry
+        app.kubernetes.io/instance: ${WORKSPACE_NAME}
+        app.kubernetes.io/part-of: argus-insight
+        argus-insight/workspace: ${WORKSPACE_NAME}
+    spec:
+      containers:
+        - name: nifi-registry
+          image: ${NIFI_REGISTRY_IMAGE}
+          ports:
+            - name: http
+              containerPort: 18080
+          env:
+            - name: NIFI_REGISTRY_WEB_HTTP_HOST
+              value: "0.0.0.0"
+            - name: NIFI_REGISTRY_WEB_HTTP_PORT
+              value: "18080"
+          resources:
+            requests:
+              cpu: "${REGISTRY_CPU_REQUEST}"
+              memory: "${REGISTRY_MEMORY_REQUEST}"
+            limits:
+              cpu: "${REGISTRY_CPU_LIMIT}"
+              memory: "${REGISTRY_MEMORY_LIMIT}"
+          readinessProbe:
+            httpGet:
+              path: /nifi-registry
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /nifi-registry
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          volumeMounts:
+            - name: registry-db
+              mountPath: /opt/nifi-registry/nifi-registry-current/database
+            - name: registry-flow
+              mountPath: /opt/nifi-registry/nifi-registry-current/flow_storage
+      volumes:
+        - name: registry-db
+          persistentVolumeClaim:
+            claimName: nifi-registry-db-${WORKSPACE_NAME}
+        - name: registry-flow
+          persistentVolumeClaim:
+            claimName: nifi-registry-flow-${WORKSPACE_NAME}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nifi-registry-db-${WORKSPACE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: nifi-registry
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: ${REGISTRY_DB_STORAGE}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nifi-registry-flow-${WORKSPACE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: nifi-registry
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: ${REGISTRY_FLOW_STORAGE}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: argus-nifi-registry-${WORKSPACE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: nifi-registry
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 18080
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: nifi-registry
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}

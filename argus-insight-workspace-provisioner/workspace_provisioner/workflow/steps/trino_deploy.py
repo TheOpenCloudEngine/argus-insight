@@ -72,9 +72,17 @@ async def _build_catalog_configmap(workspace_id: int, workspace_name: str, names
             internal = meta.get("internal", {})
 
             host = internal.get("host", "")
-            db_name = display.get("DB Name", "")
-            db_user = display.get("DB User", "")
-            db_pass = display.get("DB Password", "")
+            # Fallback: parse host from internal endpoint (e.g. "http://host:9030")
+            if not host:
+                ep = internal.get("endpoint", internal.get("fe_mysql", ""))
+                if ep:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(ep if "://" in ep else f"tcp://{ep}")
+                    host = parsed.hostname or ""
+
+            db_name = display.get("DB Name", display.get("Database", ""))
+            db_user = display.get("DB User", display.get("Username", ""))
+            db_pass = display.get("DB Password", display.get("Password", ""))
 
             if not host:
                 logger.warning("Skipping catalog for %s: no internal host", plugin_name)

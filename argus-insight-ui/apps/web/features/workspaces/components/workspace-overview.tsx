@@ -266,7 +266,7 @@ function DetailRow({
 /* ------------------------------------------------------------------ */
 
 const CONFIGURABLE_PLUGINS = new Set([
-  "argus-mariadb", "argus-postgresql", "argus-trino",
+  "argus-mariadb", "argus-postgresql", "argus-trino", "argus-starrocks", "argus-kafka", "argus-nifi",
   "argus-jupyter", "argus-jupyter-tensorflow", "argus-jupyter-pyspark",
   "argus-mlflow", "argus-airflow", "argus-ollama", "argus-vscode-server",
 ])
@@ -430,6 +430,767 @@ function ServiceConfigSheet({
 // ---------------------------------------------------------------------------
 // Trino Configuration Dialog
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// StarRocks Configuration Dialog
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Kafka Configuration Dialog
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// NiFi Configuration Dialog
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Shared validation helpers for configure dialogs
+// ---------------------------------------------------------------------------
+const RE_CPU = /^(\d+(\.\d+)?)(m?)$/
+const RE_MEM = /^\d+(Gi|Mi|G|M)$/
+const RE_NIFI_DURATION = /^\d+\s*(sec|min|hour|hours|day|days)$/
+const RE_NIFI_SIZE = /^\d+(\.\d+)?\s*(B|KB|MB|GB|TB|%)$/i
+const RE_JVM_HEAP = /^\d+(m|g)$/i
+
+function validateCpuLimit(v: string): string | null {
+  if (!v.trim()) return "CPU limit is required"
+  if (!RE_CPU.test(v.trim())) return "Invalid format (e.g. 2, 4, 500m)"
+  const m = v.trim().match(RE_CPU)
+  if (!m) return "Invalid format (e.g. 2, 4, 500m)"
+  const cores = m[3] === "m" ? parseFloat(m[1] ?? "0") / 1000 : parseFloat(m[1] ?? "0")
+  if (cores <= 0) return "Must be greater than 0"
+  if (cores > 64) return "Exceeds maximum (64 cores)"
+  return null
+}
+
+function validateMemLimit(v: string): string | null {
+  if (!v.trim()) return "Memory limit is required"
+  if (!RE_MEM.test(v.trim())) return "Invalid format (e.g. 2Gi, 4Gi, 512Mi)"
+  return null
+}
+
+function validatePositiveInt(v: string, label: string, max?: number): string | null {
+  const n = parseInt(v)
+  if (isNaN(n) || n < 1) return `${label} must be >= 1`
+  if (max && n > max) return `${label} must be <= ${max}`
+  return null
+}
+
+function validateNifiDuration(v: string, label: string): string | null {
+  if (!v.trim()) return `${label} is required`
+  if (!RE_NIFI_DURATION.test(v.trim())) return `${label}: use format like "10 sec", "1 min"`
+  return null
+}
+
+function validateNifiSize(v: string, label: string): string | null {
+  if (!v.trim()) return `${label} is required`
+  if (!RE_NIFI_SIZE.test(v.trim())) return `${label}: use format like "1 GB", "50%"`
+  return null
+}
+
+function FieldError({ msg }: { msg: string | null }) {
+  if (!msg) return null
+  return <span className="text-[10px] text-destructive">{msg}</span>
+}
+
+function NiFiConfigDialog({
+  open, onOpenChange, workspaceId, service,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  workspaceId: number
+  service: WorkspaceService
+}) {
+  const meta = (service.metadata ?? {}) as Record<string, any>
+  const resources = meta.resources ?? {}
+
+  // Resources
+  const [replicas, setReplicas] = useState(Number(meta.display?.Nodes) || 1)
+  const [cpuLimit, setCpuLimit] = useState(resources.cpu_limit || "2")
+  const [memLimit, setMemLimit] = useState(resources.memory_limit || "2Gi")
+  const [jvmXmx, setJvmXmx] = useState("")
+  // Heartbeat
+  const [heartbeatInterval, setHeartbeatInterval] = useState("10 sec")
+  const [heartbeatMissMax, setHeartbeatMissMax] = useState("8")
+  const [connectionTimeout, setConnectionTimeout] = useState("30 sec")
+  const [readTimeout, setReadTimeout] = useState("30 sec")
+  const [maxConcurrentReq, setMaxConcurrentReq] = useState("100")
+  // Queue
+  const [backpressureCount, setBackpressureCount] = useState("10000")
+  const [backpressureSize, setBackpressureSize] = useState("5 GB")
+  // Repository
+  const [provenanceMaxTime, setProvenanceMaxTime] = useState("24 hours")
+  const [provenanceMaxSize, setProvenanceMaxSize] = useState("1 GB")
+  const [contentArchiveMax, setContentArchiveMax] = useState("50%")
+
+  const [applying, setApplying] = useState(false)
+  const [validation, setValidation] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  // Field-level validation
+  const fieldErrors = {
+    cpu: validateCpuLimit(cpuLimit),
+    mem: validateMemLimit(memLimit),
+    replicas: replicas < 1 || replicas > 5 ? "Nodes must be 1-5" : null,
+    jvmXmx: jvmXmx && !RE_JVM_HEAP.test(jvmXmx.trim()) ? "Format: e.g. 3072m, 3g" : null,
+    heartbeatInterval: validateNifiDuration(heartbeatInterval, "Interval"),
+    heartbeatMissMax: validatePositiveInt(heartbeatMissMax, "Missable max"),
+    connectionTimeout: validateNifiDuration(connectionTimeout, "Timeout"),
+    readTimeout: validateNifiDuration(readTimeout, "Timeout"),
+    maxConcurrentReq: validatePositiveInt(maxConcurrentReq, "Max requests", 500),
+    backpressureCount: validatePositiveInt(backpressureCount, "Count"),
+    backpressureSize: validateNifiSize(backpressureSize, "Size"),
+    provenanceMaxTime: validateNifiDuration(provenanceMaxTime, "Time"),
+    provenanceMaxSize: validateNifiSize(provenanceMaxSize, "Size"),
+    contentArchiveMax: validateNifiSize(contentArchiveMax, "Usage"),
+  }
+  const hasFieldErrors = Object.values(fieldErrors).some(Boolean)
+
+  // Validate resources
+  useEffect(() => {
+    if (!open) return
+    const timer = setTimeout(async () => {
+      try {
+        const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/services/${service.id}/configure/validate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cpu_limit: cpuLimit, memory_limit: memLimit }),
+        })
+        if (res.ok) setValidation(await res.json())
+      } catch { /* ignore */ }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [open, cpuLimit, memLimit, workspaceId, service.id])
+
+  const handleApply = async () => {
+    if (hasFieldErrors) return
+    if (validation && !validation.allowed) return
+    setApplying(true)
+    setError(null)
+    setSuccess(false)
+    try {
+      const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/nifi/configure`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          replicas,
+          cpu_limit: cpuLimit,
+          memory_limit: memLimit,
+          jvm_xmx: jvmXmx || undefined,
+          heartbeat_interval: heartbeatInterval,
+          heartbeat_missable_max: parseInt(heartbeatMissMax) || undefined,
+          connection_timeout: connectionTimeout,
+          read_timeout: readTimeout,
+          max_concurrent_requests: parseInt(maxConcurrentReq) || undefined,
+          backpressure_count: parseInt(backpressureCount) || undefined,
+          backpressure_size: backpressureSize,
+          provenance_max_storage_time: provenanceMaxTime,
+          provenance_max_storage_size: provenanceMaxSize,
+          content_archive_max_usage: contentArchiveMax,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.detail || `Failed: ${res.status}`)
+      }
+      setSuccess(true)
+      setTimeout(() => { setSuccess(false); onOpenChange(false) }, 2000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to apply")
+    }
+    setApplying(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Configure NiFi</DialogTitle>
+          <DialogDescription>Adjust NiFi cluster settings. Changes trigger a rolling restart.</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          {/* Resources */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Resources</Label>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">Nodes</Label>
+                <Input type="number" min={1} max={5} value={replicas} onChange={(e) => setReplicas(Number(e.target.value))} />
+                <FieldError msg={fieldErrors.replicas} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">CPU Limit</Label>
+                <Input value={cpuLimit} onChange={(e) => setCpuLimit(e.target.value)} placeholder="e.g. 4" />
+                <FieldError msg={fieldErrors.cpu} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Memory Limit</Label>
+                <Input value={memLimit} onChange={(e) => setMemLimit(e.target.value)} placeholder="e.g. 4Gi" />
+                <FieldError msg={fieldErrors.mem} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">JVM -Xmx <span className="text-muted-foreground">(leave empty for auto 80%)</span></Label>
+              <Input value={jvmXmx} onChange={(e) => setJvmXmx(e.target.value)} placeholder="e.g. 3072m (auto if empty)" />
+              <FieldError msg={fieldErrors.jvmXmx} />
+            </div>
+          </div>
+
+          {/* Heartbeat */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Heartbeat & Cluster</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">heartbeat.interval</Label>
+                <Input value={heartbeatInterval} onChange={(e) => setHeartbeatInterval(e.target.value)} />
+                {fieldErrors.heartbeatInterval ? <FieldError msg={fieldErrors.heartbeatInterval} /> : <span className="text-[10px] text-muted-foreground">e.g. 10 sec, 1 min</span>}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">heartbeat.missable.max</Label>
+                <Input type="number" min={1} value={heartbeatMissMax} onChange={(e) => setHeartbeatMissMax(e.target.value)} />
+                {fieldErrors.heartbeatMissMax ? <FieldError msg={fieldErrors.heartbeatMissMax} /> : <span className="text-[10px] text-muted-foreground">Max missed before node removal</span>}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">connection.timeout</Label>
+                <Input value={connectionTimeout} onChange={(e) => setConnectionTimeout(e.target.value)} />
+                {fieldErrors.connectionTimeout ? <FieldError msg={fieldErrors.connectionTimeout} /> : <span className="text-[10px] text-muted-foreground">e.g. 30 sec, 1 min</span>}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">read.timeout</Label>
+                <Input value={readTimeout} onChange={(e) => setReadTimeout(e.target.value)} />
+                {fieldErrors.readTimeout ? <FieldError msg={fieldErrors.readTimeout} /> : <span className="text-[10px] text-muted-foreground">e.g. 30 sec, 1 min</span>}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">max.concurrent.requests</Label>
+                <Input type="number" min={1} value={maxConcurrentReq} onChange={(e) => setMaxConcurrentReq(e.target.value)} />
+                {fieldErrors.maxConcurrentReq ? <FieldError msg={fieldErrors.maxConcurrentReq} /> : <span className="text-[10px] text-muted-foreground">Max concurrent per node</span>}
+              </div>
+            </div>
+          </div>
+
+          {/* Queue */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Queue Backpressure</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">backpressure.count</Label>
+                <Input type="number" value={backpressureCount} onChange={(e) => setBackpressureCount(e.target.value)} />
+                {fieldErrors.backpressureCount ? <FieldError msg={fieldErrors.backpressureCount} /> : <span className="text-[10px] text-muted-foreground">FlowFile count threshold</span>}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">backpressure.size</Label>
+                <Input value={backpressureSize} onChange={(e) => setBackpressureSize(e.target.value)} />
+                {fieldErrors.backpressureSize ? <FieldError msg={fieldErrors.backpressureSize} /> : <span className="text-[10px] text-muted-foreground">e.g. 5 GB, 1 TB</span>}
+              </div>
+            </div>
+          </div>
+
+          {/* Repository */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Repository</Label>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">provenance.max.time</Label>
+                <Input value={provenanceMaxTime} onChange={(e) => setProvenanceMaxTime(e.target.value)} />
+                {fieldErrors.provenanceMaxTime ? <FieldError msg={fieldErrors.provenanceMaxTime} /> : <span className="text-[10px] text-muted-foreground">e.g. 24 hours, 7 day</span>}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">provenance.max.size</Label>
+                <Input value={provenanceMaxSize} onChange={(e) => setProvenanceMaxSize(e.target.value)} />
+                {fieldErrors.provenanceMaxSize ? <FieldError msg={fieldErrors.provenanceMaxSize} /> : <span className="text-[10px] text-muted-foreground">e.g. 1 GB, 500 MB</span>}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">content.archive.max</Label>
+                <Input value={contentArchiveMax} onChange={(e) => setContentArchiveMax(e.target.value)} />
+                {fieldErrors.contentArchiveMax ? <FieldError msg={fieldErrors.contentArchiveMax} /> : <span className="text-[10px] text-muted-foreground">e.g. 50%, 1 GB</span>}
+              </div>
+            </div>
+          </div>
+
+          {/* Validation */}
+          {validation && (
+            <div className={`rounded-md border px-3 py-2 text-xs ${validation.allowed ? "bg-muted/30" : "bg-destructive/10 border-destructive/30 text-destructive"}`}>
+              <div className="flex justify-between">
+                <span>CPU: {validation.after?.cpu_used} / {validation.limit?.cpu} cores</span>
+                <span>Memory: {validation.after?.memory_used_gb} / {validation.limit?.memory_gb} GiB</span>
+              </div>
+              {!validation.allowed && <div className="mt-1 font-medium">{validation.message}</div>}
+            </div>
+          )}
+
+          {error && <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive">{error}</div>}
+          {success && <div className="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700">Restarting the service with the requested resources.</div>}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button size="sm" onClick={handleApply} disabled={applying || hasFieldErrors || (validation && !validation.allowed)}>
+            {applying ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+            Apply
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function KafkaConfigDialog({
+  open, onOpenChange, workspaceId, service,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  workspaceId: number
+  service: WorkspaceService
+}) {
+  const meta = (service.metadata ?? {}) as Record<string, any>
+  const resources = meta.resources ?? {}
+
+  // Resources
+  const [replicas, setReplicas] = useState(Number(meta.display?.Brokers) || 1)
+  const [cpuLimit, setCpuLimit] = useState(resources.cpu_limit || "1")
+  const [memLimit, setMemLimit] = useState(resources.memory_limit || "2Gi")
+  // Broker
+  const [numPartitions, setNumPartitions] = useState("1")
+  const [defaultReplicationFactor, setDefaultReplicationFactor] = useState("1")
+  const [minInsyncReplicas, setMinInsyncReplicas] = useState("1")
+  const [autoCreateTopics, setAutoCreateTopics] = useState(true)
+  // Retention
+  const [logRetentionHours, setLogRetentionHours] = useState("168")
+  const [logRetentionBytes, setLogRetentionBytes] = useState("-1")
+  const [logSegmentBytes, setLogSegmentBytes] = useState("1073741824")
+  // Performance
+  const [numIoThreads, setNumIoThreads] = useState("8")
+  const [numNetworkThreads, setNumNetworkThreads] = useState("3")
+  const [messageMaxBytes, setMessageMaxBytes] = useState("1048588")
+  // Buffer
+  const [socketSendBuffer, setSocketSendBuffer] = useState("102400")
+  const [socketReceiveBuffer, setSocketReceiveBuffer] = useState("102400")
+  const [socketRequestMax, setSocketRequestMax] = useState("104857600")
+
+  const [applying, setApplying] = useState(false)
+  const [validation, setValidation] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  // Field-level validation
+  const kFieldErrors = {
+    cpu: validateCpuLimit(cpuLimit),
+    mem: validateMemLimit(memLimit),
+    replicas: replicas < 1 || replicas > 10 ? "Brokers must be 1-10" : null,
+    numPartitions: validatePositiveInt(numPartitions, "Partitions"),
+    replicationFactor: (() => {
+      const rf = parseInt(defaultReplicationFactor)
+      if (isNaN(rf) || rf < 1) return "Must be >= 1"
+      if (rf > replicas) return `Cannot exceed broker count (${replicas})`
+      return null
+    })(),
+    minInsyncReplicas: (() => {
+      const isr = parseInt(minInsyncReplicas)
+      const rf = parseInt(defaultReplicationFactor)
+      if (isNaN(isr) || isr < 1) return "Must be >= 1"
+      if (!isNaN(rf) && isr > rf) return `Cannot exceed replication factor (${rf})`
+      return null
+    })(),
+    logRetentionHours: (() => {
+      const h = parseInt(logRetentionHours)
+      if (isNaN(h) || h < -1) return "Must be >= -1 (-1 = unlimited)"
+      return null
+    })(),
+    logRetentionBytes: (() => {
+      const b = parseInt(logRetentionBytes)
+      if (isNaN(b)) return "Must be a number (-1 = unlimited)"
+      if (b < -1) return "Must be >= -1"
+      return null
+    })(),
+    logSegmentBytes: validatePositiveInt(logSegmentBytes, "Segment bytes"),
+    numIoThreads: validatePositiveInt(numIoThreads, "I/O threads", 64),
+    numNetworkThreads: validatePositiveInt(numNetworkThreads, "Network threads", 64),
+    messageMaxBytes: validatePositiveInt(messageMaxBytes, "Max bytes"),
+    socketSendBuffer: validatePositiveInt(socketSendBuffer, "Send buffer"),
+    socketReceiveBuffer: validatePositiveInt(socketReceiveBuffer, "Receive buffer"),
+    socketRequestMax: validatePositiveInt(socketRequestMax, "Request max"),
+  }
+  const hasKafkaFieldErrors = Object.values(kFieldErrors).some(Boolean)
+
+  // Validate resources
+  useEffect(() => {
+    if (!open) return
+    const timer = setTimeout(async () => {
+      try {
+        const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/services/${service.id}/configure/validate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cpu_limit: cpuLimit, memory_limit: memLimit }),
+        })
+        if (res.ok) setValidation(await res.json())
+      } catch { /* ignore */ }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [open, cpuLimit, memLimit, workspaceId, service.id])
+
+  const handleApply = async () => {
+    if (hasKafkaFieldErrors) return
+    if (validation && !validation.allowed) return
+    setApplying(true)
+    setError(null)
+    setSuccess(false)
+    try {
+      const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/kafka/configure`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          replicas,
+          cpu_limit: cpuLimit,
+          memory_limit: memLimit,
+          num_partitions: parseInt(numPartitions) || undefined,
+          default_replication_factor: parseInt(defaultReplicationFactor) || undefined,
+          min_insync_replicas: parseInt(minInsyncReplicas) || undefined,
+          auto_create_topics: autoCreateTopics,
+          log_retention_hours: parseInt(logRetentionHours) || undefined,
+          log_retention_bytes: parseInt(logRetentionBytes),
+          log_segment_bytes: parseInt(logSegmentBytes) || undefined,
+          num_io_threads: parseInt(numIoThreads) || undefined,
+          num_network_threads: parseInt(numNetworkThreads) || undefined,
+          message_max_bytes: parseInt(messageMaxBytes) || undefined,
+          socket_send_buffer_bytes: parseInt(socketSendBuffer) || undefined,
+          socket_receive_buffer_bytes: parseInt(socketReceiveBuffer) || undefined,
+          socket_request_max_bytes: parseInt(socketRequestMax) || undefined,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.detail || `Failed: ${res.status}`)
+      }
+      setSuccess(true)
+      setTimeout(() => { setSuccess(false); onOpenChange(false) }, 2000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to apply")
+    }
+    setApplying(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Configure Kafka</DialogTitle>
+          <DialogDescription>Adjust Kafka broker settings. Changes trigger a rolling restart.</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          {/* Resources */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Resources</Label>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">Brokers</Label>
+                <Input type="number" min={1} max={10} value={replicas} onChange={(e) => setReplicas(Number(e.target.value))} />
+                <FieldError msg={kFieldErrors.replicas} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">CPU Limit</Label>
+                <Input value={cpuLimit} onChange={(e) => setCpuLimit(e.target.value)} placeholder="e.g. 1, 2" />
+                <FieldError msg={kFieldErrors.cpu} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Memory Limit</Label>
+                <Input value={memLimit} onChange={(e) => setMemLimit(e.target.value)} placeholder="e.g. 2Gi" />
+                <FieldError msg={kFieldErrors.mem} />
+              </div>
+            </div>
+          </div>
+
+          {/* Broker Settings */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Broker</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">num.partitions</Label>
+                <Input type="number" min={1} value={numPartitions} onChange={(e) => setNumPartitions(e.target.value)} />
+                {kFieldErrors.numPartitions ? <FieldError msg={kFieldErrors.numPartitions} /> : <span className="text-[10px] text-muted-foreground">Default partitions per new topic</span>}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">default.replication.factor</Label>
+                <Input type="number" min={1} value={defaultReplicationFactor} onChange={(e) => setDefaultReplicationFactor(e.target.value)} />
+                {kFieldErrors.replicationFactor ? <FieldError msg={kFieldErrors.replicationFactor} /> : <span className="text-[10px] text-muted-foreground">Default replication for new topics</span>}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">min.insync.replicas</Label>
+                <Input type="number" min={1} value={minInsyncReplicas} onChange={(e) => setMinInsyncReplicas(e.target.value)} />
+                {kFieldErrors.minInsyncReplicas ? <FieldError msg={kFieldErrors.minInsyncReplicas} /> : <span className="text-[10px] text-muted-foreground">Min replicas that must ack a write</span>}
+              </div>
+              <div className="flex items-center gap-2 pt-4">
+                <input type="checkbox" id="kafka-auto-topics" checked={autoCreateTopics} onChange={(e) => setAutoCreateTopics(e.target.checked)} />
+                <Label htmlFor="kafka-auto-topics" className="text-xs cursor-pointer">auto.create.topics</Label>
+              </div>
+            </div>
+          </div>
+
+          {/* Retention */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Retention</Label>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">log.retention.hours</Label>
+                <Input type="number" value={logRetentionHours} onChange={(e) => setLogRetentionHours(e.target.value)} />
+                {kFieldErrors.logRetentionHours ? <FieldError msg={kFieldErrors.logRetentionHours} /> : <span className="text-[10px] text-muted-foreground">-1 = unlimited</span>}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">log.retention.bytes</Label>
+                <Input value={logRetentionBytes} onChange={(e) => setLogRetentionBytes(e.target.value)} />
+                {kFieldErrors.logRetentionBytes ? <FieldError msg={kFieldErrors.logRetentionBytes} /> : <span className="text-[10px] text-muted-foreground">-1 = unlimited</span>}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">log.segment.bytes</Label>
+                <Input value={logSegmentBytes} onChange={(e) => setLogSegmentBytes(e.target.value)} />
+                {kFieldErrors.logSegmentBytes ? <FieldError msg={kFieldErrors.logSegmentBytes} /> : <span className="text-[10px] text-muted-foreground">Segment file size</span>}
+              </div>
+            </div>
+          </div>
+
+          {/* Performance */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Performance</Label>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">num.io.threads</Label>
+                <Input type="number" min={1} value={numIoThreads} onChange={(e) => setNumIoThreads(e.target.value)} />
+                {kFieldErrors.numIoThreads ? <FieldError msg={kFieldErrors.numIoThreads} /> : <span className="text-[10px] text-muted-foreground">Disk I/O threads</span>}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">num.network.threads</Label>
+                <Input type="number" min={1} value={numNetworkThreads} onChange={(e) => setNumNetworkThreads(e.target.value)} />
+                {kFieldErrors.numNetworkThreads ? <FieldError msg={kFieldErrors.numNetworkThreads} /> : <span className="text-[10px] text-muted-foreground">Network handler threads</span>}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">message.max.bytes</Label>
+                <Input value={messageMaxBytes} onChange={(e) => setMessageMaxBytes(e.target.value)} />
+                {kFieldErrors.messageMaxBytes ? <FieldError msg={kFieldErrors.messageMaxBytes} /> : <span className="text-[10px] text-muted-foreground">Max message size</span>}
+              </div>
+            </div>
+          </div>
+
+          {/* Buffer / Socket */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Socket / Buffer</Label>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">socket.send.buffer</Label>
+                <Input value={socketSendBuffer} onChange={(e) => setSocketSendBuffer(e.target.value)} />
+                <FieldError msg={kFieldErrors.socketSendBuffer} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">socket.receive.buffer</Label>
+                <Input value={socketReceiveBuffer} onChange={(e) => setSocketReceiveBuffer(e.target.value)} />
+                <FieldError msg={kFieldErrors.socketReceiveBuffer} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">socket.request.max</Label>
+                <Input value={socketRequestMax} onChange={(e) => setSocketRequestMax(e.target.value)} />
+                <FieldError msg={kFieldErrors.socketRequestMax} />
+              </div>
+            </div>
+          </div>
+
+          {/* Validation */}
+          {validation && (
+            <div className={`rounded-md border px-3 py-2 text-xs ${validation.allowed ? "bg-muted/30" : "bg-destructive/10 border-destructive/30 text-destructive"}`}>
+              <div className="flex justify-between">
+                <span>CPU: {validation.after?.cpu_used} / {validation.limit?.cpu} cores</span>
+                <span>Memory: {validation.after?.memory_used_gb} / {validation.limit?.memory_gb} GiB</span>
+              </div>
+              {!validation.allowed && <div className="mt-1 font-medium">{validation.message}</div>}
+            </div>
+          )}
+
+          {error && <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive">{error}</div>}
+          {success && <div className="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700">Restarting the service with the requested resources.</div>}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button size="sm" onClick={handleApply} disabled={applying || hasKafkaFieldErrors || (validation && !validation.allowed)}>
+            {applying ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+            Apply
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+const STARROCKS_TIERS = [
+  { tier: "development", label: "Development", be: 1, feCpu: "1", feMem: "2Gi", beCpu: "2", beMem: "4Gi" },
+  { tier: "standard", label: "Standard", be: 3, feCpu: "2", feMem: "4Gi", beCpu: "2", beMem: "4Gi" },
+  { tier: "performance", label: "Performance", be: 5, feCpu: "2", feMem: "4Gi", beCpu: "4", beMem: "8Gi" },
+]
+
+function StarRocksConfigDialog({
+  open, onOpenChange, workspaceId, service,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  workspaceId: number
+  service: WorkspaceService
+}) {
+  const meta = (service.metadata ?? {}) as Record<string, any>
+  const display = meta.display ?? {}
+  const resources = meta.resources ?? {}
+
+  const [tier, setTier] = useState(display.Tier?.toLowerCase() || "development")
+  const [beReplicas, setBeReplicas] = useState(Number(display["Backend Nodes"]) || 1)
+  const [feCpu, setFeCpu] = useState(resources.cpu_limit || "2")
+  const [feMem, setFeMem] = useState(resources.memory_limit || "4Gi")
+  const [beCpu, setBeCpu] = useState(resources.be_cpu_limit || "2")
+  const [beMem, setBeMem] = useState(resources.be_memory_limit || "4Gi")
+
+  const [applying, setApplying] = useState(false)
+  const [validation, setValidation] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  const handleTierChange = (t: string) => {
+    setTier(t)
+    const preset = STARROCKS_TIERS.find((p) => p.tier === t)
+    if (preset) {
+      setBeReplicas(preset.be)
+      setFeCpu(preset.feCpu)
+      setFeMem(preset.feMem)
+      setBeCpu(preset.beCpu)
+      setBeMem(preset.beMem)
+    }
+  }
+
+  // Validate
+  useEffect(() => {
+    if (!open) return
+    const timer = setTimeout(async () => {
+      try {
+        const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/services/${service.id}/configure/validate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cpu_limit: feCpu, memory_limit: feMem }),
+        })
+        if (res.ok) setValidation(await res.json())
+      } catch { /* ignore */ }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [open, feCpu, feMem, beCpu, beMem, beReplicas, workspaceId, service.id])
+
+  const handleApply = async () => {
+    if (validation && !validation.allowed) return
+    setApplying(true)
+    setError(null)
+    setSuccess(false)
+    try {
+      const res = await authFetch(`/api/v1/workspace/workspaces/${workspaceId}/starrocks/configure`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tier, be_replicas: beReplicas,
+          fe_cpu_limit: feCpu, fe_memory_limit: feMem,
+          be_cpu_limit: beCpu, be_memory_limit: beMem,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.detail || `Failed: ${res.status}`)
+      }
+      setSuccess(true)
+      setTimeout(() => { setSuccess(false); onOpenChange(false) }, 2000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to apply")
+    }
+    setApplying(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Configure StarRocks</DialogTitle>
+          <DialogDescription>
+            Adjust StarRocks cluster. <span className="normal-case font-normal">(Current: {display.Tier || "Unknown"})</span>
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          {/* Tier */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Tier</Label>
+            <div className="grid grid-cols-4 gap-2">
+              {[...STARROCKS_TIERS, { tier: "custom", label: "Custom", be: 0, feCpu: "", feMem: "", beCpu: "", beMem: "" }].map((t) => (
+                <button
+                  key={t.tier}
+                  onClick={() => handleTierChange(t.tier)}
+                  className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    tier === t.tier ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted/50"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* BE Replicas */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Backend Nodes</Label>
+            <Input type="number" min={1} max={10} value={beReplicas}
+              onChange={(e) => { setBeReplicas(Number(e.target.value)); setTier("custom") }} />
+          </div>
+
+          {/* Resources */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase text-muted-foreground">Resources</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">FE CPU Limit</Label>
+                <Input value={feCpu} onChange={(e) => { setFeCpu(e.target.value); setTier("custom") }} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">FE Memory Limit</Label>
+                <Input value={feMem} onChange={(e) => { setFeMem(e.target.value); setTier("custom") }} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">BE CPU Limit</Label>
+                <Input value={beCpu} onChange={(e) => { setBeCpu(e.target.value); setTier("custom") }} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">BE Memory Limit</Label>
+                <Input value={beMem} onChange={(e) => { setBeMem(e.target.value); setTier("custom") }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Validation */}
+          {validation && (
+            <div className={`rounded-md border px-3 py-2 text-xs ${validation.allowed ? "bg-muted/30" : "bg-destructive/10 border-destructive/30 text-destructive"}`}>
+              <div className="flex justify-between">
+                <span>CPU: {validation.after?.cpu_used} / {validation.limit?.cpu} cores</span>
+                <span>Memory: {validation.after?.memory_used_gb} / {validation.limit?.memory_gb} GiB</span>
+              </div>
+              {!validation.allowed && <div className="mt-1 font-medium">{validation.message}</div>}
+            </div>
+          )}
+
+          {error && <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive">{error}</div>}
+          {success && <div className="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700">Restarting the service with the requested resources.</div>}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button size="sm" onClick={handleApply} disabled={applying || (validation && !validation.allowed)}>
+            {applying ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+            Apply
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 const TRINO_TIERS = [
   { tier: "development", label: "Development", coord: 1, workers: 0, coordCpu: "1", coordMem: "2Gi", workerCpu: "1", workerMem: "2Gi" },
@@ -1016,13 +1777,15 @@ function ServiceDataListItem({
         })()
 
   // Determine display URL: prefer display metadata URLs, then endpoint
-  const firstHttpUrl = Object.values(displayMeta).find(
-    (v) => typeof v === "string" && /^https?:\/\//.test(v),
-  ) as string | undefined
+  // Prefer service.endpoint as primary URL, fallback to first HTTP URL in display metadata
+  const endpointIsHttp = service.endpoint && /^https?:\/\//.test(service.endpoint)
+  const firstHttpUrl = endpointIsHttp
+    ? service.endpoint
+    : (Object.values(displayMeta).find(
+        (v) => typeof v === "string" && /^https?:\/\//.test(v),
+      ) as string | undefined)
   const displayUrl = firstHttpUrl || service.endpoint
-  const openUrl =
-    firstHttpUrl ||
-    (service.endpoint && /^https?:\/\//.test(service.endpoint) ? service.endpoint : null)
+  const openUrl = firstHttpUrl || null
 
   // Custom labels (injected by GitLab default service mapping)
   const svcAny = service as WorkspaceService & { _usernameLabel?: string; _passwordLabel?: string; _hideUrl?: boolean; _hideTimestamps?: boolean }
@@ -1246,7 +2009,31 @@ function ServiceDataListItem({
           service={service}
         />
       )}
-      {isConfigurable && workspaceId && service.plugin_name !== "argus-trino" && (
+      {isConfigurable && workspaceId && service.plugin_name === "argus-starrocks" && (
+        <StarRocksConfigDialog
+          open={configOpen}
+          onOpenChange={setConfigOpen}
+          workspaceId={workspaceId}
+          service={service}
+        />
+      )}
+      {isConfigurable && workspaceId && service.plugin_name === "argus-kafka" && (
+        <KafkaConfigDialog
+          open={configOpen}
+          onOpenChange={setConfigOpen}
+          workspaceId={workspaceId}
+          service={service}
+        />
+      )}
+      {isConfigurable && workspaceId && service.plugin_name === "argus-nifi" && (
+        <NiFiConfigDialog
+          open={configOpen}
+          onOpenChange={setConfigOpen}
+          workspaceId={workspaceId}
+          service={service}
+        />
+      )}
+      {isConfigurable && workspaceId && !["argus-trino", "argus-starrocks", "argus-kafka", "argus-nifi"].includes(service.plugin_name) && (
         <ServiceConfigDialog
           open={configOpen}
           onOpenChange={setConfigOpen}
@@ -1566,6 +2353,8 @@ const SERVICE_KEY_TO_PLUGIN: Record<string, string> = {
   mindsdb: "argus-mindsdb",
   trino: "argus-trino",
   starrocks: "argus-starrocks",
+  kafka: "argus-kafka",
+  nifi: "argus-nifi",
   postgresql: "argus-postgresql",
   mariadb: "argus-mariadb",
   // AutoML
@@ -1597,6 +2386,9 @@ function AddServiceButton({
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pendingItem, setPendingItem] = useState<DeployMappingEntry | null>(null)
   const [trinoTier, setTrinoTier] = useState<string>("development")
+  const [starrocksTier, setStarrocksTier] = useState<string>("development")
+  const [kafkaTier, setKafkaTier] = useState<string>("development")
+  const [nifiTier, setNifiTier] = useState<string>("development")
 
   // Deploy progress dialog state
   const [deployOpen, setDeployOpen] = useState(false)
@@ -1642,11 +2434,16 @@ function AddServiceButton({
       return
     }
 
-    // Build deploy payload — include plugin_config for Trino tier
-    const isTrino = item.service_key === "trino"
+    // Build deploy payload — include plugin_config for tier selection
     const deployBody: Record<string, unknown> = { pipeline_id: pipelineId }
-    if (isTrino) {
+    if (item.service_key === "trino") {
       deployBody.plugin_config = { argus_trino_tier: trinoTier }
+    } else if (item.service_key === "starrocks") {
+      deployBody.plugin_config = { argus_starrocks_tier: starrocksTier }
+    } else if (item.service_key === "kafka") {
+      deployBody.plugin_config = { argus_kafka_tier: kafkaTier }
+    } else if (item.service_key === "nifi") {
+      deployBody.plugin_config = { argus_nifi_tier: nifiTier }
     }
 
     // Deploy
@@ -1757,8 +2554,8 @@ function AddServiceButton({
           <DialogHeader>
             <DialogTitle>Deploy {pendingItem?.service_label}</DialogTitle>
             <DialogDescription>
-              {pendingItem?.service_key === "trino"
-                ? "Select a deployment tier for Trino and deploy to this workspace."
+              {pendingItem?.service_key === "trino" || pendingItem?.service_key === "starrocks" || pendingItem?.service_key === "kafka" || pendingItem?.service_key === "nifi"
+                ? `Select a deployment tier for ${pendingItem?.service_label} and deploy to this workspace.`
                 : `Would you like to deploy ${pendingItem?.service_label} to this workspace?`}
             </DialogDescription>
           </DialogHeader>
@@ -1783,6 +2580,99 @@ function AddServiceButton({
                     value={t.tier}
                     checked={trinoTier === t.tier}
                     onChange={() => setTrinoTier(t.tier)}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <div className="text-sm font-medium">{t.label}</div>
+                    <div className="text-xs text-muted-foreground">{t.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {/* StarRocks Tier Selection */}
+          {pendingItem?.service_key === "starrocks" && (
+            <div className="space-y-2 py-2">
+              {[
+                { tier: "development", label: "Development", desc: "1 FE + 1 BE — 3 CPU, 6 GiB" },
+                { tier: "standard", label: "Standard", desc: "1 FE + 3 BE — 8 CPU, 16 GiB" },
+                { tier: "performance", label: "Performance", desc: "1 FE + 5 BE — 12 CPU, 44 GiB" },
+              ].map((t) => (
+                <label
+                  key={t.tier}
+                  className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                    starrocksTier === t.tier ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="starrocks-tier"
+                    value={t.tier}
+                    checked={starrocksTier === t.tier}
+                    onChange={() => setStarrocksTier(t.tier)}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <div className="text-sm font-medium">{t.label}</div>
+                    <div className="text-xs text-muted-foreground">{t.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {/* Kafka Tier Selection */}
+          {pendingItem?.service_key === "kafka" && (
+            <div className="space-y-2 py-2">
+              {[
+                { tier: "development", label: "Development", desc: "1 Combined Node — 1 CPU, 2 GiB" },
+                { tier: "standard", label: "Standard", desc: "3 Combined Nodes — 3 CPU, 6 GiB" },
+                { tier: "performance", label: "Performance", desc: "3 Nodes (high resources) — 6 CPU, 12 GiB" },
+              ].map((t) => (
+                <label
+                  key={t.tier}
+                  className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                    kafkaTier === t.tier ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="kafka-tier"
+                    value={t.tier}
+                    checked={kafkaTier === t.tier}
+                    onChange={() => setKafkaTier(t.tier)}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <div className="text-sm font-medium">{t.label}</div>
+                    <div className="text-xs text-muted-foreground">{t.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {/* NiFi Tier Selection */}
+          {pendingItem?.service_key === "nifi" && (
+            <div className="space-y-2 py-2">
+              {[
+                { tier: "development", label: "Development", desc: "1 NiFi + Registry — 3 CPU, 3 GiB" },
+                { tier: "standard", label: "Standard", desc: "3 NiFi (cluster) + Registry — 13 CPU, 13 GiB" },
+                { tier: "performance", label: "Performance", desc: "3 NiFi (high) + Registry — 25 CPU, 25 GiB" },
+              ].map((t) => (
+                <label
+                  key={t.tier}
+                  className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                    nifiTier === t.tier ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="nifi-tier"
+                    value={t.tier}
+                    checked={nifiTier === t.tier}
+                    onChange={() => setNifiTier(t.tier)}
                     className="mt-0.5"
                   />
                   <div>

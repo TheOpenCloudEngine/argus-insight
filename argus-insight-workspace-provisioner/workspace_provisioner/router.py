@@ -702,6 +702,400 @@ async def configure_service(
     return {"status": "ok", "message": "Restarting the service with the requested resources."}
 
 
+# ---------------------------------------------------------------------------
+# StarRocks Configure
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Kafka Configure
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# NiFi Configure
+# ---------------------------------------------------------------------------
+
+class NiFiConfigureRequest(BaseModel):
+    """Request body for NiFi configuration changes."""
+    replicas: int | None = None
+    cpu_limit: str | None = None
+    memory_limit: str | None = None
+    jvm_xmx: str | None = None
+    # Heartbeat
+    heartbeat_interval: str | None = None  # e.g. "10 sec"
+    heartbeat_missable_max: int | None = None
+    connection_timeout: str | None = None  # e.g. "30 sec"
+    read_timeout: str | None = None
+    max_concurrent_requests: int | None = None
+    # Queue
+    backpressure_count: int | None = None
+    backpressure_size: str | None = None  # e.g. "5 GB"
+    # Repository
+    provenance_max_storage_time: str | None = None  # e.g. "24 hours"
+    provenance_max_storage_size: str | None = None  # e.g. "1 GB"
+    content_archive_max_usage: str | None = None  # e.g. "50%"
+
+
+@router.post("/workspaces/{workspace_id}/nifi/configure")
+async def configure_nifi(
+    workspace_id: int,
+    req: NiFiConfigureRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Apply NiFi configuration changes."""
+    import asyncio as aio
+    import json as json_mod
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+
+    ws = (await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )).scalars().first()
+    if not ws:
+        raise HTTPException(404, "Workspace not found")
+
+    svc = (await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+            ArgusWorkspaceService.plugin_name == "argus-nifi",
+            ArgusWorkspaceService.status == "running",
+        )
+    )).scalars().first()
+    if not svc:
+        raise HTTPException(404, "NiFi service not found")
+
+    namespace = ws.k8s_namespace or f"argus-ws-{ws.name}"
+    meta = svc.metadata if isinstance(svc.metadata, dict) else (json_mod.loads(svc.metadata) if isinstance(svc.metadata, str) else {})
+
+    # 1. Patch StatefulSet (replicas + resources)
+    patch_ops = []
+    if req.replicas is not None:
+        patch_ops.append({"op": "replace", "path": "/spec/replicas", "value": req.replicas})
+    if req.cpu_limit:
+        patch_ops.append({"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/cpu", "value": req.cpu_limit})
+    if req.memory_limit:
+        patch_ops.append({"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": req.memory_limit})
+
+    if patch_ops:
+        proc = await aio.create_subprocess_exec(
+            "kubectl", "patch", "statefulset", f"argus-nifi-{ws.name}",
+            "-n", namespace, "--type=json", "-p", json_mod.dumps(patch_ops),
+            stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+        )
+        await proc.communicate()
+
+    # 2. Update env vars on StatefulSet for NiFi settings
+    nifi_envs = {}
+    if req.jvm_xmx:
+        nifi_envs["NIFI_JVM_HEAP_MAX"] = req.jvm_xmx
+    if req.heartbeat_interval:
+        nifi_envs["NIFI_CLUSTER_PROTOCOL_HEARTBEAT_INTERVAL"] = req.heartbeat_interval
+    if req.heartbeat_missable_max is not None:
+        nifi_envs["NIFI_CLUSTER_PROTOCOL_HEARTBEAT_MISSABLE_MAX"] = str(req.heartbeat_missable_max)
+    if req.connection_timeout:
+        nifi_envs["NIFI_CLUSTER_NODE_CONNECTION_TIMEOUT"] = req.connection_timeout
+    if req.read_timeout:
+        nifi_envs["NIFI_CLUSTER_NODE_READ_TIMEOUT"] = req.read_timeout
+    if req.max_concurrent_requests is not None:
+        nifi_envs["NIFI_CLUSTER_NODE_MAX_CONCURRENT_REQUESTS"] = str(req.max_concurrent_requests)
+
+    if nifi_envs:
+        proc = await aio.create_subprocess_exec(
+            "kubectl", "get", "statefulset", f"argus-nifi-{ws.name}",
+            "-n", namespace, "-o", "json",
+            stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+        )
+        sts_out, _ = await proc.communicate()
+        sts = json_mod.loads(sts_out.decode())
+        container = sts["spec"]["template"]["spec"]["containers"][0]
+        existing_env = {e["name"]: e for e in container.get("env", [])}
+        for k, v in nifi_envs.items():
+            existing_env[k] = {"name": k, "value": v}
+        env_patch = [{"op": "replace", "path": "/spec/template/spec/containers/0/env", "value": list(existing_env.values())}]
+        proc = await aio.create_subprocess_exec(
+            "kubectl", "patch", "statefulset", f"argus-nifi-{ws.name}",
+            "-n", namespace, "--type=json", "-p", json_mod.dumps(env_patch),
+            stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+        )
+        await proc.communicate()
+
+    # 3. Rollout restart
+    proc = await aio.create_subprocess_exec(
+        "kubectl", "rollout", "restart", f"statefulset/argus-nifi-{ws.name}",
+        "-n", namespace, stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+    )
+    await proc.communicate()
+
+    # 4. Update metadata
+    meta["display"]["Nodes"] = str(req.replicas) if req.replicas else meta["display"].get("Nodes", "1")
+    if "resources" not in meta:
+        meta["resources"] = {}
+    if req.cpu_limit:
+        meta["resources"]["cpu_limit"] = req.cpu_limit
+    if req.memory_limit:
+        meta["resources"]["memory_limit"] = req.memory_limit
+
+    from sqlalchemy import text
+    await session.execute(
+        text("UPDATE argus_workspace_services SET metadata = :m WHERE id = :id"),
+        {"m": json_mod.dumps(meta), "id": svc.id},
+    )
+    await session.commit()
+
+    logger.info("NiFi configured: ws=%s replicas=%s", ws.name, req.replicas)
+    return {"status": "ok", "message": "NiFi configuration applied. Pods are restarting."}
+
+
+class KafkaConfigureRequest(BaseModel):
+    """Request body for Kafka configuration changes."""
+    replicas: int | None = None
+    cpu_limit: str | None = None
+    memory_limit: str | None = None
+    # Broker
+    num_partitions: int | None = None
+    default_replication_factor: int | None = None
+    min_insync_replicas: int | None = None
+    auto_create_topics: bool | None = None
+    # Retention
+    log_retention_hours: int | None = None
+    log_retention_bytes: int | None = None  # -1 = unlimited
+    log_segment_bytes: int | None = None
+    # Performance
+    num_io_threads: int | None = None
+    num_network_threads: int | None = None
+    message_max_bytes: int | None = None
+    # Buffer
+    socket_send_buffer_bytes: int | None = None
+    socket_receive_buffer_bytes: int | None = None
+    socket_request_max_bytes: int | None = None
+
+
+@router.post("/workspaces/{workspace_id}/kafka/configure")
+async def configure_kafka(
+    workspace_id: int,
+    req: KafkaConfigureRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Apply Kafka configuration changes."""
+    import asyncio as aio
+    import json as json_mod
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+
+    ws = (await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )).scalars().first()
+    if not ws:
+        raise HTTPException(404, "Workspace not found")
+
+    svc = (await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+            ArgusWorkspaceService.plugin_name == "argus-kafka",
+            ArgusWorkspaceService.status == "running",
+        )
+    )).scalars().first()
+    if not svc:
+        raise HTTPException(404, "Kafka service not found")
+
+    namespace = ws.k8s_namespace or f"argus-ws-{ws.name}"
+    meta = svc.metadata if isinstance(svc.metadata, dict) else (json_mod.loads(svc.metadata) if isinstance(svc.metadata, str) else {})
+
+    # 1. Patch StatefulSet (replicas + resources)
+    patch_ops = []
+    if req.replicas is not None:
+        patch_ops.append({"op": "replace", "path": "/spec/replicas", "value": req.replicas})
+    if req.cpu_limit:
+        patch_ops.append({"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/cpu", "value": req.cpu_limit})
+    if req.memory_limit:
+        patch_ops.append({"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": req.memory_limit})
+
+    # Add Kafka config env vars
+    kafka_envs = {}
+    if req.num_partitions is not None:
+        kafka_envs["KAFKA_NUM_PARTITIONS"] = str(req.num_partitions)
+    if req.default_replication_factor is not None:
+        kafka_envs["KAFKA_DEFAULT_REPLICATION_FACTOR"] = str(req.default_replication_factor)
+    if req.min_insync_replicas is not None:
+        kafka_envs["KAFKA_MIN_INSYNC_REPLICAS"] = str(req.min_insync_replicas)
+    if req.auto_create_topics is not None:
+        kafka_envs["KAFKA_AUTO_CREATE_TOPICS_ENABLE"] = str(req.auto_create_topics).lower()
+    if req.log_retention_hours is not None:
+        kafka_envs["KAFKA_LOG_RETENTION_HOURS"] = str(req.log_retention_hours)
+    if req.log_retention_bytes is not None:
+        kafka_envs["KAFKA_LOG_RETENTION_BYTES"] = str(req.log_retention_bytes)
+    if req.log_segment_bytes is not None:
+        kafka_envs["KAFKA_LOG_SEGMENT_BYTES"] = str(req.log_segment_bytes)
+    if req.num_io_threads is not None:
+        kafka_envs["KAFKA_NUM_IO_THREADS"] = str(req.num_io_threads)
+    if req.num_network_threads is not None:
+        kafka_envs["KAFKA_NUM_NETWORK_THREADS"] = str(req.num_network_threads)
+    if req.message_max_bytes is not None:
+        kafka_envs["KAFKA_MESSAGE_MAX_BYTES"] = str(req.message_max_bytes)
+    if req.socket_send_buffer_bytes is not None:
+        kafka_envs["KAFKA_SOCKET_SEND_BUFFER_BYTES"] = str(req.socket_send_buffer_bytes)
+    if req.socket_receive_buffer_bytes is not None:
+        kafka_envs["KAFKA_SOCKET_RECEIVE_BUFFER_BYTES"] = str(req.socket_receive_buffer_bytes)
+    if req.socket_request_max_bytes is not None:
+        kafka_envs["KAFKA_SOCKET_REQUEST_MAX_BYTES"] = str(req.socket_request_max_bytes)
+
+    if patch_ops:
+        proc = await aio.create_subprocess_exec(
+            "kubectl", "patch", "statefulset", f"argus-kafka-{ws.name}",
+            "-n", namespace, "--type=json", "-p", json_mod.dumps(patch_ops),
+            stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+        )
+        await proc.communicate()
+
+    # Apply env changes by patching env vars on the container
+    if kafka_envs:
+        # Get current env, merge new values, apply
+        proc = await aio.create_subprocess_exec(
+            "kubectl", "get", "statefulset", f"argus-kafka-{ws.name}",
+            "-n", namespace, "-o", "json",
+            stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+        )
+        sts_out, _ = await proc.communicate()
+        sts = json_mod.loads(sts_out.decode())
+        container = sts["spec"]["template"]["spec"]["containers"][0]
+        existing_env = {e["name"]: e for e in container.get("env", [])}
+        for k, v in kafka_envs.items():
+            existing_env[k] = {"name": k, "value": v}
+        new_env = list(existing_env.values())
+
+        env_patch = [{"op": "replace", "path": "/spec/template/spec/containers/0/env", "value": new_env}]
+        proc = await aio.create_subprocess_exec(
+            "kubectl", "patch", "statefulset", f"argus-kafka-{ws.name}",
+            "-n", namespace, "--type=json", "-p", json_mod.dumps(env_patch),
+            stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+        )
+        await proc.communicate()
+
+    # Rollout restart
+    proc = await aio.create_subprocess_exec(
+        "kubectl", "rollout", "restart", f"statefulset/argus-kafka-{ws.name}",
+        "-n", namespace, stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE,
+    )
+    await proc.communicate()
+
+    # Update metadata
+    meta["display"]["Brokers"] = str(req.replicas) if req.replicas else meta["display"].get("Brokers", "1")
+    if "resources" not in meta:
+        meta["resources"] = {}
+    if req.cpu_limit:
+        meta["resources"]["cpu_limit"] = req.cpu_limit
+    if req.memory_limit:
+        meta["resources"]["memory_limit"] = req.memory_limit
+
+    from sqlalchemy import text
+    await session.execute(
+        text("UPDATE argus_workspace_services SET metadata = :m WHERE id = :id"),
+        {"m": json_mod.dumps(meta), "id": svc.id},
+    )
+    await session.commit()
+
+    logger.info("Kafka configured: ws=%s replicas=%s", ws.name, req.replicas)
+    return {"status": "ok", "message": "Kafka configuration applied. Pods are restarting."}
+
+
+class StarRocksConfigureRequest(BaseModel):
+    """Request body for StarRocks configuration changes."""
+    tier: str | None = None
+    be_replicas: int | None = None
+    fe_cpu_limit: str | None = None
+    fe_memory_limit: str | None = None
+    be_cpu_limit: str | None = None
+    be_memory_limit: str | None = None
+
+
+@router.post("/workspaces/{workspace_id}/starrocks/configure")
+async def configure_starrocks(
+    workspace_id: int,
+    req: StarRocksConfigureRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Apply StarRocks configuration changes (BE replicas, FE/BE resources)."""
+    import asyncio as aio
+    import json as json_mod
+    from workspace_provisioner.models import ArgusWorkspace, ArgusWorkspaceService
+
+    ws = (await session.execute(
+        select(ArgusWorkspace).where(ArgusWorkspace.id == workspace_id)
+    )).scalars().first()
+    if not ws:
+        raise HTTPException(404, "Workspace not found")
+
+    svc = (await session.execute(
+        select(ArgusWorkspaceService).where(
+            ArgusWorkspaceService.workspace_id == workspace_id,
+            ArgusWorkspaceService.plugin_name == "argus-starrocks",
+            ArgusWorkspaceService.status == "running",
+        )
+    )).scalars().first()
+    if not svc:
+        raise HTTPException(404, "StarRocks service not found")
+
+    namespace = ws.k8s_namespace or f"argus-ws-{ws.name}"
+    meta = svc.metadata if isinstance(svc.metadata, dict) else (json_mod.loads(svc.metadata) if isinstance(svc.metadata, str) else {})
+
+    be_replicas = req.be_replicas or 1
+    fe_cpu = req.fe_cpu_limit or "2"
+    fe_mem = req.fe_memory_limit or "4Gi"
+    be_cpu = req.be_cpu_limit or "2"
+    be_mem = req.be_memory_limit or "4Gi"
+
+    # 1. Patch FE StatefulSet resources
+    patch_cmd = [
+        "kubectl", "patch", "statefulset", f"argus-starrocks-{ws.name}-fe",
+        "-n", namespace, "--type=json", "-p", json_mod.dumps([
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/cpu", "value": fe_cpu},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": fe_mem},
+        ]),
+    ]
+    proc = await aio.create_subprocess_exec(*patch_cmd, stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE)
+    await proc.communicate()
+
+    # 2. Patch BE StatefulSet replicas + resources
+    patch_cmd = [
+        "kubectl", "patch", "statefulset", f"argus-starrocks-{ws.name}-be",
+        "-n", namespace, "--type=json", "-p", json_mod.dumps([
+            {"op": "replace", "path": "/spec/replicas", "value": be_replicas},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/cpu", "value": be_cpu},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": be_mem},
+        ]),
+    ]
+    proc = await aio.create_subprocess_exec(*patch_cmd, stdout=aio.subprocess.PIPE, stderr=aio.subprocess.PIPE)
+    await proc.communicate()
+
+    # 3. Register new BE nodes with FE
+    import asyncio
+    for i in range(be_replicas):
+        be_host = f"argus-starrocks-{ws.name}-be-{i}.argus-starrocks-{ws.name}-be.{namespace}.svc.cluster.local"
+        reg_cmd = [
+            "kubectl", "exec", f"argus-starrocks-{ws.name}-fe-0", "-n", namespace,
+            "--", "mysql", "-h", "127.0.0.1", "-P", "9030", "-u", "root",
+            "-e", f"ALTER SYSTEM ADD BACKEND '{be_host}:9050';",
+        ]
+        proc = await asyncio.create_subprocess_exec(*reg_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        await proc.communicate()
+
+    # 4. Update metadata
+    meta["display"]["Tier"] = (req.tier or "custom").capitalize()
+    meta["display"]["Backend Nodes"] = str(be_replicas)
+    meta["resources"] = {
+        "cpu_limit": fe_cpu,
+        "memory_limit": fe_mem,
+        "be_cpu_limit": be_cpu,
+        "be_memory_limit": be_mem,
+    }
+    from sqlalchemy import text
+    await session.execute(
+        text("UPDATE argus_workspace_services SET metadata = :m WHERE id = :id"),
+        {"m": json_mod.dumps(meta), "id": svc.id},
+    )
+    await session.commit()
+
+    logger.info("StarRocks configured: ws=%s tier=%s be_replicas=%d", ws.name, req.tier, be_replicas)
+    return {"status": "ok", "message": "StarRocks configuration applied."}
+
+
 class TrinoConfigureRequest(BaseModel):
     """Request body for Trino runtime configuration changes."""
     tier: str | None = None  # development | standard | performance | custom
@@ -996,6 +1390,110 @@ async def deploy_pipeline_to_workspace(
         raise HTTPException(status_code=400, detail="A deployment is already in progress for this workspace.")
     if ws.status == "deleting":
         raise HTTPException(status_code=400, detail="This workspace is being deleted.")
+
+    # Pre-deploy resource quota check
+    from workspace_provisioner.plugins.models import ArgusPluginConfig
+    from app.resource_profile.models import ArgusResourceProfile
+    from app.resource_profile.resource_utils import parse_cpu, parse_memory_to_mib
+    from workspace_provisioner.models import ArgusWorkspaceService
+    import json as json_mod
+
+    # Resolve plugin name from pipeline_id
+    plugin_cfgs = (await session.execute(
+        select(ArgusPluginConfig).where(ArgusPluginConfig.pipeline_id == req.pipeline_id)
+    )).scalars().all()
+    plugin_names = [c.plugin_name for c in plugin_cfgs]
+
+    # Estimate resource requirement for the new service
+    PLUGIN_RESOURCE_ESTIMATES: dict[str, tuple[str, str]] = {
+        # plugin_name: (cpu_limit, memory_limit) — sum of all components
+        "argus-postgresql": ("2", "2Gi"),
+        "argus-mariadb": ("2", "2Gi"),
+        "argus-trino": ("1", "2Gi"),        # Minimum (dev tier), actual from plugin_config
+        "argus-starrocks": ("3", "6Gi"),     # FE + 1 BE minimum
+        "argus-mlflow": ("1", "1Gi"),
+        "argus-jupyter": ("1", "2Gi"),
+        "argus-jupyter-tensorflow": ("2", "4Gi"),
+        "argus-jupyter-pyspark": ("2", "4Gi"),
+        "argus-vscode-server": ("1", "2Gi"),
+        "argus-ollama": ("4", "8Gi"),
+        "argus-kafka": ("1", "2Gi"),
+        "argus-nifi": ("3", "3Gi"),  # NiFi 1 node + Registry
+        "argus-rstudio": ("1", "2Gi"),
+        "argus-neo4j": ("1", "2Gi"),
+        "argus-labelstudio": ("1", "2Gi"),
+        "argus-redis": ("0.5", "1Gi"),
+        "argus-airflow": ("2", "4Gi"),
+    }
+
+    # Use tier-specific estimate if plugin_config provided
+    if req.plugin_config:
+        tier = req.plugin_config.get("argus_trino_tier")
+        if tier:
+            tier_resources = {"development": ("1", "2Gi"), "standard": ("3", "6Gi"), "performance": ("8", "16Gi")}
+            PLUGIN_RESOURCE_ESTIMATES["argus-trino"] = tier_resources.get(tier, ("1", "2Gi"))
+        sr_tier = req.plugin_config.get("argus_starrocks_tier")
+        if sr_tier:
+            sr_resources = {"development": ("3", "6Gi"), "standard": ("8", "16Gi"), "performance": ("22", "44Gi")}
+            PLUGIN_RESOURCE_ESTIMATES["argus-starrocks"] = sr_resources.get(sr_tier, ("3", "6Gi"))
+        kafka_tier = req.plugin_config.get("argus_kafka_tier")
+        if kafka_tier:
+            kafka_resources = {"development": ("1", "2Gi"), "standard": ("3", "6Gi"), "performance": ("6", "12Gi")}
+            PLUGIN_RESOURCE_ESTIMATES["argus-kafka"] = kafka_resources.get(kafka_tier, ("1", "2Gi"))
+        nifi_tier = req.plugin_config.get("argus_nifi_tier")
+        if nifi_tier:
+            # NiFi nodes + Registry (1cpu, 1Gi)
+            nifi_resources = {"development": ("3", "3Gi"), "standard": ("13", "13Gi"), "performance": ("25", "25Gi")}
+            PLUGIN_RESOURCE_ESTIMATES["argus-nifi"] = nifi_resources.get(nifi_tier, ("3", "3Gi"))
+
+    # Calculate total new resource requirement
+    new_cpu = Decimal("0")
+    new_mem_mib = 0
+    for pn in plugin_names:
+        est = PLUGIN_RESOURCE_ESTIMATES.get(pn)
+        if est:
+            new_cpu += parse_cpu(est[0])
+            new_mem_mib += parse_memory_to_mib(est[1])
+
+    # Current usage
+    if ws.resource_profile_id and new_cpu > 0:
+        profile = (await session.execute(
+            select(ArgusResourceProfile).where(ArgusResourceProfile.id == ws.resource_profile_id)
+        )).scalars().first()
+
+        svcs = (await session.execute(
+            select(ArgusWorkspaceService).where(
+                ArgusWorkspaceService.workspace_id == workspace_id,
+                ArgusWorkspaceService.status == "running",
+            )
+        )).scalars().all()
+
+        current_cpu = Decimal("0")
+        current_mem_mib = 0
+        for s in svcs:
+            meta = s.metadata if isinstance(s.metadata, dict) else (json_mod.loads(s.metadata) if isinstance(s.metadata, str) else {})
+            res = meta.get("resources", {})
+            current_cpu += parse_cpu(res.get("cpu_limit", "0"))
+            current_mem_mib += parse_memory_to_mib(res.get("memory_limit", "0"))
+
+        if profile:
+            limit_cpu = Decimal(str(profile.cpu_cores))
+            limit_mem_mib = int(profile.memory_mb)
+            after_cpu = current_cpu + new_cpu
+            after_mem = current_mem_mib + new_mem_mib
+
+            if after_cpu > limit_cpu or after_mem > limit_mem_mib:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Not enough workspace resources. "
+                        f"Required: {float(new_cpu):.1f} CPU, {new_mem_mib/1024:.1f} GiB. "
+                        f"Available: {float(limit_cpu - current_cpu):.1f} CPU, {(limit_mem_mib - current_mem_mib)/1024:.1f} GiB. "
+                        f"Current usage: {float(current_cpu):.1f}/{float(limit_cpu)} CPU, "
+                        f"{current_mem_mib/1024:.1f}/{limit_mem_mib/1024:.0f} GiB."
+                    ),
+                )
+                logger.warning("Deploy rejected: insufficient resources for %s in workspace %d", plugin_names, workspace_id)
 
     # Add pipeline association
     ws_pipeline = ArgusWorkspacePipeline(

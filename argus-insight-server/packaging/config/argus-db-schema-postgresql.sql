@@ -20,6 +20,17 @@ GRANT ALL PRIVILEGES ON SCHEMA public TO argus;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO argus;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON SEQUENCES TO argus;
 
+-- ---------------------------------------------------------------------------
+-- Utility function for auto-updating updated_at columns
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE TABLE IF NOT EXISTS argus_agents (
     hostname        VARCHAR(255)    PRIMARY KEY,
     ip_address      VARCHAR(45)     NOT NULL,
@@ -349,6 +360,108 @@ COMMENT ON COLUMN argus_app_instances.status IS 'deploying | running | failed | 
 COMMENT ON COLUMN argus_app_instances.config IS 'App-specific configuration as JSON';
 COMMENT ON COLUMN argus_app_instances.deploy_steps IS 'Deployment step progress as JSON array';
 
+-- =============================================================================
+-- Workspaces (must be defined before tables that reference argus_workspaces)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS argus_workspaces (
+    id                  SERIAL          PRIMARY KEY,
+    name                VARCHAR(100)    NOT NULL,
+    display_name        VARCHAR(255)    NOT NULL,
+    description         TEXT,
+    domain              VARCHAR(255)    NOT NULL,
+    k8s_cluster         VARCHAR(255),
+    k8s_namespace       VARCHAR(255),
+    gitlab_project_id   INTEGER,
+    gitlab_project_url  VARCHAR(500),
+    minio_endpoint      VARCHAR(500),
+    minio_console_endpoint VARCHAR(500),
+    minio_default_bucket VARCHAR(255),
+    airflow_endpoint    VARCHAR(500),
+    mlflow_endpoint     VARCHAR(500),
+    kserve_endpoint     VARCHAR(500),
+    status              VARCHAR(20)     NOT NULL,
+    created_by          INTEGER         NOT NULL,
+    resource_profile_id INTEGER,
+    created_at          TIMESTAMPTZ     DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
+COMMENT ON TABLE argus_workspaces IS 'Workspace definitions with K8s namespace and service endpoints';
+
+CREATE TABLE IF NOT EXISTS argus_workspace_members (
+    id                  SERIAL          PRIMARY KEY,
+    workspace_id        INTEGER         NOT NULL REFERENCES argus_workspaces(id),
+    user_id             INTEGER         NOT NULL,
+    role                VARCHAR(50)     NOT NULL,
+    gitlab_access_token VARCHAR(255),
+    gitlab_token_name   VARCHAR(100),
+    created_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS argus_workspace_credentials (
+    workspace_id        INTEGER         PRIMARY KEY REFERENCES argus_workspaces(id),
+    gitlab_http_url     VARCHAR(500),
+    gitlab_ssh_url      VARCHAR(500),
+    minio_endpoint      VARCHAR(500),
+    minio_root_user     VARCHAR(255),
+    minio_root_password VARCHAR(500),
+    minio_access_key    VARCHAR(255),
+    minio_secret_key    VARCHAR(500),
+    airflow_url         VARCHAR(500),
+    airflow_admin_username VARCHAR(255),
+    airflow_admin_password VARCHAR(500),
+    mlflow_artifact_bucket VARCHAR(255),
+    kserve_endpoint     VARCHAR(500),
+    created_at          TIMESTAMPTZ     DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ     DEFAULT NOW()
+);
+
+COMMENT ON TABLE argus_workspace_credentials IS 'Sensitive credentials for workspace infrastructure services';
+
+-- ---------------------------------------------------------------------------
+-- Plugin pipeline tables (must be defined before argus_workspace_pipelines)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS argus_pipelines (
+    id              SERIAL          PRIMARY KEY,
+    name            VARCHAR(100)    NOT NULL UNIQUE,
+    display_name    VARCHAR(255)    NOT NULL,
+    description     TEXT,
+    version         INTEGER         NOT NULL DEFAULT 1,
+    deleted         BOOLEAN         NOT NULL DEFAULT FALSE,
+    created_by      VARCHAR(100),
+    created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE argus_pipelines IS 'Named deployment pipelines for workspace provisioning';
+COMMENT ON COLUMN argus_pipelines.name IS 'Unique pipeline slug (e.g. pipeline-20260329-143052-7a3f)';
+COMMENT ON COLUMN argus_pipelines.display_name IS 'Human-readable pipeline name';
+COMMENT ON COLUMN argus_pipelines.version IS 'Auto-incremented on each save (starts at 1)';
+COMMENT ON COLUMN argus_pipelines.deleted IS 'Soft delete flag';
+COMMENT ON COLUMN argus_pipelines.created_by IS 'Username of the pipeline creator';
+
+CREATE TABLE IF NOT EXISTS argus_plugin_configs (
+    id                SERIAL          PRIMARY KEY,
+    pipeline_id       INTEGER         REFERENCES argus_pipelines(id) ON DELETE CASCADE,
+    plugin_name       VARCHAR(100)    NOT NULL,
+    enabled           BOOLEAN         NOT NULL DEFAULT TRUE,
+    display_order     INTEGER         NOT NULL,
+    selected_version  VARCHAR(50),
+    default_config    JSON,
+    created_at        TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_pipeline_plugin UNIQUE (pipeline_id, plugin_name)
+);
+
+COMMENT ON TABLE argus_plugin_configs IS 'Plugin configuration within a pipeline (order, version, settings)';
+COMMENT ON COLUMN argus_plugin_configs.pipeline_id IS 'FK to argus_pipelines (NULL for global/legacy config)';
+COMMENT ON COLUMN argus_plugin_configs.plugin_name IS 'Plugin identifier (e.g. airflow-deploy)';
+COMMENT ON COLUMN argus_plugin_configs.display_order IS 'Execution order within the pipeline';
+COMMENT ON COLUMN argus_plugin_configs.selected_version IS 'Plugin version (NULL means default)';
+COMMENT ON COLUMN argus_plugin_configs.default_config IS 'Plugin config overrides as JSON';
+
 -- Workspace-Pipeline association table
 CREATE TABLE IF NOT EXISTS argus_workspace_pipelines (
     id              SERIAL          PRIMARY KEY,
@@ -411,49 +524,6 @@ CREATE INDEX IF NOT EXISTS idx_audit_created ON argus_workspace_audit_logs(creat
 INSERT INTO argus_apps (app_type, display_name, description, icon, template_dir, default_namespace, hostname_pattern) VALUES
 ('vscode', 'VS Code Server', 'Browser-based VS Code with S3 workspace storage', 'Code', 'vscode', 'argus-apps', 'argus-{app_type}-{instance_id}.{domain}')
 ON CONFLICT (app_type) DO NOTHING;
-
--- ---------------------------------------------------------------------------
--- Plugin pipeline tables
--- ---------------------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS argus_pipelines (
-    id              SERIAL          PRIMARY KEY,
-    name            VARCHAR(100)    NOT NULL UNIQUE,
-    display_name    VARCHAR(255)    NOT NULL,
-    description     TEXT,
-    version         INTEGER         NOT NULL DEFAULT 1,
-    deleted         BOOLEAN         NOT NULL DEFAULT FALSE,
-    created_by      VARCHAR(100),
-    created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
-);
-
-COMMENT ON TABLE argus_pipelines IS 'Named deployment pipelines for workspace provisioning';
-COMMENT ON COLUMN argus_pipelines.name IS 'Unique pipeline slug (e.g. pipeline-20260329-143052-7a3f)';
-COMMENT ON COLUMN argus_pipelines.display_name IS 'Human-readable pipeline name';
-COMMENT ON COLUMN argus_pipelines.version IS 'Auto-incremented on each save (starts at 1)';
-COMMENT ON COLUMN argus_pipelines.deleted IS 'Soft delete flag';
-COMMENT ON COLUMN argus_pipelines.created_by IS 'Username of the pipeline creator';
-
-CREATE TABLE IF NOT EXISTS argus_plugin_configs (
-    id                SERIAL          PRIMARY KEY,
-    pipeline_id       INTEGER         REFERENCES argus_pipelines(id) ON DELETE CASCADE,
-    plugin_name       VARCHAR(100)    NOT NULL,
-    enabled           BOOLEAN         NOT NULL DEFAULT TRUE,
-    display_order     INTEGER         NOT NULL,
-    selected_version  VARCHAR(50),
-    default_config    JSON,
-    created_at        TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
-    updated_at        TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_pipeline_plugin UNIQUE (pipeline_id, plugin_name)
-);
-
-COMMENT ON TABLE argus_plugin_configs IS 'Plugin configuration within a pipeline (order, version, settings)';
-COMMENT ON COLUMN argus_plugin_configs.pipeline_id IS 'FK to argus_pipelines (NULL for global/legacy config)';
-COMMENT ON COLUMN argus_plugin_configs.plugin_name IS 'Plugin identifier (e.g. airflow-deploy)';
-COMMENT ON COLUMN argus_plugin_configs.display_order IS 'Execution order within the pipeline';
-COMMENT ON COLUMN argus_plugin_configs.selected_version IS 'Plugin version (NULL means default)';
-COMMENT ON COLUMN argus_plugin_configs.default_config IS 'Plugin config overrides as JSON';
 
 -- ---------------------------------------------------------------------------
 -- Resource Profiles
@@ -646,64 +716,8 @@ COMMENT ON COLUMN argus_ml_jobs.status IS 'pending | running | completed | faile
 COMMENT ON COLUMN argus_ml_jobs.pipeline_id IS 'Linked pipeline ID (modeler only)';
 COMMENT ON COLUMN argus_ml_jobs.generated_code IS 'Generated Python code (modeler only)';
 
--- =============================================================================
--- Workspaces
--- =============================================================================
-
-CREATE TABLE IF NOT EXISTS argus_workspaces (
-    id                  SERIAL          PRIMARY KEY,
-    name                VARCHAR(100)    NOT NULL,
-    display_name        VARCHAR(255)    NOT NULL,
-    description         TEXT,
-    domain              VARCHAR(255)    NOT NULL,
-    k8s_cluster         VARCHAR(255),
-    k8s_namespace       VARCHAR(255),
-    gitlab_project_id   INTEGER,
-    gitlab_project_url  VARCHAR(500),
-    minio_endpoint      VARCHAR(500),
-    minio_console_endpoint VARCHAR(500),
-    minio_default_bucket VARCHAR(255),
-    airflow_endpoint    VARCHAR(500),
-    mlflow_endpoint     VARCHAR(500),
-    kserve_endpoint     VARCHAR(500),
-    status              VARCHAR(20)     NOT NULL,
-    created_by          INTEGER         NOT NULL,
-    resource_profile_id INTEGER,
-    created_at          TIMESTAMPTZ     DEFAULT NOW(),
-    updated_at          TIMESTAMPTZ     DEFAULT NOW()
-);
-
-COMMENT ON TABLE argus_workspaces IS 'Workspace definitions with K8s namespace and service endpoints';
-
-CREATE TABLE IF NOT EXISTS argus_workspace_members (
-    id                  SERIAL          PRIMARY KEY,
-    workspace_id        INTEGER         NOT NULL REFERENCES argus_workspaces(id),
-    user_id             INTEGER         NOT NULL,
-    role                VARCHAR(50)     NOT NULL,
-    gitlab_access_token VARCHAR(255),
-    gitlab_token_name   VARCHAR(100),
-    created_at          TIMESTAMPTZ     DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS argus_workspace_credentials (
-    workspace_id        INTEGER         PRIMARY KEY REFERENCES argus_workspaces(id),
-    gitlab_http_url     VARCHAR(500),
-    gitlab_ssh_url      VARCHAR(500),
-    minio_endpoint      VARCHAR(500),
-    minio_root_user     VARCHAR(255),
-    minio_root_password VARCHAR(500),
-    minio_access_key    VARCHAR(255),
-    minio_secret_key    VARCHAR(500),
-    airflow_url         VARCHAR(500),
-    airflow_admin_username VARCHAR(255),
-    airflow_admin_password VARCHAR(500),
-    mlflow_artifact_bucket VARCHAR(255),
-    kserve_endpoint     VARCHAR(500),
-    created_at          TIMESTAMPTZ     DEFAULT NOW(),
-    updated_at          TIMESTAMPTZ     DEFAULT NOW()
-);
-
-COMMENT ON TABLE argus_workspace_credentials IS 'Sensitive credentials for workspace infrastructure services';
+-- (argus_workspaces, argus_workspace_members, argus_workspace_credentials
+--  are defined earlier in this file, before tables that reference them)
 
 -- =============================================================================
 -- Configuration (Infrastructure)

@@ -1,0 +1,134 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: argus-nifi-${WORKSPACE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: nifi
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+    app.kubernetes.io/part-of: argus-insight
+    argus-insight/workspace: ${WORKSPACE_NAME}
+spec:
+  serviceName: argus-nifi-${WORKSPACE_NAME}-headless
+  replicas: ${NIFI_REPLICAS}
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nifi
+      app.kubernetes.io/instance: ${WORKSPACE_NAME}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nifi
+        app.kubernetes.io/instance: ${WORKSPACE_NAME}
+        app.kubernetes.io/part-of: argus-insight
+        argus-insight/workspace: ${WORKSPACE_NAME}
+    spec:
+      serviceAccountName: argus-nifi-${WORKSPACE_NAME}
+      containers:
+        - name: nifi
+          image: ${NIFI_IMAGE}
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: cluster
+              containerPort: 11443
+            - name: load-balance
+              containerPort: 6342
+          env:
+            - name: NIFI_WEB_HTTP_HOST
+              value: "0.0.0.0"
+            - name: NIFI_WEB_HTTP_PORT
+              value: "8080"
+            - name: NIFI_WEB_HTTPS_PORT
+              value: ""
+            - name: NIFI_CLUSTER_IS_NODE
+              value: "${NIFI_CLUSTER_IS_NODE}"
+            - name: NIFI_CLUSTER_NODE_PROTOCOL_PORT
+              value: "11443"
+            - name: NIFI_CLUSTER_PROTOCOL_HEARTBEAT_INTERVAL
+              value: "10 sec"
+            - name: NIFI_CLUSTER_NODE_CONNECTION_TIMEOUT
+              value: "30 sec"
+            - name: NIFI_CLUSTER_NODE_READ_TIMEOUT
+              value: "30 sec"
+            - name: NIFI_CLUSTER_NODE_MAX_CONCURRENT_REQUESTS
+              value: "100"
+            - name: NIFI_CLUSTER_PROTOCOL_HEARTBEAT_MISSABLE_MAX
+              value: "8"
+            - name: NIFI_ELECTION_MAX_WAIT
+              value: "1 min"
+            - name: NIFI_ELECTION_MAX_CANDIDATES
+              value: "${NIFI_REPLICAS}"
+            - name: NIFI_WEB_PROXY_HOST
+              value: "${NIFI_HOSTNAME}"
+            - name: NIFI_JVM_HEAP_INIT
+              value: "${NIFI_JVM_XMS}"
+            - name: NIFI_JVM_HEAP_MAX
+              value: "${NIFI_JVM_XMX}"
+            - name: SINGLE_USER_CREDENTIALS_USERNAME
+              value: ""
+            - name: SINGLE_USER_CREDENTIALS_PASSWORD
+              value: ""
+          command:
+            - sh
+            - -c
+            - |
+              export NIFI_CLUSTER_ADDRESS="$${HOSTNAME}.argus-nifi-${WORKSPACE_NAME}-headless.${K8S_NAMESPACE}.svc.cluster.local"
+              cat > /tmp/nifi-http-patch.sh << 'PEOF'
+              #!/bin/sh
+              P="${NIFI_HOME}/conf/nifi.properties"
+              [ ! -f "$P" ] && exit 0
+              sed -i 's|^nifi.web.https.host=.*|nifi.web.https.host=|;s|^nifi.web.https.port=.*|nifi.web.https.port=|;s|^nifi.web.http.host=.*|nifi.web.http.host=0.0.0.0|;s|^nifi.web.http.port=.*|nifi.web.http.port=8080|;s|^nifi.remote.input.secure=.*|nifi.remote.input.secure=false|;s|^nifi.cluster.protocol.is.secure=.*|nifi.cluster.protocol.is.secure=false|;s|^nifi.security.keystore=.*|nifi.security.keystore=|;s|^nifi.security.keystoreType=.*|nifi.security.keystoreType=|;s|^nifi.security.keystorePasswd=.*|nifi.security.keystorePasswd=|;s|^nifi.security.keyPasswd=.*|nifi.security.keyPasswd=|;s|^nifi.security.truststore=.*|nifi.security.truststore=|;s|^nifi.security.truststoreType=.*|nifi.security.truststoreType=|;s|^nifi.security.truststorePasswd=.*|nifi.security.truststorePasswd=|;s|^nifi.security.user.login.identity.provider=.*|nifi.security.user.login.identity.provider=|;s|^nifi.security.user.authorizer=.*|nifi.security.user.authorizer=|' "$P"
+              echo "=== HTTP mode: nifi.properties patched ==="
+              PEOF
+              chmod +x /tmp/nifi-http-patch.sh
+              sed -i '/nifi.sh.*run/i\/tmp/nifi-http-patch.sh' ../scripts/start.sh
+              exec ../scripts/start.sh
+          resources:
+            requests:
+              cpu: "${NIFI_CPU_REQUEST}"
+              memory: "${NIFI_MEMORY_REQUEST}"
+            limits:
+              cpu: "${NIFI_CPU_LIMIT}"
+              memory: "${NIFI_MEMORY_LIMIT}"
+          readinessProbe:
+            httpGet:
+              path: /nifi
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 120
+            periodSeconds: 30
+          volumeMounts:
+            - name: content-repo
+              mountPath: /opt/nifi/nifi-current/content_repository
+            - name: provenance-repo
+              mountPath: /opt/nifi/nifi-current/provenance_repository
+            - name: flowfile-repo
+              mountPath: /opt/nifi/nifi-current/flowfile_repository
+  volumeClaimTemplates:
+    - metadata:
+        name: content-repo
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: ${NIFI_CONTENT_STORAGE}
+    - metadata:
+        name: provenance-repo
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: ${NIFI_PROVENANCE_STORAGE}
+    - metadata:
+        name: flowfile-repo
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: ${NIFI_FLOWFILE_STORAGE}
