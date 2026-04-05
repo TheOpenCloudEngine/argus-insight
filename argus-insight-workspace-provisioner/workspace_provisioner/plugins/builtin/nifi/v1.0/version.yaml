@@ -1,0 +1,16 @@
+version: "1.0"
+display_name: "v1.0 (NiFi 2.x KRaft)"
+description: Apache NiFi with K8s Lease leader election, NiFi Registry, sticky session Ingress
+status: stable
+step_class: workspace_provisioner.workflow.steps.nifi_deploy.NiFiDeployStep
+config_class: workspace_provisioner.config.NiFiConfig
+template_dir: nifi
+changelog: |
+  - NiFi 2.x with K8s Lease (no ZooKeeper)
+  - NiFi Registry co-deployed with separate PVCs (db + flow_storage)
+  - Sticky session Ingress for flow editing safety
+  - HTTP-only mode (auth via Ingress)
+  - 3 separate PVCs: content (50Gi), provenance (5Gi), flowfile (5Gi)
+  - Auto-register Registry Client via NiFi REST API
+upgradeable_from: []
+software_version: "2.4.0"

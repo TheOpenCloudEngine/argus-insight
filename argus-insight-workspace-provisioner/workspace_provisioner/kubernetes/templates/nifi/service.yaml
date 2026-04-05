@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: argus-nifi-${WORKSPACE_NAME}-headless
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: nifi
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+    - name: cluster
+      port: 11443
+      targetPort: cluster
+    - name: load-balance
+      port: 6342
+      targetPort: load-balance
+  selector:
+    app.kubernetes.io/name: nifi
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: argus-nifi-${WORKSPACE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app.kubernetes.io/name: nifi
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: nifi
+    app.kubernetes.io/instance: ${WORKSPACE_NAME}

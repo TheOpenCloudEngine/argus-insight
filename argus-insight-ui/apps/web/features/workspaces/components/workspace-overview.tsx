@@ -266,7 +266,7 @@ function DetailRow({
 /* ------------------------------------------------------------------ */
 
 const CONFIGURABLE_PLUGINS = new Set([
-  "argus-mariadb", "argus-postgresql", "argus-trino", "argus-starrocks", "argus-kafka",
+  "argus-mariadb", "argus-postgresql", "argus-trino", "argus-starrocks", "argus-kafka", "argus-nifi",
   "argus-jupyter", "argus-jupyter-tensorflow", "argus-jupyter-pyspark",
   "argus-mlflow", "argus-airflow", "argus-ollama", "argus-vscode-server",
 ])
@@ -2000,6 +2000,7 @@ const SERVICE_KEY_TO_PLUGIN: Record<string, string> = {
   trino: "argus-trino",
   starrocks: "argus-starrocks",
   kafka: "argus-kafka",
+  nifi: "argus-nifi",
   postgresql: "argus-postgresql",
   mariadb: "argus-mariadb",
   // AutoML
@@ -2033,6 +2034,7 @@ function AddServiceButton({
   const [trinoTier, setTrinoTier] = useState<string>("development")
   const [starrocksTier, setStarrocksTier] = useState<string>("development")
   const [kafkaTier, setKafkaTier] = useState<string>("development")
+  const [nifiTier, setNifiTier] = useState<string>("development")
 
   // Deploy progress dialog state
   const [deployOpen, setDeployOpen] = useState(false)
@@ -2086,6 +2088,8 @@ function AddServiceButton({
       deployBody.plugin_config = { argus_starrocks_tier: starrocksTier }
     } else if (item.service_key === "kafka") {
       deployBody.plugin_config = { argus_kafka_tier: kafkaTier }
+    } else if (item.service_key === "nifi") {
+      deployBody.plugin_config = { argus_nifi_tier: nifiTier }
     }
 
     // Deploy
@@ -2196,7 +2200,7 @@ function AddServiceButton({
           <DialogHeader>
             <DialogTitle>Deploy {pendingItem?.service_label}</DialogTitle>
             <DialogDescription>
-              {pendingItem?.service_key === "trino" || pendingItem?.service_key === "starrocks" || pendingItem?.service_key === "kafka"
+              {pendingItem?.service_key === "trino" || pendingItem?.service_key === "starrocks" || pendingItem?.service_key === "kafka" || pendingItem?.service_key === "nifi"
                 ? `Select a deployment tier for ${pendingItem?.service_label} and deploy to this workspace.`
                 : `Would you like to deploy ${pendingItem?.service_label} to this workspace?`}
             </DialogDescription>
@@ -2284,6 +2288,37 @@ function AddServiceButton({
                     value={t.tier}
                     checked={kafkaTier === t.tier}
                     onChange={() => setKafkaTier(t.tier)}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <div className="text-sm font-medium">{t.label}</div>
+                    <div className="text-xs text-muted-foreground">{t.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {/* NiFi Tier Selection */}
+          {pendingItem?.service_key === "nifi" && (
+            <div className="space-y-2 py-2">
+              {[
+                { tier: "development", label: "Development", desc: "1 NiFi + Registry — 3 CPU, 3 GiB" },
+                { tier: "standard", label: "Standard", desc: "3 NiFi (cluster) + Registry — 13 CPU, 13 GiB" },
+                { tier: "performance", label: "Performance", desc: "3 NiFi (high) + Registry — 25 CPU, 25 GiB" },
+              ].map((t) => (
+                <label
+                  key={t.tier}
+                  className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                    nifiTier === t.tier ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="nifi-tier"
+                    value={t.tier}
+                    checked={nifiTier === t.tier}
+                    onChange={() => setNifiTier(t.tier)}
                     className="mt-0.5"
                   />
                   <div>

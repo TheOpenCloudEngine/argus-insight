@@ -1284,6 +1284,7 @@ async def deploy_pipeline_to_workspace(
         "argus-vscode-server": ("1", "2Gi"),
         "argus-ollama": ("4", "8Gi"),
         "argus-kafka": ("1", "2Gi"),
+        "argus-nifi": ("3", "3Gi"),  # NiFi 1 node + Registry
         "argus-rstudio": ("1", "2Gi"),
         "argus-neo4j": ("1", "2Gi"),
         "argus-labelstudio": ("1", "2Gi"),
@@ -1305,6 +1306,11 @@ async def deploy_pipeline_to_workspace(
         if kafka_tier:
             kafka_resources = {"development": ("1", "2Gi"), "standard": ("3", "6Gi"), "performance": ("6", "12Gi")}
             PLUGIN_RESOURCE_ESTIMATES["argus-kafka"] = kafka_resources.get(kafka_tier, ("1", "2Gi"))
+        nifi_tier = req.plugin_config.get("argus_nifi_tier")
+        if nifi_tier:
+            # NiFi nodes + Registry (1cpu, 1Gi)
+            nifi_resources = {"development": ("3", "3Gi"), "standard": ("13", "13Gi"), "performance": ("25", "25Gi")}
+            PLUGIN_RESOURCE_ESTIMATES["argus-nifi"] = nifi_resources.get(nifi_tier, ("3", "3Gi"))
 
     # Calculate total new resource requirement
     new_cpu = Decimal("0")

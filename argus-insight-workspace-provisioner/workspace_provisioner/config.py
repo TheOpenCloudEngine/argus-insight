@@ -630,6 +630,65 @@ class TrinoConfig(BaseModel):
         return presets.get(tier, presets["development"])
 
 
+class NiFiConfig(BaseModel):
+    """Apache NiFi + NiFi Registry deployment settings.
+
+    Tier presets:
+      - development: 1 NiFi (standalone) + Registry
+      - standard: 3 NiFi (cluster) + Registry
+      - performance: 3 NiFi (cluster, high resources) + Registry
+    """
+
+    tier: str = Field(default="development")
+    nifi_image: str = Field(default="apache/nifi:2.4.0")
+    registry_image: str = Field(default="apache/nifi-registry:2.4.0")
+    replicas: int = Field(default=1)
+    content_storage: str = Field(default="50Gi")
+    provenance_storage: str = Field(default="5Gi")
+    flowfile_storage: str = Field(default="5Gi")
+    registry_db_storage: str = Field(default="2Gi")
+    registry_flow_storage: str = Field(default="5Gi")
+    resources: ResourceConfig = Field(
+        default_factory=lambda: ResourceConfig(
+            cpu_request="1", cpu_limit="2",
+            memory_request="1Gi", memory_limit="2Gi",
+        ),
+    )
+    registry_resources: ResourceConfig = Field(
+        default_factory=lambda: ResourceConfig(
+            cpu_request="250m", cpu_limit="1",
+            memory_request="512Mi", memory_limit="1Gi",
+        ),
+    )
+
+    @classmethod
+    def from_tier(cls, tier: str) -> "NiFiConfig":
+        presets = {
+            "development": cls(
+                tier="development", replicas=1,
+                resources=ResourceConfig(
+                    cpu_request="1", cpu_limit="2",
+                    memory_request="1Gi", memory_limit="2Gi",
+                ),
+            ),
+            "standard": cls(
+                tier="standard", replicas=3,
+                resources=ResourceConfig(
+                    cpu_request="2", cpu_limit="4",
+                    memory_request="2Gi", memory_limit="4Gi",
+                ),
+            ),
+            "performance": cls(
+                tier="performance", replicas=3,
+                resources=ResourceConfig(
+                    cpu_request="4", cpu_limit="8",
+                    memory_request="4Gi", memory_limit="8Gi",
+                ),
+            ),
+        }
+        return presets.get(tier, presets["development"])
+
+
 class KafkaConfig(BaseModel):
     """Apache Kafka (KRaft mode) deployment settings.
 
