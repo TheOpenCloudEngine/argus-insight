@@ -89,17 +89,13 @@ spec:
               cpu: "${NIFI_CPU_LIMIT}"
               memory: "${NIFI_MEMORY_LIMIT}"
           readinessProbe:
-            httpGet:
-              path: /nifi
+            tcpSocket:
               port: https
-              scheme: HTTPS
             initialDelaySeconds: 60
             periodSeconds: 10
           livenessProbe:
-            httpGet:
-              path: /nifi
+            tcpSocket:
               port: https
-              scheme: HTTPS
             initialDelaySeconds: 120
             periodSeconds: 30
           volumeMounts:
