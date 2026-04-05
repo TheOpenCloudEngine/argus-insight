@@ -1433,13 +1433,15 @@ function ServiceDataListItem({
         })()
 
   // Determine display URL: prefer display metadata URLs, then endpoint
-  const firstHttpUrl = Object.values(displayMeta).find(
-    (v) => typeof v === "string" && /^https?:\/\//.test(v),
-  ) as string | undefined
+  // Prefer service.endpoint as primary URL, fallback to first HTTP URL in display metadata
+  const endpointIsHttp = service.endpoint && /^https?:\/\//.test(service.endpoint)
+  const firstHttpUrl = endpointIsHttp
+    ? service.endpoint
+    : (Object.values(displayMeta).find(
+        (v) => typeof v === "string" && /^https?:\/\//.test(v),
+      ) as string | undefined)
   const displayUrl = firstHttpUrl || service.endpoint
-  const openUrl =
-    firstHttpUrl ||
-    (service.endpoint && /^https?:\/\//.test(service.endpoint) ? service.endpoint : null)
+  const openUrl = firstHttpUrl || null
 
   // Custom labels (injected by GitLab default service mapping)
   const svcAny = service as WorkspaceService & { _usernameLabel?: string; _passwordLabel?: string; _hideUrl?: boolean; _hideTimestamps?: boolean }
