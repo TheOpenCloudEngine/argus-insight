@@ -18,6 +18,8 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-body-size: "0"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # Backend is HTTPS (NiFi 2.x forces HTTPS)
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
 spec:
   ingressClassName: nginx
   rules:
@@ -30,7 +32,7 @@ spec:
               service:
                 name: argus-nifi-${WORKSPACE_NAME}
                 port:
-                  name: http
+                  name: https
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress

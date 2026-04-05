@@ -29,8 +29,8 @@ spec:
         - name: nifi
           image: ${NIFI_IMAGE}
           ports:
-            - name: http
-              containerPort: 8080
+            - name: https
+              containerPort: 8443
             - name: cluster
               containerPort: 11443
             - name: load-balance
@@ -91,13 +91,15 @@ spec:
           readinessProbe:
             httpGet:
               path: /nifi
-              port: http
+              port: https
+              scheme: HTTPS
             initialDelaySeconds: 60
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /nifi
-              port: http
+              port: https
+              scheme: HTTPS
             initialDelaySeconds: 120
             periodSeconds: 30
           volumeMounts:

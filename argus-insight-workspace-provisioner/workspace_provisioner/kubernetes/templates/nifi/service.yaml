@@ -10,9 +10,9 @@ spec:
   type: ClusterIP
   clusterIP: None
   ports:
-    - name: http
-      port: 8080
-      targetPort: http
+    - name: https
+      port: 8443
+      targetPort: https
     - name: cluster
       port: 11443
       targetPort: cluster
@@ -34,9 +34,9 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-    - name: http
-      port: 8080
-      targetPort: http
+    - name: https
+      port: 8443
+      targetPort: https
   selector:
     app.kubernetes.io/name: nifi
     app.kubernetes.io/instance: ${WORKSPACE_NAME}
